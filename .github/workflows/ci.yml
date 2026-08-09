@@ -73,15 +73,20 @@ jobs:
         run: npm ci
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+      - name: Install NSIS (makensis, required by wails build -nsis)
+        run: choco install nsis -y --no-progress
       - name: Build Windows app (exe + NSIS installer)
         run: wails build -nsis
+      - name: List build outputs
+        shell: bash
+        run: ls -la build/bin/
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: llama-gui-windows
           path: |
             build/bin/llama-gui.exe
-            build/bin/llama-gui-amd64-setup.exe
+            build/bin/llama-gui-amd64-installer.exe
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
         env:
@@ -89,7 +94,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          files=(build/bin/llama-gui.exe build/bin/llama-gui-amd64-setup.exe)
+          files=(build/bin/llama-gui.exe build/bin/llama-gui-amd64-installer.exe)
+          for f in "${files[@]}"; do
+            [[ -f "$f" ]] || { echo "Missing artifact: $f"; exit 1; }
+          done
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
             # 推送 v* tag：发布正式 Release
             gh release create "$GITHUB_REF_NAME" "${files[@]}" \
