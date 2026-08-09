@@ -75,6 +75,17 @@ jobs:
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
       - name: Install NSIS (makensis, required by wails build -nsis)
         run: choco install nsis -y --no-progress
+      - name: Add makensis to PATH
+        shell: pwsh
+        run: |
+          # choco 只更新注册表 PATH，当前 job 的进程环境不会自动刷新，
+          # 动态定位 makensis 并写入 $GITHUB_PATH 供后续步骤使用
+          $mk = Get-ChildItem "$env:ProgramFiles", "${env:ProgramFiles(x86)}" `
+            -Filter makensis.exe -Recurse -Depth 3 -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+          if (-not $mk) { throw 'makensis.exe not found after "choco install nsis"' }
+          Write-Host "Found makensis: $($mk.FullName)"
+          Add-Content $env:GITHUB_PATH $mk.DirectoryName
       - name: Build Windows app (exe + NSIS installer)
         run: wails build -nsis
       - name: List build outputs

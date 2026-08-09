@@ -3,6 +3,7 @@ dist/
 dist-electron/
 release/
 build/bin/
+build/windows/installer/
 /llama-gui.exe
 .vite/
 *.log
