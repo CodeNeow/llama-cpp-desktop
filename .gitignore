@@ -3,6 +3,7 @@ dist/
 dist-electron/
 release/
 build/bin/
+/llama-gui.exe
 .vite/
 *.log
 .DS_Store
