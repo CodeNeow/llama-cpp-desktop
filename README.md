@@ -10,39 +10,43 @@ Llama GUI 是一个基于 **Wails v2**（Go + WebView）构建的本地大模型
 
 自动检测 CPU / 内存 / NVIDIA 显卡 / CUDA 环境，展示 llama.cpp 安装状态；未安装时可在应用内一键下载。
 
-![主页](docs/screenshots/home.png)
+![主页](docs/screenshots/home-light.png)
 
 ### 模型 — GGUF 模型管理
 
 扫描 `LLM-Models` 目录下的 GGUF 文件，自动解析架构、量化等级、文件大小，并识别多模态模型（mmproj）。
 
-![模型列表](docs/screenshots/models.png)
+![模型列表](docs/screenshots/models-light.png)
 
 ### 模型参数设置
 
 为每个模型独立配置推理参数：线程数、GPU 层数、上下文大小、Flash Attention、KV 缓存类型等，保存后自动写入 llama-server 预设。
 
-![模型设置](docs/screenshots/models-settings.png)
+![模型设置](docs/screenshots/models-settings-light.png)
 
 ### API — llama-server 路由器模式
 
 一键启动 / 停止 llama-server（路由器模式），多模型按需自动加载与卸载；内置实时服务日志。
 
-![API 服务](docs/screenshots/api.png)
+![API 服务](docs/screenshots/api-light.png)
 
 ### 下载 — HF Mirror 模型搜索
 
 通过 [HF Mirror](https://hf-mirror.com) 搜索并下载模型，支持多文件选择、暂停 / 继续 / 取消。
 
-![模型下载](docs/screenshots/downloads.png)
+![模型下载](docs/screenshots/downloads-light.png)
 
 ### 设置 — 主题切换
 
 深色 / 浅色主题一键切换，偏好自动持久化。
 
-![设置](docs/screenshots/settings.png)
+![设置](docs/screenshots/settings-light.png)
 
-![主页浅色主题](docs/screenshots/home-light.png)
+### 深色主题
+
+应用同样支持深色外观，满足夜间使用场景。
+
+![主页深色主题](docs/screenshots/home-dark.png)
 
 ## 功能
 
