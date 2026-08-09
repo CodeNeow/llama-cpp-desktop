@@ -150,5 +150,3 @@ func startHFDownload(modelID string, files []string) error {
 	}
 	return nil
 }
-
-

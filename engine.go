@@ -39,9 +39,9 @@ type SystemInfo struct {
 // ─── GitHub API structs ──────────────────────────────────────────
 
 type GitHubRelease struct {
-	TagName string         `json:"tag_name"`
-	Name    string         `json:"name"`
-	Assets  []GitHubAsset  `json:"assets"`
+	TagName string        `json:"tag_name"`
+	Name    string        `json:"name"`
+	Assets  []GitHubAsset `json:"assets"`
 }
 
 type GitHubAsset struct {
@@ -83,14 +83,14 @@ type LlamaCppInfo struct {
 // ─── HF Mirror types ─────────────────────────────────────────────
 
 type HFSearchResult struct {
-	ID           string   `json:"id"`
-	ModelID      string   `json:"modelId"`
-	Author       string   `json:"author"`
-	Downloads    int      `json:"downloads"`
-	Likes        int      `json:"likes"`
-	PipelineTag  string   `json:"pipelineTag"`
-	Tags         []string `json:"tags"`
-	Siblings     []HFFile `json:"siblings"`
+	ID          string   `json:"id"`
+	ModelID     string   `json:"modelId"`
+	Author      string   `json:"author"`
+	Downloads   int      `json:"downloads"`
+	Likes       int      `json:"likes"`
+	PipelineTag string   `json:"pipelineTag"`
+	Tags        []string `json:"tags"`
+	Siblings    []HFFile `json:"siblings"`
 }
 
 type HFFile struct {
@@ -107,17 +107,17 @@ type HFFileOut struct {
 // ─── Download task types ─────────────────────────────────────────
 
 type DlTask struct {
-	ID         string  `json:"id"`
-	ModelID    string  `json:"modelId"`
-	FileName   string  `json:"fileName"`
-	DestDir    string  `json:"destDir"`
-	URL        string  `json:"-"`
-	Status     string  `json:"status"`
-	Progress   int     `json:"progress"`
-	Total      int64   `json:"total"`
-	Downloaded int64   `json:"downloaded"`
-	SizeHuman  string  `json:"sizeHuman"`
-	Error      string  `json:"error"`
+	ID         string `json:"id"`
+	ModelID    string `json:"modelId"`
+	FileName   string `json:"fileName"`
+	DestDir    string `json:"destDir"`
+	URL        string `json:"-"`
+	Status     string `json:"status"`
+	Progress   int    `json:"progress"`
+	Total      int64  `json:"total"`
+	Downloaded int64  `json:"downloaded"`
+	SizeHuman  string `json:"sizeHuman"`
+	Error      string `json:"error"`
 	ctx        context.Context
 	cancel     context.CancelFunc
 	pauseCh    chan struct{}
@@ -168,14 +168,14 @@ var dlTasksMu sync.Mutex
 var dlTaskCounter int
 
 type DownloadState struct {
-	Status      string `json:"status"` // idle, fetching, downloading, paused, extracting, done, error
-	Paused      bool   `json:"paused"`
-	Progress    int    `json:"progress"`
-	Total       int64  `json:"total"`
-	Downloaded  int64  `json:"downloaded"`
-	FileName    string `json:"fileName"`
-	Version     string `json:"version"`
-	Error       string `json:"error"`
+	Status     string `json:"status"` // idle, fetching, downloading, paused, extracting, done, error
+	Paused     bool   `json:"paused"`
+	Progress   int    `json:"progress"`
+	Total      int64  `json:"total"`
+	Downloaded int64  `json:"downloaded"`
+	FileName   string `json:"fileName"`
+	Version    string `json:"version"`
+	Error      string `json:"error"`
 }
 
 func defaultModelConfig() ModelConfig {
@@ -184,7 +184,6 @@ func defaultModelConfig() ModelConfig {
 		CtxSize: 4096, BatchSize: 2048, UBatchSize: 512,
 	}
 }
-
 
 // ─── System info collection ──────────────────────────────────────
 
@@ -1428,10 +1427,6 @@ var serverLogs []string
 var serverLogsMu sync.Mutex
 var serverRunning bool
 
-
-
-
-
 type serverLogWriter struct{}
 
 func (w *serverLogWriter) Write(p []byte) (int, error) {
@@ -1663,8 +1658,6 @@ func saveConfig() {
 		log.Printf("[WARN] Failed to write config file: %v", err)
 	}
 }
-
-
 
 // ─── HF Mirror API ───────────────────────────────────────────────
 
@@ -1915,7 +1908,10 @@ func downloadTask(task *DlTask) {
 			}
 
 			// Interruptible read
-			type readRes struct{ n int; err error }
+			type readRes struct {
+				n   int
+				err error
+			}
 			ch := make(chan readRes, 1)
 			go func() {
 				n, err := resp.Body.Read(buf)
