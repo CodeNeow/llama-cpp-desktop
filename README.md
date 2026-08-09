@@ -192,3 +192,14 @@ wails dev                  # 开发模式（前后端热重载）
 wails build                # 生产构建
 cd frontend && npm run build    # 仅构建前端
 ```
+
+## 发布 Release
+
+CI（`.github/workflows/ci.yml`）在以下场景自动构建并发布 Windows 产物（绿色版 `llama-gui.exe` + NSIS 安装器 `llama-gui-amd64-setup.exe`）：
+
+- **正式版**：推送 `v*` 格式 tag（如 `v1.0.0`），自动创建带变更说明的正式 Release；
+- **预览版**：在 GitHub Actions 页手动运行 CI（`workflow_dispatch`），创建草稿 Release。
+
+```bash
+git tag v1.0.0 && git push origin v1.0.0
+```

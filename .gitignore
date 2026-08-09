@@ -2,7 +2,7 @@ node_modules/
 dist/
 dist-electron/
 release/
-build/
+build/bin/
 .vite/
 *.log
 .DS_Store
