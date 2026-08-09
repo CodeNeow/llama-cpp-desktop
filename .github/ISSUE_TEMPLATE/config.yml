@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 提问 / 讨论
+    url: https://github.com/CodeNeow/llama-cpp-gui/discussions
+    about: 使用问题、设计讨论、功能设想请到 Discussions（若仓库未开启，请使用 Issues 的"Bug 报告"模板提问）。
+  - name: 贡献指南
+    url: https://github.com/CodeNeow/llama-cpp-gui/blob/main/CONTRIBUTING.md
+    about: 首次贡献请先阅读 CONTRIBUTING.md（提交规范、验证门、Issue/PR 流程）。
+  - name: 安全漏洞（敏感）
+    url: https://github.com/CodeNeow/llama-cpp-gui/security/advisories/new
+    about: 涉及凭据、注入、越权等敏感安全漏洞，请走 Security Advisory 私密上报，勿开公开 issue。

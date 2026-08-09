@@ -1,5 +1,7 @@
 # Llama GUI
 
+![CI](https://github.com/CodeNeow/llama-cpp-gui/actions/workflows/ci.yml/badge.svg)
+
 _✨ 在本地桌面一键运行 llama.cpp，OpenAI 兼容 API 开箱即用 ✨_
 
 Llama GUI 是一个基于 **Wails v2**（Go + WebView）构建的本地大模型桌面管理工具。它帮你把 [llama.cpp](https://github.com/ggml-org/llama.cpp) 的完整链路（**下载 → 模型管理 → 参数配置 → 服务启动 → API 调用**）收敛到一个窗口里，无需手动敲命令行。

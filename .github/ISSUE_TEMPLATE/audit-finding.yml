@@ -1,0 +1,123 @@
+name: "审计发现 / 结构化缺陷"
+description: "系统性审计、代码评审或测试中发现的具体缺陷。带证据和验收标准。"
+title: "[P?] 简明描述（一句话，含受影响组件/模块）"
+labels: ["bug", "frontend"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢记录缺陷。请按下方结构填写。证据必须给出 `文件:行号`，便于定位。
+        优先级请客观评估：P0 阻断功能/安全漏洞；P1 明显影响体验或安全；P2 中等；P3 打磨。
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: 优先级
+      options:
+        - P0-critical（阻断功能 / 安全漏洞，必须立即修）
+        - P1-high（高优先级，明显影响体验或安全）
+        - P2-medium（中等，体验/一致性问题）
+        - P3-low（低优先级，打磨项）
+    validations:
+      required: true
+
+  - type: input
+    id: component
+    attributes:
+      label: 受影响范围
+      description: 组件/文件路径或模块，例如 `frontend/src/views/Models.vue` 或 `engine.go`。
+      placeholder: "engine.go"
+    validations:
+      required: true
+
+  - type: textarea
+    id: symptom
+    attributes:
+      label: 现象
+      description: 这个缺陷是什么？发生了什么？尽量一句话说清核心问题。
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤
+      description: 一步步的操作指令。如不可复现，写明触发条件。
+      placeholder: |
+        1. 打开 ...
+        2. 点击 ...
+        3. 观察 ...
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 证据
+      description: |
+        必须给出 `文件:行号` 和相关代码片段。多处证据一并列出。
+        引用代码用 ``` 包裹。
+      placeholder: |
+        `frontend/src/views/Downloads.vue:185`
+        ```vue
+        const searchQuery = ref('bge-small-zh')
+        ```
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: 影响
+      description: 这个问题造成的后果（功能失效 / 数据丢失 / 安全风险 / 体验损害等）。
+    validations:
+      required: true
+
+  - type: textarea
+    id: fix
+    attributes:
+      label: 修复建议
+      description: 给出 diff 或伪代码。如有多种方案，列 A/B 并说明权衡。
+      placeholder: |
+        ```diff
+        - foo()
+        + bar()
+        ```
+    validations:
+      required: false
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收标准
+      description: 可验证的检查项，用 `- [ ]` 列出。修复后逐项打勾。
+      placeholder: |
+        - [ ] 点击暂停 → 任务状态变为"已暂停"
+        - [ ] 对应验证门通过（go build / gofmt / npm run build）
+      value: |
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: gates
+    attributes:
+      label: 验证门（修复时确认）
+      description: 按 AGENTS.md 要求，相关改动需通过对应验证门，并在 PR 中附结果。
+      options:
+        - label: 我已确认此修复需要跑 [后端 / 前端] 验证门，并会在 PR 中附结果
+          required: false
+
+  - type: input
+    id: tracker
+    attributes:
+      label: 上级 Tracker issue（可选）
+      description: 若本 issue 属于某次审计批次，填写 Tracker issue 编号，例如 #3。
+      placeholder: "#3"
+    validations:
+      required: false
