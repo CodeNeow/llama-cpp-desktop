@@ -1,0 +1,36 @@
+package main
+
+import (
+	"embed"
+
+	"github.com/wailsapp/wails/v2"
+	"github.com/wailsapp/wails/v2/pkg/options"
+	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+)
+
+//go:embed frontend/dist
+var assets embed.FS
+
+func main() {
+	app := NewApp()
+
+	err := wails.Run(&options.App{
+		Title:     "Llama GUI",
+		Width:     1200,
+		Height:    800,
+		MinWidth:  900,
+		MinHeight: 600,
+		AssetServer: &assetserver.Options{
+			Assets: assets,
+		},
+		Frameless:        true,
+		OnStartup:        app.startup,
+		OnShutdown:       app.shutdown,
+		Bind:             []interface{}{app},
+		BackgroundColour: &options.RGBA{R: 15, G: 15, B: 20, A: 1},
+	})
+
+	if err != nil {
+		println("Error:", err.Error())
+	}
+}

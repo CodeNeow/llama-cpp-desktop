@@ -1,0 +1,152 @@
+<template>
+  <div class="app-layout">
+    <Sidebar />
+    <main class="main-content">
+      <!-- Custom title bar -->
+      <div class="title-bar" v-if="isDesktop">
+        <div></div>
+        <div class="window-controls">
+          <button class="win-btn win-min" @click="minimize" title="最小化">
+            <svg width="12" height="12" viewBox="0 0 12 12"><rect x="1" y="5.5" width="10" height="1" fill="currentColor"/></svg>
+          </button>
+          <button class="win-btn win-max" @click="maximize" title="最大化">
+            <svg width="12" height="12" viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="9" height="9" stroke="currentColor" stroke-width="1" fill="none"/></svg>
+          </button>
+          <button class="win-btn win-close" @click="closeWindow" title="关闭">
+            <svg width="12" height="12" viewBox="0 0 12 12"><line x1="1" y1="1" x2="11" y2="11" stroke="currentColor" stroke-width="1.5"/><line x1="11" y1="1" x2="1" y2="11" stroke="currentColor" stroke-width="1.5"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="content-area">
+        <router-view v-slot="{ Component, route }">
+          <transition :name="(route.meta.transition as string) || 'fade'" mode="out-in">
+            <component :is="Component" :key="route.path" />
+          </transition>
+        </router-view>
+      </div>
+    </main>
+  </div>
+</template>
+
+<script setup lang="ts">
+import Sidebar from './components/Sidebar.vue'
+
+const w = window as any
+const isDesktop = !!(w.go || w.electronAPI)  // Wails or Electron
+
+function minimize() {
+  w.runtime?.WindowMinimise()
+}
+function maximize() {
+  w.runtime?.WindowToggleMaximise()
+}
+function closeWindow() {
+  w.runtime?.Quit()
+}
+</script>
+
+<style scoped>
+.app-layout {
+  display: flex;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+
+.main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ─── Title bar ─── */
+.title-bar {
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  -webkit-app-region: drag;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.window-controls {
+  display: flex;
+  gap: 8px;
+  -webkit-app-region: no-drag;
+}
+
+.win-btn {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: opacity 0.15s;
+  opacity: 0.6;
+}
+
+.win-btn:hover { opacity: 1; }
+
+.win-min {
+  background: #fbbf24;
+  color: #92400e;
+}
+
+.win-max {
+  background: #22c55e;
+  color: #14532d;
+}
+
+.win-close {
+  background: #ef4444;
+  color: #7f1d1d;
+}
+
+/* ─── Content area ─── */
+.content-area {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.content-area::-webkit-scrollbar {
+  width: 6px;
+}
+
+.content-area::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.content-area::-webkit-scrollbar-thumb {
+  background: var(--overlay-10);
+  border-radius: 3px;
+}
+
+.content-area::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+/* Route transitions */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.fade-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+.fade-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+</style>

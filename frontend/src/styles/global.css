@@ -1,0 +1,121 @@
+/* ==========================================
+   Llama GUI — Global Styles
+   Dark theme with purple/violet accent
+   ========================================== */
+
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --bg-primary: #0f0f14;
+  --bg-secondary: #161622;
+  --bg-card: #1a1a26;
+  --border: rgba(255, 255, 255, 0.06);
+  --text-primary: #ffffff;
+  --text-secondary: #c4c4d4;
+  --text-muted: rgba(255, 255, 255, 0.4);
+  --text-dim: rgba(255, 255, 255, 0.25);
+  --hover-bg: rgba(255, 255, 255, 0.04);
+  --active-bg: rgba(99, 102, 241, 0.15);
+  --surface: rgba(255, 255, 255, 0.03);
+  --border-light: rgba(255, 255, 255, 0.03);
+  --skeleton-bg: rgba(255, 255, 255, 0.05);
+  --scrollbar-thumb: rgba(255, 255, 255, 0.1);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.18);
+  --overlay-8: rgba(255, 255, 255, 0.04);
+  --overlay-10: rgba(255, 255, 255, 0.06);
+  --overlay-20: rgba(255, 255, 255, 0.12);
+  --accent: #6366f1;
+  --accent-light: #a78bfa;
+  --accent-glow: rgba(99, 102, 241, 0.3);
+  --success: #22c55e;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SF Mono', monospace;
+}
+
+/* Light theme */
+[data-theme="light"] {
+  --bg-primary: #f8fafc;
+  --bg-secondary: #ffffff;
+  --bg-card: rgba(0, 0, 0, 0.02);
+  --border: rgba(0, 0, 0, 0.08);
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: rgba(0, 0, 0, 0.5);
+  --text-dim: rgba(0, 0, 0, 0.35);
+  --hover-bg: rgba(0, 0, 0, 0.04);
+  --active-bg: rgba(79, 70, 229, 0.1);
+  --surface: rgba(0, 0, 0, 0.015);
+  --border-light: rgba(0, 0, 0, 0.04);
+  --skeleton-bg: rgba(0, 0, 0, 0.05);
+  --scrollbar-thumb: rgba(0, 0, 0, 0.12);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.2);
+  --overlay-8: rgba(0, 0, 0, 0.06);
+  --overlay-10: rgba(0, 0, 0, 0.08);
+  --overlay-20: rgba(0, 0, 0, 0.15);
+  --accent: #4f46e5;
+  --accent-light: #6366f1;
+  --accent-glow: rgba(79, 70, 229, 0.15);
+  --success: #16a34a;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#app {
+  width: 100%;
+  height: 100%;
+}
+
+/* Selection */
+::selection {
+  background: rgba(99, 102, 241, 0.4);
+  color: #fff;
+}
+
+/* Focus */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Links */
+a {
+  color: var(--accent-light);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+a:hover {
+  color: var(--accent);
+}
+
+/* Code / pre */
+code, pre {
+  font-family: var(--font-mono);
+}
+
+/* Page content centering */
+.page {
+  margin-left: auto;
+  margin-right: auto;
+}

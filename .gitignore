@@ -1,0 +1,12 @@
+node_modules/
+dist/
+dist-electron/
+release/
+build/
+.vite/
+*.log
+.DS_Store
+Thumbs.db
+LLM-Models/
+llama-cpp/
+llama-gui-config.json
