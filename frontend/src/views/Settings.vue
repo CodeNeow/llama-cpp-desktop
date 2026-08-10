@@ -33,21 +33,60 @@
         </div>
       </div>
     </section>
+
+    <!-- 更新 -->
+    <section class="settings-section">
+      <h2 class="section-title">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 6 9 17l-5-5"/>
+        </svg>
+        更新
+      </h2>
+      <div class="setting-row">
+        <div class="setting-info">
+          <span class="setting-label">检查更新</span>
+          <span class="setting-desc">当前版本 {{ appVersion }} · 自动检查每两天一次</span>
+        </div>
+        <div class="update-actions">
+          <span v-if="checkError" class="update-error">{{ checkError }}</span>
+          <span v-else-if="checkResult && !checkResult.hasUpdate" class="update-latest">✓ 已是最新版本</span>
+          <button class="btn-check" :disabled="checking" @click="manualCheck">
+            {{ checking ? '检查中...' : '检查更新' }}
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <UpdateModal :visible="showUpdateModal" @close="closeUpdateModal" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { appConfig, setTheme, loadConfig } from '../store'
+import { updateState, checkForUpdate, closeUpdateModal } from '../lib/update'
+import { getAppVersion } from '../wails'
+import UpdateModal from '../components/UpdateModal.vue'
 
 const currentTheme = computed({
   get: () => appConfig.theme,
   set: (v) => setTheme(v)
 })
 
+const appVersion = ref('')
+const checking = computed(() => updateState.checking)
+const checkError = computed(() => updateState.error)
+const checkResult = computed(() => updateState.result)
+const showUpdateModal = computed(() => updateState.showModal)
+
 onMounted(async () => {
   if (!appConfig.loaded) await loadConfig()
+  getAppVersion().then((v) => { appVersion.value = v }).catch(() => {})
 })
+
+async function manualCheck() {
+  await checkForUpdate()
+}
 </script>
 
 <style scoped>
@@ -173,5 +212,44 @@ onMounted(async () => {
   font-weight: 500;
   color: var(--text-muted);
   min-width: 28px;
+}
+
+/* ─── 更新 ─── */
+.update-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.update-error {
+  font-size: 12px;
+  color: #ef4444;
+}
+
+.update-latest {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--success);
+}
+
+.btn-check {
+  padding: 8px 20px;
+  background: var(--accent);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.btn-check:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.btn-check:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>

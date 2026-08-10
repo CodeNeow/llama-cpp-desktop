@@ -10,6 +10,14 @@ export function CancelDownloadTask(arg1) {
   return window['go']['core']['App']['CancelDownloadTask'](arg1);
 }
 
+export function CheckForUpdate() {
+  return window['go']['core']['App']['CheckForUpdate']();
+}
+
+export function GetAppVersion() {
+  return window['go']['core']['App']['GetAppVersion']();
+}
+
 export function GetCPU() {
   return window['go']['core']['App']['GetCPU']();
 }
@@ -70,6 +78,10 @@ export function GetSystemInfo() {
   return window['go']['core']['App']['GetSystemInfo']();
 }
 
+export function GetUpdateDownloadStatus() {
+  return window['go']['core']['App']['GetUpdateDownloadStatus']();
+}
+
 export function PauseDownloadTask(arg1) {
   return window['go']['core']['App']['PauseDownloadTask'](arg1);
 }
@@ -118,10 +130,18 @@ export function StartServer() {
   return window['go']['core']['App']['StartServer']();
 }
 
+export function StartUpdateDownload(arg1) {
+  return window['go']['core']['App']['StartUpdateDownload'](arg1);
+}
+
 export function StopLlamaCppDownload() {
   return window['go']['core']['App']['StopLlamaCppDownload']();
 }
 
 export function StopServer() {
   return window['go']['core']['App']['StopServer']();
+}
+
+export function StopUpdateDownload() {
+  return window['go']['core']['App']['StopUpdateDownload']();
 }

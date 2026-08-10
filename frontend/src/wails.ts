@@ -119,6 +119,28 @@ export async function browseLlamaCppDir(): Promise<string> {
   return app().BrowseLlamaCppDir()
 }
 
+// ─── App Update ──────────────────────────────────────────────────
+
+export async function getAppVersion(): Promise<string> {
+  return app().GetAppVersion()
+}
+
+export async function checkForUpdate(): Promise<{ hasUpdate: boolean; version: string; notes: string; published: string }> {
+  return app().CheckForUpdate()
+}
+
+export async function startUpdateDownload(version: string): Promise<void> {
+  return app().StartUpdateDownload(version)
+}
+
+export async function getUpdateDownloadStatus(): Promise<{ status: string; progress: number; total: number; downloaded: number; version: string; filePath: string; error: string }> {
+  return app().GetUpdateDownloadStatus()
+}
+
+export async function stopUpdateDownload(): Promise<void> {
+  return app().StopUpdateDownload()
+}
+
 // ─── Downloads (HF Mirror) ───────────────────────────────────────
 
 export async function searchDownloads(query: string, filter: string): Promise<any[]> {

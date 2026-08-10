@@ -6,6 +6,10 @@ export function BrowseLlamaCppDir():Promise<string>;
 
 export function CancelDownloadTask(arg1:string):Promise<void>;
 
+export function CheckForUpdate():Promise<core.UpdateCheckResult>;
+
+export function GetAppVersion():Promise<string>;
+
 export function GetCPU():Promise<core.CPUInfo>;
 
 export function GetCUDA():Promise<core.CUDAInfo>;
@@ -36,6 +40,8 @@ export function GetServerStatus():Promise<Record<string, any>>;
 
 export function GetSystemInfo():Promise<core.SystemInfo>;
 
+export function GetUpdateDownloadStatus():Promise<core.UpdateDownloadState>;
+
 export function PauseDownloadTask(arg1:string):Promise<void>;
 
 export function PauseLlamaCppDownload():Promise<void>;
@@ -60,6 +66,10 @@ export function StartLlamaCppDownload():Promise<void>;
 
 export function StartServer():Promise<void>;
 
+export function StartUpdateDownload(arg1:string):Promise<void>;
+
 export function StopLlamaCppDownload():Promise<void>;
 
 export function StopServer():Promise<void>;
+
+export function StopUpdateDownload():Promise<void>;

@@ -25,11 +25,15 @@
         </router-view>
       </div>
     </main>
+    <UpdateModal :visible="updateState.showModal" @close="closeUpdateModal" />
   </div>
 </template>
 
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import Sidebar from './components/Sidebar.vue'
+import UpdateModal from './components/UpdateModal.vue'
+import { updateState, checkForUpdate, shouldAutoCheck, closeUpdateModal } from './lib/update'
 
 const w = window as any
 const isDesktop = !!(w.go || w.electronAPI)  // Wails or Electron
@@ -43,6 +47,14 @@ function maximize() {
 function closeWindow() {
   w.runtime?.Quit()
 }
+
+// 启动静默检查更新：距上次检查超过 48 小时才自动检查（本地时间），
+// 发现新版本才弹出更新窗口，不打断使用。
+onMounted(() => {
+  if (shouldAutoCheck()) {
+    checkForUpdate()
+  }
+})
 </script>
 
 <style scoped>

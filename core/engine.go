@@ -1,6 +1,8 @@
 package core
 
 import (
+	_ "embed"
+
 	"archive/tar"
 	"archive/zip"
 	"bytes"
@@ -39,9 +41,11 @@ type SystemInfo struct {
 // ─── GitHub API structs ──────────────────────────────────────────
 
 type GitHubRelease struct {
-	TagName string        `json:"tag_name"`
-	Name    string        `json:"name"`
-	Assets  []GitHubAsset `json:"assets"`
+	TagName     string        `json:"tag_name"`
+	Name        string        `json:"name"`
+	Body        string        `json:"body"`
+	PublishedAt string        `json:"published_at"`
+	Assets      []GitHubAsset `json:"assets"`
 }
 
 type GitHubAsset struct {
@@ -1505,6 +1509,278 @@ func setDownloadError(msg string) {
 	downloadState.Error = msg
 	downloadMu.Unlock()
 	log.Printf("[ERROR] llama.cpp download error: %s", msg)
+}
+
+// ─── App update check & download ─────────────────────────────────
+
+//go:embed VERSION
+var versionFile []byte
+
+// currentVersion 是应用当前版本，与 GitHub 发布 tag 对齐（如 v0.1.0）。
+// 版本号来自 core/VERSION 文件（编译时嵌入，类似前端 .env），
+// 发布新版本时修改该文件再打同名的 tag。
+var currentVersion = strings.TrimSpace(string(versionFile))
+
+// updateRepoAPI 指向本仓库的 latest release API。URL 由 CheckForUpdateAt
+// 接收以支持测试注入本地 httptest 服务器。声明为 var 以便测试通过替换
+// 包级变量模拟网络（与 configFile / renameFile 同风格）。
+var updateRepoAPI = "https://api.github.com/repos/CodeNeow/llama-cpp-gui/releases/latest"
+
+// compareVersions 比较两个形如 v1.2.3 的版本号（忽略前导 v / V）。
+// 返回 -1 表示 a < b，0 相等，1 表示 a > b；无法解析的分段按 0 处理。
+func compareVersions(a, b string) int {
+	parse := func(s string) []int {
+		s = strings.TrimPrefix(strings.TrimPrefix(s, "v"), "V")
+		var parts []int
+		for _, seg := range strings.Split(s, ".") {
+			n, err := strconv.Atoi(seg)
+			if err != nil {
+				n = 0
+			}
+			parts = append(parts, n)
+		}
+		return parts
+	}
+	pa, pb := parse(a), parse(b)
+	for i := 0; i < len(pa) || i < len(pb); i++ {
+		var x, y int
+		if i < len(pa) {
+			x = pa[i]
+		}
+		if i < len(pb) {
+			y = pb[i]
+		}
+		if x < y {
+			return -1
+		}
+		if x > y {
+			return 1
+		}
+	}
+	return 0
+}
+
+// UpdateCheckResult 是更新检查结果，返回给前端判断是否有新版本。
+type UpdateCheckResult struct {
+	HasUpdate bool   `json:"hasUpdate"`
+	Version   string `json:"version"`   // 最新版本号（tag 名，如 v0.1.1）
+	Notes     string `json:"notes"`     // 发布说明
+	Published string `json:"published"` // 发布时间
+}
+
+// CheckForUpdateAt 请求指定仓库的 latest release 并比较版本号。
+// apiURL 可注入以便测试用 httptest 替代真实网络。
+func CheckForUpdateAt(apiURL string) (*UpdateCheckResult, error) {
+	release, err := fetchLatestReleaseAt(apiURL)
+	if err != nil {
+		return nil, err
+	}
+	return &UpdateCheckResult{
+		HasUpdate: compareVersions(release.TagName, currentVersion) > 0,
+		Version:   release.TagName,
+		Notes:     release.Body,
+		Published: release.PublishedAt,
+	}, nil
+}
+
+// updateDownloadState 跟踪应用更新下载（更新 exe）的进度。
+// 下载状态机取值：idle / downloading / done / error。
+type UpdateDownloadState struct {
+	Status     string `json:"status"`
+	Progress   int    `json:"progress"`
+	Total      int64  `json:"total"`
+	Downloaded int64  `json:"downloaded"`
+	Version    string `json:"version"`
+	FilePath   string `json:"filePath"`
+	Error      string `json:"error"`
+}
+
+var updateDownloadState = &UpdateDownloadState{Status: "idle"}
+var updateDownloadMu sync.Mutex
+var updateDownloadCancel context.CancelFunc
+
+// updateExePath 为测试注入点（与 renameFile / configFile 同风格），
+// 返回当前可执行文件路径，用于确定更新 exe 的目标目录。
+var updateExePath = os.Executable
+
+// pickUpdateAsset 挑选更新下载使用的资产：优先主程序 exe，跳过 installer。
+// 若版本低于当前版本或没有可用的 exe 资产，返回 nil。
+func pickUpdateAsset(assets []GitHubAsset) *GitHubAsset {
+	for i := range assets {
+		a := &assets[i]
+		name := strings.ToLower(a.Name)
+		if strings.HasSuffix(name, ".exe") && !strings.Contains(name, "installer") {
+			return a
+		}
+	}
+	return nil
+}
+
+// downloadUpdateRelease 下载新版本 exe 到可执行文件同目录（无法直接替换
+// 正在运行的自身），完成后提示用户关闭应用后手动替换。
+func downloadUpdateRelease(version string) {
+	ctx, cancel := context.WithCancel(context.Background())
+	updateDownloadMu.Lock()
+	updateDownloadCancel = cancel
+	updateDownloadMu.Unlock()
+
+	defer func() {
+		updateDownloadMu.Lock()
+		updateDownloadCancel = nil
+		updateDownloadMu.Unlock()
+		cancel()
+	}()
+
+	// Step 1: 拉取最新发布信息，挑主程序 exe 资产
+	updateDownloadMu.Lock()
+	updateDownloadState.Status = "downloading"
+	updateDownloadState.Progress = 0
+	updateDownloadState.Downloaded = 0
+	updateDownloadState.Total = 0
+	updateDownloadState.Version = version
+	updateDownloadState.Error = ""
+	updateDownloadMu.Unlock()
+
+	release, err := fetchLatestReleaseAt(updateRepoAPI)
+	if err != nil {
+		setUpdateDownloadError("获取发布信息失败: " + err.Error())
+		return
+	}
+	asset := pickUpdateAsset(release.Assets)
+	if asset == nil {
+		setUpdateDownloadError("未找到适用于当前平台的主程序")
+		return
+	}
+
+	updateDownloadMu.Lock()
+	updateDownloadState.Total = asset.Size
+	updateDownloadMu.Unlock()
+
+	// Step 2: 下载到可执行文件同目录，命名 llama-gui-v<tag>.exe
+	exePath, err := updateExePath()
+	if err != nil {
+		setUpdateDownloadError("无法定位可执行文件路径: " + err.Error())
+		return
+	}
+	dir := filepath.Dir(exePath)
+	fileName := "llama-gui-" + release.TagName + ".exe"
+	destPath := filepath.Join(dir, fileName)
+
+	tmpPath, err := downloadUpdateWithResume(ctx, asset.BrowserDownloadURL, asset.Size)
+	if err != nil {
+		if ctx.Err() != nil {
+			updateDownloadMu.Lock()
+			updateDownloadState.Status = "idle"
+			updateDownloadMu.Unlock()
+			log.Println("[INFO] update download stopped by user")
+		} else {
+			setUpdateDownloadError("下载失败: " + err.Error())
+		}
+		return
+	}
+	defer os.Remove(tmpPath)
+
+	// Step 3: 移动到目标路径（同目录 + 目标存在则先删除旧文件）
+	if err := os.Rename(tmpPath, destPath); err != nil {
+		if removeErr := os.Remove(destPath); removeErr == nil {
+			err = os.Rename(tmpPath, destPath)
+		}
+		if err != nil {
+			setUpdateDownloadError("保存文件失败: " + err.Error())
+			return
+		}
+	}
+
+	updateDownloadMu.Lock()
+	updateDownloadState.Status = "done"
+	updateDownloadState.Progress = 100
+	updateDownloadState.FilePath = destPath
+	updateDownloadMu.Unlock()
+
+	log.Printf("[OK] update %s downloaded to %s", release.TagName, destPath)
+}
+
+func setUpdateDownloadError(msg string) {
+	updateDownloadMu.Lock()
+	updateDownloadState.Status = "error"
+	updateDownloadState.Error = msg
+	updateDownloadMu.Unlock()
+	log.Printf("[ERROR] update download error: %s", msg)
+}
+
+// downloadUpdateWithResume 下载更新文件到临时文件并上报进度，支持取消。
+// 与 downloadWithResume 不同：更新 exe 体量小、不支持暂停/断点续传，
+// 仅响应 context 取消（应用退出/停止下载）。
+func downloadUpdateWithResume(ctx context.Context, url string, totalSize int64) (string, error) {
+	tmpFile, err := os.CreateTemp("", "llama-gui-update-*.exe")
+	if err != nil {
+		return "", fmt.Errorf("创建临时文件失败: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		tmpFile.Close()
+		return tmpPath, err
+	}
+	req.Header.Set("User-Agent", "llama-gui")
+
+	client := &http.Client{Timeout: 30 * time.Minute}
+	resp, err := client.Do(req)
+	if err != nil {
+		tmpFile.Close()
+		return tmpPath, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		tmpFile.Close()
+		return tmpPath, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+
+	buf := make([]byte, 32*1024)
+	downloaded := int64(0)
+	for {
+		type readRes struct {
+			n   int
+			err error
+		}
+		ch := make(chan readRes, 1)
+		go func() {
+			n, err := resp.Body.Read(buf)
+			ch <- readRes{n, err}
+		}()
+
+		var rr readRes
+		select {
+		case <-ctx.Done():
+			tmpFile.Close()
+			return tmpPath, ctx.Err()
+		case rr = <-ch:
+		}
+
+		if rr.n > 0 {
+			if _, writeErr := tmpFile.Write(buf[:rr.n]); writeErr != nil {
+				tmpFile.Close()
+				return tmpPath, writeErr
+			}
+			downloaded += int64(rr.n)
+			updateDownloadMu.Lock()
+			updateDownloadState.Downloaded = downloaded
+			if updateDownloadState.Total > 0 {
+				updateDownloadState.Progress = int(float64(downloaded) * 100 / float64(updateDownloadState.Total))
+			}
+			updateDownloadMu.Unlock()
+		}
+		if rr.err != nil {
+			if rr.err == io.EOF {
+				tmpFile.Close()
+				return tmpPath, nil
+			}
+			tmpFile.Close()
+			return tmpPath, rr.err
+		}
+	}
 }
 
 // ─── llama-server manager ────────────────────────────────────────

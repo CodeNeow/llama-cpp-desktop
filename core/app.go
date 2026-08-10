@@ -62,6 +62,14 @@ func (a *App) Shutdown(ctx context.Context) {
 		cancelDownload()
 	}
 
+	// Cancel ongoing app update download
+	updateDownloadMu.Lock()
+	cancelUpdate := updateDownloadCancel
+	updateDownloadMu.Unlock()
+	if cancelUpdate != nil {
+		cancelUpdate()
+	}
+
 	// Cancel all HF model download tasks
 	dlTasksMu.Lock()
 	for _, t := range dlTasks {
@@ -337,6 +345,52 @@ func (a *App) BrowseLlamaCppDir() (string, error) {
 	llamaCacheValid.Store(false)
 	saveConfig()
 	return dir, nil
+}
+
+// ─── App Update ──────────────────────────────────────────────────
+
+// GetAppVersion 返回应用当前版本号（与 GitHub 发布 tag 对齐）。
+func (a *App) GetAppVersion() string {
+	return currentVersion
+}
+
+// CheckForUpdate 查询远程仓库 latest release，返回是否有新版本及版本信息。
+func (a *App) CheckForUpdate() (*UpdateCheckResult, error) {
+	return CheckForUpdateAt(updateRepoAPI)
+}
+
+// StartUpdateDownload 开始下载新版本 exe 到可执行文件同目录。
+// 版本号由调用方传入（来自 CheckForUpdate 结果），用于目标文件命名。
+func (a *App) StartUpdateDownload(version string) error {
+	if compareVersions(version, currentVersion) <= 0 {
+		return fmt.Errorf("没有可更新的版本: %s", version)
+	}
+	updateDownloadMu.Lock()
+	inProgress := updateDownloadState.Status == "downloading"
+	updateDownloadMu.Unlock()
+	if inProgress {
+		return fmt.Errorf("更新下载已在进行中")
+	}
+	go downloadUpdateRelease(version)
+	return nil
+}
+
+// GetUpdateDownloadStatus 返回更新下载的当前状态与进度。
+func (a *App) GetUpdateDownloadStatus() *UpdateDownloadState {
+	updateDownloadMu.Lock()
+	ds := *updateDownloadState
+	updateDownloadMu.Unlock()
+	return &ds
+}
+
+// StopUpdateDownload 取消在途的更新下载（用户主动停止/退出应用）。
+func (a *App) StopUpdateDownload() {
+	updateDownloadMu.Lock()
+	cancel := updateDownloadCancel
+	updateDownloadMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
 }
 
 // ─── Downloads (HF Mirror) ───────────────────────────────────────
