@@ -9,6 +9,7 @@
 | [Go](https://go.dev/dl/) | 1.22+ | 后端（`go.mod` 声明） |
 | [Node.js](https://nodejs.org/) | 18+ | 前端构建（CI 使用 24） |
 | [Wails CLI](https://wails.io/docs/gettingstarted/installation) | v2 | `go install github.com/wailsapp/wails/v2/cmd/wails@latest` |
+| [golangci-lint](https://golangci-lint.run/) | v2 | `go install github.com/golangci/golangci-lint/cmd/golangci-lint@v2.9.0` |
 
 本地开发：
 
@@ -26,24 +27,46 @@ wails dev          # Go 后端 + Vite 前端（:5173）热重载
 
 ### 2.2 Commit Message
 
-使用 `type: 中文主题` 格式，主题保持一行。既有类型：`feat` / `fix` / `docs` / `chore` / `refactor` / `test` / `perf`。
+使用 `type(scope): 中文主题` 格式，主题保持一行。既有类型：`feat` / `fix` / `docs` / `chore` / `refactor` / `test` / `perf` / `security`，scope 如 `backend` / `frontend` / `build` 等。
 
 ```text
-feat: 支持模型自定义 llama.cpp 目录
-fix: 修复下载任务暂停后无法恢复的问题
+feat(backend): 支持模型自定义 llama.cpp 目录
+fix(backend): 修复下载任务暂停后无法恢复的问题
 docs: 更新 API 页使用说明
+```
+
+详细正文必须包含以下结构：
+
+```text
+Summary:
+- <主要变化，按域分段：Backend / Frontend / Tests / Docs 等>
+
+Verification:
+- <实际执行的验证命令与通过结果>
+
+Remaining gaps:
+- <明确说明未包含的后续工作；没有则写 None>
 ```
 
 - 跨前后端的改动（如新增绑定方法）必须一次提交到位，避免中间态。
 - 提交前 `git status --short` 只包含本次任务有意改动的文件；`git diff --check` 无错误。
+
+### 2.3 多工具协作角色
+
+使用多 Agent / 多会话协作时，角色由用户在任务开头声明：**主审**（制定方案、审查 diff、验收后提交）、**实施 Agent**（按任务包实现与自测，停在未暂存工作树）、**Issues 发现者**（交互验证后按规范创建远程 issue）。详细职责见 [AGENTS.md](./AGENTS.md)「多角色协作与工作流」。
 
 ## 3. 验证门（提交前必过）
 
 | 范围 | 命令 | 要求 |
 | --- | --- | --- |
 | 后端 | `go build ./...` | 编译通过 |
+| 后端 | `go test ./...` | 单测通过 |
 | 后端 | `gofmt -l .` | 无输出 |
+| 后端 | `golangci-lint run` | 零诊断（govet / ineffassign / unused） |
 | 前端 | `cd frontend && npm run build` | vue-tsc 类型检查 + vite 构建零错误 |
+| 前端 | `cd frontend && npm test` | vitest 单测通过 |
+
+组合验证门：POSIX 用 `make check`；Windows 用 `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check.ps1`。按改动范围选择局部 / 全量验证，分级规则见 [AGENTS.md](./AGENTS.md)「提交前测试分级」。
 
 > CI（`.github/workflows/ci.yml`）会在每次 push / PR 自动执行上述检查，并在 Windows 上完成 `wails build` 桌面打包验证。本地通过不能替代 CI 的最终判定。
 
@@ -94,5 +117,6 @@ issue 正文绝不能包含 token、密钥、本机绝对路径（如 `llama-gui
 
 - 修复 bug 时改动仅限故障点及其配套文件，不混入无关重构。
 - 新增 / 修改后端绑定方法时，必须同步更新 `frontend/src/wails.ts` 与调用方。
+- 新行为必须带聚焦测试（Go `*_test.go` / vitest）；不得通过删除失败测试或跳过验证门获得绿色结果。
 - 不得提交生成产物与本地配置：`node_modules/`、`frontend/dist/`、`build/`、`LLM-Models/` 下的模型文件、`llama-gui-config.json`、`*.log`。
 - 用户可见文案使用中文，与现有页面风格保持一致。

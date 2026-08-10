@@ -1,0 +1,2 @@
+# Go 源码强制 LF 检出：gofmt 对行尾敏感，避免 Windows autocrlf 检出为 CRLF 导致 gofmt -l 误报整文件
+*.go text eol=lf
