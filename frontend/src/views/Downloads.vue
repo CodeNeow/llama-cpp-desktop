@@ -459,9 +459,9 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
 
 /* ─── Results ─── */
 .results-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
   margin-bottom: 36px;
 }
 
@@ -486,7 +486,7 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 14px 18px;
+  padding: 12px 16px;
 }
 
 .result-icon {
@@ -518,6 +518,7 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
 
 .result-meta {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   font-size: 12px;
   color: var(--text-dim);

@@ -2137,8 +2137,9 @@ func searchHFMirror(q string, filter string) ([]HFSearchResult, error) {
 // searchHFMirrorAt queries an HF-compatible API base for models matching q,
 // filtering to models containing GGUF files. filter 参数已弃用，仅保留签名兼容，
 // 不再按 pipeline_tag 类型过滤（embedding / llm 分类已移除）。
+// API 不支持 library 过滤与分页，只能以较大 limit 拉取候选后过滤 GGUF。
 func searchHFMirrorAt(baseURL, q, filter string) ([]HFSearchResult, error) {
-	apiURL := fmt.Sprintf("%s/api/models?search=%s&sort=downloads&limit=50&full=true", baseURL, q)
+	apiURL := fmt.Sprintf("%s/api/models?search=%s&sort=downloads&limit=200&full=true", baseURL, q)
 
 	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
