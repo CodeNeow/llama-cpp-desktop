@@ -12,3 +12,4 @@ Thumbs.db
 LLM-Models/
 llama-cpp/
 llama-gui-config.json
+.codegraph
