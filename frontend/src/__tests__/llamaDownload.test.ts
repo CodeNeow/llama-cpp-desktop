@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { downloadVisibility } from '../lib/llamaDownload'
+import { downloadVisibility, initialDownloadAction } from '../lib/llamaDownload'
 
 describe('downloadVisibility', () => {
   it('idle 时显示按钮组、不显示进度区', () => {
@@ -34,5 +34,35 @@ describe('downloadVisibility', () => {
     expect(downloadVisibility('fetching').showProgress).toBe(true)
     expect(downloadVisibility('downloading').showProgress).toBe(true)
     expect(downloadVisibility('extracting').showProgress).toBe(true)
+  })
+})
+
+describe('initialDownloadAction', () => {
+  it('downloading/fetching/extracting 时返回 poll（下载中需恢复轮询），与 installed 参数无关', () => {
+    for (const status of ['downloading', 'fetching', 'extracting']) {
+      expect(initialDownloadAction(status, false), `status=${status} 未安装时应 poll`).toBe('poll')
+      expect(initialDownloadAction(status, true), `status=${status} 已安装时也应 poll`).toBe('poll')
+    }
+  })
+
+  it('done 且未安装时返回 refresh（下载完成但未检测到安装，刷新系统信息）', () => {
+    expect(initialDownloadAction('done', false)).toBe('refresh')
+  })
+
+  it('done 且已安装时返回 none（onMounted 的 fetchSystemInfo 已覆盖已安装场景）', () => {
+    expect(initialDownloadAction('done', true)).toBe('none')
+  })
+
+  // 核心回归：此前 checkInitialDownloadStatus 缺少 error 分支，切页期间下载失败
+  // 返回主页时状态回落为 idle，错误信息丢失、只剩"下载"按钮；现在应返回
+  // showError，由 UI 显示错误信息与重试按钮
+  it('error 时返回 showError（切页期间下载失败，返回主页应显示错误与重试按钮）', () => {
+    expect(initialDownloadAction('error', false)).toBe('showError')
+    expect(initialDownloadAction('error', true)).toBe('showError')
+  })
+
+  it('idle 时返回 none（无下载需处理）', () => {
+    expect(initialDownloadAction('idle', false)).toBe('none')
+    expect(initialDownloadAction('idle', true)).toBe('none')
   })
 })

@@ -262,13 +262,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import {
   getCPU, getMemory, getGPU, getCUDA, getLlamaCpp, getOS,
   getLlamaCppDownloadStatus, startLlamaCppDownload, pauseLlamaCppDownload,
   resumeLlamaCppDownload, stopLlamaCppDownload, browseLlamaCppDir, getConfig
 } from '../wails'
-import { downloadVisibility } from '../lib/llamaDownload'
+import { downloadVisibility, initialDownloadAction } from '../lib/llamaDownload'
 
 interface SystemInfo {
   os: string
@@ -433,12 +433,20 @@ function checkInitialDownloadStatus() {
   getLlamaCppDownloadStatus()
     .then((data: any) => {
       const s = data as DlStatus
-      if (s.status === 'downloading' || s.status === 'fetching' || s.status === 'extracting') {
+      const action = initialDownloadAction(s.status, info.value.llamaCpp.installed)
+      if (action === 'poll') {
+        // 下载仍在进行，恢复轮询持续更新进度
         dlStatus.value = s
         startPolling()
-      } else if (s.status === 'done' && !info.value.llamaCpp.installed) {
+      } else if (action === 'refresh') {
+        // 下载已完成但未检测到安装，刷新系统信息
         fetchSystemInfo()
+      } else if (action === 'showError') {
+        // 切页期间下载失败：恢复 error 状态，UI 自动显示错误信息与重试按钮
+        //（downloadVisibility 的 showButtons / showProgress 均覆盖 error）
+        dlStatus.value = s
       }
+      // 'none'：无需处理
     })
     .catch(() => {})
 }
@@ -476,6 +484,12 @@ async function fetchSystemInfo() {
 onMounted(() => {
   restoreCustomPath()
   fetchSystemInfo().then(checkInitialDownloadStatus)
+})
+
+// 切页卸载时停止轮询，避免 interval 空转到下载结束；
+// 返回主页时 onMounted 重新 startPolling 恢复（下载由后端 goroutine 持续执行）
+onUnmounted(() => {
+  stopPolling()
 })
 </script>
 
