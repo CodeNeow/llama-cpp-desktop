@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -23,6 +24,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 )
 
@@ -1057,6 +1059,66 @@ var configFile = "llama-gui-config.json"
 // 重命名临时文件失败的分支（#10）。
 var renameFile = os.Rename
 
+// copyFile 把 src 复制到 dst：以 src 的 FileMode 创建 dst 并显式 chmod，
+// 保留执行权限（Linux 更新 exe 依赖 +x），避免受 umask 影响。
+func copyFile(src, dst string) error {
+	srcF, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("打开源文件失败: %w", err)
+	}
+	defer srcF.Close()
+
+	fi, err := srcF.Stat()
+	if err != nil {
+		return fmt.Errorf("读取源文件信息失败: %w", err)
+	}
+
+	dstF, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, fi.Mode())
+	if err != nil {
+		return fmt.Errorf("创建目标文件失败: %w", err)
+	}
+	_, copyErr := io.Copy(dstF, srcF)
+	closeErr := dstF.Close()
+	if copyErr != nil {
+		return fmt.Errorf("复制文件内容失败: %w", copyErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("关闭目标文件失败: %w", closeErr)
+	}
+	// 显式 chmod 保证目标权限与源完全一致（不受 umask 影响）
+	if err := os.Chmod(dst, fi.Mode()); err != nil {
+		return fmt.Errorf("设置目标文件权限失败: %w", err)
+	}
+	return nil
+}
+
+// moveFile 把 src 移动到 dst：优先 renameFile（包级注入点，测试可模拟失败）；
+// 跨设备（Windows 跨盘 ERROR_NOT_SAME_DEVICE / Unix 跨挂载点 EXDEV）时
+// os.Rename 必然失败，回退为 copyFile + os.Remove(src)，并保留源文件权限。
+// 其他失败（如目标已存在）保持原语义：删除 dst 后重试一次 renameFile。
+// 关键顺序：必须先判定 EXDEV 再走删旧重试，避免跨设备时误删已存在的旧文件。
+func moveFile(src, dst string) error {
+	err := renameFile(src, dst)
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, syscall.EXDEV) {
+		// 跨设备无法 rename：复制到目标（覆盖已存在的同名文件）后删除源文件
+		if copyErr := copyFile(src, dst); copyErr != nil {
+			return copyErr
+		}
+		if removeErr := os.Remove(src); removeErr != nil {
+			return fmt.Errorf("删除源文件失败: %w", removeErr)
+		}
+		return nil
+	}
+	// 目标已存在等其他失败：先删除旧目标再重试一次，与原有更新逻辑一致
+	if removeErr := os.Remove(dst); removeErr == nil {
+		return renameFile(src, dst)
+	}
+	return err
+}
+
 func downloadLlamaCpp() {
 	ctx, cancel := context.WithCancel(context.Background())
 	downloadMu.Lock()
@@ -1780,15 +1842,11 @@ func downloadUpdateRelease(version string) {
 	}
 	defer os.Remove(tmpPath)
 
-	// Step 3: 移动到目标路径（同目录 + 目标存在则先删除旧文件）
-	if err := os.Rename(tmpPath, destPath); err != nil {
-		if removeErr := os.Remove(destPath); removeErr == nil {
-			err = os.Rename(tmpPath, destPath)
-		}
-		if err != nil {
-			setUpdateDownloadError("保存文件失败: " + err.Error())
-			return
-		}
+	// Step 3: 移动到目标路径（跨设备时 moveFile 回退为复制，保留源权限；
+	// 非跨设备失败且目标已存在时先删旧文件再重试）
+	if err := moveFile(tmpPath, destPath); err != nil {
+		setUpdateDownloadError("保存文件失败: " + err.Error())
+		return
 	}
 
 	updateDownloadMu.Lock()
@@ -2622,9 +2680,10 @@ func downloadTask(task *DlTask) {
 			if rr.err == io.EOF {
 				resp.Body.Close()
 				out.Close()
-				// 重命名失败时标记任务错误并返回，不再推进到 done（#10）。
-				// 注意 renameFile 是可注入的包级变量，测试可模拟失败。
-				if err := renameFile(tmpPath, destPath); err != nil {
+				// 移动失败时标记任务错误并返回，不再推进到 done（#10）。
+				// moveFile 内部使用可注入的包级变量 renameFile，测试可模拟失败；
+				// 跨设备（Windows 跨盘）时回退为复制 + 删除源文件。
+				if err := moveFile(tmpPath, destPath); err != nil {
 					dlTasksMu.Lock()
 					task.Status = "error"
 					task.Error = "重命名失败: " + err.Error()

@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -168,5 +169,66 @@ func TestDownloadUpdateRelease(t *testing.T) {
 	}
 	if fi.Size() != int64(len(payload)) {
 		t.Errorf("文件大小 = %d, want %d", fi.Size(), len(payload))
+	}
+}
+
+// TestDownloadUpdateReleaseCrossDeviceFallback 验证更新下载在跨设备场景
+// （renameFile 注入 EXDEV，对应 Windows 系统临时目录与可执行文件不同盘）
+// 下通过复制回退完成保存：状态置 done、目标文件存在且内容正确。同时验证
+// EXDEV 分支优先于删旧重试（目标已存在的旧文件不会被误删后再失败丢失）。
+func TestDownloadUpdateReleaseCrossDeviceFallback(t *testing.T) {
+	withTempCwd(t)
+	saveUpdateState(t)
+	// 下载落盘目录用临时目录模拟「可执行文件同目录」（与源临时文件不同设备）
+	exeDir := t.TempDir()
+	updateExePath = func() (string, error) {
+		return filepath.Join(exeDir, "llama-gui.exe"), nil
+	}
+
+	payload := []byte("MZ fake exe payload cross device")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/dl/llama-gui.exe" {
+			w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
+			w.Write(payload)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		dlURL := "http://" + r.Host + "/dl/llama-gui.exe"
+		w.Write([]byte(`{"tag_name":"v0.2.0","name":"Release","assets":[{"name":"llama-gui.exe","size":` + strconv.Itoa(len(payload)) + `,"browser_download_url":"` + dlURL + `"}]}`))
+	}))
+	defer srv.Close()
+	updateRepoAPI = srv.URL
+
+	// 注入 renameFile 模拟跨设备失败（moveFile 内部调用该包级变量）
+	origRename := renameFile
+	renameFile = func(oldpath, newpath string) error {
+		return syscall.EXDEV
+	}
+	defer func() { renameFile = origRename }()
+
+	// 目标路径已存在旧版本文件，验证跨设备回退不会先删旧文件导致丢失
+	wantPath := filepath.Join(exeDir, "llama-gui-v0.2.0.exe")
+	if err := os.WriteFile(wantPath, []byte("old version"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	downloadUpdateRelease("v0.2.0")
+
+	updateDownloadMu.Lock()
+	ds := *updateDownloadState
+	updateDownloadMu.Unlock()
+
+	if ds.Status != "done" {
+		t.Fatalf("跨设备回退后状态 = %q, want done（错误: %s）", ds.Status, ds.Error)
+	}
+	if ds.FilePath != wantPath {
+		t.Errorf("保存路径 = %q, want %q", ds.FilePath, wantPath)
+	}
+	got, err := os.ReadFile(wantPath)
+	if err != nil {
+		t.Fatalf("目标文件不存在: %v", err)
+	}
+	if string(got) != string(payload) {
+		t.Errorf("目标内容 = %q, want %q", got, payload)
 	}
 }
