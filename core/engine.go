@@ -1159,74 +1159,107 @@ func downloadLlamaCpp() {
 		return
 	}
 
-	// Step 2: Find best asset
-	asset := pickBestAsset(release.Assets)
-	if asset == nil {
+	// Step 2: Find best asset（主程序资产；cudart 运行库为附加资产）
+	mainAsset := pickBestAsset(release.Assets)
+	if mainAsset == nil {
 		setDownloadError("未找到适用于当前平台的 llama.cpp 构建")
 		return
 	}
 
+	// Windows 的 CUDA 构建自 b10342 起将运行库拆为独立 cudart zip，主程序
+	// zip 不再内置运行库，需附加下载并解压到同一目录。以主程序资产名是否
+	// 含 "cuda" 判定（pickBestAsset 仅在 Windows 检测到 GPU 时才会选中 cuda
+	// 构建，资产名即选择结果，避免二次 GPU 检测）；非 Windows 平台的 cuda
+	// 构建（如有）不附加 win 专属的 cudart 资产。
+	assets := []*GitHubAsset{mainAsset}
+	if runtime.GOOS == "windows" && strings.Contains(strings.ToLower(mainAsset.Name), "cuda") {
+		if cudart := pickCudartAssetFor(release.Assets, cudaVersionFromToolkit()); cudart != nil {
+			assets = append(assets, cudart)
+		}
+	}
+
 	downloadMu.Lock()
 	downloadState.Status = "downloading"
-	downloadState.FileName = asset.Name
-	downloadState.Total = asset.Size
+	downloadState.FileName = mainAsset.Name
+	// 多资产顺序下载：Total 为全部资产大小之和，Downloaded 跨资产累加
+	var totalBytes int64
+	for _, a := range assets {
+		totalBytes += a.Size
+	}
+	downloadState.Total = totalBytes
 	downloadState.Version = release.TagName
 	downloadState.Downloaded = 0
 	downloadMu.Unlock()
 
-	// Step 3: Download with pause/stop support
-	tmpPath, err := downloadWithResume(ctx, asset.BrowserDownloadURL, asset.Size)
-	if err != nil {
-		if ctx.Err() != nil {
-			// Cancelled by user (stop)
-			downloadMu.Lock()
-			if downloadState.Status != "paused" {
-				downloadState.Status = "idle"
-				downloadState.Error = ""
-			}
-			downloadMu.Unlock()
-			log.Println("⏹️ llama.cpp download stopped by user")
-		}
-		return
-	}
-
-	defer os.Remove(tmpPath)
-
-	// Check if stopped during download
-	select {
-	case <-ctx.Done():
-		return
-	default:
-	}
-
-	// Step 4: Extract（目标目录：自定义 llama.cpp 目录优先，否则默认 llama-cpp/）
+	// 目标目录：自定义 llama.cpp 目录优先，否则默认 llama-cpp/；解压前建一次
 	targetDir := llamaCppDownloadDir()
-
-	downloadMu.Lock()
-	downloadState.Status = "extracting"
-	downloadState.Progress = 100
-	downloadMu.Unlock()
-
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
 		setDownloadError("创建目录失败: " + err.Error())
 		return
 	}
 
-	if strings.HasSuffix(asset.Name, ".zip") {
-		err = extractZip(tmpPath, targetDir)
-	} else if strings.HasSuffix(asset.Name, ".tar.gz") {
-		err = extractTarGz(tmpPath, targetDir)
-	} else {
-		setDownloadError("不支持的文件格式: " + asset.Name)
-		return
+	// Step 3: 顺序下载并解压各资产（先主程序后 cudart），pause/stop 语义不变；
+	// 进度以 baseDownloaded 叠加前序资产已完成字节
+	var baseDownloaded int64
+	for _, asset := range assets {
+		// FileName 随循环更新为当前正在下载的资产名
+		downloadMu.Lock()
+		downloadState.FileName = asset.Name
+		downloadMu.Unlock()
+
+		tmpPath, err := downloadWithResume(ctx, asset.BrowserDownloadURL, asset.Size, baseDownloaded)
+		if err != nil {
+			if ctx.Err() != nil {
+				// Cancelled by user (stop)
+				downloadMu.Lock()
+				if downloadState.Status != "paused" {
+					downloadState.Status = "idle"
+					downloadState.Error = ""
+				}
+				downloadMu.Unlock()
+				log.Println("⏹️ llama.cpp download stopped by user")
+			} else {
+				setDownloadError("下载失败: " + err.Error())
+			}
+			return
+		}
+
+		// 临时文件在解压后清理（含取消/出错路径）
+		defer os.Remove(tmpPath)
+
+		// Check if stopped during download
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		// Step 4: Extract（与主程序解压到同一目录）
+		downloadMu.Lock()
+		downloadState.Status = "extracting"
+		downloadState.Progress = 100
+		downloadMu.Unlock()
+
+		var extractErr error
+		switch {
+		case strings.HasSuffix(asset.Name, ".zip"):
+			extractErr = extractZip(tmpPath, targetDir)
+		case strings.HasSuffix(asset.Name, ".tar.gz"):
+			extractErr = extractTarGz(tmpPath, targetDir)
+		default:
+			// 与原有单资产逻辑一致：不支持格式直接报错，不带"解压失败"前缀
+			setDownloadError("不支持的文件格式: " + asset.Name)
+			return
+		}
+		if extractErr != nil {
+			setDownloadError("解压失败: " + extractErr.Error())
+			return
+		}
+
+		baseDownloaded += asset.Size
 	}
 
-	if err != nil {
-		setDownloadError("解压失败: " + err.Error())
-		return
-	}
-
-	// Step 5: Done
+	// Step 5: Done（全部资产下载并解压成功后才置完成）
 	downloadMu.Lock()
 	downloadState.Status = "done"
 	downloadState.Progress = 100
@@ -1242,8 +1275,11 @@ func downloadLlamaCpp() {
 }
 
 // downloadWithResume downloads a file with pause/resume support.
+// baseDownloaded 是该文件之前已完成资产的总字节数：多资产顺序下载（如
+// llama.cpp 主程序 + cudart 运行库）时进度需叠加前序累计值，单一资产
+// 调用传入 0。
 // Returns the path to the downloaded temp file.
-func downloadWithResume(ctx context.Context, url string, totalSize int64) (string, error) {
+func downloadWithResume(ctx context.Context, url string, totalSize int64, baseDownloaded int64) (string, error) {
 	tmpFile, err := os.CreateTemp("", "llamacpp-download-*"+filepath.Ext(url[strings.LastIndex(url, "."):]))
 	if err != nil {
 		return "", fmt.Errorf("创建临时文件失败: %w", err)
@@ -1269,7 +1305,7 @@ func downloadWithResume(ctx context.Context, url string, totalSize int64) (strin
 
 		// Reset downloaded count to current file size on resume
 		downloadMu.Lock()
-		downloadState.Downloaded = offset
+		downloadState.Downloaded = baseDownloaded + offset
 		downloadMu.Unlock()
 
 		// Build request
@@ -1317,7 +1353,7 @@ func downloadWithResume(ctx context.Context, url string, totalSize int64) (strin
 				effectiveSize += offset
 			}
 			downloadMu.Lock()
-			downloadState.Total = effectiveSize
+			downloadState.Total = baseDownloaded + effectiveSize
 			downloadMu.Unlock()
 		}
 
@@ -1367,9 +1403,10 @@ func downloadWithResume(ctx context.Context, url string, totalSize int64) (strin
 				downloaded += int64(rr.n)
 
 				downloadMu.Lock()
-				downloadState.Downloaded = downloaded
+				downloadState.Downloaded = baseDownloaded + downloaded
 				if downloadState.Total > 0 {
-					downloadState.Progress = int(float64(downloaded) * 100 / float64(downloadState.Total))
+					// 进度按含基偏移的累计字节计算，跨资产单调递增不回落
+					downloadState.Progress = int(float64(baseDownloaded+downloaded) * 100 / float64(downloadState.Total))
 				}
 				downloadMu.Unlock()
 			}
@@ -1433,18 +1470,29 @@ func fetchLatestReleaseAt(apiURL string) (*GitHubRelease, error) {
 
 // pickBestAsset picks the most suitable release asset for the current platform.
 func pickBestAsset(assets []GitHubAsset) *GitHubAsset {
-	cudaVer := ""
-	if cudaInfo := getCUDAInfo(); cudaInfo.ToolkitVersion != "" {
-		if parts := strings.Split(cudaInfo.ToolkitVersion, "."); len(parts) >= 2 {
-			cudaVer = parts[0] + "." + parts[1]
-		}
+	return pickBestAssetFor(assets, runtime.GOOS, runtime.GOARCH, len(getGPUInfo()) > 0, cudaVersionFromToolkit())
+}
+
+// cudaVersionFromToolkit 从本机 CUDA Toolkit 版本（nvcc 输出，如 "12.4.131"）
+// 解析出资产命名使用的"主.次"版本（如 "12.4"）；无 Toolkit 或解析失败返回
+// 空串。pickBestAssetFor 的精确版本加分与 pickCudartAssetFor 的运行库匹配
+// 共用该推导，保证两处版本口径一致。
+func cudaVersionFromToolkit() string {
+	cudaInfo := getCUDAInfo()
+	if cudaInfo.ToolkitVersion == "" {
+		return ""
 	}
-	return pickBestAssetFor(assets, runtime.GOOS, runtime.GOARCH, len(getGPUInfo()) > 0, cudaVer)
+	parts := strings.Split(cudaInfo.ToolkitVersion, ".")
+	if len(parts) < 2 {
+		return ""
+	}
+	return parts[0] + "." + parts[1]
 }
 
 // pickBestAssetFor scores release assets for a given platform/arch and returns
 // the best match. hasCUDA and cudaVer allow preferring matching CUDA builds on
-// Windows. Returns nil when no asset matches the platform.
+// Windows. Windows 下跳过 cudart 运行库资产（主程序与运行库拆分下载，运行库
+// 由 pickCudartAssetFor 单独匹配）。Returns nil when no asset matches the platform.
 func pickBestAssetFor(assets []GitHubAsset, platform, arch string, hasCUDA bool, cudaVer string) *GitHubAsset {
 	if len(assets) == 0 {
 		return nil
@@ -1486,7 +1534,16 @@ func pickBestAssetFor(assets []GitHubAsset, platform, arch string, hasCUDA bool,
 
 		// Skip if wrong arch (but "x64" is sometimes implicit for win)
 		if platformKey == "win" {
-			// CUDA builds on Windows: "cudart-llama-bin-win-cuda-XX.X-x64.zip"
+			// 跳过 cudart 运行库资产：llama.cpp b10342 起 Windows CUDA 构建
+			// 拆分为主程序 zip（llama-b*-bin-win-cuda-*-x64.zip）与 cudart
+			// 运行库 zip 两个资产，两者评分相同且 cudart 在 release 列表中排
+			// 在更前，若不排除会只选中运行库、漏掉主程序（解压产物只有
+			// cudart64_12.dll 等运行库、没有 llama-server.exe）。运行库由
+			// pickCudartAssetFor 单独匹配后随主程序一并下载。
+			if strings.HasPrefix(name, "cudart") {
+				continue
+			}
+			// CUDA builds on Windows: "llama-b*-bin-win-cuda-XX.X-x64.zip"
 			// Regular builds: "llama-b*-bin-win-avx2-x64.zip" etc.
 		} else {
 			if !strings.Contains(name, archKey) {
@@ -1545,6 +1602,30 @@ func pickBestAssetFor(assets []GitHubAsset, platform, arch string, hasCUDA bool,
 	}
 
 	return best.asset
+}
+
+// pickCudartAssetFor 返回与给定 CUDA 版本精确匹配的 cudart 运行库资产
+// （cudart-llama-bin-win-cuda-<cudaVer>-x64.zip，大小写不敏感），未找到返回
+// nil。cudaVer 为空时不匹配精确版本，回退为任一 win cudart 资产（best-effort：
+// 覆盖无 nvcc 但 GPU 检测成功、toolkit 版本解析失败的主机，此时主程序选中
+// 了 CUDA 构建，仍需要运行库才能启动）。
+// 本函数不判断平台：是否附加运行库由调用方（downloadLlamaCpp 的
+// Windows+CUDA 判定）决定，便于测试跨平台直接构造 cudart 资产断言匹配逻辑。
+func pickCudartAssetFor(assets []GitHubAsset, cudaVer string) *GitHubAsset {
+	for i := range assets {
+		a := &assets[i]
+		lower := strings.ToLower(a.Name)
+		if !strings.HasPrefix(lower, "cudart-llama-bin-win-cuda-") {
+			continue
+		}
+		if cudaVer == "" {
+			return a
+		}
+		if strings.EqualFold(a.Name, "cudart-llama-bin-win-cuda-"+cudaVer+"-x64.zip") {
+			return a
+		}
+	}
+	return nil
 }
 
 // 解压大小上限（声明为 var 便于测试改小验证）。防止 zip/tar 解压炸弹

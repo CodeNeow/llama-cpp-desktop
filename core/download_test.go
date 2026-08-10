@@ -64,6 +64,66 @@ func TestPickBestAssetForNoMatch(t *testing.T) {
 	}
 }
 
+// TestPickBestAssetForWindowsCUDAExcludesCudart 验证 Windows+CUDA 环境选择
+// 主程序资产时排除 cudart 运行库资产：llama.cpp b10342 起 Windows CUDA 构建
+// 拆分为 cudart 运行库 zip（cudart-llama-bin-win-cuda-XX.X-x64.zip）与主程序
+// zip（llama-b*-bin-win-cuda-XX.X-x64.zip）两个资产，两者评分相同且 cudart
+// 在 release 列表中排在主程序之前，若不排除会只选中运行库、漏掉主程序
+// （用户现象：解压产物只有 cublas64_12.dll / cublasLt64_12.dll /
+// cudart64_12.dll，没有 llama-server.exe）。断言按 release 顺序构造的
+// [cudart, 主程序 cuda, 主程序 cpu] 列表选出主程序 cuda 资产而非排在前面的
+// cudart。
+func TestPickBestAssetForWindowsCUDAExcludesCudart(t *testing.T) {
+	assets := []GitHubAsset{
+		{Name: "cudart-llama-bin-win-cuda-12.4-x64.zip"},
+		{Name: "llama-b9999-bin-win-cuda-12.4-x64.zip"},
+		{Name: "llama-b9999-bin-win-cpu-x64.zip"},
+	}
+	got := pickBestAssetFor(assets, "windows", "amd64", true, "12.4")
+	if got == nil || got.Name != "llama-b9999-bin-win-cuda-12.4-x64.zip" {
+		t.Errorf("cudart 排在前时仍应选主程序 cuda 资产, 实际 %v", got)
+	}
+}
+
+// TestPickCudartAssetFor 验证 cudart 运行库资产匹配：
+//   - 精确版本命中且大小写不敏感（cudaVer=12.4 → cudart-...cuda-12.4-x64.zip）；
+//   - 不存在的版本返回 nil（11.8 不在列表中）；
+//   - 无 cudart 资产返回 nil；
+//   - 空版本回退为任一 win cudart 资产（返回列表中第一个，best-effort 覆盖
+//     无 nvcc、toolkit 版本解析失败的主机，保证全链路附加下载可验证）。
+func TestPickCudartAssetFor(t *testing.T) {
+	assets := []GitHubAsset{
+		{Name: "cudart-llama-bin-win-cuda-12.4-x64.zip"},
+		{Name: "cudart-llama-bin-win-cuda-13.3-x64.zip"},
+	}
+	if got := pickCudartAssetFor(assets, "12.4"); got == nil || got.Name != "cudart-llama-bin-win-cuda-12.4-x64.zip" {
+		t.Errorf("cudaVer=12.4 应命中 12.4 资产, 实际 %v", got)
+	}
+	if got := pickCudartAssetFor(assets, "13.3"); got == nil || got.Name != "cudart-llama-bin-win-cuda-13.3-x64.zip" {
+		t.Errorf("cudaVer=13.3 应命中 13.3 资产, 实际 %v", got)
+	}
+	if got := pickCudartAssetFor(assets, "11.8"); got != nil {
+		t.Errorf("不存在的版本 11.8 应返回 nil, 实际 %v", got)
+	}
+	// 大小写不敏感：全大写资产名同样命中
+	upper := []GitHubAsset{{Name: "CUDART-LLAMA-BIN-WIN-CUDA-12.4-X64.ZIP"}}
+	if got := pickCudartAssetFor(upper, "12.4"); got == nil {
+		t.Error("资产名大小写不敏感应命中")
+	}
+	// 无 cudart 资产返回 nil
+	noCudart := []GitHubAsset{{Name: "llama-b9999-bin-win-cuda-12.4-x64.zip"}}
+	if got := pickCudartAssetFor(noCudart, "12.4"); got != nil {
+		t.Errorf("无 cudart 资产应返回 nil, 实际 %v", got)
+	}
+	// 空版本回退为列表中第一个 cudart 资产
+	if got := pickCudartAssetFor(assets, ""); got == nil || got.Name != "cudart-llama-bin-win-cuda-12.4-x64.zip" {
+		t.Errorf("空版本应回退为第一个 cudart 资产, 实际 %v", got)
+	}
+	if got := pickCudartAssetFor(nil, ""); got != nil {
+		t.Errorf("空版本且无 cudart 资产应返回 nil, 实际 %v", got)
+	}
+}
+
 // TestBuildDownloadRequest 验证下载请求带 User-Agent，续传时加 Range 头。
 func TestBuildDownloadRequest(t *testing.T) {
 	req, err := buildDownloadRequest("https://example.com/model.gguf", 0)

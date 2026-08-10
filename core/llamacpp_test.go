@@ -289,3 +289,108 @@ func TestDownloadLlamaCppUsesCustomDir(t *testing.T) {
 		t.Error("llama-cpp/ 下不应存在解压产物（应只安装到自定义目录）")
 	}
 }
+
+// makeZip 构造包含 files（文件名 → 内容）的最小 zip 并返回字节流，
+// 供 downloadLlamaCpp 全链路测试模拟 release 资产。
+func makeZip(t *testing.T, files map[string]string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for name, content := range files {
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+// TestDownloadLlamaCppDownloadsCudartOnWindows 验证 Windows 下 llama.cpp CUDA
+// 构建（b10342 起主程序与 cudart 运行库拆为两个 zip 资产）会顺序下载主程序
+// 与 cudart 资产并解压到同一目录：目标目录同时存在 llama-server 与
+// cublas64_12.dll stub（此前只选中最靠前的 cudart 资产，解压产物只有运行库、
+// 没有主程序）；downloadState.Total 为两资产大小之和、FileName 随循环停在
+// 最后下载的资产名。资产名版本用本机 toolkit 推导（cudaVersionFromToolkit），
+// 无 nvcc 的主机走空版本回退分支，两种环境均确定性触发附加下载；非 Windows
+// 平台不附加 win 专属的 cudart 资产（匹配逻辑由单元测试覆盖），跳过。
+func TestDownloadLlamaCppDownloadsCudartOnWindows(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("cudart 附加下载仅在 Windows 生效，非 Windows 跳过（匹配逻辑由单元测试覆盖）")
+	}
+	saveDownloadState(t)
+	saveServerState(t)
+	withTempCwd(t)
+
+	// 构造主程序 zip（llama-server stub）与 cudart zip（cublas64_12.dll stub）
+	mainZip := makeZip(t, map[string]string{llamaServerBinName(): "stub"})
+	cudartZip := makeZip(t, map[string]string{"cublas64_12.dll": "stub"})
+
+	// 版本标签与本机 toolkit 保持一致（无 toolkit 时固定 12.4 并走空版本回退分支）
+	ver := cudaVersionFromToolkit()
+	if ver == "" {
+		ver = "12.4"
+	}
+	mainName := fmt.Sprintf("llama-b9999-bin-win-cuda-%s-x64.zip", ver)
+	cudartName := fmt.Sprintf("cudart-llama-bin-win-cuda-%s-x64.zip", ver)
+
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/release":
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(GitHubRelease{
+				TagName: "b9999",
+				// 按真实 release 顺序：cudart 排在前，验证主程序仍被选中
+				Assets: []GitHubAsset{
+					{Name: cudartName, Size: int64(len(cudartZip)), BrowserDownloadURL: srv.URL + "/cudart.zip"},
+					{Name: mainName, Size: int64(len(mainZip)), BrowserDownloadURL: srv.URL + "/main.zip"},
+				},
+			})
+		case "/main.zip":
+			w.Write(mainZip)
+		case "/cudart.zip":
+			w.Write(cudartZip)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	origAPI := githubReleasesAPI
+	githubReleasesAPI = srv.URL + "/release"
+	defer func() { githubReleasesAPI = origAPI }()
+
+	downloadLlamaCpp()
+
+	downloadMu.Lock()
+	status := downloadState.Status
+	fileName := downloadState.FileName
+	total := downloadState.Total
+	errMsg := downloadState.Error
+	downloadMu.Unlock()
+
+	if status != "done" {
+		t.Fatalf("下载状态 = %q, want done（错误: %s）", status, errMsg)
+	}
+	// 先主程序后 cudart 的顺序下，FileName 应停在最后下载的 cudart 资产名
+	if fileName != cudartName {
+		t.Errorf("FileName = %q, want 最后下载的 cudart 资产 %q", fileName, cudartName)
+	}
+	// 进度 Total 应为两资产大小之和
+	wantTotal := int64(len(mainZip) + len(cudartZip))
+	if total != wantTotal {
+		t.Errorf("Total = %d, want 两资产大小和 %d", total, wantTotal)
+	}
+	if _, err := os.Stat(filepath.Join("llama-cpp", llamaServerBinName())); err != nil {
+		t.Errorf("主程序解压产物缺失: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join("llama-cpp", "cublas64_12.dll")); err != nil {
+		t.Errorf("cudart 运行库解压产物缺失: %v", err)
+	}
+}
