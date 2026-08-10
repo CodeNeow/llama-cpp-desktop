@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -91,11 +92,12 @@ func TestCheckForUpdateNewer(t *testing.T) {
 	}
 }
 
-// TestCheckForUpdateSame 验证远程版本与当前版本相同时 hasUpdate 为 false，
-// 同时断言当前版本从 core/VERSION 嵌入文件正确读出（v0.1.1）。
+// TestCheckForUpdateSame 验证远程版本与当前版本相同时 hasUpdate 为 false。
+// currentVersion 来自 core/VERSION 嵌入文件（tag 发布时由 CI 覆盖），
+// 断言只校验格式（vX.Y.Z）而不绑定具体版本，避免每次发版改动测试。
 func TestCheckForUpdateSame(t *testing.T) {
-	if currentVersion != "v0.1.1" {
-		t.Fatalf("currentVersion 应来自 core/VERSION 文件 = v0.1.1, 实际 %q", currentVersion)
+	if !regexp.MustCompile(`^v\d+\.\d+\.\d+$`).MatchString(currentVersion) {
+		t.Fatalf("currentVersion 应形如 vX.Y.Z, 实际 %q", currentVersion)
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

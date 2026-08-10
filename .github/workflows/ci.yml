@@ -95,6 +95,13 @@ jobs:
           if (-not $mk) { throw 'makensis.exe not found after "choco install nsis"' }
           Write-Host "Found makensis: $($mk.FullName)"
           Add-Content $env:GITHUB_PATH $mk.DirectoryName
+      - name: Sync version file from tag
+        # 发布版本以 git tag 为唯一来源：推送 v* tag 时把 tag 写入
+        # core/VERSION（编译时 embed），保证应用内版本号与发布版本一致。
+        # 非 tag 构建（普通 push / 手动触发）使用仓库中的 core/VERSION 默认值。
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: echo "$GITHUB_REF_NAME" > core/VERSION
       - name: Build Windows app (exe + NSIS installer)
         run: wails build -nsis
       - name: List build outputs
