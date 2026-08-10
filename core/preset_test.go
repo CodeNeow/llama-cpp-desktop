@@ -10,9 +10,12 @@ import (
 // TestGenerateModelsPresetFrom 验证预设 INI 生成：节名取别名，
 // model 行使用正斜杠路径，embedding 模型自动加 embeddings=true。
 func TestGenerateModelsPresetFrom(t *testing.T) {
+	// 用相对路径经 filepath.Join 构造（Windows 产出反斜杠、Unix 产出
+	// 正斜杠），断言 INI 中 model 行等于 filepath.ToSlash(path)，跨平台
+	// 均验证「model 路径使用正斜杠」。
 	models := []ModelInfo{
-		{Name: "Qwen2.5 7B", Path: `C:\models\qwen\model.gguf`},
-		{Name: "bge-small-zh", Path: `C:\models\bge\model.gguf`},
+		{Name: "Qwen2.5 7B", Path: filepath.Join("models", "qwen", "model.gguf")},
+		{Name: "bge-small-zh", Path: filepath.Join("models", "bge", "model.gguf")},
 	}
 	path, err := generateModelsPresetFrom(models, nil)
 	if err != nil {
@@ -29,7 +32,7 @@ func TestGenerateModelsPresetFrom(t *testing.T) {
 	if !strings.Contains(content, "[qwen2.5-7b]\n") {
 		t.Errorf("缺少 qwen2.5-7b 节: %q", content)
 	}
-	if !strings.Contains(content, "model = C:/models/qwen/model.gguf\n") {
+	if !strings.Contains(content, "model = "+filepath.ToSlash(models[0].Path)+"\n") {
 		t.Errorf("model 路径应转正斜杠: %q", content)
 	}
 	if !strings.Contains(content, "[bge-small-zh]\n") || !strings.Contains(content, "embeddings = true\n") {

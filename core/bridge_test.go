@@ -2,6 +2,7 @@ package core
 
 import (
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -197,8 +198,13 @@ func TestStartHFDownloadRejectsPathTraversal(t *testing.T) {
 	if err := startHFDownload("author/model", []string{"../../etc/x.gguf"}); err == nil {
 		t.Error("../../etc/x.gguf 文件名应返回错误")
 	}
-	// 绝对路径文件名拒绝
-	if err := startHFDownload("author/model", []string{`C:\Windows\system.ini`}); err == nil {
+	// 绝对路径文件名拒绝（按平台构造：Windows 需 C:\ 前缀、Unix 需 /
+	// 前缀，filepath.IsAbs 才判定为绝对；单一字符串无法跨平台成立）
+	absName := "/etc/x.gguf"
+	if runtime.GOOS == "windows" {
+		absName = `C:\Windows\system.ini`
+	}
+	if err := startHFDownload("author/model", []string{absName}); err == nil {
 		t.Error("绝对路径文件名应返回错误")
 	}
 
