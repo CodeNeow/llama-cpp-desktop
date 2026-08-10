@@ -86,24 +86,16 @@ func startServerInternal() error {
 	return nil
 }
 
-// buildServerCommand resolves the llama-server binary (custom dir when the
-// binary is not on PATH) and builds its argument list from the server config.
-// The preset path points at the generated models INI file.
+// buildServerCommand resolves the llama-server binary (custom dir, then the
+// llama-cpp/ download dir, then PATH) and builds its argument list from the
+// server config. The preset path points at the generated models INI file.
 func buildServerCommand(cfg ServerConfig, presetPath string) (string, []string) {
-	llamaServer := "llama-server"
-	if _, err := exec.LookPath(llamaServer); err != nil {
-		customLlamaCppMu.Lock()
-		customDir := customLlamaCppDir
-		customLlamaCppMu.Unlock()
-		if customDir != "" {
-			candidate := filepath.Join(customDir, "llama-server")
-			if runtime.GOOS == "windows" {
-				candidate += ".exe"
-			}
-			if _, err := os.Stat(candidate); err == nil {
-				llamaServer = candidate
-			}
-		}
+	// 与 getLlamaCppInfo 共用 resolveLlamaServerBin，保证两处对 llama.cpp
+	// 安装位置的解析一致（下载目录解压后即可启动服务）；未命中时回退到
+	// 裸二进制名，由 exec.Command 启动时给出错误提示。
+	llamaServer := resolveLlamaServerBin()
+	if llamaServer == "" {
+		llamaServer = "llama-server"
 	}
 
 	args := []string{

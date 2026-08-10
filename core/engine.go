@@ -388,79 +388,149 @@ func getCUDAInfo() CUDAInfo {
 
 // ─── llama.cpp ───────────────────────────────────────────────────
 
+// findLlamaBinInDir 在 dir 下查找 llama.cpp 二进制 bin：先查 dir 根目录，
+// 再查一层子目录（下载 zip 解压可能带顶层文件夹，如 llama-b9999-bin/）。
+// Windows 上同时兼容不带 .exe 后缀的文件。命中返回绝对路径，未命中返回空串。
+func findLlamaBinInDir(dir, bin string) string {
+	name := bin
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	check := func(p string) string {
+		if fi, err := os.Stat(p); err == nil && !fi.IsDir() {
+			if abs, err := filepath.Abs(p); err == nil {
+				return abs
+			}
+			return p
+		}
+		return ""
+	}
+	if p := check(filepath.Join(dir, name)); p != "" {
+		return p
+	}
+	// Windows 后备：不带 .exe 后缀的文件
+	if runtime.GOOS == "windows" {
+		if p := check(filepath.Join(dir, bin)); p != "" {
+			return p
+		}
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		if p := check(filepath.Join(dir, e.Name(), name)); p != "" {
+			return p
+		}
+		if runtime.GOOS == "windows" {
+			if p := check(filepath.Join(dir, e.Name(), bin)); p != "" {
+				return p
+			}
+		}
+	}
+	return ""
+}
+
+// findLlamaBin 在 dir 下查找 llama.cpp 二进制 bin：dir 为空串表示走 PATH
+// （exec.LookPath），返回 LookPath 解析结果；非空目录委托 findLlamaBinInDir。
+func findLlamaBin(dir, bin string) string {
+	if dir == "" {
+		path, err := exec.LookPath(bin)
+		if err != nil {
+			return ""
+		}
+		return path
+	}
+	return findLlamaBinInDir(dir, bin)
+}
+
+// resolveLlamaServerBin 按 customLlamaCppDir > llama-cpp/ 下载目录 > PATH
+// 的优先级解析 llama-server 可执行文件路径，供 getLlamaCppInfo 与
+// buildServerCommand 共用，避免两处查找逻辑漂移。目录命中返回绝对路径；
+// PATH 命中返回二进制名 "llama-server"（交给 exec.Command 解析）；
+// 全部未命中返回空串。
+func resolveLlamaServerBin() string {
+	customLlamaCppMu.Lock()
+	customDir := customLlamaCppDir
+	customLlamaCppMu.Unlock()
+	if customDir != "" {
+		if p := findLlamaBinInDir(customDir, "llama-server"); p != "" {
+			return p
+		}
+	}
+	if p := findLlamaBinInDir(downloadDir, "llama-server"); p != "" {
+		return p
+	}
+	if _, err := exec.LookPath("llama-server"); err == nil {
+		return "llama-server"
+	}
+	return ""
+}
+
+// fillLlamaCppVersion 尝试运行二进制读取版本号填充 info.Version。运行失败
+// （如 Windows 上 stub 非可执行文件）只影响 Version 为空，不影响 Installed。
+func fillLlamaCppVersion(info *LlamaCppInfo, path string) {
+	versionOut := runCmd(path, "--version")
+	if versionOut != "" {
+		info.Version = strings.TrimSpace(versionOut)
+		for _, line := range strings.Split(versionOut, "\n") {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "version") || strings.Contains(trimmed, "build") {
+				info.Version = trimmed
+				break
+			}
+		}
+		return
+	}
+	versionOut = runCmd(path, "-v")
+	if versionOut != "" {
+		info.Version = strings.TrimSpace(versionOut)
+	}
+}
+
+// getLlamaCppInfo 检测 llama.cpp 运行时：按 customLlamaCppDir > llama-cpp/
+// 下载目录 > PATH 的优先级查找二进制。llama-server 走公共 helper
+// resolveLlamaServerBin（下载目录支持根目录与一层子目录两种布局）；
+// 其余候选二进制（llama-cli / llama.cpp / llama）沿用同一目录优先级。
 func getLlamaCppInfo() LlamaCppInfo {
 	info := LlamaCppInfo{}
 
-	// Search for common llama.cpp binaries in PATH
-	binaryNames := []string{
-		"llama-cli",
-		"llama.cpp",
-		"llama",
-		"llama-server",
+	// PATH 命中的 llama-server 由 helper 返回裸二进制名，这里还原
+	// exec.LookPath 的解析结果，便于前端展示完整路径
+	if p := resolveLlamaServerBin(); p != "" {
+		if p == "llama-server" {
+			if resolved, err := exec.LookPath(p); err == nil {
+				p = resolved
+			}
+		}
+		info.Installed = true
+		info.Path = p
+		fillLlamaCppVersion(&info, p)
+		return info
 	}
 
-	// Also check custom directory if set
 	customLlamaCppMu.Lock()
 	customDir := customLlamaCppDir
 	customLlamaCppMu.Unlock()
 
-	dirsToCheck := []string{""} // empty means PATH
+	dirsToCheck := make([]string, 0, 3)
 	if customDir != "" {
-		dirsToCheck = append([]string{customDir}, dirsToCheck...)
+		dirsToCheck = append(dirsToCheck, customDir)
 	}
+	dirsToCheck = append(dirsToCheck, downloadDir)
+	dirsToCheck = append(dirsToCheck, "") // 空串表示 PATH
 
-	for _, bin := range binaryNames {
-		for _, dir := range dirsToCheck {
-			var path string
-			var err error
-			if dir == "" {
-				path, err = exec.LookPath(bin)
-			} else {
-				candidate := filepath.Join(dir, bin)
-				if runtime.GOOS == "windows" {
-					candidate += ".exe"
-				}
-				if _, statErr := os.Stat(candidate); statErr == nil {
-					path = candidate
-					err = nil
-				} else {
-					// Also check without .exe on Windows
-					if runtime.GOOS == "windows" {
-						candidateNoExt := filepath.Join(dir, bin)
-						if _, statErr := os.Stat(candidateNoExt); statErr == nil {
-							path = candidateNoExt
-							err = nil
-						} else {
-							err = statErr
-						}
-					}
-				}
+	for _, dir := range dirsToCheck {
+		for _, bin := range []string{"llama-cli", "llama.cpp", "llama"} {
+			if p := findLlamaBin(dir, bin); p != "" {
+				info.Installed = true
+				info.Path = p
+				fillLlamaCppVersion(&info, p)
+				return info
 			}
-			if err != nil {
-				continue
-			}
-
-			info.Installed = true
-			info.Path = path
-
-			// Try to get version
-			versionOut := runCmd(path, "--version")
-			if versionOut != "" {
-				info.Version = strings.TrimSpace(versionOut)
-				for _, line := range strings.Split(versionOut, "\n") {
-					trimmed := strings.TrimSpace(line)
-					if strings.HasPrefix(trimmed, "version") || strings.Contains(trimmed, "build") {
-						info.Version = trimmed
-						break
-					}
-				}
-			} else {
-				versionOut = runCmd(path, "-v")
-				if versionOut != "" {
-					info.Version = strings.TrimSpace(versionOut)
-				}
-			}
-			return info
 		}
 	}
 
@@ -974,7 +1044,10 @@ func formatBytes(bytes int64) string {
 
 // ─── llama.cpp download ──────────────────────────────────────────
 
-const githubReleasesAPI = "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest"
+// githubReleasesAPI 指向 llama.cpp 的 latest release API，声明为 var 以便
+// 测试通过替换包级变量注入本地 httptest 服务器（与 updateRepoAPI 同风格）。
+var githubReleasesAPI = "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest"
+
 const downloadDir = "llama-cpp"
 
 // configFile 是配置持久化路径，声明为 var 以便测试通过 chdir 覆盖。
@@ -1082,6 +1155,9 @@ func downloadLlamaCpp() {
 
 	// Reset model cache so new models are picked up
 	invalidateModelCache()
+	// 失效 llama.cpp 检测缓存：GetLlamaCpp 在挂载时缓存的结果（Installed=false）
+	// 已过期，解压成功后需重新检测，否则主页一直显示"未找到"
+	llamaCacheValid.Store(false)
 
 	log.Printf("[OK] llama.cpp %s downloaded and extracted to %s/", release.TagName, downloadDir)
 }
