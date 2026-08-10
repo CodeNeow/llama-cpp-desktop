@@ -1052,6 +1052,21 @@ var githubReleasesAPI = "https://api.github.com/repos/ggml-org/llama.cpp/release
 
 const downloadDir = "llama-cpp"
 
+// llamaCppDownloadDir 返回 llama.cpp 下载解压的目标目录：用户设置过自定义
+// llama.cpp 目录（customLlamaCppDir）时优先安装到该目录，否则退回默认的
+// llama-cpp/。与 getLlamaCppInfo / resolveLlamaServerBin 的检测优先级
+// （customLlamaCppDir > downloadDir > PATH）保持一致，保证下载产物落点
+// 与检测位置一致。
+func llamaCppDownloadDir() string {
+	customLlamaCppMu.Lock()
+	customDir := customLlamaCppDir
+	customLlamaCppMu.Unlock()
+	if customDir != "" {
+		return customDir
+	}
+	return downloadDir
+}
+
 // configFile 是配置持久化路径，声明为 var 以便测试通过 chdir 覆盖。
 var configFile = "llama-gui-config.json"
 
@@ -1184,21 +1199,23 @@ func downloadLlamaCpp() {
 	default:
 	}
 
-	// Step 4: Extract
+	// Step 4: Extract（目标目录：自定义 llama.cpp 目录优先，否则默认 llama-cpp/）
+	targetDir := llamaCppDownloadDir()
+
 	downloadMu.Lock()
 	downloadState.Status = "extracting"
 	downloadState.Progress = 100
 	downloadMu.Unlock()
 
-	if err := os.MkdirAll(downloadDir, 0755); err != nil {
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
 		setDownloadError("创建目录失败: " + err.Error())
 		return
 	}
 
 	if strings.HasSuffix(asset.Name, ".zip") {
-		err = extractZip(tmpPath, downloadDir)
+		err = extractZip(tmpPath, targetDir)
 	} else if strings.HasSuffix(asset.Name, ".tar.gz") {
-		err = extractTarGz(tmpPath, downloadDir)
+		err = extractTarGz(tmpPath, targetDir)
 	} else {
 		setDownloadError("不支持的文件格式: " + asset.Name)
 		return
@@ -1221,7 +1238,7 @@ func downloadLlamaCpp() {
 	// 已过期，解压成功后需重新检测，否则主页一直显示"未找到"
 	llamaCacheValid.Store(false)
 
-	log.Printf("[OK] llama.cpp %s downloaded and extracted to %s/", release.TagName, downloadDir)
+	log.Printf("[OK] llama.cpp %s downloaded and extracted to %s/", release.TagName, targetDir)
 }
 
 // downloadWithResume downloads a file with pause/resume support.

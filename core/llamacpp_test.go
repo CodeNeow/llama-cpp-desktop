@@ -203,3 +203,89 @@ func TestDownloadLlamaCppInvalidatesLlamaCache(t *testing.T) {
 		t.Errorf("解压产物缺失: %v", err)
 	}
 }
+
+// TestDownloadLlamaCppUsesCustomDir 验证设置了自定义 llama.cpp 目录后，
+// downloadLlamaCpp 将下载产物解压到该自定义目录而非默认的 llama-cpp/
+// （此前固定解压到 llama-cpp/，自定义目录场景下产物落点与检测位置不一致）。
+// 全链路走通：httptest 返回含平台匹配 zip 资产的 release JSON，zip 内为
+// llama-server stub；customLlamaCppDir 指向另一个临时目录。
+func TestDownloadLlamaCppUsesCustomDir(t *testing.T) {
+	saveDownloadState(t)
+	saveServerState(t)
+	// customLlamaCppDir 保存/恢复由 saveServerState 负责，此处直接设置
+	customDir := t.TempDir()
+	withTempCwd(t)
+
+	customLlamaCppMu.Lock()
+	customLlamaCppDir = customDir
+	customLlamaCppMu.Unlock()
+
+	// 构造含 llama-server stub 的最小 zip
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	w, err := zw.Create(llamaServerBinName())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write([]byte("stub")); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	zipBytes := buf.Bytes()
+
+	// 按当前平台构造资产名（与 TestDownloadLlamaCppInvalidatesLlamaCache 同风格）
+	platformKey := map[string]string{"windows": "win", "darwin": "macos", "linux": "linux"}[runtime.GOOS]
+	archKey := map[string]string{"amd64": "x64", "arm64": "arm64"}[runtime.GOARCH]
+	assetName := fmt.Sprintf("llama-b9999-bin-%s-%s.zip", platformKey, archKey)
+
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/release":
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(GitHubRelease{
+				TagName: "b9999",
+				Assets: []GitHubAsset{{
+					Name:               assetName,
+					Size:               int64(len(zipBytes)),
+					BrowserDownloadURL: srv.URL + "/llama.zip",
+				}},
+			})
+		case "/llama.zip":
+			w.Write(zipBytes)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	origAPI := githubReleasesAPI
+	githubReleasesAPI = srv.URL + "/release"
+	defer func() { githubReleasesAPI = origAPI }()
+
+	// 预置缓存有效，验证下载完成后被失效（与对照组一致）
+	llamaCacheValid.Store(true)
+
+	downloadLlamaCpp()
+
+	if llamaCacheValid.Load() {
+		t.Error("downloadLlamaCpp 完成后 llamaCacheValid 应为 false")
+	}
+	downloadMu.Lock()
+	status := downloadState.Status
+	downloadMu.Unlock()
+	if status != "done" {
+		t.Fatalf("下载状态 = %q, want done", status)
+	}
+
+	// 解压产物应落在自定义目录（llama-server stub 直接位于 zip 根级）
+	if _, err := os.Stat(filepath.Join(customDir, llamaServerBinName())); err != nil {
+		t.Errorf("自定义目录中解压产物缺失: %v", err)
+	}
+	// 默认 llama-cpp/ 目录不应存在该产物（未装到默认目录）
+	if _, err := os.Stat(filepath.Join("llama-cpp", llamaServerBinName())); err == nil {
+		t.Error("llama-cpp/ 下不应存在解压产物（应只安装到自定义目录）")
+	}
+}

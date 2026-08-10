@@ -165,10 +165,11 @@
           </div>
         </div>
 
-        <!-- Download section -->
+        <!-- Download section：三个区块各自独立 v-if（互不绑定），显示条件统一
+             由 downloadVisibility 派生，避免 v-if/v-else-if 互斥把进度区吞掉 -->
         <div v-if="!info.llamaCpp.installed && dlStatus.status !== 'done'" class="download-area">
-          <!-- Idle: show download + custom buttons -->
-          <div v-if="dlStatus.status === 'idle' || dlStatus.status === 'error'" class="download-btns">
+          <!-- Idle/error: show download + custom buttons -->
+          <div v-if="dlVisibility.showButtons" class="download-btns">
             <button class="download-btn" @click="startDownload">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -184,13 +185,15 @@
               自定义
             </button>
           </div>
+          <!-- Custom path info：独立 v-if，与进度区互不绑定 -->
           <div v-if="customPath" class="custom-path-info">
             <span class="custom-path-label">自定义路径：</span>
             <span class="custom-path-value">{{ customPath }}</span>
           </div>
 
-          <!-- Downloading / Paused / Extracting -->
-          <div v-else-if="dlStatus.status !== 'idle'" class="download-progress">
+          <!-- Downloading / Paused / Extracting / Error：显示只依赖下载状态，
+               与是否设置自定义路径无关 -->
+          <div v-if="dlVisibility.showProgress" class="download-progress">
             <div class="dl-info">
               <span class="dl-label">{{ statusLabel[dlStatus.status] }}</span>
               <span class="dl-percent" v-if="dlStatus.status === 'downloading' || dlStatus.status === 'paused'">{{ dlStatus.progress }}%</span>
@@ -265,6 +268,7 @@ import {
   getLlamaCppDownloadStatus, startLlamaCppDownload, pauseLlamaCppDownload,
   resumeLlamaCppDownload, stopLlamaCppDownload, browseLlamaCppDir, getConfig
 } from '../wails'
+import { downloadVisibility } from '../lib/llamaDownload'
 
 interface SystemInfo {
   os: string
@@ -303,6 +307,9 @@ interface DlStatus {
 const dlStatus = ref<DlStatus>({ status: 'idle', progress: 0, total: 0, downloaded: 0, fileName: '', version: '', error: '' })
 const customPath = ref('')
 let pollTimer: ReturnType<typeof setInterval> | null = null
+
+// 下载区显示条件：按钮组 / 自定义路径信息 / 进度区各自独立渲染（见 lib/llamaDownload）
+const dlVisibility = computed(() => downloadVisibility(dlStatus.value.status))
 
 const memoryUsagePercent = computed(() => {
   if (info.value.memory.totalGb === 0) return 0
