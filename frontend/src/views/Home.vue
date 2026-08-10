@@ -27,7 +27,7 @@
     </div>
 
     <!-- Data -->
-    <template v-else-if="!error || info.cpu.model">
+    <template v-else>
       <!-- CPU Card -->
       <section class="info-section">
         <h2 class="section-title">

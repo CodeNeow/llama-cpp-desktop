@@ -1,10 +1,16 @@
 <template>
-  <div v-if="visible" class="modal-overlay" @click.self="close">
-    <div class="modal">
+  <div v-if="visible" class="modal-overlay" @click.self="close" @keydown.esc="close">
+    <div
+      class="modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="model-settings-title"
+      @keydown.tab="handleTab"
+    >
       <div class="modal-header">
-        <h2>模型设置</h2>
+        <h2 id="model-settings-title">模型设置</h2>
         <span class="modal-model">{{ modelName }}</span>
-        <button class="modal-close" @click="close">✕</button>
+        <button ref="closeBtn" class="modal-close" aria-label="关闭" @click="close">✕</button>
       </div>
 
       <div class="modal-body">
@@ -13,7 +19,7 @@
           <legend>性能</legend>
           <div class="param-row">
             <label>CPU 线程 (-t)</label>
-            <input v-model.number="cfg.threads" type="number" class="param-input param-num" placeholder="-1 (自动)" />
+            <input v-model.number="cfg.threads" type="number" min="-1" step="1" class="param-input param-num" placeholder="-1 (自动)" />
           </div>
           <div class="param-row">
             <label>GPU 层数 (-ngl)</label>
@@ -31,15 +37,15 @@
           </div>
           <div class="param-row">
             <label>上下文大小 (-c)</label>
-            <input v-model.number="cfg.ctxSize" type="number" class="param-input param-num" placeholder="4096" />
+            <input v-model.number="cfg.ctxSize" type="number" min="1" step="1" class="param-input param-num" placeholder="4096" />
           </div>
           <div class="param-row">
             <label>Batch 大小 (-b)</label>
-            <input v-model.number="cfg.batchSize" type="number" class="param-input param-num" placeholder="2048" />
+            <input v-model.number="cfg.batchSize" type="number" min="1" step="1" class="param-input param-num" placeholder="2048" />
           </div>
           <div class="param-row">
             <label>μBatch 大小 (-ub)</label>
-            <input v-model.number="cfg.ubatchSize" type="number" class="param-input param-num" placeholder="512" />
+            <input v-model.number="cfg.ubatchSize" type="number" min="1" step="1" class="param-input param-num" placeholder="512" />
           </div>
           <label class="param-check">
             <input type="checkbox" v-model="cfg.flashAttn" />
@@ -96,7 +102,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, watch } from 'vue'
+import { reactive, ref, watch, nextTick } from 'vue'
 
 export interface ModelConfig {
   threads: number
@@ -140,9 +146,38 @@ const defaults: ModelConfig = {
 
 const cfg = reactive<ModelConfig>({ ...defaults, ...props.initialConfig })
 
+const closeBtn = ref<HTMLButtonElement | null>(null)
+
 watch(() => props.visible, (v) => {
-  if (v) Object.assign(cfg, defaults, props.initialConfig)
+  if (v) {
+    Object.assign(cfg, defaults, props.initialConfig)
+    // 弹窗打开后把焦点移入弹窗，配合下方 Tab 焦点陷阱（#17）
+    nextTick(() => closeBtn.value?.focus())
+  }
 })
+
+/** 焦点陷阱：Tab / Shift+Tab 在弹窗内可聚焦元素间循环，防止焦点逃逸到页面背景（#17） */
+function handleTab(e: KeyboardEvent) {
+  const modalEl = e.currentTarget as HTMLElement
+  const focusable = Array.from(
+    modalEl.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    )
+  ).filter(el => !el.hasAttribute('disabled'))
+  if (focusable.length === 0) return
+  const first = focusable[0]
+  const last = focusable[focusable.length - 1]
+  const active = document.activeElement
+  if (e.shiftKey) {
+    if (active === first || !modalEl.contains(active)) {
+      e.preventDefault()
+      last.focus()
+    }
+  } else if (active === last) {
+    e.preventDefault()
+    first.focus()
+  }
+}
 
 function close() {
   emit('close')
