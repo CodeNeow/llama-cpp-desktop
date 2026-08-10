@@ -17,7 +17,7 @@
 wails dev          # Go 后端 + Vite 前端（:5173）热重载
 ```
 
-> 前端通过 `window.go.main.App` 调用后端，单独运行 `npm run dev`（无 Wails 运行时）时后端调用会抛错，这是预期行为。
+> 前端通过 `window.go.core.App` 调用后端，单独运行 `npm run dev`（无 Wails 运行时）时后端调用会抛错，这是预期行为。
 
 ## 2. 分支与提交
 

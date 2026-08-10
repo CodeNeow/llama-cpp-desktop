@@ -3,6 +3,8 @@ package main
 import (
 	"embed"
 
+	"llama-gui/core"
+
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
@@ -12,7 +14,7 @@ import (
 var assets embed.FS
 
 func main() {
-	app := NewApp()
+	app := core.NewApp()
 
 	err := wails.Run(&options.App{
 		Title:     "Llama GUI",
@@ -24,8 +26,8 @@ func main() {
 			Assets: assets,
 		},
 		Frameless:        true,
-		OnStartup:        app.startup,
-		OnShutdown:       app.shutdown,
+		OnStartup:        app.Startup,
+		OnShutdown:       app.Shutdown,
 		Bind:             []interface{}{app},
 		BackgroundColour: &options.RGBA{R: 15, G: 15, B: 20, A: 1},
 	})
