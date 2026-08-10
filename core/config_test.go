@@ -144,8 +144,8 @@ func TestLoadConfigDefaults(t *testing.T) {
 		t.Errorf("残缺配置应回退默认端口/模型数/缓存: %+v", scfg)
 	}
 	configMu.Lock()
-	if currentTheme != "dark" {
-		t.Errorf("无主题时应回退 dark, 实际 %q", currentTheme)
+	if currentTheme != "light" {
+		t.Errorf("无主题时应回退 light, 实际 %q", currentTheme)
 	}
 	configMu.Unlock()
 	modelConfigsMu.Lock()

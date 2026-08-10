@@ -1739,7 +1739,7 @@ func loadConfig() {
 		log.Printf("[DIR] Loaded custom llama.cpp dir from config: %s", cfg.LlamaCppDir)
 	}
 	if cfg.Theme == "" {
-		cfg.Theme = "dark"
+		cfg.Theme = "light"
 	}
 	currentTheme = cfg.Theme
 	if cfg.ModelConfigs == nil {
@@ -1774,7 +1774,7 @@ func defaultServerConfig() ServerConfig {
 	}
 }
 
-var currentTheme = "dark"
+var currentTheme = "light"
 var configMu sync.Mutex
 
 func saveConfig() {

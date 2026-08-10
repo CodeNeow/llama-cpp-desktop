@@ -15,7 +15,7 @@ describe('store', () => {
   beforeEach(() => {
     vi.resetAllMocks()
     localStorage.clear()
-    appConfig.theme = 'dark'
+    appConfig.theme = 'light'
     appConfig.llamaCppDir = ''
     appConfig.loaded = false
   })
@@ -37,7 +37,7 @@ describe('store', () => {
 
     await loadConfig()
 
-    expect(appConfig.theme).toBe('dark')
+    expect(appConfig.theme).toBe('light')
     expect(appConfig.loaded).toBe(true)
   })
 

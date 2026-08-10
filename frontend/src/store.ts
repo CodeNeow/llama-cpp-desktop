@@ -2,7 +2,7 @@ import { reactive } from 'vue'
 import { getConfig, setTheme as setThemeBackend } from './wails'
 
 export const appConfig = reactive({
-  theme: localStorage.getItem('llama-gui-theme') || 'dark',
+  theme: localStorage.getItem('llama-gui-theme') || 'light',
   llamaCppDir: '',
   loaded: false,
 })
@@ -10,7 +10,7 @@ export const appConfig = reactive({
 export async function loadConfig() {
   try {
     const config = await getConfig()
-    appConfig.theme = config.theme || 'dark'
+    appConfig.theme = config.theme || 'light'
     appConfig.llamaCppDir = config.llamaCppDir || ''
     localStorage.setItem('llama-gui-theme', appConfig.theme)
     document.documentElement.setAttribute('data-theme', appConfig.theme)

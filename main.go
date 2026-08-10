@@ -29,7 +29,7 @@ func main() {
 		OnStartup:        app.Startup,
 		OnShutdown:       app.Shutdown,
 		Bind:             []interface{}{app},
-		BackgroundColour: &options.RGBA{R: 15, G: 15, B: 20, A: 1},
+		BackgroundColour: &options.RGBA{R: 248, G: 250, B: 252, A: 1},
 	})
 
 	if err != nil {
