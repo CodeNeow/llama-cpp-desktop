@@ -452,6 +452,7 @@ func getLlamaCppInfo() LlamaCppInfo {
 
 func runCmd(name string, args ...string) string {
 	cmd := exec.Command(name, args...)
+	hideWindow(cmd)
 	var out, errOut bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errOut

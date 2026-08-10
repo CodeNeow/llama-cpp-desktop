@@ -67,6 +67,7 @@ func startServerInternal() error {
 
 	serverLogsMu.Lock()
 	serverCmd = exec.Command(llamaServer, args...)
+	hideWindow(serverCmd)
 	serverCmd.Stdout = &serverLogWriter{}
 	serverCmd.Stderr = &serverLogWriter{}
 	serverLogs = []string{}
