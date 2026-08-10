@@ -2138,8 +2138,63 @@ func searchHFMirror(q string, filter string) ([]HFSearchResult, error) {
 // filtering to models containing GGUF files. filter 参数已弃用，仅保留签名兼容，
 // 不再按 pipeline_tag 类型过滤（embedding / llm 分类已移除）。
 // API 不支持 library 过滤与分页，只能以较大 limit 拉取候选后过滤 GGUF。
+// 为覆盖尽可能多的候选，并行请求 downloads / likes / lastModified 三种排序
+// （各 limit=200&full=true），各自过滤 GGUF 后按 downloads → likes →
+// lastModified 顺序按 modelId 合并去重（已见过的跳过）。任一排序请求失败仅跳过
+// 该路（打 [WARN]），三路全部失败才返回错误。
 func searchHFMirrorAt(baseURL, q, filter string) ([]HFSearchResult, error) {
-	apiURL := fmt.Sprintf("%s/api/models?search=%s&sort=downloads&limit=200&full=true", baseURL, q)
+	sorts := []string{"downloads", "likes", "lastModified"}
+
+	type routeResult struct {
+		results []HFSearchResult
+		err     error
+	}
+	routeResults := make([]routeResult, len(sorts))
+
+	// 三路排序并行拉取，每路独立结果切片，无共享写入
+	var wg sync.WaitGroup
+	for i, sort := range sorts {
+		wg.Add(1)
+		go func(i int, sort string) {
+			defer wg.Done()
+			routeResults[i].results, routeResults[i].err = searchHFMirrorSortAt(baseURL, q, sort)
+		}(i, sort)
+	}
+	wg.Wait()
+
+	var results []HFSearchResult
+	seen := make(map[string]bool)
+	failed := 0
+	for i, sort := range sorts {
+		if routeResults[i].err != nil {
+			failed++
+			log.Printf("[WARN] HF 搜索排序 %s 请求失败，跳过该路: %v", sort, routeResults[i].err)
+			continue
+		}
+		for _, r := range routeResults[i].results {
+			key := r.ModelID
+			if key == "" {
+				key = r.ID
+			}
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			results = append(results, r)
+		}
+	}
+
+	if failed == len(sorts) {
+		return nil, fmt.Errorf("HF 搜索三路排序（downloads/likes/lastModified）请求全部失败")
+	}
+	return results, nil
+}
+
+// searchHFMirrorSortAt 以指定 sort 向 HF 兼容 API 拉取一页候选
+// （limit=200&full=true），过滤出含 GGUF 文件的结果。请求失败或非 200 时返回
+// 错误，由 searchHFMirrorAt 决定整路跳过（不影响其他排序）。
+func searchHFMirrorSortAt(baseURL, q, sort string) ([]HFSearchResult, error) {
+	apiURL := fmt.Sprintf("%s/api/models?search=%s&sort=%s&limit=200&full=true", baseURL, q, sort)
 
 	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
@@ -2186,14 +2241,7 @@ func searchHFMirrorAt(baseURL, q, filter string) ([]HFSearchResult, error) {
 		}
 
 		// Only include models that have .gguf files
-		hasGGUF := false
-		for _, s := range r.Siblings {
-			if strings.HasSuffix(strings.ToLower(s.Filename), ".gguf") {
-				hasGGUF = true
-				break
-			}
-		}
-		if !hasGGUF {
+		if !hasGGUF(result) {
 			continue
 		}
 
@@ -2201,6 +2249,16 @@ func searchHFMirrorAt(baseURL, q, filter string) ([]HFSearchResult, error) {
 	}
 
 	return results, nil
+}
+
+// hasGGUF 判断 HF 搜索结果是否包含 .gguf 后缀文件（HF 搜索候选的 GGUF 过滤）。
+func hasGGUF(r HFSearchResult) bool {
+	for _, s := range r.Siblings {
+		if strings.HasSuffix(strings.ToLower(s.Filename), ".gguf") {
+			return true
+		}
+	}
+	return false
 }
 
 // getModelDescription fetches a model's README description via the default mirror.

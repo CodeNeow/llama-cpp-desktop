@@ -1,6 +1,7 @@
 package core
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -121,6 +122,78 @@ func TestSearchHFMirrorAtFilterIgnored(t *testing.T) {
 	if results[0].ID != "Xorbits/bge-small-zh-v1.5" {
 		t.Errorf("ID = %q, want %q（无 GGUF 的 text-generation 模型应被过滤）",
 			results[0].ID, "Xorbits/bge-small-zh-v1.5")
+	}
+}
+
+// hfModelJSON 构造一个 HF /api/models 列表项 JSON，id 即 modelId，按 hasGGUF
+// 决定 siblings 里是 gguf 还是 safetensors 文件。
+func hfModelJSON(id string, hasGGUF bool) string {
+	file := `{"rfilename":"model.safetensors","size":999}`
+	if hasGGUF {
+		file = `{"rfilename":"model-q8_0.gguf","size":1024}`
+	}
+	return fmt.Sprintf(`{"id":%q,"modelId":%q,"author":"org","downloads":1,"likes":1,"pipeline_tag":"text-generation","tags":[],"siblings":[%s]}`,
+		id, id, file)
+}
+
+// TestSearchHFMirrorAtMultiSortMerge 验证三路排序（downloads / likes /
+// lastModified）并行拉取后按 downloads → likes → lastModified 顺序合并去重：
+// 不同排序的 mock 返回不同集合，downloads 无 GGUF 的 C 与 lastModified 无 GGUF
+// 的 E 被过滤，likes/lastModified 重复出现的 B、D 只保留 downloads 路或最先出现
+// 的一次。断言合并 = [A,B,D]。
+func TestSearchHFMirrorAtMultiSortMerge(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Query().Get("sort") {
+		case "downloads":
+			w.Write([]byte(fmt.Sprintf("[%s,%s,%s]",
+				hfModelJSON("A", true), hfModelJSON("B", true), hfModelJSON("C", false))))
+		case "likes":
+			w.Write([]byte(fmt.Sprintf("[%s,%s]",
+				hfModelJSON("B", true), hfModelJSON("D", true))))
+		case "lastModified":
+			w.Write([]byte(fmt.Sprintf("[%s,%s]",
+				hfModelJSON("D", true), hfModelJSON("E", false))))
+		default:
+			w.WriteHeader(http.StatusBadRequest)
+		}
+	}))
+	defer srv.Close()
+
+	results, err := searchHFMirrorAt(srv.URL, "q", "all")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, r := range results {
+		ids = append(ids, r.ModelID)
+	}
+	want := []string{"A", "B", "D"}
+	if strings.Join(ids, ",") != strings.Join(want, ",") {
+		t.Errorf("合并结果 = %v, want %v（downloads 主序、按 modelId 去重、无 GGUF 排除）", ids, want)
+	}
+}
+
+// TestSearchHFMirrorAtPartialSortFailure 验证单路排序失败时整体不报错：likes 路
+// 返回 500 被跳过，downloads / lastModified 路的正常结果保留且按 modelId 去重后
+// 仍为 [A]。
+func TestSearchHFMirrorAtPartialSortFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("sort") == "likes" {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Write([]byte(fmt.Sprintf("[%s]", hfModelJSON("A", true))))
+	}))
+	defer srv.Close()
+
+	results, err := searchHFMirrorAt(srv.URL, "q", "all")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].ModelID != "A" {
+		t.Errorf("单路失败时应保留正常路结果, got %+v", results)
 	}
 }
 
