@@ -156,6 +156,11 @@ export async function getModelFiles(modelID: string): Promise<any[]> {
   return app().GetModelFiles(modelID)
 }
 
+// 获取模型 README 首段描述（≤200 字）；无 README/读取失败时返回错误，由调用方静默兜底
+export async function getModelDescription(modelID: string): Promise<string> {
+  return app().GetModelDescription(modelID)
+}
+
 export async function startDownload(modelID: string, files: string[]): Promise<void> {
   return app().StartDownload(modelID, files)
 }

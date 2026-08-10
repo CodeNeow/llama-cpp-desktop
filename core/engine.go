@@ -2135,9 +2135,10 @@ func searchHFMirror(q string, filter string) ([]HFSearchResult, error) {
 }
 
 // searchHFMirrorAt queries an HF-compatible API base for models matching q,
-// filtering to models containing GGUF files and applying the type filter.
+// filtering to models containing GGUF files. filter 参数已弃用，仅保留签名兼容，
+// 不再按 pipeline_tag 类型过滤（embedding / llm 分类已移除）。
 func searchHFMirrorAt(baseURL, q, filter string) ([]HFSearchResult, error) {
-	apiURL := fmt.Sprintf("%s/api/models?search=%s&sort=downloads&limit=20&full=true", baseURL, q)
+	apiURL := fmt.Sprintf("%s/api/models?search=%s&sort=downloads&limit=50&full=true", baseURL, q)
 
 	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
@@ -2195,35 +2196,95 @@ func searchHFMirrorAt(baseURL, q, filter string) ([]HFSearchResult, error) {
 			continue
 		}
 
-		// Apply type filter
-		if filter != "" && filter != "all" {
-			switch filter {
-			case "embedding":
-				if r.PipelineTag != "sentence-similarity" && r.PipelineTag != "feature-extraction" {
-					isEmbedding := false
-					for _, t := range r.Tags {
-						if strings.Contains(strings.ToLower(t), "embedding") ||
-							strings.Contains(strings.ToLower(t), "sentence-transformers") ||
-							strings.Contains(strings.ToLower(t), "text-embeddings") {
-							isEmbedding = true
-							break
-						}
-					}
-					if !isEmbedding {
-						continue
-					}
-				}
-			case "llm":
-				if r.PipelineTag != "text-generation" {
-					continue
-				}
-			}
-		}
-
 		results = append(results, result)
 	}
 
 	return results, nil
+}
+
+// getModelDescription fetches a model's README description via the default mirror.
+func getModelDescription(modelID string) (string, error) {
+	return getModelDescriptionAt(hfMirrorBase, modelID)
+}
+
+// getModelDescriptionAt fetches the README of a model on an HF-compatible base
+// and extracts its natural-language description:
+//   - GET {base}/{modelID}/raw/main/README.md（User-Agent llama-gui，30s 超时）
+//   - 非 200 返回错误；YAML front-matter（首行为 --- 的块）会被跳过
+//   - 按空行分段，取第一个「非空且不以 # 开头」的段落，trim 后截断 200 rune
+//   - README 存在但没有描述段落时返回空串与 nil 错误（静默）
+func getModelDescriptionAt(baseURL, modelID string) (string, error) {
+	readmeURL := fmt.Sprintf("%s/%s/raw/main/README.md", baseURL, modelID)
+
+	req, err := http.NewRequest("GET", readmeURL, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", "llama-gui")
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("README 获取失败: HTTP %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	lines := strings.Split(string(body), "\n")
+	start := 0
+	// 跳过 YAML front-matter：首行 trim 后为 ---，则跳过到下一个 --- 之后
+	if len(lines) > 0 && strings.TrimSpace(lines[0]) == "---" {
+		for i := 1; i < len(lines); i++ {
+			if strings.TrimSpace(lines[i]) == "---" {
+				start = i + 1
+				break
+			}
+		}
+	}
+
+	// 按空行分段，取第一个「非空且不以 # 开头」的段落
+	var paragraphs []string
+	var cur strings.Builder
+	flush := func() {
+		if cur.Len() > 0 {
+			paragraphs = append(paragraphs, cur.String())
+			cur.Reset()
+		}
+	}
+	for _, line := range lines[start:] {
+		if strings.TrimSpace(line) == "" {
+			flush()
+			continue
+		}
+		if cur.Len() > 0 {
+			cur.WriteString("\n")
+		}
+		cur.WriteString(line)
+	}
+	flush()
+
+	for _, p := range paragraphs {
+		trimmed := strings.TrimSpace(p)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		// 截断 200 个 rune，超出加省略号
+		runes := []rune(trimmed)
+		if len(runes) > 200 {
+			return string(runes[:200]) + "...", nil
+		}
+		return trimmed, nil
+	}
+
+	return "", nil
 }
 
 // getHFModelFiles lists downloadable GGUF files for a model via the default mirror.

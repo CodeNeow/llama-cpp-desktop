@@ -18,16 +18,6 @@
           @keydown.enter="doSearch"
         />
       </div>
-      <div class="search-filters">
-        <button
-          v-for="f in filters"
-          :key="f.value"
-          class="filter-btn"
-          :class="{ active: activeFilter === f.value }"
-          :disabled="searching"
-          @click="activeFilter = f.value; doSearch()"
-        >{{ f.label }}</button>
-      </div>
       <button class="search-btn" @click="doSearch" :disabled="searching || !searchQuery">
         {{ searching ? '搜索中...' : '搜索' }}
       </button>
@@ -56,13 +46,16 @@
                 <span class="result-author">{{ r.author }}</span>
                 <span v-if="r.pipelineTag" class="result-tag">{{ r.pipelineTag }}</span>
                 <span class="result-downloads">⬇ {{ formatNum(r.downloads) }}</span>
+                <span v-if="r.likes > 0" class="result-likes">♥ {{ formatNum(r.likes) }}</span>
               </div>
             </div>
             <span class="result-arrow" :class="{ open: expandedModel === r.modelId }">▾</span>
           </div>
 
-          <!-- Expanded: file list -->
+          <!-- Expanded: description + file list -->
           <div v-if="expandedModel === r.modelId" class="result-files" @click.stop>
+            <div v-if="descriptionsLoading[r.modelId]" class="result-desc">加载描述中...</div>
+            <div v-else-if="modelDescriptions[r.modelId]" class="result-desc">{{ modelDescriptions[r.modelId] }}</div>
             <div v-if="modelFilesLoading[r.modelId]" class="files-loading">加载文件列表...</div>
             <div v-else-if="modelFiles[r.modelId] && modelFiles[r.modelId].length > 0" class="files-list">
               <label
@@ -153,7 +146,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import {
-  searchDownloads, getModelFiles, startDownload as startHFDownload, getDownloadTasks,
+  searchDownloads, getModelFiles, getModelDescription, startDownload as startHFDownload, getDownloadTasks,
   cancelDownloadTask, pauseDownloadTask, resumeDownloadTask, refreshModels
 } from '../wails'
 import { LatestOnly } from '../lib/latestOnly'
@@ -188,22 +181,18 @@ interface DlTask {
 const searchQuery = ref('bge-small-zh')
 const searching = ref(false)
 const searched = ref(false)
-const activeFilter = ref('embedding')
 const searchResults = ref<HFResult[]>([])
 const expandedModel = ref('')
 const modelFiles = reactive<Record<string, HFFile[]>>({})
 const modelFilesLoading = reactive<Record<string, boolean>>({})
 const selectedFiles = reactive<Record<string, string[]>>({})
+// 模型描述懒加载缓存：描述文本与加载中标记按 modelId 记录，避免展开时重复请求
+const modelDescriptions = reactive<Record<string, string>>({})
+const descriptionsLoading = reactive<Record<string, boolean>>({})
 
 const tasks = ref<DlTask[]>([])
 let taskPollTimer: ReturnType<typeof setInterval> | null = null
 let lastDoneCount = 0
-
-const filters = [
-  { label: '嵌入模型', value: 'embedding' },
-  { label: '语言模型', value: 'llm' },
-  { label: '全部', value: 'all' },
-]
 
 const statusMap: Record<string, string> = {
   queued: '排队中',
@@ -258,7 +247,7 @@ async function doSearch() {
   searching.value = true
   searched.value = true
   try {
-    const results = await searchDownloads(searchQuery.value, activeFilter.value)
+    const results = await searchDownloads(searchQuery.value, 'all')
     if (!searchGate.isLatest(seq)) return  // 过期结果丢弃（#15）
     searchResults.value = results || []
   } catch {} finally {
@@ -272,6 +261,17 @@ async function toggleModel(r: HFResult) {
     return
   }
   expandedModel.value = r.modelId
+
+  // 模型描述懒加载：已加载过则跳过；失败/为空静默忽略，不阻塞文件列表
+  if (!modelDescriptions[r.modelId] && !descriptionsLoading[r.modelId]) {
+    descriptionsLoading[r.modelId] = true
+    getModelDescription(r.modelId)
+      .then(desc => {
+        if (desc) modelDescriptions[r.modelId] = desc
+      })
+      .catch(() => {})
+      .finally(() => { descriptionsLoading[r.modelId] = false })
+  }
 
   if (!modelFiles[r.modelId]) {
     modelFilesLoading[r.modelId] = true
@@ -428,35 +428,6 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
   border-color: rgba(99, 102, 241, 0.4);
 }
 
-.search-filters {
-  display: flex;
-  gap: 4px;
-}
-
-.filter-btn {
-  padding: 6px 14px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--text-dim);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-  white-space: nowrap;
-}
-
-.filter-btn:hover {
-  color: var(--text-secondary);
-  border-color: var(--overlay-20);
-}
-
-.filter-btn.active {
-  background: rgba(99, 102, 241, 0.15);
-  color: #a78bfa;
-  border-color: rgba(99, 102, 241, 0.3);
-}
-
 .search-btn {
   padding: 10px 24px;
   background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(167, 139, 250, 0.15));
@@ -552,6 +523,10 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
   color: var(--text-dim);
 }
 
+.result-likes {
+  color: #f472b6;
+}
+
 .result-tag {
   background: rgba(99, 102, 241, 0.1);
   color: #a78bfa;
@@ -577,6 +552,16 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
   padding: 14px 18px;
   max-height: 300px;
   overflow-y: auto;
+}
+
+.result-desc {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-dim);
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: var(--bg-card);
+  border-radius: 8px;
 }
 
 .files-loading, .files-empty {

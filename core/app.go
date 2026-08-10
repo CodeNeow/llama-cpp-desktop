@@ -449,6 +449,11 @@ func (a *App) GetModelFiles(modelID string) ([]HFFileOut, error) {
 	return getHFModelFiles(modelID)
 }
 
+// GetModelDescription 获取模型 README 中的自然语言描述（供下载页展示模型说明）。
+func (a *App) GetModelDescription(modelID string) (string, error) {
+	return getModelDescription(modelID)
+}
+
 func (a *App) StartDownload(modelID string, files []string) error {
 	return startHFDownload(modelID, files)
 }
