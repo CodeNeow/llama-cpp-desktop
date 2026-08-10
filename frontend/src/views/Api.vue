@@ -38,15 +38,15 @@
         </div>
         <div class="cfg-item">
           <label>Port</label>
-          <input v-model.number="cfg.port" type="number" class="cfg-input cfg-num" :disabled="serverRunning" />
+          <input v-model.number="cfg.port" type="number" min="1024" max="65535" step="1" class="cfg-input cfg-num" :disabled="serverRunning" />
         </div>
         <div class="cfg-item">
           <label>最大并发模型</label>
-          <input v-model.number="cfg.maxModels" type="number" class="cfg-input cfg-num" :disabled="serverRunning" />
+          <input v-model.number="cfg.maxModels" type="number" min="1" step="1" class="cfg-input cfg-num" :disabled="serverRunning" />
         </div>
         <div class="cfg-item">
           <label>Prompt 缓存 (MiB)</label>
-          <input v-model.number="cfg.cacheRam" type="number" class="cfg-input cfg-num" :disabled="serverRunning" placeholder="8192" />
+          <input v-model.number="cfg.cacheRam" type="number" min="0" step="1" class="cfg-input cfg-num" :disabled="serverRunning" placeholder="8192" />
         </div>
       </div>
     </section>
@@ -66,8 +66,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, nextTick, watch } from 'vue'
-import { getServerConfig, getModels, getServerStatus, startServer, stopServer } from '../wails'
+import { ref, reactive, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { getServerConfig, getModels, getServerStatus, refreshModels, saveServerConfig, startServer, stopServer } from '../wails'
 
 const serverRunning = ref(false)
 const serverLog = ref<string[]>([])
@@ -88,12 +88,36 @@ watch(serverLog, async () => {
   if (logEl.value) logEl.value.scrollTop = logEl.value.scrollHeight
 })
 
+// 配置实时保存（#13）：修改后 debounce 500ms 静默保存；后端拒绝非法值（如 0.0.0.0）由后端兜底
+let configLoaded = false
+let saveTimer: ReturnType<typeof setTimeout> | null = null
+watch(cfg, () => {
+  if (!configLoaded) return
+  if (saveTimer) clearTimeout(saveTimer)
+  saveTimer = setTimeout(() => {
+    saveServerConfig({
+      host: cfg.host,
+      port: cfg.port,
+      maxModels: cfg.maxModels,
+      cacheRam: cfg.cacheRam,
+    }).catch((e) => {
+      serverLog.value.push('配置保存失败: ' + (e instanceof Error ? e.message : String(e)))
+    })
+  }, 500)
+})
+
+onUnmounted(() => { if (saveTimer) clearTimeout(saveTimer) })
+
 onMounted(async () => {
   // Load server config
   try {
     const scfg = await getServerConfig()
     Object.assign(cfg, scfg)
   } catch {}
+  // 初始配置加载触发的 watch 回调会在下一次 flush 中执行（此时 configLoaded 仍为 false，
+  // 直接跳过保存），await nextTick() 等待该次 flush 完成后才启用自动保存，避免加载即保存。
+  await nextTick()
+  configLoaded = true
 
   // Load available models
   try {
@@ -121,14 +145,13 @@ async function toggleServer() {
     if (serverRunning.value) {
       await stopServer()
     } else {
+      await refreshModels() // 启动前强制重扫模型，确保预设基于最新模型列表（#18）
       await startServer()
     }
-    serverRunning.value = !serverRunning.value
-    if (!serverRunning.value) serverLog.value = []
-  } catch (e: any) {
-    serverLog.value.push('无法连接后端: ' + e.message)
+  } catch (e) {
+    serverLog.value.push('启动/停止服务失败: ' + (e instanceof Error ? e.message : String(e)))
   }
-  // Refresh status
+  // 状态统一由 checkServerStatus 延迟刷新真实值，不做乐观翻转（#14）
   setTimeout(checkServerStatus, 500)
 }
 </script>

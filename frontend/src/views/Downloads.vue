@@ -24,6 +24,7 @@
           :key="f.value"
           class="filter-btn"
           :class="{ active: activeFilter === f.value }"
+          :disabled="searching"
           @click="activeFilter = f.value; doSearch()"
         >{{ f.label }}</button>
       </div>
@@ -153,8 +154,10 @@
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import {
   searchDownloads, getModelFiles, startDownload as startHFDownload, getDownloadTasks,
-  cancelDownloadTask, pauseDownloadTask, resumeDownloadTask
+  cancelDownloadTask, pauseDownloadTask, resumeDownloadTask, refreshModels
 } from '../wails'
+import { LatestOnly } from '../lib/latestOnly'
+import { hasActiveTask } from '../lib/taskStatus'
 
 interface HFResult {
   modelId: string
@@ -194,6 +197,7 @@ const selectedFiles = reactive<Record<string, string[]>>({})
 
 const tasks = ref<DlTask[]>([])
 let taskPollTimer: ReturnType<typeof setInterval> | null = null
+let lastDoneCount = 0
 
 const filters = [
   { label: '嵌入模型', value: 'embedding' },
@@ -247,15 +251,18 @@ function guessQuant(filename: string): string {
   return ''
 }
 
+const searchGate = new LatestOnly()
 async function doSearch() {
   if (!searchQuery.value) return
+  const seq = searchGate.begin()
   searching.value = true
   searched.value = true
   try {
     const results = await searchDownloads(searchQuery.value, activeFilter.value)
+    if (!searchGate.isLatest(seq)) return  // 过期结果丢弃（#15）
     searchResults.value = results || []
   } catch {} finally {
-    searching.value = false
+    if (searchGate.isLatest(seq)) searching.value = false
   }
 }
 
@@ -300,35 +307,55 @@ async function startDownload(modelId: string) {
   try {
     await startHFDownload(modelId, sel)
     expandedModel.value = ''
-    fetchTasks()
+    ensurePolling()
   } catch {}
 }
 
 async function fetchTasks() {
   try {
     tasks.value = await getDownloadTasks() || []
+    // 检测到新增完成任务时强制重扫模型列表（#18）
+    const doneCount = tasks.value.filter(t => t.status === 'done').length
+    if (doneCount > lastDoneCount) {
+      lastDoneCount = doneCount
+      refreshModels().catch(() => {})
+    }
+    // 全部任务进入终态后停止轮询（#16）
+    if (!hasActiveTask(tasks.value) && taskPollTimer) {
+      clearInterval(taskPollTimer)
+      taskPollTimer = null
+    }
   } catch {}
 }
 
 async function cancelTask(id: string) {
   try {
     await cancelDownloadTask(id)
-    fetchTasks()
+    ensurePolling()
   } catch {}
 }
 
 async function pauseTask(id: string) {
   try {
     await pauseDownloadTask(id)
-    fetchTasks()
+    ensurePolling()
   } catch {}
 }
 
 async function resumeTask(id: string) {
   try {
     await resumeDownloadTask(id)
-    fetchTasks()
+    ensurePolling()
   } catch {}
+}
+
+/** 启动新下载或手动操作后：轮询已停止则重启，否则立即刷新一次（#16） */
+function ensurePolling() {
+  if (taskPollTimer) {
+    fetchTasks()
+  } else {
+    startTaskPolling()
+  }
 }
 
 function startTaskPolling() {

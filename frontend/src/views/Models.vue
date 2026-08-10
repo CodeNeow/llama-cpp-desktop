@@ -1,11 +1,14 @@
 <template>
   <div class="page">
     <div class="page-header">
-      <h1 class="page-title">模型</h1>
-      <p class="page-subtitle">
-        <template v-if="models.length">{{ models.length }} 个模型</template>
-        <template v-else>将 GGUF 模型文件放入 LLM-Models 目录</template>
-      </p>
+      <div class="page-header-text">
+        <h1 class="page-title">模型</h1>
+        <p class="page-subtitle">
+          <template v-if="models.length">{{ models.length }} 个模型</template>
+          <template v-else>将 GGUF 模型文件放入 LLM-Models 目录</template>
+        </p>
+      </div>
+      <button class="refresh-btn" :disabled="loading" title="重新扫描 LLM-Models 目录" @click="fetchModels(true)">刷新</button>
     </div>
 
     <!-- Loading skeleton -->
@@ -26,7 +29,7 @@
       </div>
       <h2>无法获取模型列表</h2>
       <p>{{ error }}</p>
-      <button class="retry-btn" @click="fetchModels">重试</button>
+      <button class="retry-btn" @click="fetchModels()">重试</button>
     </div>
 
     <!-- Empty state -->
@@ -92,7 +95,7 @@
 import { ref, onMounted } from 'vue'
 import ModelSettings from '../components/ModelSettings.vue'
 import type { ModelConfig } from '../components/ModelSettings.vue'
-import { getModels, getModelConfig, saveModelConfig } from '../wails'
+import { getModels, getModelConfig, saveModelConfig, refreshModels } from '../wails'
 
 interface ModelInfo {
   author: string
@@ -151,13 +154,14 @@ async function saveSettings(config: ModelConfig) {
   }
 }
 
-async function fetchModels() {
+async function fetchModels(force = false) {
   loading.value = true
   error.value = ''
   try {
-    models.value = await getModels() as ModelInfo[]
-  } catch (e: any) {
-    error.value = `无法连接后端服务：${e.message}`
+    // force=true 时强制重扫 LLM-Models（refreshModels），否则走缓存（getModels）（#18）
+    models.value = (force ? await refreshModels() : await getModels()) as ModelInfo[]
+  } catch (e) {
+    error.value = `无法连接后端服务：${e instanceof Error ? e.message : String(e)}`
   } finally {
     loading.value = false
   }
@@ -173,7 +177,39 @@ onMounted(fetchModels)
 }
 
 .page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
   margin-bottom: 36px;
+}
+
+.page-header-text {
+  min-width: 0;
+}
+
+.refresh-btn {
+  padding: 8px 18px;
+  background: rgba(99, 102, 241, 0.15);
+  color: #a78bfa;
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.refresh-btn:hover:not(:disabled) {
+  background: rgba(99, 102, 241, 0.25);
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+.refresh-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .page-title {
