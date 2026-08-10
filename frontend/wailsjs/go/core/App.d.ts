@@ -30,6 +30,8 @@ export function GetMemory():Promise<core.MemoryInfo>;
 
 export function GetModelConfig(arg1:string):Promise<core.ModelConfig>;
 
+export function GetModelDescription(arg1:string):Promise<string>;
+
 export function GetModelFiles(arg1:string):Promise<Array<core.HFFileOut>>;
 
 export function GetModels():Promise<Array<core.ModelInfo>>;

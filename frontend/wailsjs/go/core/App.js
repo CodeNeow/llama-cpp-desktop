@@ -58,6 +58,10 @@ export function GetModelConfig(arg1) {
   return window['go']['core']['App']['GetModelConfig'](arg1);
 }
 
+export function GetModelDescription(arg1) {
+  return window['go']['core']['App']['GetModelDescription'](arg1);
+}
+
 export function GetModelFiles(arg1) {
   return window['go']['core']['App']['GetModelFiles'](arg1);
 }
