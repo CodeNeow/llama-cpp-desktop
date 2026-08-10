@@ -38,36 +38,50 @@ func startServerInternal() error {
 	// Build command
 	llamaServer, args := buildServerCommand(cfg, presetPath)
 
+	// 在 serverMu 锁内创建命令并绑定日志输出（#3）。这里先不置
+	// serverRunning=true：必须在 Start() 成功之后才置位，保证
+	// 「serverRunning==true ⟹ serverCmd.Process 非 nil」这一不变量。
+	serverMu.Lock()
+	cmd := exec.Command(llamaServer, args...)
+	hideWindow(cmd)
+	cmd.Stdout = &serverLogWriter{}
+	cmd.Stderr = &serverLogWriter{}
 	serverLogsMu.Lock()
-	serverCmd = exec.Command(llamaServer, args...)
-	hideWindow(serverCmd)
-	serverCmd.Stdout = &serverLogWriter{}
-	serverCmd.Stderr = &serverLogWriter{}
 	serverLogs = []string{}
-	serverRunning = true
 	serverLogsMu.Unlock()
+	serverMu.Unlock()
 
 	addServerLog(fmt.Sprintf("[INFO] Starting llama-server: %s %s", llamaServer, strings.Join(args, " ")))
 
-	if err := serverCmd.Start(); err != nil {
-		serverLogsMu.Lock()
+	if err := cmd.Start(); err != nil {
+		serverMu.Lock()
+		serverCmd = nil
 		serverRunning = false
-		serverLogsMu.Unlock()
+		serverMu.Unlock()
 		addServerLog("[ERROR] Failed to start: " + err.Error())
 		return err
 	}
 
-	go func() {
-		err := serverCmd.Wait()
-		serverLogsMu.Lock()
+	serverMu.Lock()
+	serverCmd = cmd
+	serverRunning = true
+	serverMu.Unlock()
+
+	go func(cmd *exec.Cmd) {
+		err := cmd.Wait()
+		serverMu.Lock()
 		serverRunning = false
-		serverLogsMu.Unlock()
+		// 仅当全局仍指向本命令时清理，避免覆盖新启动的实例
+		if serverCmd == cmd {
+			serverCmd = nil
+		}
+		serverMu.Unlock()
 		if err != nil {
 			addServerLog("[WARN] llama-server exited: " + err.Error())
 		} else {
 			addServerLog("[INFO] llama-server stopped")
 		}
-	}()
+	}(cmd)
 
 	return nil
 }
@@ -108,17 +122,20 @@ func buildServerCommand(cfg ServerConfig, presetPath string) (string, []string) 
 }
 
 func stopServerInternal() error {
-	serverLogsMu.Lock()
-	if !serverRunning || serverCmd == nil {
-		serverLogsMu.Unlock()
+	// 在 serverMu 锁内读取 running/cmd 局部副本，锁外对副本操作（#3），
+	// 避免 stopServerInternal 与 start/goroutine 并发访问 serverCmd/Process。
+	serverMu.Lock()
+	running := serverRunning
+	cmd := serverCmd
+	serverMu.Unlock()
+	if !running || cmd == nil {
 		return nil
 	}
-	serverLogsMu.Unlock()
 
 	addServerLog("[INFO] Stopping llama-server...")
 
-	if err := serverCmd.Process.Signal(osInterrupt); err != nil {
-		serverCmd.Process.Kill()
+	if err := cmd.Process.Signal(osInterrupt); err != nil {
+		cmd.Process.Kill()
 	}
 	return nil
 }
@@ -136,6 +153,24 @@ func startLlamaCppDownload() {
 // ─── HF Mirror download trigger ──────────────────────────────────
 
 func startHFDownload(modelID string, files []string) error {
+	// 校验 modelID 的 author 部分（DestDir 会以它做 filepath.Join），
+	// 防止 "../evil"、"."、".." 或含路径分隔符的 modelID 把下载目标
+	// 写到 LLM-Models 目录之外（路径遍历 #1）。
+	authorPart := strings.SplitN(modelID, "/", 2)[0]
+	if authorPart == "" || authorPart == "." || authorPart == ".." ||
+		strings.ContainsAny(authorPart, `\/`) {
+		return fmt.Errorf("invalid modelID: %q", modelID)
+	}
+
+	// 校验每个文件名：清理后的文件名不得为空、以 ".." 开头（目录逃逸）
+	// 或为绝对路径。任务统一使用清理后的 cleanName（#1）。
+	for _, fileName := range files {
+		cleanName := filepath.Clean(fileName)
+		if cleanName == "." || strings.HasPrefix(cleanName, "..") || filepath.IsAbs(cleanName) {
+			return fmt.Errorf("invalid fileName: %q", fileName)
+		}
+	}
+
 	dlTasksMu.Lock()
 	defer dlTasksMu.Unlock()
 
@@ -143,14 +178,14 @@ func startHFDownload(modelID string, files []string) error {
 		dlTaskCounter++
 		id := fmt.Sprintf("dl-%d", dlTaskCounter)
 
+		cleanName := filepath.Clean(fileName)
 		task := &DlTask{
 			ID:       id,
 			ModelID:  modelID,
-			FileName: fileName,
-			DestDir:  filepath.Join(modelsDir, strings.SplitN(modelID, "/", 2)[0]),
-			URL:      fmt.Sprintf("%s/%s/resolve/main/%s", hfMirrorBase, modelID, url.PathEscape(fileName)),
+			FileName: cleanName,
+			DestDir:  filepath.Join(modelsDir, authorPart),
+			URL:      fmt.Sprintf("%s/%s/resolve/main/%s", hfMirrorBase, modelID, url.PathEscape(cleanName)),
 			Status:   "queued",
-			pauseCh:  make(chan struct{}, 1),
 			resumeCh: make(chan struct{}, 1),
 		}
 		task.ctx, task.cancel = context.WithCancel(context.Background())

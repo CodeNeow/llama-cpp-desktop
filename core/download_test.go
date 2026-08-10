@@ -1,8 +1,12 @@
 package core
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -106,5 +110,60 @@ func TestFetchLatestReleaseAtHTTPError(t *testing.T) {
 
 	if _, err := fetchLatestReleaseAt(srv.URL); err == nil {
 		t.Error("500 响应应返回错误")
+	}
+}
+
+// TestDownloadTaskRenameFailure 验证 downloadTask 完成分支重命名失败时
+// 任务标记为 error（#10）。此前 os.Rename 返回值被忽略，失败会静默把
+// 任务置为 done 但文件未就位；修复后 renameFile（可注入包级变量）失败
+// 即置 error。测试用 httptest 提供固定字节流，注入 renameFile 失败并
+// 完整跑通 downloadTask，断言任务状态与错误信息。
+func TestDownloadTaskRenameFailure(t *testing.T) {
+	withTempCwd(t)
+	dlTasksMu.Lock()
+	dlTasks = nil
+	dlTaskCounter = 0
+	dlTasksMu.Unlock()
+	defer func() {
+		dlTasksMu.Lock()
+		dlTasks = nil
+		dlTaskCounter = 0
+		dlTasksMu.Unlock()
+	}()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("fake model bytes"))
+	}))
+	defer srv.Close()
+
+	// 注入 renameFile 失败
+	origRename := renameFile
+	renameFile = func(oldpath, newpath string) error {
+		return errors.New("mock rename fail")
+	}
+	defer func() { renameFile = origRename }()
+
+	task := &DlTask{
+		ID:       "dl-1",
+		ModelID:  "author/model",
+		FileName: "model.gguf",
+		DestDir:  filepath.Join(modelsDir, "author"),
+		URL:      srv.URL,
+	}
+	task.ctx, task.cancel = context.WithCancel(context.Background())
+	defer task.cancel()
+
+	downloadTask(task)
+
+	dlTasksMu.Lock()
+	status := task.Status
+	errMsg := task.Error
+	dlTasksMu.Unlock()
+
+	if status != "error" {
+		t.Errorf("rename 失败后任务状态 = %q, want error", status)
+	}
+	if !strings.Contains(errMsg, "重命名失败") {
+		t.Errorf("错误信息应包含 重命名失败: %q", errMsg)
 	}
 }

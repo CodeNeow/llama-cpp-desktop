@@ -161,3 +161,129 @@ func TestLoadConfigMissingFile(t *testing.T) {
 	saveConfigState(t)
 	loadConfig() // 不应 panic
 }
+
+// TestSaveServerConfigRejectsNonLoopbackHost 验证 SaveServerConfig 拒绝
+// 非环回 Host（#5）。若允许 0.0.0.0 等地址，llama-server 会把推理服务
+// 暴露到局域网/公网，须在存配置前拒绝。
+func TestSaveServerConfigRejectsNonLoopbackHost(t *testing.T) {
+	withTempCwd(t)
+	saveConfigState(t)
+
+	app := &App{}
+	if err := app.SaveServerConfig(ServerConfig{Host: "0.0.0.0", Port: 8080, MaxModels: 1, CacheRAM: 0}); err == nil {
+		t.Error("Host=0.0.0.0 应返回错误")
+	}
+	if err := app.SaveServerConfig(ServerConfig{Host: "192.168.1.10", Port: 8080, MaxModels: 1, CacheRAM: 0}); err == nil {
+		t.Error("局域网地址应返回错误")
+	}
+	// 拒绝分支不得改动已存配置
+	serverConfigMu.Lock()
+	got := cachedServerConfig
+	serverConfigMu.Unlock()
+	if got.Host != "127.0.0.1" {
+		t.Errorf("非法 Host 不应改写配置, 当前 Host = %q", got.Host)
+	}
+}
+
+// TestSaveServerConfigRejectsInvalidPort 验证端口必须落在 1024-65535，
+// 避开特权端口与非法范围（#5）。
+func TestSaveServerConfigRejectsInvalidPort(t *testing.T) {
+	withTempCwd(t)
+	saveConfigState(t)
+
+	app := &App{}
+	if err := app.SaveServerConfig(ServerConfig{Host: "127.0.0.1", Port: 80, MaxModels: 1, CacheRAM: 0}); err == nil {
+		t.Error("Port=80（特权端口）应返回错误")
+	}
+	if err := app.SaveServerConfig(ServerConfig{Host: "127.0.0.1", Port: 99999, MaxModels: 1, CacheRAM: 0}); err == nil {
+		t.Error("Port=99999 超出范围应返回错误")
+	}
+}
+
+// TestSaveServerConfigRejectsInvalidNumbers 验证 MaxModels 至少为 1、
+// CacheRAM 非负（#5）。
+func TestSaveServerConfigRejectsInvalidNumbers(t *testing.T) {
+	withTempCwd(t)
+	saveConfigState(t)
+
+	app := &App{}
+	if err := app.SaveServerConfig(ServerConfig{Host: "127.0.0.1", Port: 8080, MaxModels: 0, CacheRAM: 0}); err == nil {
+		t.Error("MaxModels=0 应返回错误")
+	}
+	if err := app.SaveServerConfig(ServerConfig{Host: "127.0.0.1", Port: 8080, MaxModels: 1, CacheRAM: -1}); err == nil {
+		t.Error("CacheRAM 为负应返回错误")
+	}
+}
+
+// TestSaveServerConfigAcceptsLoopback 验证合法环回配置被接受并写入
+// 全局缓存与配置文件（#5 对照组：localhost / ::1 均合法）。
+func TestSaveServerConfigAcceptsLoopback(t *testing.T) {
+	withTempCwd(t)
+	saveConfigState(t)
+
+	app := &App{}
+	for _, host := range []string{"127.0.0.1", "localhost", "::1"} {
+		if err := app.SaveServerConfig(ServerConfig{Host: host, Port: 8080, MaxModels: 2, CacheRAM: 4096}); err != nil {
+			t.Errorf("Host=%q 应被接受: %v", host, err)
+		}
+		serverConfigMu.Lock()
+		got := cachedServerConfig
+		serverConfigMu.Unlock()
+		if got.Host != host || got.Port != 8080 || got.MaxModels != 2 || got.CacheRAM != 4096 {
+			t.Errorf("Host=%q 配置未正确写入: %+v", host, got)
+		}
+	}
+}
+
+// TestSaveModelConfigRejectsInjection 验证 SaveModelConfig 拒绝含换行的
+// 字符串字段（#9）。这类值若进入预设生成会被原样写入 INI，构成配置注入。
+// 拒绝分支不得写入配置缓存；合法值则正常写入（对照组）。
+func TestSaveModelConfigRejectsInjection(t *testing.T) {
+	withTempCwd(t)
+	saveConfigState(t)
+
+	app := &App{}
+	badGPU := "99\n[evil]\nmodel=/tmp/x"
+	if err := app.SaveModelConfig("m1", ModelConfig{GPULayers: badGPU}); err == nil {
+		t.Error("含换行的 GPULayers 应返回错误")
+	}
+	if err := app.SaveModelConfig("m1", ModelConfig{CacheTypeK: "q8_0\nfoo"}); err == nil {
+		t.Error("含换行的 CacheTypeK 应返回错误")
+	}
+	// 拒绝分支不得写入配置缓存
+	modelConfigsMu.Lock()
+	_, ok := cachedModelConfigs["m1"]
+	modelConfigsMu.Unlock()
+	if ok {
+		t.Error("被拒绝的配置不应写入缓存")
+	}
+
+	// 合法 CacheTypeK 应被接受并写入
+	if err := app.SaveModelConfig("m1-ok", ModelConfig{CacheTypeK: "q4_0"}); err != nil {
+		t.Errorf("合法 CacheTypeK 应被接受: %v", err)
+	}
+	modelConfigsMu.Lock()
+	got, ok := cachedModelConfigs["m1-ok"]
+	modelConfigsMu.Unlock()
+	if !ok || got.CacheTypeK != "q4_0" {
+		t.Error("合法配置未写入缓存")
+	}
+}
+
+// TestSaveModelConfigRejectsInvalidWhitelist 验证 GPULayers / CacheType
+// 白名单之外的值被拒绝（#9 第一层）。
+func TestSaveModelConfigRejectsInvalidWhitelist(t *testing.T) {
+	withTempCwd(t)
+	saveConfigState(t)
+
+	app := &App{}
+	if err := app.SaveModelConfig("m2", ModelConfig{GPULayers: "-1"}); err == nil {
+		t.Error("GPULayers=-1 应返回错误")
+	}
+	if err := app.SaveModelConfig("m2", ModelConfig{GPULayers: "1.5"}); err == nil {
+		t.Error("GPULayers=1.5 应返回错误")
+	}
+	if err := app.SaveModelConfig("m2", ModelConfig{CacheTypeV: "q4_1"}); err == nil {
+		t.Error("CacheTypeV=q4_1 不在白名单应返回错误")
+	}
+}

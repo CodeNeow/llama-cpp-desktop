@@ -120,7 +120,6 @@ type DlTask struct {
 	Error      string `json:"error"`
 	ctx        context.Context
 	cancel     context.CancelFunc
-	pauseCh    chan struct{}
 	resumeCh   chan struct{}
 }
 
@@ -150,7 +149,23 @@ var cpuOnce, memOnce, gpuOnce, cudaOnce sync.Once
 var llamaCacheValid atomic.Bool
 
 var cachedModels []ModelInfo
-var modelsOnce sync.Once
+
+// modelsCacheValid 标记模型缓存是否有效（原子读，供 GetModels 快速路径）。
+// 写入在 modelsMu 锁内完成；不能用 sync.Once 的变量重赋值来实现失效，
+// 因为并发 Do 与赋值会破坏 Once 内部互斥状态（#4）。
+var modelsCacheValid atomic.Bool
+
+// modelsMu 保护 cachedModels 的读写与缓存失效标记，避免并发扫描/刷新
+// 模型缓存时发生数据竞争（#4）。读取侧统一在锁内拷贝副本再返回。
+var modelsMu sync.Mutex
+
+// invalidateModelCache 使模型缓存失效：下次 GetModels 会重新扫描目录。
+// 供下载完成与手动刷新等路径调用，保证缓存失效与访问并发安全。
+func invalidateModelCache() {
+	modelsMu.Lock()
+	modelsCacheValid.Store(false)
+	modelsMu.Unlock()
+}
 
 // ─── Download state ──────────────────────────────────────────────
 
@@ -759,6 +774,12 @@ func readGGUFMeta(path string) map[string]string {
 		return nil
 	}
 
+	// 防御恶意/损坏文件：kvCount 无上限时循环可能解析超长 KV 列表并放大
+	// 解析开销（#7.2）。正常 GGUF 元数据键极少，超过 4096 直接放弃解析。
+	if kvCount > 4096 {
+		return nil
+	}
+
 	result := make(map[string]string)
 	targets := map[string]string{
 		"general.name":         "name",
@@ -931,6 +952,10 @@ const downloadDir = "llama-cpp"
 // configFile 是配置持久化路径，声明为 var 以便测试通过 chdir 覆盖。
 var configFile = "llama-gui-config.json"
 
+// renameFile 为测试注入点（与 configFile 同风格），用于模拟下载完成后
+// 重命名临时文件失败的分支（#10）。
+var renameFile = os.Rename
+
 func downloadLlamaCpp() {
 	ctx, cancel := context.WithCancel(context.Background())
 	downloadMu.Lock()
@@ -1028,7 +1053,7 @@ func downloadLlamaCpp() {
 	downloadMu.Unlock()
 
 	// Reset model cache so new models are picked up
-	modelsOnce = sync.Once{}
+	invalidateModelCache()
 
 	log.Printf("[OK] llama.cpp %s downloaded and extracted to %s/", release.TagName, downloadDir)
 }
@@ -1339,6 +1364,11 @@ func pickBestAssetFor(assets []GitHubAsset, platform, arch string, hasCUDA bool,
 	return best.asset
 }
 
+// 解压大小上限（声明为 var 便于测试改小验证）。防止 zip/tar 解压炸弹
+// 造成磁盘写满或内存耗尽（#2）。
+var maxExtractFileSize int64 = 4 << 30   // 单文件解压上限 4GB
+var maxExtractTotalSize int64 = 16 << 30 // 单次解压总上限 16GB
+
 func extractZip(src, dest string) error {
 	r, err := zip.OpenReader(src)
 	if err != nil {
@@ -1346,6 +1376,7 @@ func extractZip(src, dest string) error {
 	}
 	defer r.Close()
 
+	var totalBytes int64
 	for _, f := range r.File {
 		path := filepath.Join(dest, f.Name)
 
@@ -1358,6 +1389,11 @@ func extractZip(src, dest string) error {
 		if f.FileInfo().IsDir() {
 			os.MkdirAll(path, 0755)
 			continue
+		}
+
+		// 提前按声明大小拦截超大文件，避免先写出再发现超限
+		if f.UncompressedSize64 > uint64(maxExtractFileSize) {
+			return fmt.Errorf("文件超出解压大小上限: %s", path)
 		}
 
 		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
@@ -1375,11 +1411,21 @@ func extractZip(src, dest string) error {
 			return err
 		}
 
-		_, err = io.Copy(outFile, rc)
+		// io.CopyN 只拷贝 maxExtractFileSize+1 字节：src 恰好等于上限时返回
+		// (max, io.EOF)，src 超出上限时返回 (max+1, nil)，因此用
+		// n > maxExtractFileSize 判断超限（#2）。
+		n, copyErr := io.CopyN(outFile, rc, maxExtractFileSize+1)
 		rc.Close()
 		outFile.Close()
-		if err != nil {
-			return err
+		if copyErr != nil && copyErr != io.EOF {
+			return copyErr
+		}
+		if n > maxExtractFileSize {
+			return fmt.Errorf("文件超出解压大小上限: %s", path)
+		}
+		totalBytes += n
+		if totalBytes > maxExtractTotalSize {
+			return fmt.Errorf("解压总大小超出上限: %d 字节", totalBytes)
 		}
 	}
 	return nil
@@ -1399,6 +1445,7 @@ func extractTarGz(src, dest string) error {
 	defer gzReader.Close()
 
 	tarReader := tar.NewReader(gzReader)
+	var totalBytes int64
 	for {
 		header, err := tarReader.Next()
 		if err == io.EOF {
@@ -1420,6 +1467,10 @@ func extractTarGz(src, dest string) error {
 		case tar.TypeDir:
 			os.MkdirAll(path, 0755)
 		case tar.TypeReg:
+			// 提前按声明的条目大小拦截超大文件（#2）
+			if header.Size > maxExtractFileSize {
+				return fmt.Errorf("文件超出解压大小上限: %s", path)
+			}
 			if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 				return err
 			}
@@ -1427,11 +1478,22 @@ func extractTarGz(src, dest string) error {
 			if err != nil {
 				return err
 			}
-			if _, err := io.Copy(outFile, tarReader); err != nil {
-				outFile.Close()
-				return err
-			}
+			n, copyErr := io.CopyN(outFile, tarReader, maxExtractFileSize+1)
 			outFile.Close()
+			if copyErr != nil && copyErr != io.EOF {
+				return copyErr
+			}
+			if n > maxExtractFileSize {
+				return fmt.Errorf("文件超出解压大小上限: %s", path)
+			}
+			totalBytes += n
+			if totalBytes > maxExtractTotalSize {
+				return fmt.Errorf("解压总大小超出上限: %d 字节", totalBytes)
+			}
+		default:
+			// 符号链接/硬链接/设备文件等未知类型显式拒绝，避免静默跳过
+			// 产生不完整解压或潜在安全问题（#6）
+			return fmt.Errorf("不支持的 tar 条目类型 %d: %s", header.Typeflag, header.Name)
 		}
 	}
 	return nil
@@ -1452,6 +1514,11 @@ var serverLogs []string
 var serverLogsMu sync.Mutex
 var serverRunning bool
 
+// serverMu 保护 serverCmd 与 serverRunning 的完整生命周期（创建/启停/清理），
+// 与只保护 serverLogs 的 serverLogsMu 职责分离（#3）。任何同时持有两把锁的
+// 路径必须按「先 serverMu 后 serverLogsMu」的顺序获取，避免死锁。
+var serverMu sync.Mutex
+
 type serverLogWriter struct{}
 
 func (w *serverLogWriter) Write(p []byte) (int, error) {
@@ -1467,6 +1534,30 @@ func addServerLog(msg string) {
 	}
 	serverLogsMu.Unlock()
 	log.Println("[llama-server]", msg)
+}
+
+// validIniValue 校验将写入 INI 预设的值：不得含换行/空字符（防止配置注入）
+// 且不得有首尾空白（避免值被静默裁剪引起歧义）。
+func validIniValue(s string) bool {
+	return !strings.ContainsAny(s, "\n\r\x00") && s == strings.TrimSpace(s)
+}
+
+// validGPULayersValue 校验 gpu-layers 取值：允许空、auto、all、0 或纯正整数。
+func validGPULayersValue(s string) bool {
+	if s == "" || s == "auto" || s == "all" || s == "0" {
+		return true
+	}
+	n, err := strconv.Atoi(s)
+	return err == nil && n > 0
+}
+
+// validCacheTypeValue 校验 cache-type-k/v 取值白名单。
+func validCacheTypeValue(s string) bool {
+	switch s {
+	case "", "q8_0", "q4_0", "f16", "bf16":
+		return true
+	}
+	return false
 }
 
 // generateModelsPreset scans the default model directory and writes a llama-server
@@ -1491,8 +1582,22 @@ func generateModelsPresetFrom(models []ModelInfo, cfgs map[string]ModelConfig) (
 	}
 
 	var buf bytes.Buffer
+	// 稳定去重别名：sanitizeAlias 会把空格/斜杠等不同字符统一为 '-'，
+	// 不同模型名可能碰撞出相同段名（#7.1）。按模型顺序对已占用的别名
+	// 追加 -2、-3… 直到唯一，结果确定、不依赖随机/时间。
+	used := make(map[string]int)
 	for _, m := range models {
 		alias := sanitizeAlias(m.Name)
+		if used[alias] > 0 {
+			for n := used[alias] + 1; ; n++ {
+				candidate := fmt.Sprintf("%s-%d", alias, n)
+				if used[candidate] == 0 {
+					alias = candidate
+					break
+				}
+			}
+		}
+		used[alias]++
 		buf.WriteString(fmt.Sprintf("[%s]\n", alias))
 		buf.WriteString(fmt.Sprintf("model = %s\n", filepath.ToSlash(m.Path)))
 
@@ -1516,15 +1621,24 @@ func generateModelsPresetFrom(models []ModelInfo, cfgs map[string]ModelConfig) (
 				buf.WriteString(fmt.Sprintf("threads = %d\n", cfg.Threads))
 			}
 			if cfg.GPULayers != "" && cfg.GPULayers != "auto" {
+				if !validIniValue(cfg.GPULayers) {
+					return "", fmt.Errorf("非法 GPULayers 值 %q：不能包含换行或首尾空白", cfg.GPULayers)
+				}
 				buf.WriteString(fmt.Sprintf("gpu-layers = %s\n", cfg.GPULayers))
 			}
 			if cfg.FlashAttn {
 				buf.WriteString("flash-attn = on\n")
 			}
 			if cfg.CacheTypeK != "" {
+				if !validIniValue(cfg.CacheTypeK) {
+					return "", fmt.Errorf("非法 CacheTypeK 值 %q：不能包含换行或首尾空白", cfg.CacheTypeK)
+				}
 				buf.WriteString(fmt.Sprintf("cache-type-k = %s\n", cfg.CacheTypeK))
 			}
 			if cfg.CacheTypeV != "" {
+				if !validIniValue(cfg.CacheTypeV) {
+					return "", fmt.Errorf("非法 CacheTypeV 值 %q：不能包含换行或首尾空白", cfg.CacheTypeV)
+				}
 				buf.WriteString(fmt.Sprintf("cache-type-v = %s\n", cfg.CacheTypeV))
 			}
 			if cfg.MLock {
@@ -1995,12 +2109,20 @@ func downloadTask(task *DlTask) {
 			if rr.err == io.EOF {
 				resp.Body.Close()
 				out.Close()
-				os.Rename(tmpPath, destPath)
+				// 重命名失败时标记任务错误并返回，不再推进到 done（#10）。
+				// 注意 renameFile 是可注入的包级变量，测试可模拟失败。
+				if err := renameFile(tmpPath, destPath); err != nil {
+					dlTasksMu.Lock()
+					task.Status = "error"
+					task.Error = "重命名失败: " + err.Error()
+					dlTasksMu.Unlock()
+					return
+				}
 				dlTasksMu.Lock()
 				task.Status = "done"
 				task.Progress = 100
 				dlTasksMu.Unlock()
-				modelsOnce = sync.Once{}
+				invalidateModelCache()
 				return
 			}
 			if rr.err != nil {

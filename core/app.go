@@ -2,9 +2,9 @@ package core
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"runtime"
-	"sync"
 
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -42,19 +42,24 @@ func (a *App) Startup(ctx context.Context) {
 // Shutdown is called by Wails on application exit; it stops llama-server and
 // cancels all in-flight downloads.
 func (a *App) Shutdown(ctx context.Context) {
-	// Stop running llama-server if any
-	serverLogsMu.Lock()
+	// Stop running llama-server if any（#3）：在 serverMu 锁内取局部副本，
+	// 锁外对副本 Signal，避免与应用退出期间并发启停的数据竞争。
+	serverMu.Lock()
 	running := serverRunning
 	cmd := serverCmd
-	serverLogsMu.Unlock()
+	serverMu.Unlock()
 	if running && cmd != nil {
 		addServerLog("[INFO] Stopping llama-server on shutdown...")
 		cmd.Process.Signal(osInterrupt)
 	}
 
-	// Cancel ongoing llama.cpp download
-	if downloadCancel != nil {
-		downloadCancel()
+	// Cancel ongoing llama.cpp download（#3）：downloadCancel 受 downloadMu
+	// 保护，先锁内取副本，锁外调用。
+	downloadMu.Lock()
+	cancelDownload := downloadCancel
+	downloadMu.Unlock()
+	if cancelDownload != nil {
+		cancelDownload()
 	}
 
 	// Cancel all HF model download tasks
@@ -148,16 +153,30 @@ func (a *App) GetOS() map[string]string {
 // ─── Models ──────────────────────────────────────────────────────
 
 func (a *App) GetModels() []ModelInfo {
-	modelsOnce.Do(func() {
-		log.Println("[INFO] Scanning LLM-Models (first time)...")
-		cachedModels = scanModels()
-		log.Printf("[OK] Found %d models", len(cachedModels))
-	})
-	return cachedModels
+	// 缓存无效时重扫（#4）：快速路径先读 atomic 标记，慢速路径在
+	// modelsMu 锁内复核，避免并发首次调用重复扫描；cachedModels 的写入
+	// 只发生在锁内。
+	if !modelsCacheValid.Load() {
+		modelsMu.Lock()
+		if !modelsCacheValid.Load() {
+			log.Println("[INFO] Scanning LLM-Models ...")
+			cachedModels = scanModels()
+			modelsCacheValid.Store(true)
+			log.Printf("[OK] Found %d models", len(cachedModels))
+		}
+		modelsMu.Unlock()
+	}
+	// 返回前在 modelsMu 锁内拷贝切片副本，避免调用方与后续 RefreshModels
+	// 重扫（写入 cachedModels）并发读写同一底层数组（#4）。
+	modelsMu.Lock()
+	out := make([]ModelInfo, len(cachedModels))
+	copy(out, cachedModels)
+	modelsMu.Unlock()
+	return out
 }
 
 func (a *App) RefreshModels() []ModelInfo {
-	modelsOnce = sync.Once{}
+	invalidateModelCache()
 	return a.GetModels()
 }
 
@@ -172,6 +191,18 @@ func (a *App) GetModelConfig(modelID string) ModelConfig {
 }
 
 func (a *App) SaveModelConfig(modelID string, config ModelConfig) error {
+	// 校验字符串字段白名单，防止非法取值（含 INI 注入 payload）进入
+	// 配置并被预设生成直接写入 INI（#9 第一层防御）。
+	if !validGPULayersValue(config.GPULayers) {
+		return fmt.Errorf("非法 GPULayers %q：仅允许 auto/all/0 或正整数", config.GPULayers)
+	}
+	if !validCacheTypeValue(config.CacheTypeK) {
+		return fmt.Errorf("非法 CacheTypeK %q：仅允许 q8_0/q4_0/f16/bf16", config.CacheTypeK)
+	}
+	if !validCacheTypeValue(config.CacheTypeV) {
+		return fmt.Errorf("非法 CacheTypeV %q：仅允许 q8_0/q4_0/f16/bf16", config.CacheTypeV)
+	}
+
 	modelConfigsMu.Lock()
 	cachedModelConfigs[modelID] = config
 	modelConfigsMu.Unlock()
@@ -188,18 +219,38 @@ func (a *App) GetServerConfig() ServerConfig {
 	return cfg
 }
 
-func (a *App) SaveServerConfig(cfg ServerConfig) {
+func (a *App) SaveServerConfig(cfg ServerConfig) error {
+	// Host 白名单：仅允许环回地址，避免把推理服务暴露到局域网/公网（#5）。
+	switch cfg.Host {
+	case "127.0.0.1", "localhost", "::1":
+	default:
+		return fmt.Errorf("非法 Host %q：仅允许环回地址，避免将推理服务暴露到局域网", cfg.Host)
+	}
+	if cfg.Port < 1024 || cfg.Port > 65535 {
+		return fmt.Errorf("非法 Port %d：端口范围应为 1024-65535", cfg.Port)
+	}
+	if cfg.MaxModels < 1 {
+		return fmt.Errorf("非法 MaxModels %d：至少为 1", cfg.MaxModels)
+	}
+	if cfg.CacheRAM < 0 {
+		return fmt.Errorf("非法 CacheRAM %d：不能为负数", cfg.CacheRAM)
+	}
+
 	serverConfigMu.Lock()
 	cachedServerConfig = cfg
 	serverConfigMu.Unlock()
 	saveConfig()
+	return nil
 }
 
 func (a *App) GetServerStatus() map[string]interface{} {
+	// serverRunning 由 serverMu 保护（#3）；serverLogs 由 serverLogsMu 保护。
+	serverMu.Lock()
+	running := serverRunning
+	serverMu.Unlock()
 	serverLogsMu.Lock()
 	logs := make([]string, len(serverLogs))
 	copy(logs, serverLogs)
-	running := serverRunning
 	serverLogsMu.Unlock()
 
 	return map[string]interface{}{
@@ -209,12 +260,13 @@ func (a *App) GetServerStatus() map[string]interface{} {
 }
 
 func (a *App) StartServer() error {
-	serverLogsMu.Lock()
-	if serverRunning {
-		serverLogsMu.Unlock()
-		return nil // already running
+	// 已运行则幂等返回 nil（#3）：serverRunning 由 serverMu 保护。
+	serverMu.Lock()
+	running := serverRunning
+	serverMu.Unlock()
+	if running {
+		return nil
 	}
-	serverLogsMu.Unlock()
 
 	return startServerInternal()
 }
@@ -260,8 +312,12 @@ func (a *App) ResumeLlamaCppDownload() {
 }
 
 func (a *App) StopLlamaCppDownload() {
-	if downloadCancel != nil {
-		downloadCancel()
+	// downloadCancel 受 downloadMu 保护：锁内取副本，锁外调用（#3）。
+	downloadMu.Lock()
+	cancelDownload := downloadCancel
+	downloadMu.Unlock()
+	if cancelDownload != nil {
+		cancelDownload()
 	}
 }
 

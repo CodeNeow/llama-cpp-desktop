@@ -124,3 +124,74 @@ func TestGenerateModelsPresetFromMMProj(t *testing.T) {
 		t.Errorf("预设缺少 mmproj 行: %q", content)
 	}
 }
+
+// TestGenerateModelsPresetFromRejectsInjection 验证 generateModelsPresetFrom
+// 对含换行/首尾空白的 GPULayers / CacheType 值返回错误（#9 第二层防御）。
+// 该函数是纯函数，直接写入 INI 文本，若值带换行可注入任意节/键。
+func TestGenerateModelsPresetFromRejectsInjection(t *testing.T) {
+	models := []ModelInfo{{Name: "m", Path: "/models/m.gguf"}}
+	badCfgs := []map[string]ModelConfig{
+		{"m": {GPULayers: "99\n[evil]\nmodel=/tmp/x"}},
+		{"m": {CacheTypeK: "q8_0\nfoo"}},
+		{"m": {CacheTypeV: "f16\nbar"}},
+		{"m": {GPULayers: " 99 "}}, // 首尾空白拒绝
+	}
+	for i, cfgs := range badCfgs {
+		if _, err := generateModelsPresetFrom(models, cfgs); err == nil {
+			t.Errorf("case %d: 含非法值应返回错误", i)
+		}
+	}
+}
+
+// TestGenerateModelsPresetFromAliasDedup 验证别名去重（#7.1）：sanitizeAlias
+// 会把空格/斜杠/大写统一为小写与 '-', 不同模型名可能碰撞出相同段名。
+// 按模型顺序对已占用别名追加 -2、-3… 直到唯一，结果确定不依赖随机。
+func TestGenerateModelsPresetFromAliasDedup(t *testing.T) {
+	models := []ModelInfo{
+		{Name: "Model v1", Path: "/models/a.gguf"},
+		{Name: "Model/v1", Path: "/models/b.gguf"}, // 碰撞 → model-v1-2
+		{Name: "Model-V1", Path: "/models/c.gguf"}, // 再碰撞 → model-v1-3
+	}
+	path, err := generateModelsPresetFrom(models, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(path)
+
+	data, _ := os.ReadFile(path)
+	content := string(data)
+
+	// 三个模型必须各自拥有唯一段名，且都含自己的 model 路径
+	if !strings.Contains(content, "[model-v1]\nmodel = /models/a.gguf") {
+		t.Errorf("首个模型段名应为 model-v1: %q", content)
+	}
+	if !strings.Contains(content, "[model-v1-2]\nmodel = /models/b.gguf") {
+		t.Errorf("第二个模型段名应为 model-v1-2: %q", content)
+	}
+	if !strings.Contains(content, "[model-v1-3]\nmodel = /models/c.gguf") {
+		t.Errorf("第三个模型段名应为 model-v1-3: %q", content)
+	}
+}
+
+// TestGenerateModelsPresetFromAcceptsValidValues 验证合法值（空 / auto /
+// all / 0 / 正整数 / 缓存白名单）生成成功（#9 对照组）。
+func TestGenerateModelsPresetFromAcceptsValidValues(t *testing.T) {
+	models := []ModelInfo{{Name: "m", Path: "/models/m.gguf"}}
+	cfgs := map[string]ModelConfig{
+		"m": {GPULayers: "auto", CacheTypeK: "q8_0", CacheTypeV: "bf16"},
+	}
+	path, err := generateModelsPresetFrom(models, cfgs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(path)
+
+	data, _ := os.ReadFile(path)
+	content := string(data)
+	if !strings.Contains(content, "cache-type-k = q8_0\n") || !strings.Contains(content, "cache-type-v = bf16\n") {
+		t.Errorf("合法缓存类型未写入: %q", content)
+	}
+	if strings.Contains(content, "gpu-layers") {
+		t.Errorf("GPULayers=auto 不应输出 gpu-layers 行: %q", content)
+	}
+}

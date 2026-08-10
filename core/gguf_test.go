@@ -175,3 +175,24 @@ func TestReadGGUFStringTooLong(t *testing.T) {
 		t.Error("超长字符串应返回错误")
 	}
 }
+
+// TestReadGGUFMetaRejectsHugeKVCount 验证 kvCount 超过 4096 上限的
+// 恶意/损坏 GGUF 文件被直接拒绝（#7.2）：readGGUFMeta 返回 nil 且不
+// panic。此前 kvCount 来自文件无上限，可放大解析开销；修复后在循环前
+// 判断并放弃解析。
+func TestReadGGUFMetaRejectsHugeKVCount(t *testing.T) {
+	dir := t.TempDir()
+
+	// 手工写 GGUF 文件头：magic + version 3 + tensorCount 0 + kvCount 5000，
+	// 不写任何 KV 键值（解析应在读 KV 前终止）。
+	var buf bytes.Buffer
+	buf.WriteString("GGUF")
+	putU32(&buf, 3)
+	putU64(&buf, 0)    // tensorCount
+	putU64(&buf, 5000) // kvCount 超上限
+	path := writeTempGGUF(t, dir, "huge.gguf", buf.Bytes())
+
+	if meta := readGGUFMeta(path); meta != nil {
+		t.Errorf("kvCount 超上限应返回 nil, 实际 %v", meta)
+	}
+}

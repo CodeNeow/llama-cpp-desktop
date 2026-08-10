@@ -3,8 +3,56 @@ package core
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 )
+
+// saveModelsState 记录 cachedModels/modelsCacheValid 全局状态并在测试
+// 结束后恢复。
+func saveModelsState(t *testing.T) {
+	t.Helper()
+	modelsMu.Lock()
+	origModels := cachedModels
+	origValid := modelsCacheValid.Load()
+	modelsMu.Unlock()
+	t.Cleanup(func() {
+		modelsMu.Lock()
+		cachedModels = origModels
+		modelsCacheValid.Store(origValid)
+		modelsMu.Unlock()
+	})
+}
+
+// TestConcurrentGetRefreshModels 验证并发 GetModels/RefreshModels 多轮
+// 不 panic 且结果一致（#4）。此前 modelsOnce 重置后 cachedModels 无锁
+// 读写，RefreshModels 重扫写入与 GetModels 返回同一底层数组并发会数据
+// 竞争；重构后写与读都在 modelsMu 内完成，GetModels 返回拷贝副本。
+// 使用空 LLM-Models 目录，扫描结果恒为空数组，便于断言一致性。
+func TestConcurrentGetRefreshModels(t *testing.T) {
+	withTempCwd(t)
+	saveModelsState(t)
+
+	app := &App{}
+	var wg sync.WaitGroup
+	for i := 0; i < 200; i++ {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			app.GetModels()
+		}()
+		go func() {
+			defer wg.Done()
+			app.RefreshModels()
+		}()
+	}
+	wg.Wait()
+
+	// 空目录下每次扫描都应得到空列表，且 GetModels 返回副本
+	models := app.GetModels()
+	if len(models) != 0 {
+		t.Errorf("空 LLM-Models 目录应返回 0 个模型, 实际 %d", len(models))
+	}
+}
 
 // makeVariant 在 base/author/variant 下创建模型目录并写入 gguf 文件，
 // size 用于控制文件大小（排序断言依据）。

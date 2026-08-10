@@ -167,3 +167,71 @@ func TestGetDownloadTasksSnapshot(t *testing.T) {
 		t.Error("修改快照不应影响内部任务状态")
 	}
 }
+
+// TestStartHFDownloadRejectsPathTraversal 验证 startHFDownload 对恶意
+// modelID / fileName 返回错误且不创建任何任务（#1）。author 部分含
+// 路径分隔符或 "../" 时 DestDir 会用 filepath.Join 逃出 LLM-Models 目录，
+// 必须在入队前拒绝。
+func TestStartHFDownloadRejectsPathTraversal(t *testing.T) {
+	saveConfigState(t)
+	dlTasksMu.Lock()
+	dlTasks = nil
+	dlTaskCounter = 0
+	dlTasksMu.Unlock()
+	defer func() {
+		dlTasksMu.Lock()
+		dlTasks = nil
+		dlTaskCounter = 0
+		dlTasksMu.Unlock()
+	}()
+
+	// author 部分为 "../evil"：DestDir 会 join 出 LLM-Models 之外的目录
+	if err := startHFDownload("../evil", []string{"evil.gguf"}); err == nil {
+		t.Error("../evil modelID 应返回错误")
+	}
+	// 含路径分隔符的 modelID（"a/b" 或 "a\\b"）同样拒绝
+	if err := startHFDownload("a\\b/model", []string{"x.gguf"}); err == nil {
+		t.Error("author 含 \\ 的 modelID 应返回错误")
+	}
+	// 文件名可逃逸到父目录
+	if err := startHFDownload("author/model", []string{"../../etc/x.gguf"}); err == nil {
+		t.Error("../../etc/x.gguf 文件名应返回错误")
+	}
+	// 绝对路径文件名拒绝
+	if err := startHFDownload("author/model", []string{`C:\Windows\system.ini`}); err == nil {
+		t.Error("绝对路径文件名应返回错误")
+	}
+
+	// 拒绝分支不得创建任何任务
+	dlTasksMu.Lock()
+	defer dlTasksMu.Unlock()
+	if len(dlTasks) != 0 || dlTaskCounter != 0 {
+		t.Errorf("非法输入不应创建任务: len=%d counter=%d", len(dlTasks), dlTaskCounter)
+	}
+}
+
+// TestStartHFDownloadRejectsInvalidModelID 验证 modelID 作者部分为
+// 空 / "." / ".." 时返回错误（#1）。
+func TestStartHFDownloadRejectsInvalidModelID(t *testing.T) {
+	saveConfigState(t)
+	dlTasksMu.Lock()
+	dlTasks = nil
+	dlTaskCounter = 0
+	dlTasksMu.Unlock()
+	defer func() {
+		dlTasksMu.Lock()
+		dlTasks = nil
+		dlTaskCounter = 0
+		dlTasksMu.Unlock()
+	}()
+
+	if err := startHFDownload("/model", []string{"x.gguf"}); err == nil {
+		t.Error("/model 的空 author 应返回错误")
+	}
+	if err := startHFDownload("./model", []string{"x.gguf"}); err == nil {
+		t.Error("./model 的 . author 应返回错误")
+	}
+	if err := startHFDownload("../model", []string{"x.gguf"}); err == nil {
+		t.Error("../model 的 .. author 应返回错误")
+	}
+}
