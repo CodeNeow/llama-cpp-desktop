@@ -6,6 +6,10 @@ export function BrowseLlamaCppDir() {
   return window['go']['core']['App']['BrowseLlamaCppDir']();
 }
 
+export function BrowseModelsDir() {
+  return window['go']['core']['App']['BrowseModelsDir']();
+}
+
 export function CancelDownloadTask(arg1) {
   return window['go']['core']['App']['CancelDownloadTask'](arg1);
 }
@@ -112,6 +116,10 @@ export function SaveServerConfig(arg1) {
 
 export function SearchDownloads(arg1, arg2) {
   return window['go']['core']['App']['SearchDownloads'](arg1, arg2);
+}
+
+export function SetModelsDir(arg1) {
+  return window['go']['core']['App']['SetModelsDir'](arg1);
 }
 
 export function SetTheme(arg1) {

@@ -4,6 +4,8 @@ import {core} from '../models';
 
 export function BrowseLlamaCppDir():Promise<string>;
 
+export function BrowseModelsDir():Promise<string>;
+
 export function CancelDownloadTask(arg1:string):Promise<void>;
 
 export function CheckForUpdate():Promise<core.UpdateCheckResult>;
@@ -57,6 +59,8 @@ export function SaveModelConfig(arg1:string,arg2:core.ModelConfig):Promise<void>
 export function SaveServerConfig(arg1:core.ServerConfig):Promise<void>;
 
 export function SearchDownloads(arg1:string,arg2:string):Promise<Array<core.HFSearchResult>>;
+
+export function SetModelsDir(arg1:string):Promise<void>;
 
 export function SetTheme(arg1:string):Promise<void>;
 
