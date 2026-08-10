@@ -557,13 +557,37 @@ func parseVMStat(out, key string) uint64 {
 
 const modelsDir = "LLM-Models"
 
-// scanModels scans the default LLM-Models directory, creating it if needed.
-func scanModels() []ModelInfo {
-	if err := os.MkdirAll(modelsDir, 0755); err != nil {
-		log.Printf("[WARN] Failed to create %s dir: %v", modelsDir, err)
-		return make([]ModelInfo, 0)
+// customModelsDir 为自定义模型目录（空表示未配置，使用默认 modelsDir）。
+// modelsDirMu 保护其读写，与 customLlamaCppMu 保护 customLlamaCppDir 的
+// 风格保持一致。
+var customModelsDir string
+var modelsDirMu sync.Mutex
+
+// effectiveModelsDir 返回当前生效的模型目录：配置了自定义目录时返回自定义
+// 目录，否则回退到默认 modelsDir。读取在 modelsDirMu 锁内完成，保证与
+// SetModelsDir / loadConfig / saveConfig 的写入并发安全。
+func effectiveModelsDir() string {
+	modelsDirMu.Lock()
+	dir := customModelsDir
+	modelsDirMu.Unlock()
+	if dir != "" {
+		return dir
 	}
-	return scanModelsDir(modelsDir)
+	return modelsDir
+}
+
+// scanModels scans the effective model directory (custom when set), creating
+// the default LLM-Models directory only when no custom dir is configured.
+func scanModels() []ModelInfo {
+	dir := effectiveModelsDir()
+	// 自定义目录由用户选择，应已存在；仅默认目录需要惰性创建。
+	if dir == modelsDir {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			log.Printf("[WARN] Failed to create %s dir: %v", dir, err)
+			return make([]ModelInfo, 0)
+		}
+	}
+	return scanModelsDir(dir)
 }
 
 // scanModelsDir scans an <author>/<variant>/ directory tree for GGUF models.
@@ -1973,6 +1997,7 @@ func sanitizeAlias(name string) string {
 
 type appConfig struct {
 	LlamaCppDir  string                 `json:"llamaCppDir"`
+	ModelDir     string                 `json:"modelDir"`
 	Theme        string                 `json:"theme"`
 	ModelConfigs map[string]ModelConfig `json:"modelConfigs"`
 	ServerConfig ServerConfig           `json:"serverConfig"`
@@ -2013,6 +2038,18 @@ func loadConfig() {
 		customLlamaCppDir = cfg.LlamaCppDir
 		customLlamaCppMu.Unlock()
 		log.Printf("[DIR] Loaded custom llama.cpp dir from config: %s", cfg.LlamaCppDir)
+	}
+	// 自定义模型目录：值为空或路径不存在/非目录时忽略并回退默认目录，
+	// 防止配置损坏或目录被删除后扫描/下载落在无效路径上。
+	if cfg.ModelDir != "" {
+		if fi, err := os.Stat(cfg.ModelDir); err != nil || !fi.IsDir() {
+			log.Printf("[WARN] Ignoring invalid model dir from config: %s", cfg.ModelDir)
+		} else {
+			modelsDirMu.Lock()
+			customModelsDir = cfg.ModelDir
+			modelsDirMu.Unlock()
+			log.Printf("[DIR] Loaded custom models dir from config: %s", cfg.ModelDir)
+		}
 	}
 	if cfg.Theme == "" {
 		cfg.Theme = "light"
@@ -2058,6 +2095,10 @@ func saveConfig() {
 	dir := customLlamaCppDir
 	customLlamaCppMu.Unlock()
 
+	modelsDirMu.Lock()
+	modelDir := customModelsDir
+	modelsDirMu.Unlock()
+
 	configMu.Lock()
 	theme := currentTheme
 	configMu.Unlock()
@@ -2073,7 +2114,7 @@ func saveConfig() {
 	scfg := cachedServerConfig
 	serverConfigMu.Unlock()
 
-	cfg := appConfig{LlamaCppDir: dir, Theme: theme, ModelConfigs: mcfgs, ServerConfig: scfg}
+	cfg := appConfig{LlamaCppDir: dir, ModelDir: modelDir, Theme: theme, ModelConfigs: mcfgs, ServerConfig: scfg}
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		log.Printf("[WARN] Failed to marshal config: %v", err)

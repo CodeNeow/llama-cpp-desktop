@@ -5,10 +5,19 @@
         <h1 class="page-title">模型</h1>
         <p class="page-subtitle">
           <template v-if="models.length">{{ models.length }} 个模型</template>
-          <template v-else>将 GGUF 模型文件放入 LLM-Models 目录</template>
+          <template v-else>将 GGUF 模型文件放入模型目录</template>
         </p>
       </div>
-      <button class="refresh-btn" :disabled="loading" title="重新扫描 LLM-Models 目录" @click="fetchModels(true)">刷新</button>
+      <button class="refresh-btn" :disabled="loading" title="重新扫描模型目录" @click="fetchModels(true)">刷新</button>
+    </div>
+
+    <!-- 模型目录 -->
+    <div class="dir-bar">
+      <div class="dir-info">
+        <span class="dir-label">模型目录</span>
+        <span class="dir-value">{{ modelsDir || '未设置' }}</span>
+      </div>
+      <button class="dir-btn" title="选择模型目录" @click="chooseModelsDir">选择文件夹</button>
     </div>
 
     <!-- Loading skeleton -->
@@ -42,11 +51,7 @@
         </svg>
       </div>
       <h2>暂无模型</h2>
-      <p>将 .gguf 模型文件放入项目根目录的 <code>LLM-Models</code> 文件夹中</p>
-      <div class="empty-hint">
-        <span>示例路径：</span>
-        <code>LLM-Models/qwen2.5-7b-instruct-q4_k_m.gguf</code>
-      </div>
+      <p>将 .gguf 模型文件放入模型目录：<code>{{ modelsDir || '未设置' }}</code> 中</p>
     </div>
 
     <!-- Model list -->
@@ -95,7 +100,7 @@
 import { ref, onMounted } from 'vue'
 import ModelSettings from '../components/ModelSettings.vue'
 import type { ModelConfig } from '../components/ModelSettings.vue'
-import { getModels, getModelConfig, saveModelConfig, refreshModels } from '../wails'
+import { getModels, getModelConfig, saveModelConfig, refreshModels, getConfig, browseModelsDir } from '../wails'
 
 interface ModelInfo {
   author: string
@@ -111,6 +116,27 @@ interface ModelInfo {
 const models = ref<ModelInfo[]>([])
 const loading = ref(true)
 const error = ref('')
+
+// 当前生效的模型目录（来自后端配置，可由「选择文件夹」更新）
+const modelsDir = ref('')
+
+async function loadModelsDir() {
+  try {
+    const cfg = await getConfig()
+    modelsDir.value = cfg.modelsDir || ''
+  } catch {}
+}
+
+async function chooseModelsDir() {
+  try {
+    const dir = await browseModelsDir()
+    // 仅当用户实际选择了目录（返回非空）才更新显示并重扫；取消（空串）不影响现有目录
+    if (dir) {
+      modelsDir.value = dir
+      await fetchModels(true)
+    }
+  } catch {}
+}
 
 // Settings dialog
 const settingsVisible = ref(false)
@@ -167,7 +193,10 @@ async function fetchModels(force = false) {
   }
 }
 
-onMounted(fetchModels)
+onMounted(() => {
+  loadModelsDir()
+  fetchModels()
+})
 </script>
 
 <style scoped>
@@ -210,6 +239,59 @@ onMounted(fetchModels)
 .refresh-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* ─── 模型目录 ─── */
+.dir-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 24px;
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.dir-info {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.dir-label {
+  font-size: 12px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.dir-value {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  word-break: break-all;
+}
+
+.dir-btn {
+  padding: 6px 16px;
+  background: var(--border-light);
+  color: var(--text-muted);
+  border: 1px solid var(--overlay-10);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.dir-btn:hover {
+  background: var(--overlay-8);
+  border-color: var(--scrollbar-thumb-hover);
+  color: var(--text-primary);
 }
 
 .page-title {
@@ -419,21 +501,6 @@ onMounted(fetchModels)
   border-radius: 4px;
   font-size: 12px;
   color: var(--text-secondary);
-}
-
-.empty-hint {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 8px;
-  font-size: 12px;
-  color: var(--text-dim);
-}
-
-.empty-hint code {
-  color: #a78bfa;
 }
 
 /* ─── Loading skeleton ─── */

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"runtime"
 
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -89,6 +90,10 @@ func (a *App) GetConfig() map[string]interface{} {
 	dir := customLlamaCppDir
 	customLlamaCppMu.Unlock()
 
+	modelsDirMu.Lock()
+	modelDir := customModelsDir
+	modelsDirMu.Unlock()
+
 	configMu.Lock()
 	theme := currentTheme
 	configMu.Unlock()
@@ -96,6 +101,7 @@ func (a *App) GetConfig() map[string]interface{} {
 	return map[string]interface{}{
 		"theme":       theme,
 		"llamaCppDir": dir,
+		"modelsDir":   modelDir,
 	}
 }
 
@@ -113,6 +119,46 @@ func (a *App) SetTheme(theme string) {
 			wailsRuntime.WindowSetBackgroundColour(a.ctx, 15, 15, 20, 255)
 		}
 	}
+}
+
+// SetModelsDir 设置自定义模型目录：合法目录写入全局状态、持久化配置并使
+// 模型缓存失效（下次 GetModels 用新目录重扫）；非法输入返回中文错误且
+// 不改写状态。
+func (a *App) SetModelsDir(dir string) error {
+	if dir == "" {
+		return fmt.Errorf("模型目录不能为空")
+	}
+	fi, err := os.Stat(dir)
+	if err != nil {
+		return fmt.Errorf("模型目录不存在: %s", dir)
+	}
+	if !fi.IsDir() {
+		return fmt.Errorf("模型目录不是有效目录: %s", dir)
+	}
+	modelsDirMu.Lock()
+	customModelsDir = dir
+	modelsDirMu.Unlock()
+	invalidateModelCache()
+	saveConfig()
+	return nil
+}
+
+// BrowseModelsDir 弹出系统目录选择对话框选择模型目录；取消时返回空串与
+// nil，选择成功后执行与 SetModelsDir 相同的校验与写入并返回所选目录。
+func (a *App) BrowseModelsDir() (string, error) {
+	if a.ctx == nil {
+		return "", nil
+	}
+	dir, err := wailsRuntime.OpenDirectoryDialog(a.ctx, wailsRuntime.OpenDialogOptions{
+		Title: "选择模型目录",
+	})
+	if err != nil || dir == "" {
+		return "", err
+	}
+	if err := a.SetModelsDir(dir); err != nil {
+		return "", err
+	}
+	return dir, nil
 }
 
 // ─── System Info ─────────────────────────────────────────────────

@@ -147,7 +147,7 @@ func TestDownloadTaskRenameFailure(t *testing.T) {
 		ID:       "dl-1",
 		ModelID:  "author/model",
 		FileName: "model.gguf",
-		DestDir:  filepath.Join(modelsDir, "author"),
+		DestDir:  filepath.Join(effectiveModelsDir(), "author"),
 		URL:      srv.URL,
 	}
 	task.ctx, task.cancel = context.WithCancel(context.Background())

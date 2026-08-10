@@ -17,19 +17,30 @@ describe('store', () => {
     localStorage.clear()
     appConfig.theme = 'light'
     appConfig.llamaCppDir = ''
+    appConfig.modelsDir = ''
     appConfig.loaded = false
   })
 
-  it('loadConfig 成功时写入主题与 llamaCppDir', async () => {
-    mockGetConfig.mockResolvedValue({ theme: 'light', llamaCppDir: 'C:/llama-cpp' })
+  it('loadConfig 成功时写入主题、llamaCppDir 与 modelsDir', async () => {
+    mockGetConfig.mockResolvedValue({ theme: 'light', llamaCppDir: 'C:/llama-cpp', modelsDir: 'D:/models' })
 
     await loadConfig()
 
     expect(appConfig.theme).toBe('light')
     expect(appConfig.llamaCppDir).toBe('C:/llama-cpp')
+    expect(appConfig.modelsDir).toBe('D:/models')
     expect(appConfig.loaded).toBe(true)
     expect(localStorage.getItem('llama-gui-theme')).toBe('light')
     expect(document.documentElement.getAttribute('data-theme')).toBe('light')
+  })
+
+  it('loadConfig 后端未返回 modelsDir 时兜底为空串', async () => {
+    mockGetConfig.mockResolvedValue({ theme: 'dark', llamaCppDir: 'C:/llama-cpp', modelsDir: '' })
+
+    await loadConfig()
+
+    expect(appConfig.modelsDir).toBe('')
+    expect(appConfig.theme).toBe('dark')
   })
 
   it('loadConfig 失败时仍标记 loaded，保留默认主题', async () => {

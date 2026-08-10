@@ -8,7 +8,7 @@ import (
 )
 
 // TestStartHFDownloadQueue 验证批量文件入队：任务 ID 递增、URL 使用
-// HF Mirror 域名、初始状态为 queued、目标目录为 modelsDir/<作者>。
+// HF Mirror 域名、初始状态为 queued、目标目录为生效模型目录/<作者>。
 func TestStartHFDownloadQueue(t *testing.T) {
 	saveConfigState(t)
 	dlTasksMu.Lock()
@@ -40,8 +40,8 @@ func TestStartHFDownloadQueue(t *testing.T) {
 	if !strings.HasPrefix(dlTasks[0].URL, hfMirrorBase+"/author/model/resolve/main/") {
 		t.Errorf("URL 前缀错误: %q", dlTasks[0].URL)
 	}
-	if !strings.HasSuffix(dlTasks[0].DestDir, filepath.Join(modelsDir, "author")) {
-		t.Errorf("DestDir = %q, want 以 %q 结尾", dlTasks[0].DestDir, filepath.Join(modelsDir, "author"))
+	if !strings.HasSuffix(dlTasks[0].DestDir, filepath.Join(effectiveModelsDir(), "author")) {
+		t.Errorf("DestDir = %q, want 以 %q 结尾", dlTasks[0].DestDir, filepath.Join(effectiveModelsDir(), "author"))
 	}
 	if dlTasks[0].cancel == nil {
 		t.Error("任务应持有 cancel 函数（供取消/退出清理）")

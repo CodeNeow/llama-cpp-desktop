@@ -59,7 +59,7 @@
         <span v-for="m in availableModels" :key="m" class="model-tag">{{ m }}</span>
       </div>
       <div v-if="modelCount === 0" class="empty-hint">
-        将 .gguf 文件放入 LLM-Models 目录即可自动识别
+        将 .gguf 文件放入模型目录即可自动识别
       </div>
     </section>
   </div>

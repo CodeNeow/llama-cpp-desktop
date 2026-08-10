@@ -15,7 +15,7 @@ function app(): any {
 
 // ─── Config ─────────────────────────────────────────────────────
 
-export async function getConfig(): Promise<{ theme: string; llamaCppDir: string }> {
+export async function getConfig(): Promise<{ theme: string; llamaCppDir: string; modelsDir: string }> {
   return app().GetConfig()
 }
 
@@ -117,6 +117,11 @@ export async function stopLlamaCppDownload(): Promise<void> {
 
 export async function browseLlamaCppDir(): Promise<string> {
   return app().BrowseLlamaCppDir()
+}
+
+// 选择模型目录：弹出系统文件夹选择框，返回所选目录字符串（对话框取消返回空串）
+export async function browseModelsDir(): Promise<string> {
+  return app().BrowseModelsDir()
 }
 
 // ─── App Update ──────────────────────────────────────────────────

@@ -24,6 +24,9 @@ func saveServerState(t *testing.T) (origLogs []string, origDir string) {
 	customLlamaCppMu.Lock()
 	origDir = customLlamaCppDir
 	customLlamaCppMu.Unlock()
+	modelsDirMu.Lock()
+	origModelsDir := customModelsDir
+	modelsDirMu.Unlock()
 	t.Cleanup(func() {
 		serverLogsMu.Lock()
 		serverLogs = origLogs
@@ -35,6 +38,9 @@ func saveServerState(t *testing.T) (origLogs []string, origDir string) {
 		customLlamaCppMu.Lock()
 		customLlamaCppDir = origDir
 		customLlamaCppMu.Unlock()
+		modelsDirMu.Lock()
+		customModelsDir = origModelsDir
+		modelsDirMu.Unlock()
 	})
 	return
 }
@@ -105,6 +111,30 @@ func TestBuildServerCommandCustomDir(t *testing.T) {
 	want := filepath.Join(custom, binName)
 	if bin != want {
 		t.Errorf("bin = %q, want %q", bin, want)
+	}
+}
+
+// TestBuildServerCommandCustomModelsDir 验证设置自定义模型目录后，
+// buildServerCommand 的 args 中 --models-dir 使用自定义目录而非默认
+// LLM-Models。
+func TestBuildServerCommandCustomModelsDir(t *testing.T) {
+	saveServerState(t)
+	customModels := t.TempDir()
+	modelsDirMu.Lock()
+	customModelsDir = customModels
+	modelsDirMu.Unlock()
+
+	cfg := ServerConfig{Host: "127.0.0.1", Port: 8080, MaxModels: 1, CacheRAM: 0}
+	_, args := buildServerCommand(cfg, "/tmp/preset.ini")
+
+	found := false
+	for i, a := range args {
+		if a == "--models-dir" && i+1 < len(args) && args[i+1] == customModels {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("args 中 --models-dir 应为 %q, 实际 args = %v", customModels, args)
 	}
 }
 

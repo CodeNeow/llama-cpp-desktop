@@ -109,7 +109,7 @@ func buildServerCommand(cfg ServerConfig, presetPath string) (string, []string) 
 	args := []string{
 		"--host", cfg.Host,
 		"--port", strconv.Itoa(cfg.Port),
-		"--models-dir", modelsDir,
+		"--models-dir", effectiveModelsDir(),
 		"--models-preset", presetPath,
 		"--models-max", strconv.Itoa(max(cfg.MaxModels, 1)),
 		"--cont-batching",
@@ -183,7 +183,7 @@ func startHFDownload(modelID string, files []string) error {
 			ID:       id,
 			ModelID:  modelID,
 			FileName: cleanName,
-			DestDir:  filepath.Join(modelsDir, authorPart),
+			DestDir:  filepath.Join(effectiveModelsDir(), authorPart),
 			URL:      fmt.Sprintf("%s/%s/resolve/main/%s", hfMirrorBase, modelID, url.PathEscape(cleanName)),
 			Status:   "queued",
 			resumeCh: make(chan struct{}, 1),

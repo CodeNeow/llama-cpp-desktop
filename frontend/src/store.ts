@@ -4,6 +4,7 @@ import { getConfig, setTheme as setThemeBackend } from './wails'
 export const appConfig = reactive({
   theme: localStorage.getItem('llama-gui-theme') || 'light',
   llamaCppDir: '',
+  modelsDir: '',
   loaded: false,
 })
 
@@ -12,6 +13,7 @@ export async function loadConfig() {
     const config = await getConfig()
     appConfig.theme = config.theme || 'light'
     appConfig.llamaCppDir = config.llamaCppDir || ''
+    appConfig.modelsDir = config.modelsDir || ''
     localStorage.setItem('llama-gui-theme', appConfig.theme)
     document.documentElement.setAttribute('data-theme', appConfig.theme)
   } catch {} finally {

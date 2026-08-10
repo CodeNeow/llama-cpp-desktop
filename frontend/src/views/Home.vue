@@ -263,7 +263,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import {
   getCPU, getMemory, getGPU, getCUDA, getLlamaCpp, getOS,
   getLlamaCppDownloadStatus, startLlamaCppDownload, pauseLlamaCppDownload,
-  resumeLlamaCppDownload, stopLlamaCppDownload, browseLlamaCppDir
+  resumeLlamaCppDownload, stopLlamaCppDownload, browseLlamaCppDir, getConfig
 } from '../wails'
 
 interface SystemInfo {
@@ -413,6 +413,14 @@ async function browseCustomDir() {
   } catch {}
 }
 
+// onMounted 时从后端配置恢复自定义 llama.cpp 目录，避免切页回来显示为空（#恢复原样）
+async function restoreCustomPath() {
+  try {
+    const cfg = await getConfig()
+    if (cfg.llamaCppDir) customPath.value = cfg.llamaCppDir
+  } catch {}
+}
+
 // Check download status on mount (in case there's an ongoing download)
 function checkInitialDownloadStatus() {
   getLlamaCppDownloadStatus()
@@ -459,6 +467,7 @@ async function fetchSystemInfo() {
 }
 
 onMounted(() => {
+  restoreCustomPath()
   fetchSystemInfo().then(checkInitialDownloadStatus)
 })
 </script>

@@ -1,7 +1,9 @@
 package core
 
 import (
+	"encoding/json"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -26,7 +28,7 @@ func withTempCwd(t *testing.T) string {
 }
 
 // saveConfigState 记录配置相关全局状态，供测试结束后恢复，避免污染其他测试。
-func saveConfigState(t *testing.T) (origModels map[string]ModelConfig, origServer ServerConfig, origTheme string, origDir string) {
+func saveConfigState(t *testing.T) (origModels map[string]ModelConfig, origServer ServerConfig, origTheme string, origDir string, origModelsDir string) {
 	t.Helper()
 	modelConfigsMu.Lock()
 	origModels = make(map[string]ModelConfig, len(cachedModelConfigs))
@@ -43,6 +45,9 @@ func saveConfigState(t *testing.T) (origModels map[string]ModelConfig, origServe
 	customLlamaCppMu.Lock()
 	origDir = customLlamaCppDir
 	customLlamaCppMu.Unlock()
+	modelsDirMu.Lock()
+	origModelsDir = customModelsDir
+	modelsDirMu.Unlock()
 	t.Cleanup(func() {
 		modelConfigsMu.Lock()
 		cachedModelConfigs = origModels
@@ -56,14 +61,23 @@ func saveConfigState(t *testing.T) (origModels map[string]ModelConfig, origServe
 		customLlamaCppMu.Lock()
 		customLlamaCppDir = origDir
 		customLlamaCppMu.Unlock()
+		modelsDirMu.Lock()
+		customModelsDir = origModelsDir
+		modelsDirMu.Unlock()
 	})
 	return
 }
 
 // TestSaveLoadConfigRoundTrip 验证 saveConfig 写入、loadConfig 读回的一致性。
 func TestSaveLoadConfigRoundTrip(t *testing.T) {
-	withTempCwd(t)
+	tmp := withTempCwd(t)
 	saveConfigState(t)
+
+	// 自定义模型目录必须真实存在，loadConfig 才会接受（见 loadConfig 校验）。
+	modelsDirPath := filepath.Join(tmp, "custom-models")
+	if err := os.MkdirAll(modelsDirPath, 0755); err != nil {
+		t.Fatal(err)
+	}
 
 	// 写入
 	modelConfigsMu.Lock()
@@ -80,6 +94,9 @@ func TestSaveLoadConfigRoundTrip(t *testing.T) {
 	customLlamaCppMu.Lock()
 	customLlamaCppDir = "D:\\llama-cpp"
 	customLlamaCppMu.Unlock()
+	modelsDirMu.Lock()
+	customModelsDir = modelsDirPath
+	modelsDirMu.Unlock()
 	saveConfig()
 
 	if _, err := os.Stat(configFile); err != nil {
@@ -99,6 +116,9 @@ func TestSaveLoadConfigRoundTrip(t *testing.T) {
 	customLlamaCppMu.Lock()
 	customLlamaCppDir = ""
 	customLlamaCppMu.Unlock()
+	modelsDirMu.Lock()
+	customModelsDir = ""
+	modelsDirMu.Unlock()
 
 	loadConfig()
 
@@ -124,6 +144,11 @@ func TestSaveLoadConfigRoundTrip(t *testing.T) {
 		t.Errorf("自定义 llama.cpp 目录读回错误: %q", customLlamaCppDir)
 	}
 	customLlamaCppMu.Unlock()
+	modelsDirMu.Lock()
+	if customModelsDir != modelsDirPath {
+		t.Errorf("自定义模型目录读回错误: %q, want %q", customModelsDir, modelsDirPath)
+	}
+	modelsDirMu.Unlock()
 }
 
 // TestLoadConfigDefaults 验证缺失/部分配置时用默认值兜底，不因旧数据崩溃。
@@ -285,5 +310,123 @@ func TestSaveModelConfigRejectsInvalidWhitelist(t *testing.T) {
 	}
 	if err := app.SaveModelConfig("m2", ModelConfig{CacheTypeV: "q4_1"}); err == nil {
 		t.Error("CacheTypeV=q4_1 不在白名单应返回错误")
+	}
+}
+
+// TestEffectiveModelsDir 验证生效模型目录：默认返回 LLM-Models；配置了
+// 自定义目录后返回自定义目录。
+func TestEffectiveModelsDir(t *testing.T) {
+	saveConfigState(t)
+
+	modelsDirMu.Lock()
+	customModelsDir = ""
+	modelsDirMu.Unlock()
+	if got := effectiveModelsDir(); got != modelsDir {
+		t.Errorf("默认生效目录 = %q, want %q", got, modelsDir)
+	}
+
+	custom := t.TempDir()
+	modelsDirMu.Lock()
+	customModelsDir = custom
+	modelsDirMu.Unlock()
+	if got := effectiveModelsDir(); got != custom {
+		t.Errorf("设置自定义目录后生效目录 = %q, want %q", got, custom)
+	}
+}
+
+// TestLoadConfigIgnoresInvalidModelDir 验证配置文件中 modelDir 指向不存在的
+// 目录或普通文件时，loadConfig 忽略该值（打 WARN 并回退默认），customModelsDir
+// 保持为空。
+func TestLoadConfigIgnoresInvalidModelDir(t *testing.T) {
+	withTempCwd(t)
+	saveConfigState(t)
+	modelsDirMu.Lock()
+	customModelsDir = ""
+	modelsDirMu.Unlock()
+
+	// writeConfig 用 json.Marshal 编码路径，避免 Windows 反斜杠破坏 JSON 转义。
+	writeConfig := func(modelDir string) {
+		t.Helper()
+		cfg := appConfig{ModelDir: modelDir}
+		data, err := json.Marshal(cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(configFile, data, 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// modelDir 指向不存在的目录
+	writeConfig(filepath.Join(t.TempDir(), "does-not-exist"))
+	loadConfig()
+	modelsDirMu.Lock()
+	if customModelsDir != "" {
+		t.Errorf("不存在的 modelDir 应被忽略, 实际 customModelsDir = %q", customModelsDir)
+	}
+	modelsDirMu.Unlock()
+
+	// modelDir 指向普通文件（非目录）
+	filePath := filepath.Join(t.TempDir(), "plain-file")
+	if err := os.WriteFile(filePath, []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	writeConfig(filePath)
+	loadConfig()
+	modelsDirMu.Lock()
+	if customModelsDir != "" {
+		t.Errorf("普通文件的 modelDir 应被忽略, 实际 customModelsDir = %q", customModelsDir)
+	}
+	modelsDirMu.Unlock()
+}
+
+// TestSetModelsDir 验证 SetModelsDir：非法输入（空串/不存在路径/普通文件）
+// 返回错误且不改写 customModelsDir；合法目录写入成功并使模型缓存失效。
+func TestSetModelsDir(t *testing.T) {
+	withTempCwd(t)
+	saveConfigState(t)
+	saveModelsState(t)
+	app := &App{}
+
+	// 先置缓存有效，便于断言 SetModelsDir 使缓存失效
+	modelsMu.Lock()
+	modelsCacheValid.Store(true)
+	modelsMu.Unlock()
+
+	// 空串
+	if err := app.SetModelsDir(""); err == nil {
+		t.Error("空串应返回错误")
+	}
+	// 不存在的路径
+	if err := app.SetModelsDir(filepath.Join(t.TempDir(), "missing")); err == nil {
+		t.Error("不存在的路径应返回错误")
+	}
+	// 普通文件
+	filePath := filepath.Join(t.TempDir(), "a.txt")
+	if err := os.WriteFile(filePath, []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.SetModelsDir(filePath); err == nil {
+		t.Error("普通文件应返回错误")
+	}
+	// 非法输入不得改写状态
+	modelsDirMu.Lock()
+	if customModelsDir != "" {
+		t.Errorf("非法输入不应改写 customModelsDir, 实际 %q", customModelsDir)
+	}
+	modelsDirMu.Unlock()
+
+	// 合法目录
+	valid := t.TempDir()
+	if err := app.SetModelsDir(valid); err != nil {
+		t.Fatalf("合法目录应写入成功: %v", err)
+	}
+	modelsDirMu.Lock()
+	if customModelsDir != valid {
+		t.Errorf("customModelsDir = %q, want %q", customModelsDir, valid)
+	}
+	modelsDirMu.Unlock()
+	if modelsCacheValid.Load() {
+		t.Error("SetModelsDir 成功后模型缓存应失效")
 	}
 }
