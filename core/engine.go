@@ -1,4 +1,4 @@
-package main
+package core
 
 import (
 	"archive/tar"
@@ -516,9 +516,16 @@ func parseVMStat(out, key string) uint64 {
 		if len(fields) < 2 {
 			continue
 		}
-		// Remove trailing colon from key
-		if strings.TrimRight(fields[0], ":") == key {
-			val, err := strconv.ParseUint(fields[1], 10, 64)
+		// 匹配 "<key>:" 形式的字段（macOS 输出为 "Pages free:    123456."，
+		// 值在 key 字段之后且以句号结尾），避免解析失败导致可用内存恒为 0。
+		for i, f := range fields {
+			if strings.TrimRight(f, ":") != key {
+				continue
+			}
+			if i+1 >= len(fields) {
+				break
+			}
+			val, err := strconv.ParseUint(strings.TrimSuffix(fields[i+1], "."), 10, 64)
 			if err == nil {
 				return val
 			}
@@ -531,18 +538,25 @@ func parseVMStat(out, key string) uint64 {
 
 const modelsDir = "LLM-Models"
 
+// scanModels scans the default LLM-Models directory, creating it if needed.
 func scanModels() []ModelInfo {
-	models := make([]ModelInfo, 0)
-
 	if err := os.MkdirAll(modelsDir, 0755); err != nil {
 		log.Printf("[WARN] Failed to create %s dir: %v", modelsDir, err)
-		return models
+		return make([]ModelInfo, 0)
 	}
+	return scanModelsDir(modelsDir)
+}
+
+// scanModelsDir scans an <author>/<variant>/ directory tree for GGUF models.
+// A variant directory counts as a model when it contains at least one
+// non-mmproj .gguf file; mmproj files only flag multimodal support.
+func scanModelsDir(dir string) []ModelInfo {
+	models := make([]ModelInfo, 0)
 
 	// Top-level: author directories
-	authors, err := os.ReadDir(modelsDir)
+	authors, err := os.ReadDir(dir)
 	if err != nil {
-		log.Printf("[WARN] Failed to read %s dir: %v", modelsDir, err)
+		log.Printf("[WARN] Failed to read %s dir: %v", dir, err)
 		return models
 	}
 
@@ -551,7 +565,7 @@ func scanModels() []ModelInfo {
 			continue
 		}
 		author := authorEntry.Name()
-		authorDir := filepath.Join(modelsDir, author)
+		authorDir := filepath.Join(dir, author)
 
 		// Second-level: model variant directories
 		variants, err := os.ReadDir(authorDir)
@@ -913,7 +927,9 @@ func formatBytes(bytes int64) string {
 
 const githubReleasesAPI = "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest"
 const downloadDir = "llama-cpp"
-const configFile = "llama-gui-config.json"
+
+// configFile 是配置持久化路径，声明为 var 以便测试通过 chdir 覆盖。
+var configFile = "llama-gui-config.json"
 
 func downloadLlamaCpp() {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1173,8 +1189,16 @@ func waitForResume(ctx context.Context, resumeCh chan struct{}) {
 	}
 }
 
+// fetchLatestRelease fetches the latest llama.cpp release from the default API URL.
 func fetchLatestRelease() (*GitHubRelease, error) {
-	req, err := http.NewRequest("GET", githubReleasesAPI, nil)
+	return fetchLatestReleaseAt(githubReleasesAPI)
+}
+
+// fetchLatestReleaseAt fetches and decodes a GitHub-style latest release JSON
+// document from the given URL. The URL is injectable so tests can use a local
+// httptest server instead of hitting the network.
+func fetchLatestReleaseAt(apiURL string) (*GitHubRelease, error) {
+	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1199,13 +1223,24 @@ func fetchLatestRelease() (*GitHubRelease, error) {
 	return &release, nil
 }
 
+// pickBestAsset picks the most suitable release asset for the current platform.
 func pickBestAsset(assets []GitHubAsset) *GitHubAsset {
+	cudaVer := ""
+	if cudaInfo := getCUDAInfo(); cudaInfo.ToolkitVersion != "" {
+		if parts := strings.Split(cudaInfo.ToolkitVersion, "."); len(parts) >= 2 {
+			cudaVer = parts[0] + "." + parts[1]
+		}
+	}
+	return pickBestAssetFor(assets, runtime.GOOS, runtime.GOARCH, len(getGPUInfo()) > 0, cudaVer)
+}
+
+// pickBestAssetFor scores release assets for a given platform/arch and returns
+// the best match. hasCUDA and cudaVer allow preferring matching CUDA builds on
+// Windows. Returns nil when no asset matches the platform.
+func pickBestAssetFor(assets []GitHubAsset, platform, arch string, hasCUDA bool, cudaVer string) *GitHubAsset {
 	if len(assets) == 0 {
 		return nil
 	}
-
-	platform := runtime.GOOS
-	arch := runtime.GOARCH
 
 	// Map GOOS/GOARCH to release naming conventions
 	platformKey := ""
@@ -1224,9 +1259,6 @@ func pickBestAsset(assets []GitHubAsset) *GitHubAsset {
 	case "arm64":
 		archKey = "arm64"
 	}
-
-	// On Windows with CUDA, prefer CUDA builds
-	hasCUDA := len(getGPUInfo()) > 0
 
 	// Score each asset — higher is better
 	type scored struct {
@@ -1261,16 +1293,8 @@ func pickBestAsset(assets []GitHubAsset) *GitHubAsset {
 			score += 100
 
 			// Match CUDA version — prefer closest to installed toolkit
-			cudaInfo := getCUDAInfo()
-			if cudaInfo.ToolkitVersion != "" {
-				// Extract major.minor from toolkit version like "12.8"
-				parts := strings.Split(cudaInfo.ToolkitVersion, ".")
-				if len(parts) >= 2 {
-					cudaVer := parts[0] + "." + parts[1]
-					if strings.Contains(name, "cuda-"+cudaVer) {
-						score += 50 // Exact version match
-					}
-				}
+			if cudaVer != "" && strings.Contains(name, "cuda-"+cudaVer) {
+				score += 50 // Exact version match
 			}
 		}
 
@@ -1445,18 +1469,28 @@ func addServerLog(msg string) {
 	log.Println("[llama-server]", msg)
 }
 
+// generateModelsPreset scans the default model directory and writes a llama-server
+// INI preset to a temp file, returning its path.
 func generateModelsPreset() (string, error) {
-	// Scan LLM-Models and create an INI preset file
 	models := scanModels()
+	if len(models) == 0 {
+		return "", fmt.Errorf("LLM-Models 目录中没有模型")
+	}
+	modelConfigsMu.Lock()
+	cfgs := cachedModelConfigs
+	modelConfigsMu.Unlock()
+	return generateModelsPresetFrom(models, cfgs)
+}
+
+// generateModelsPresetFrom writes a llama-server INI preset for the given models
+// and per-model configs to a temp file and returns its path. Models without a
+// matching config entry only emit the model path (plus auto-detected options).
+func generateModelsPresetFrom(models []ModelInfo, cfgs map[string]ModelConfig) (string, error) {
 	if len(models) == 0 {
 		return "", fmt.Errorf("LLM-Models 目录中没有模型")
 	}
 
 	var buf bytes.Buffer
-	modelConfigsMu.Lock()
-	cfgs := cachedModelConfigs
-	modelConfigsMu.Unlock()
-
 	for _, m := range models {
 		alias := sanitizeAlias(m.Name)
 		buf.WriteString(fmt.Sprintf("[%s]\n", alias))
@@ -1664,8 +1698,15 @@ func saveConfig() {
 
 const hfMirrorBase = "https://hf-mirror.com"
 
+// searchHFMirror queries the default HF Mirror endpoint.
 func searchHFMirror(q string, filter string) ([]HFSearchResult, error) {
-	apiURL := fmt.Sprintf("%s/api/models?search=%s&sort=downloads&limit=20&full=true", hfMirrorBase, q)
+	return searchHFMirrorAt(hfMirrorBase, q, filter)
+}
+
+// searchHFMirrorAt queries an HF-compatible API base for models matching q,
+// filtering to models containing GGUF files and applying the type filter.
+func searchHFMirrorAt(baseURL, q, filter string) ([]HFSearchResult, error) {
+	apiURL := fmt.Sprintf("%s/api/models?search=%s&sort=downloads&limit=20&full=true", baseURL, q)
 
 	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
@@ -1754,8 +1795,14 @@ func searchHFMirror(q string, filter string) ([]HFSearchResult, error) {
 	return results, nil
 }
 
+// getHFModelFiles lists downloadable GGUF files for a model via the default mirror.
 func getHFModelFiles(modelID string) ([]HFFileOut, error) {
-	apiURL := fmt.Sprintf("%s/api/models/%s", hfMirrorBase, modelID)
+	return getHFModelFilesAt(hfMirrorBase, modelID)
+}
+
+// getHFModelFilesAt lists the GGUF siblings of a model on an HF-compatible API base.
+func getHFModelFilesAt(baseURL, modelID string) ([]HFFileOut, error) {
+	apiURL := fmt.Sprintf("%s/api/models/%s", baseURL, modelID)
 
 	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
@@ -1833,17 +1880,13 @@ func downloadTask(task *DlTask) {
 		default:
 		}
 
-		req, err := http.NewRequest("GET", task.URL, nil)
+		req, err := buildDownloadRequest(task.URL, offset)
 		if err != nil {
 			dlTasksMu.Lock()
 			task.Status = "error"
 			task.Error = err.Error()
 			dlTasksMu.Unlock()
 			return
-		}
-		req.Header.Set("User-Agent", "llama-gui")
-		if offset > 0 {
-			req.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
 		}
 
 		resp, err := client.Do(req)
@@ -1971,6 +2014,20 @@ func downloadTask(task *DlTask) {
 			}
 		}
 	}
+}
+
+// buildDownloadRequest creates a GET request for a download URL with the
+// llama-gui User-Agent, adding a Range header when resuming from an offset.
+func buildDownloadRequest(downloadURL string, offset int64) (*http.Request, error) {
+	req, err := http.NewRequest("GET", downloadURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "llama-gui")
+	if offset > 0 {
+		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
+	}
+	return req, nil
 }
 
 func waitForTaskResume(task *DlTask, resumeCh chan struct{}) {

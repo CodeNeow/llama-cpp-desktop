@@ -1,6 +1,7 @@
 /**
  * Wails v2 bridge — replaces all fetch('http://localhost:18080/api/...') calls
- * with direct Go method bindings via window.go.main.App.*.
+ * with direct Go method bindings via window.go.core.App.*.
+ * The `core` namespace comes from the Go package core/ that hosts the App struct.
  */
 
 // Wails injects window.go when running in the Wails runtime.
@@ -8,7 +9,7 @@
 
 function app(): any {
   const w = window as any
-  if (w.go?.main?.App) return w.go.main.App
+  if (w.go?.core?.App) return w.go.core.App
   throw new Error('Wails backend not available. Run with `wails dev` instead of `vite`.')
 }
 

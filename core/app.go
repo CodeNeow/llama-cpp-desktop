@@ -1,4 +1,4 @@
-package main
+package core
 
 import (
 	"context"
@@ -18,7 +18,9 @@ func NewApp() *App {
 	return &App{}
 }
 
-func (a *App) startup(ctx context.Context) {
+// Startup is called by Wails after the runtime is ready; it loads persisted
+// config and applies the saved theme to the window background.
+func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
 
 	// Load persisted config on startup
@@ -37,7 +39,9 @@ func (a *App) startup(ctx context.Context) {
 	log.Println("[INFO] Llama GUI started")
 }
 
-func (a *App) shutdown(ctx context.Context) {
+// Shutdown is called by Wails on application exit; it stops llama-server and
+// cancels all in-flight downloads.
+func (a *App) Shutdown(ctx context.Context) {
 	// Stop running llama-server if any
 	serverLogsMu.Lock()
 	running := serverRunning

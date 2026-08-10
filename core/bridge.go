@@ -1,4 +1,4 @@
-package main
+package core
 
 import (
 	"context"
@@ -36,34 +36,7 @@ func startServerInternal() error {
 	}
 
 	// Build command
-	llamaServer := "llama-server"
-	if _, err := exec.LookPath(llamaServer); err != nil {
-		customLlamaCppMu.Lock()
-		customDir := customLlamaCppDir
-		customLlamaCppMu.Unlock()
-		if customDir != "" {
-			candidate := filepath.Join(customDir, "llama-server")
-			if runtime.GOOS == "windows" {
-				candidate += ".exe"
-			}
-			if _, err := os.Stat(candidate); err == nil {
-				llamaServer = candidate
-			}
-		}
-	}
-
-	args := []string{
-		"--host", cfg.Host,
-		"--port", strconv.Itoa(cfg.Port),
-		"--models-dir", modelsDir,
-		"--models-preset", presetPath,
-		"--models-max", strconv.Itoa(max(cfg.MaxModels, 1)),
-		"--cont-batching",
-		"--no-webui",
-	}
-	if cfg.CacheRAM > 0 {
-		args = append(args, "--cache-ram", strconv.Itoa(cfg.CacheRAM))
-	}
+	llamaServer, args := buildServerCommand(cfg, presetPath)
 
 	serverLogsMu.Lock()
 	serverCmd = exec.Command(llamaServer, args...)
@@ -97,6 +70,41 @@ func startServerInternal() error {
 	}()
 
 	return nil
+}
+
+// buildServerCommand resolves the llama-server binary (custom dir when the
+// binary is not on PATH) and builds its argument list from the server config.
+// The preset path points at the generated models INI file.
+func buildServerCommand(cfg ServerConfig, presetPath string) (string, []string) {
+	llamaServer := "llama-server"
+	if _, err := exec.LookPath(llamaServer); err != nil {
+		customLlamaCppMu.Lock()
+		customDir := customLlamaCppDir
+		customLlamaCppMu.Unlock()
+		if customDir != "" {
+			candidate := filepath.Join(customDir, "llama-server")
+			if runtime.GOOS == "windows" {
+				candidate += ".exe"
+			}
+			if _, err := os.Stat(candidate); err == nil {
+				llamaServer = candidate
+			}
+		}
+	}
+
+	args := []string{
+		"--host", cfg.Host,
+		"--port", strconv.Itoa(cfg.Port),
+		"--models-dir", modelsDir,
+		"--models-preset", presetPath,
+		"--models-max", strconv.Itoa(max(cfg.MaxModels, 1)),
+		"--cont-batching",
+		"--no-webui",
+	}
+	if cfg.CacheRAM > 0 {
+		args = append(args, "--cache-ram", strconv.Itoa(cfg.CacheRAM))
+	}
+	return llamaServer, args
 }
 
 func stopServerInternal() error {

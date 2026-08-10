@@ -73,7 +73,7 @@ Llama GUI 是一个基于 **Wails v2**（Go + WebView）构建的本地大模型
 
 ```mermaid
 graph LR
-    A[Vue 3 前端] -->|window.go.main.App<br/>Wails 绑定| B[Go 后端]
+    A[Vue 3 前端] -->|window.go.core.App<br/>Wails 绑定| B[Go 后端]
     B -->|启动 / 停止 / 日志| C[llama-server]
     C -->|按需加载 / 卸载| D[LLM-Models/*.gguf]
     B -->|GitHub Releases| E[llama.cpp 下载]
@@ -138,17 +138,19 @@ wails build
 
 ```
 llama-cpp-gui/
-├── main.go            # Wails 应用入口（窗口配置、资源嵌入）
-├── app.go             # Wails 绑定方法（配置、系统信息、模型、服务、下载）
-├── engine.go          # 核心逻辑：环境检测、模型扫描、llama.cpp 下载、HF Mirror 搜索、配置持久化
-├── bridge.go          # 服务启停、下载触发等桥接辅助
+├── main.go            # Wails 应用入口（窗口配置、资源嵌入、绑定 core.App）
+├── core/              # Go 后端逻辑包
+│   ├── app.go         # Wails 绑定方法（配置、系统信息、模型、服务、下载）
+│   ├── engine.go      # 核心逻辑：环境检测、模型扫描、llama.cpp 下载、HF Mirror 搜索、配置持久化
+│   ├── bridge.go      # 服务启停、下载触发等桥接辅助
+│   └── *_test.go      # 后端单测（config / GGUF / 模型扫描 / 预设生成 / 下载 / HF 等）
 ├── wails.json         # Wails 项目配置
 ├── llama-gui-config.json   # 运行时持久化配置（主题 / 模型参数 / 服务配置）
 ├── LLM-Models/        # 模型目录（放入 .gguf 文件）
 └── frontend/
     ├── src/
     │   ├── App.vue            # 布局（侧边栏 + 自定义标题栏）
-    │   ├── wails.ts           # Wails 后端桥接层（window.go.main.App）
+    │   ├── wails.ts           # Wails 后端桥接层（window.go.core.App）
     │   ├── store.ts           # 全局状态（主题）
     │   ├── router/            # 路由（hash 模式）
     │   ├── views/             # 页面：Home / Models / Api / Downloads / Settings
