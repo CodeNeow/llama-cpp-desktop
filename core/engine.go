@@ -472,24 +472,62 @@ func resolveLlamaServerBin() string {
 	return ""
 }
 
-// fillLlamaCppVersion 尝试运行二进制读取版本号填充 info.Version。运行失败
-// （如 Windows 上 stub 非可执行文件）只影响 Version 为空，不影响 Installed。
-func fillLlamaCppVersion(info *LlamaCppInfo, path string) {
-	versionOut := runCmd(path, "--version")
-	if versionOut != "" {
-		info.Version = strings.TrimSpace(versionOut)
-		for _, line := range strings.Split(versionOut, "\n") {
-			trimmed := strings.TrimSpace(line)
-			if strings.HasPrefix(trimmed, "version") || strings.Contains(trimmed, "build") {
-				info.Version = trimmed
-				break
-			}
-		}
-		return
+// llamaVersionProbeTimeout 为 llama.cpp 版本探测的超时上限。正常二进制
+// --version 毫秒级返回；超时说明二进制异常（如把 -v 误当版本标志而启动
+// 完整 HTTP 服务器并无限运行），此时 kill 子进程并返回空，保证
+// getLlamaCppInfo 快速返回、检测链不被任何异常二进制冻结。设计为包级 var
+// 而非 const，便于测试临时缩短超时验证 kill 行为（与 probeLlamaVersion 同
+// 风格的注入点，测试用后立即恢复）。
+var llamaVersionProbeTimeout = 5 * time.Second
+
+// probeLlamaVersion 为 llama.cpp 版本探测命令执行注入点（与
+// githubReleasesAPI / renameFile / updateRepoAPI 同风格的包级 var）：
+// 默认实现带超时运行 `path --version` 并合并 stdout+stderr。测试可替换该
+// 变量注入假探测命令，避免真实启动二进制；同时由于探针参数（--version）
+// 封装在默认实现内部，替换后可直接断言只调用了 --version、从不回退 -v。
+var probeLlamaVersion = func(path string) string {
+	ctx, cancel := context.WithTimeout(context.Background(), llamaVersionProbeTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, path, "--version")
+	hideWindow(cmd)
+	var out, errOut bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errOut
+	// runCmd 只捕获 stdout，而 llama-server 的 --version 输出全部走 stderr
+	// （实证 stdout 为空），这里合并两者才能拿到版本号
+	if err := cmd.Run(); err != nil && errOut.Len() > 0 {
+		log.Printf("[CMD] %s --version stderr: %s", path, strings.TrimSpace(errOut.String()))
 	}
-	versionOut = runCmd(path, "-v")
+	return strings.TrimSpace(out.String() + errOut.String())
+}
+
+// parseLlamaVersion 从版本探测输出中提取版本号：优先取以 "version" 开头或
+// 含 "build" 的行（llama.cpp --version 的典型输出，如 "version: 1234"），
+// 否则返回整体 trim 后的输出。纯字符串逻辑，供单元测试直接断言。
+func parseLlamaVersion(versionOut string) string {
+	versionOut = strings.TrimSpace(versionOut)
+	if versionOut == "" {
+		return ""
+	}
+	for _, line := range strings.Split(versionOut, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "version") || strings.Contains(trimmed, "build") {
+			return trimmed
+		}
+	}
+	return versionOut
+}
+
+// fillLlamaCppVersion 尝试运行二进制读取版本号填充 info.Version。探测只调用
+// `--version`（合并 stdout+stderr），不再回退 `-v`：llama-server 10342 的 -v
+// 不是版本标志而是启动完整 HTTP 服务器，曾导致版本探测无限阻塞、主页永久
+// 显示"未找到"。带超时保护，任何异常二进制都不会冻结检测链。运行失败（如
+// Windows 上 stub 非可执行文件）只影响 Version 为空，不影响 Installed。
+func fillLlamaCppVersion(info *LlamaCppInfo, path string) {
+	versionOut := probeLlamaVersion(path)
 	if versionOut != "" {
-		info.Version = strings.TrimSpace(versionOut)
+		info.Version = parseLlamaVersion(versionOut)
 	}
 }
 
