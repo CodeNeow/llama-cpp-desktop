@@ -80,7 +80,7 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   padding: 0 12px;
-  -webkit-app-region: drag;
+  --wails-draggable: drag;
   user-select: none;
   flex-shrink: 0;
 }
@@ -88,7 +88,7 @@ onMounted(() => {
 .window-controls {
   display: flex;
   gap: 8px;
-  -webkit-app-region: no-drag;
+  --wails-draggable: no-drag;
 }
 
 .win-btn {

@@ -87,14 +87,14 @@ function isActive(path: string): boolean {
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  -webkit-app-region: drag;
+  --wails-draggable: drag;
   user-select: none;
   backdrop-filter: blur(20px);
 }
 
 .sidebar-header {
   padding: 28px 20px 20px;
-  -webkit-app-region: drag;
+  --wails-draggable: drag;
 }
 
 .logo {
@@ -126,7 +126,7 @@ function isActive(path: string): boolean {
   flex-direction: column;
   gap: 4px;
   padding: 8px 12px;
-  -webkit-app-region: no-drag;
+  --wails-draggable: no-drag;
 }
 
 .nav-item {
@@ -191,7 +191,7 @@ function isActive(path: string): boolean {
   align-items: center;
   gap: 10px;
   border-top: 1px solid var(--border);
-  -webkit-app-region: no-drag;
+  --wails-draggable: no-drag;
 }
 
 .status-dot {
