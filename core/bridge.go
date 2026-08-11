@@ -148,7 +148,8 @@ func startHFDownload(modelID string, files []string) error {
 	// 校验 modelID 的 author 部分（DestDir 会以它做 filepath.Join），
 	// 防止 "../evil"、"."、".." 或含路径分隔符的 modelID 把下载目标
 	// 写到 LLM-Models 目录之外（路径遍历 #1）。
-	authorPart := strings.SplitN(modelID, "/", 2)[0]
+	parts := strings.SplitN(modelID, "/", 2)
+	authorPart := parts[0]
 	if authorPart == "" || authorPart == "." || authorPart == ".." ||
 		strings.ContainsAny(authorPart, `\/`) {
 		return fmt.Errorf("invalid modelID: %q", modelID)
@@ -163,6 +164,19 @@ func startHFDownload(modelID string, files []string) error {
 		}
 	}
 
+	// 校验 modelID 的 repo 部分（DestDir 会以它做 filepath.Join），与
+	// authorPart 同策略（#1 路径遍历防御）：无 repo 部分、repoPart 为空、
+	// "."、".." 或含 \ / 任一者拒绝。注意 SplitN("a/b/c","/",2) 的
+	// repoPart 为 "b/c"，含 "/" 必须被拒，避免落到目标目录之外。
+	if len(parts) < 2 {
+		return fmt.Errorf("invalid modelID: %q", modelID)
+	}
+	repoPart := parts[1]
+	if repoPart == "" || repoPart == "." || repoPart == ".." ||
+		strings.ContainsAny(repoPart, `\/`) {
+		return fmt.Errorf("invalid modelID: %q", modelID)
+	}
+
 	dlTasksMu.Lock()
 	defer dlTasksMu.Unlock()
 
@@ -175,7 +189,7 @@ func startHFDownload(modelID string, files []string) error {
 			ID:       id,
 			ModelID:  modelID,
 			FileName: cleanName,
-			DestDir:  filepath.Join(effectiveModelsDir(), authorPart),
+			DestDir:  filepath.Join(effectiveModelsDir(), authorPart, repoPart),
 			URL:      fmt.Sprintf("%s/%s/resolve/main/%s", hfMirrorBase, modelID, url.PathEscape(cleanName)),
 			Status:   "queued",
 			resumeCh: make(chan struct{}, 1),

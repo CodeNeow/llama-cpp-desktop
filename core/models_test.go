@@ -174,3 +174,111 @@ func TestScanModelsDirQuantFallback(t *testing.T) {
 		t.Errorf("Quantization = %q, want Q8_0（文件名回退）", models[0].Quantization)
 	}
 }
+
+// makeLooseGGUF 在 base/author 下直接写入一个散 .gguf 文件（两级结构，
+// 对应旧版下载器落地路径 <author>/<file>.gguf）。
+func makeLooseGGUF(t *testing.T, base, author, ggufName string, size int) {
+	t.Helper()
+	dir := filepath.Join(base, author)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ggufName), make([]byte, size), 0644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestScanModelsDirTwoLevel 验证 <author>/<file>.gguf 两级结构被识别为模型：
+// 无 GGUF 元数据时名称回退为文件名去掉 .gguf 扩展名，路径指向散文件本身。
+func TestScanModelsDirTwoLevel(t *testing.T) {
+	base := t.TempDir()
+	makeLooseGGUF(t, base, "unsloth", "Qwen3.5-4B-UD-IQ2_XXS.gguf", 100)
+
+	models := scanModelsDir(base)
+	if len(models) != 1 {
+		t.Fatalf("扫描到 %d 个模型, want 1", len(models))
+	}
+	if models[0].Name != "Qwen3.5-4B-UD-IQ2_XXS" {
+		t.Errorf("Name = %q, want Qwen3.5-4B-UD-IQ2_XXS（文件名去 .gguf）", models[0].Name)
+	}
+	if models[0].Author != "unsloth" {
+		t.Errorf("Author = %q, want unsloth", models[0].Author)
+	}
+	if models[0].Path != filepath.Join(base, "unsloth", "Qwen3.5-4B-UD-IQ2_XXS.gguf") {
+		t.Errorf("Path = %q, want 两级完整路径", models[0].Path)
+	}
+	if models[0].SizeHuman == "" {
+		t.Error("SizeHuman 不应为空")
+	}
+}
+
+// TestScanModelsDirTwoLevelGGUFMeta 验证两级结构下读取 GGUF 头部元数据
+// 覆盖名称/架构/量化（与三级 TestScanModelsDirGGUFMeta 共用 buildModelInfo，
+// 行为一致）。
+func TestScanModelsDirTwoLevelGGUFMeta(t *testing.T) {
+	base := t.TempDir()
+	authorDir := filepath.Join(base, "qwen")
+	if err := os.MkdirAll(authorDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	writeTempGGUF(t, authorDir, "model.gguf", buildGGUF(3,
+		strKV("general.name", "Qwen2.5-7B-Instruct"),
+		strKV("general.architecture", "Qwen"),
+		u32KV("general.file_type", 15),
+	))
+
+	models := scanModelsDir(base)
+	if len(models) != 1 {
+		t.Fatalf("扫描到 %d 个模型, want 1", len(models))
+	}
+	if models[0].Name != "Qwen2.5-7B-Instruct" {
+		t.Errorf("Name = %q, want Qwen2.5-7B-Instruct（应取 GGUF 元数据）", models[0].Name)
+	}
+	if models[0].Architecture != "Qwen" {
+		t.Errorf("Architecture = %q, want Qwen", models[0].Architecture)
+	}
+	if models[0].Quantization != "Q4_K_M" {
+		t.Errorf("Quantization = %q, want Q4_K_M", models[0].Quantization)
+	}
+}
+
+// TestScanModelsDirTwoLevelMMProj 验证两级结构下 author 目录中的
+// mmproj-*.gguf 散文件不算主模型（与三级 variant 目录内 mmproj 不充当
+// 主模型一致；两级下 mmproj 散文件无法关联到模型，直接跳过）。
+func TestScanModelsDirTwoLevelMMProj(t *testing.T) {
+	base := t.TempDir()
+	authorDir := filepath.Join(base, "llava")
+	if err := os.MkdirAll(authorDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(authorDir, "mmproj-f16.gguf"), []byte("proj"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	models := scanModelsDir(base)
+	if len(models) != 0 {
+		t.Errorf("仅 mmproj 散文件应扫到 0 个模型, 实际 %d", len(models))
+	}
+}
+
+// TestScanModelsDirMixedLayout 验证两级散 .gguf 与三级 variant 子目录在同一
+// author 目录下共存时都被识别，合并后统一按 SizeBytes 降序排序。
+func TestScanModelsDirMixedLayout(t *testing.T) {
+	base := t.TempDir()
+	// 两级散文件（大）
+	makeLooseGGUF(t, base, "author1", "loose-big.gguf", 2048)
+	// 三级 variant 目录（小）
+	makeVariant(t, base, "author1", "variant-small", "small.gguf", 512)
+
+	models := scanModelsDir(base)
+	if len(models) != 2 {
+		t.Fatalf("扫描到 %d 个模型, want 2", len(models))
+	}
+	// 按大小降序：2048 > 512，两级与三级产物统一排序
+	if models[0].Name != "loose-big" {
+		t.Errorf("models[0].Name = %q, want loose-big（两级散文件按大小应排首位）", models[0].Name)
+	}
+	if models[1].Name != "variant-small" {
+		t.Errorf("models[1].Name = %q, want variant-small", models[1].Name)
+	}
+}

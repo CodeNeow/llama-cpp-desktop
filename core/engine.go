@@ -700,9 +700,12 @@ func scanModels() []ModelInfo {
 	return scanModelsDir(dir)
 }
 
-// scanModelsDir scans an <author>/<variant>/ directory tree for GGUF models.
-// A variant directory counts as a model when it contains at least one
-// non-mmproj .gguf file; mmproj files only flag multimodal support.
+// scanModelsDir scans the model directory tree for GGUF models. Both the
+// <author>/<variant>/<files>.gguf layout (three-level, current HF download
+// destination) and the <author>/<file>.gguf layout (two-level, produced by
+// earlier HF download versions) are recognized. A variant directory counts
+// as a model when it contains at least one non-mmproj .gguf file; mmproj
+// files only flag multimodal support.
 func scanModelsDir(dir string) []ModelInfo {
 	models := make([]ModelInfo, 0)
 
@@ -720,93 +723,72 @@ func scanModelsDir(dir string) []ModelInfo {
 		author := authorEntry.Name()
 		authorDir := filepath.Join(dir, author)
 
-		// Second-level: model variant directories
-		variants, err := os.ReadDir(authorDir)
+		// Second-level: variant directories and/or loose .gguf files
+		entries, err := os.ReadDir(authorDir)
 		if err != nil {
 			continue
 		}
 
-		for _, variantEntry := range variants {
-			if !variantEntry.IsDir() {
-				continue
-			}
-			variantName := variantEntry.Name()
-			variantDir := filepath.Join(authorDir, variantName)
+		for _, entry := range entries {
+			if entry.IsDir() {
+				// Three-level layout: <author>/<variant>/<files>.gguf
+				variantName := entry.Name()
+				variantDir := filepath.Join(authorDir, variantName)
 
-			// Find .gguf files in this variant directory
-			files, err := os.ReadDir(variantDir)
-			if err != nil {
-				continue
-			}
-
-			var mainGGUF string
-			var mainSize int64
-			var hasMMProj bool
-
-			for _, f := range files {
-				if f.IsDir() {
+				// Find .gguf files in this variant directory
+				files, err := os.ReadDir(variantDir)
+				if err != nil {
 					continue
 				}
-				name := f.Name()
-				if !strings.HasSuffix(strings.ToLower(name), ".gguf") {
-					continue
-				}
-				lower := strings.ToLower(name)
-				if strings.HasPrefix(lower, "mmproj") {
-					hasMMProj = true
-					continue
-				}
-				// Found main model file (non-mmproj .gguf)
-				if mainGGUF == "" {
-					mainGGUF = filepath.Join(variantDir, name)
-					if fi, err := f.Info(); err == nil {
-						mainSize = fi.Size()
+
+				var mainGGUF string
+				var hasMMProj bool
+
+				for _, f := range files {
+					if f.IsDir() {
+						continue
+					}
+					name := f.Name()
+					if !strings.HasSuffix(strings.ToLower(name), ".gguf") {
+						continue
+					}
+					lower := strings.ToLower(name)
+					if strings.HasPrefix(lower, "mmproj") {
+						hasMMProj = true
+						continue
+					}
+					// Found main model file (non-mmproj .gguf)
+					if mainGGUF == "" {
+						mainGGUF = filepath.Join(variantDir, name)
 					}
 				}
-			}
 
-			if mainGGUF == "" {
+				if mainGGUF == "" {
+					continue
+				}
+
+				model := buildModelInfo(mainGGUF, author, variantName)
+				model.HasMMProj = hasMMProj
+				models = append(models, model)
 				continue
 			}
 
-			model := ModelInfo{
-				Author:    author,
-				Path:      mainGGUF,
-				SizeBytes: mainSize,
-				SizeHuman: formatBytes(mainSize),
-				HasMMProj: hasMMProj,
+			// Two-level layout: loose .gguf files directly under the author
+			// directory. Non-.gguf files are skipped; loose mmproj-*.gguf
+			// files cannot be tied to a model here and are skipped too,
+			// matching the three-level rule that mmproj never counts as a
+			// main model.
+			name := entry.Name()
+			lower := strings.ToLower(name)
+			if !strings.HasSuffix(lower, ".gguf") {
+				continue
+			}
+			if strings.HasPrefix(lower, "mmproj") {
+				continue
 			}
 
-			// Derive model name from directory name
-			model.Name = variantName
-
-			// Try to read GGUF metadata for better name/arch/quant
-			if metadata := readGGUFMeta(mainGGUF); metadata != nil {
-				// Only use GGUF name if it looks readable (not a hash)
-				if n := metadata["name"]; n != "" && isReadableName(n) {
-					model.Name = n
-				}
-				if a := metadata["arch"]; a != "" {
-					model.Architecture = a
-				}
-				if q := metadata["quant"]; q != "" {
-					model.Quantization = q
-				}
-			}
-
-			// Fallback quantization from filename or directory name
-			if model.Quantization == "" {
-				model.Quantization = guessQuantFromName(variantName)
-				if model.Quantization == "-" {
-					model.Quantization = guessQuantFromName(filepath.Base(mainGGUF))
-				}
-			}
-
-			// Fallback architecture from directory/author name
-			if model.Architecture == "" {
-				model.Architecture = guessArchFromName(variantName + " " + author)
-			}
-
+			model := buildModelInfo(filepath.Join(authorDir, name), author,
+				strings.TrimSuffix(name, filepath.Ext(name)))
 			models = append(models, model)
 		}
 	}
@@ -816,6 +798,42 @@ func scanModelsDir(dir string) []ModelInfo {
 	})
 
 	return models
+}
+
+// buildModelInfo 从一个 GGUF 主文件路径构建 ModelInfo：读取 GGUF 元数据覆盖
+// 名称/架构/量化，缺失时用 fallbackName/author 兜底。两级与三级扫描共用，
+// 避免 variant 目录与 author 散文件两处重复同样的元数据读取与回退逻辑。
+func buildModelInfo(path, author, fallbackName string) ModelInfo {
+	model := ModelInfo{Author: author, Path: path, Name: fallbackName}
+	if fi, err := os.Stat(path); err == nil {
+		model.SizeBytes = fi.Size()
+		model.SizeHuman = formatBytes(model.SizeBytes)
+	}
+	// Try to read GGUF metadata for better name/arch/quant
+	if metadata := readGGUFMeta(path); metadata != nil {
+		// Only use GGUF name if it looks readable (not a hash)
+		if n := metadata["name"]; n != "" && isReadableName(n) {
+			model.Name = n
+		}
+		if a := metadata["arch"]; a != "" {
+			model.Architecture = a
+		}
+		if q := metadata["quant"]; q != "" {
+			model.Quantization = q
+		}
+	}
+	// Fallback quantization from fallbackName, then from file name
+	if model.Quantization == "" {
+		model.Quantization = guessQuantFromName(fallbackName)
+		if model.Quantization == "-" {
+			model.Quantization = guessQuantFromName(filepath.Base(path))
+		}
+	}
+	// Fallback architecture from fallbackName/author
+	if model.Architecture == "" {
+		model.Architecture = guessArchFromName(fallbackName + " " + author)
+	}
+	return model
 }
 
 // isReadableName returns true if the name doesn't look like a hash/UUID.

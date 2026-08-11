@@ -8,7 +8,8 @@ import (
 )
 
 // TestStartHFDownloadQueue 验证批量文件入队：任务 ID 递增、URL 使用
-// HF Mirror 域名、初始状态为 queued、目标目录为生效模型目录/<作者>。
+// HF Mirror 域名、初始状态为 queued、目标目录为生效模型目录/<作者>/<仓库>
+// （三级落地：author/model/文件）。
 func TestStartHFDownloadQueue(t *testing.T) {
 	saveConfigState(t)
 	dlTasksMu.Lock()
@@ -40,8 +41,8 @@ func TestStartHFDownloadQueue(t *testing.T) {
 	if !strings.HasPrefix(dlTasks[0].URL, hfMirrorBase+"/author/model/resolve/main/") {
 		t.Errorf("URL 前缀错误: %q", dlTasks[0].URL)
 	}
-	if !strings.HasSuffix(dlTasks[0].DestDir, filepath.Join(effectiveModelsDir(), "author")) {
-		t.Errorf("DestDir = %q, want 以 %q 结尾", dlTasks[0].DestDir, filepath.Join(effectiveModelsDir(), "author"))
+	if !strings.HasSuffix(dlTasks[0].DestDir, filepath.Join(effectiveModelsDir(), "author", "model")) {
+		t.Errorf("DestDir = %q, want 以 %q 结尾", dlTasks[0].DestDir, filepath.Join(effectiveModelsDir(), "author", "model"))
 	}
 	if dlTasks[0].cancel == nil {
 		t.Error("任务应持有 cancel 函数（供取消/退出清理）")
@@ -239,5 +240,50 @@ func TestStartHFDownloadRejectsInvalidModelID(t *testing.T) {
 	}
 	if err := startHFDownload("../model", []string{"x.gguf"}); err == nil {
 		t.Error("../model 的 .. author 应返回错误")
+	}
+}
+
+// TestStartHFDownloadRejectsInvalidRepoPart 验证 modelID 的 repo 部分为空或
+// 含路径分隔符时返回错误且不创建任务（#1）。DestDir 会以 repoPart 做
+// filepath.Join：repoPart 含 "/"（如 SplitN("author/model/extra","/",2)
+// 的 "model/extra"）或为空（如 "author/"）都会把下载目标写到错误层级。
+func TestStartHFDownloadRejectsInvalidRepoPart(t *testing.T) {
+	saveConfigState(t)
+	dlTasksMu.Lock()
+	dlTasks = nil
+	dlTaskCounter = 0
+	dlTasksMu.Unlock()
+	defer func() {
+		dlTasksMu.Lock()
+		dlTasks = nil
+		dlTaskCounter = 0
+		dlTasksMu.Unlock()
+	}()
+
+	// repoPart 含 "/"：SplitN("a/b/c","/",2) 的 repoPart 为 "b/c"
+	if err := startHFDownload("author/model/extra", []string{"x.gguf"}); err == nil {
+		t.Error("repoPart 含 / 的 modelID 应返回错误")
+	}
+	// repoPart 为空：SplitN("author/","/",2) 的 repoPart 为 ""
+	if err := startHFDownload("author/", []string{"x.gguf"}); err == nil {
+		t.Error("repoPart 为空的 modelID 应返回错误")
+	}
+	// repoPart 为 "." / ".."：join 后等效于上一级目录
+	if err := startHFDownload("author/.", []string{"x.gguf"}); err == nil {
+		t.Error("repoPart 为 . 的 modelID 应返回错误")
+	}
+	if err := startHFDownload("author/..", []string{"x.gguf"}); err == nil {
+		t.Error("repoPart 为 .. 的 modelID 应返回错误")
+	}
+	// 无 "/" 的 modelID 没有 repo 部分，同样拒绝
+	if err := startHFDownload("author", []string{"x.gguf"}); err == nil {
+		t.Error("无 repo 部分的 modelID 应返回错误")
+	}
+
+	// 拒绝分支不得创建任何任务
+	dlTasksMu.Lock()
+	defer dlTasksMu.Unlock()
+	if len(dlTasks) != 0 || dlTaskCounter != 0 {
+		t.Errorf("非法输入不应创建任务: len=%d counter=%d", len(dlTasks), dlTaskCounter)
 	}
 }
