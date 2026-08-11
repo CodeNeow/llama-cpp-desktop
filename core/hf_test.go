@@ -314,3 +314,53 @@ func TestGetHFModelFilesAt(t *testing.T) {
 		t.Errorf("未找到去斜杠后的 model-f16.gguf: %+v", files)
 	}
 }
+
+// TestGetHFModelMaxGGUFSizeAt 验证模型最大 GGUF 大小汇总：搜索卡片的大小需要
+// 走详情接口（blobs=true 才有真实 size），取最大的 .gguf 文件（排除隐藏文件
+// 与非 gguf）。mock 的 siblings：bge q8_0(1024)、/model-f16.gguf(2048)、
+// .hidden.gguf(1)、README.md(10) → 最大应为 2048。
+func TestGetHFModelMaxGGUFSizeAt(t *testing.T) {
+	srv := newHFServer(t)
+	defer srv.Close()
+
+	size, err := getHFModelMaxGGUFSizeAt(srv.URL, "Xorbits/bge-small-zh-v1.5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if size != 2048 {
+		t.Errorf("最大 GGUF 大小 = %d, want 2048（应排除隐藏文件与 README，取 model-f16.gguf）", size)
+	}
+}
+
+// TestGetHFModelMaxGGUFSizeAtNoGGUF 验证模型没有 GGUF 文件时返回 0 与 nil（不视为
+// 错误，由前端静默不显示大小）。
+func TestGetHFModelMaxGGUFSizeAtNoGGUF(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"siblings":[
+			{"rfilename":"model.safetensors","size":999},
+			{"rfilename":"README.md","size":10}
+		]}`))
+	}))
+	defer srv.Close()
+
+	size, err := getHFModelMaxGGUFSizeAt(srv.URL, "org/no-gguf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if size != 0 {
+		t.Errorf("无 GGUF 时大小 = %d, want 0", size)
+	}
+}
+
+// TestGetHFModelMaxGGUFSizeAtHTTPError 验证详情接口非 200 时返回错误。
+func TestGetHFModelMaxGGUFSizeAtHTTPError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	if _, err := getHFModelMaxGGUFSizeAt(srv.URL, "org/missing"); err == nil {
+		t.Error("404 响应应返回错误")
+	}
+}

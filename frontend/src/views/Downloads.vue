@@ -47,6 +47,7 @@
                 <span v-if="r.pipelineTag" class="result-tag">{{ r.pipelineTag }}</span>
                 <span class="result-downloads">⬇ {{ formatNum(r.downloads) }}</span>
                 <span v-if="r.likes > 0" class="result-likes">♥ {{ formatNum(r.likes) }}</span>
+                <span v-if="modelSizes[r.modelId]" class="result-size">💾 {{ formatSize(modelSizes[r.modelId]) }}</span>
               </div>
             </div>
             <span class="result-arrow" :class="{ open: expandedModel === r.modelId }">▾</span>
@@ -146,11 +147,12 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import {
-  searchDownloads, getModelFiles, getModelDescription, startDownload as startHFDownload, getDownloadTasks,
+  searchDownloads, getModelFiles, getModelDescription, getModelMaxFileSize, startDownload as startHFDownload, getDownloadTasks,
   cancelDownloadTask, pauseDownloadTask, resumeDownloadTask, refreshModels
 } from '../wails'
 import { LatestOnly } from '../lib/latestOnly'
 import { hasActiveTask } from '../lib/taskStatus'
+import { LimitedQueue } from '../lib/limitedQueue'
 
 interface HFResult {
   modelId: string
@@ -182,6 +184,11 @@ const searchQuery = ref('bge-small-zh')
 const searching = ref(false)
 const searched = ref(false)
 const searchResults = ref<HFResult[]>([])
+// 模型大小缓存：值为最大 GGUF 文件字节数，0 表示已尝试查询（无 GGUF 或失败），
+// 用于避免重复请求；按 modelId 缓存，跨搜索复用
+const modelSizes = reactive<Record<string, number>>({})
+// 搜索卡片大小批量请求的并发受限队列：每轮搜索重建实例，避免旧任务堆积
+let sizeQueue = new LimitedQueue(4)
 const expandedModel = ref('')
 const modelFiles = reactive<Record<string, HFFile[]>>({})
 const modelFilesLoading = reactive<Record<string, boolean>>({})
@@ -250,9 +257,28 @@ async function doSearch() {
     const results = await searchDownloads(searchQuery.value, 'all')
     if (!searchGate.isLatest(seq)) return  // 过期结果丢弃（#15）
     searchResults.value = results || []
+    // 新搜索重建大小队列：旧队列任务让其在缓存保护下自然结束
+    sizeQueue = new LimitedQueue(4)
+    for (const r of searchResults.value) loadModelSize(r.modelId)
   } catch {} finally {
     if (searchGate.isLatest(seq)) searching.value = false
   }
+}
+
+// loadModelSize 惰性获取模型最大 GGUF 大小并写入缓存：并发受限队列控制
+// 请求峰值（搜索可返回 200 个模型，不能全部同时请求）；modelSizes 缓存
+// 保证同一模型只查询一次，失败或为 0 不再重试（卡片不显示大小）。
+function loadModelSize(modelId: string) {
+  if (modelId in modelSizes) return
+  modelSizes[modelId] = 0 // 占位：标记已尝试，避免重复入队
+  sizeQueue.push(async () => {
+    try {
+      const size = await getModelMaxFileSize(modelId)
+      if (size > 0) modelSizes[modelId] = size
+    } catch {
+      // 查询失败静默忽略，卡片不显示大小
+    }
+  })
 }
 
 async function toggleModel(r: HFResult) {
@@ -526,6 +552,10 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
 
 .result-likes {
   color: #f472b6;
+}
+
+.result-size {
+  color: #22c55e;
 }
 
 .result-tag {

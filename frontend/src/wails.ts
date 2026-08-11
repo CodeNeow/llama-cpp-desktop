@@ -156,6 +156,12 @@ export async function getModelFiles(modelID: string): Promise<any[]> {
   return app().GetModelFiles(modelID)
 }
 
+// 获取模型最大的 GGUF 文件大小（字节数），供搜索卡片展示模型大小；
+// 返回 0 表示无 GGUF 或查询失败，由调用方静默处理
+export async function getModelMaxFileSize(modelID: string): Promise<number> {
+  return app().GetModelMaxFileSize(modelID)
+}
+
 // 获取模型 README 首段描述（≤200 字）；无 README/读取失败时返回错误，由调用方静默兜底
 export async function getModelDescription(modelID: string): Promise<string> {
   return app().GetModelDescription(modelID)

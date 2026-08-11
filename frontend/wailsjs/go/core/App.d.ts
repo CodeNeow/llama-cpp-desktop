@@ -34,6 +34,8 @@ export function GetModelDescription(arg1:string):Promise<string>;
 
 export function GetModelFiles(arg1:string):Promise<Array<core.HFFileOut>>;
 
+export function GetModelMaxFileSize(arg1:string):Promise<number>;
+
 export function GetModels():Promise<Array<core.ModelInfo>>;
 
 export function GetOS():Promise<Record<string, string>>;

@@ -449,6 +449,11 @@ func (a *App) GetModelFiles(modelID string) ([]HFFileOut, error) {
 	return getHFModelFiles(modelID)
 }
 
+// GetModelMaxFileSize 返回模型最大的 GGUF 文件大小（供搜索卡片展示模型大小）。
+func (a *App) GetModelMaxFileSize(modelID string) (int64, error) {
+	return getHFModelMaxGGUFSize(modelID)
+}
+
 // GetModelDescription 获取模型 README 中的自然语言描述（供下载页展示模型说明）。
 func (a *App) GetModelDescription(modelID string) (string, error) {
 	return getModelDescription(modelID)

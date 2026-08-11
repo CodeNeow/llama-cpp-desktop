@@ -2622,8 +2622,9 @@ func getHFModelFiles(modelID string) ([]HFFileOut, error) {
 }
 
 // getHFModelFilesAt lists the GGUF siblings of a model on an HF-compatible API base.
+// blobs=true 让接口返回文件真实大小（HF 搜索/详情接口默认 siblings 不带 size）。
 func getHFModelFilesAt(baseURL, modelID string) ([]HFFileOut, error) {
-	apiURL := fmt.Sprintf("%s/api/models/%s", baseURL, modelID)
+	apiURL := fmt.Sprintf("%s/api/models/%s?blobs=true", baseURL, modelID)
 
 	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
@@ -2659,6 +2660,56 @@ func getHFModelFilesAt(baseURL, modelID string) ([]HFFileOut, error) {
 	}
 
 	return files, nil
+}
+
+// getHFModelMaxGGUFSize 返回模型最大的 GGUF 文件大小（走默认镜像）。
+func getHFModelMaxGGUFSize(modelID string) (int64, error) {
+	return getHFModelMaxGGUFSizeAt(hfMirrorBase, modelID)
+}
+
+// getHFModelMaxGGUFSizeAt 查询模型详情接口（blobs=true 才有真实 size），返回
+// 该模型最大的 .gguf 文件大小，无 GGUF 时返回 0 与 nil。HF 搜索接口的 siblings
+// 不带 size（实测全为 null），搜索卡片上的模型大小只能按 modelId 走详情接口
+// 逐个获取；取最大文件而非全部 GGUF 总和，避免多量化模型（数十个量化文件）
+// 的总和虚高误导用户对模型规模的判断。
+func getHFModelMaxGGUFSizeAt(baseURL, modelID string) (int64, error) {
+	apiURL := fmt.Sprintf("%s/api/models/%s?blobs=true", baseURL, modelID)
+
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("User-Agent", "llama-gui")
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("HF API returned status %d", resp.StatusCode)
+	}
+
+	var raw struct {
+		Siblings []HFFile `json:"siblings"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return 0, err
+	}
+
+	var max int64
+	for _, s := range raw.Siblings {
+		name := strings.TrimPrefix(s.Filename, "/")
+		if strings.HasSuffix(name, "/") || strings.HasPrefix(name, ".") || !strings.HasSuffix(strings.ToLower(name), ".gguf") {
+			continue
+		}
+		if s.Size > max {
+			max = s.Size
+		}
+	}
+	return max, nil
 }
 
 // ─── Download task runner ────────────────────────────────────────

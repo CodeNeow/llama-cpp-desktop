@@ -66,6 +66,10 @@ export function GetModelFiles(arg1) {
   return window['go']['core']['App']['GetModelFiles'](arg1);
 }
 
+export function GetModelMaxFileSize(arg1) {
+  return window['go']['core']['App']['GetModelMaxFileSize'](arg1);
+}
+
 export function GetModels() {
   return window['go']['core']['App']['GetModels']();
 }
