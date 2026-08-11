@@ -58,6 +58,8 @@ export function ResumeDownloadTask(arg1:string):Promise<void>;
 
 export function ResumeLlamaCppDownload():Promise<void>;
 
+export function RetryDownloadTask(arg1:string):Promise<void>;
+
 export function SaveModelConfig(arg1:string,arg2:core.ModelConfig):Promise<void>;
 
 export function SaveServerConfig(arg1:core.ServerConfig):Promise<void>;

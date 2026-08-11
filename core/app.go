@@ -478,7 +478,14 @@ func (a *App) CancelDownloadTask(id string) error {
 	defer dlTasksMu.Unlock()
 	for _, t := range dlTasks {
 		if t.ID == id {
-			t.cancel()
+			// 锁内置 cancelled 状态再 cancel()：对 error/cancelled 等终态任务
+			// （goroutine 已退出，cancel() 无效果）点取消也能立即生效，前端
+			// 轮询即可看到取消状态；对 downloading 任务，downloadTask 的
+			// ctx.Done() 分支同样会置 cancelled，二者一致。
+			t.Status = "cancelled"
+			if t.cancel != nil {
+				t.cancel()
+			}
 			return nil
 		}
 	}
@@ -509,6 +516,26 @@ func (a *App) ResumeDownloadTask(id string) error {
 			case t.resumeCh <- struct{}{}:
 			default:
 			}
+			return nil
+		}
+	}
+	return nil
+}
+
+// RetryDownloadTask 重试下载任务：对已结束（error/cancelled/done）或排队中
+// （queued）的任务重建 ctx 并重新启动下载 goroutine，downloadTask 会检查
+// .part 文件大小作为续传 offset，天然复用断点续传。仍在下载中（downloading）
+// 或已暂停（paused）的任务存在活跃 goroutine，不允许重试避免并发写同一
+// .part 文件；找不到 id 时静默返回 nil，与 CancelDownloadTask 语义一致。
+func (a *App) RetryDownloadTask(id string) error {
+	dlTasksMu.Lock()
+	defer dlTasksMu.Unlock()
+	for _, t := range dlTasks {
+		if t.ID == id {
+			if t.Status == "downloading" || t.Status == "paused" {
+				return nil
+			}
+			retryDownloadTask(t)
 			return nil
 		}
 	}

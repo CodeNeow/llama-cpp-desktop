@@ -133,6 +133,11 @@
               @click="resumeTask(t.id)"
             >▶ 继续</button>
             <button
+              v-if="t.status === 'error'"
+              class="task-btn retry-btn"
+              @click="retryTask(t.id)"
+            >↻ 重试</button>
+            <button
               v-if="t.status === 'downloading' || t.status === 'paused' || t.status === 'queued' || t.status === 'error'"
               class="task-btn cancel-btn"
               @click="cancelTask(t.id)"
@@ -148,7 +153,7 @@
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import {
   searchDownloads, getModelFiles, getModelDescription, getModelMaxFileSize, startDownload as startHFDownload, getDownloadTasks,
-  cancelDownloadTask, pauseDownloadTask, resumeDownloadTask, refreshModels
+  cancelDownloadTask, retryDownloadTask, pauseDownloadTask, resumeDownloadTask, refreshModels
 } from '../wails'
 import { LatestOnly } from '../lib/latestOnly'
 import { hasActiveTask } from '../lib/taskStatus'
@@ -357,6 +362,13 @@ async function fetchTasks() {
 async function cancelTask(id: string) {
   try {
     await cancelDownloadTask(id)
+    ensurePolling()
+  } catch {}
+}
+
+async function retryTask(id: string) {
+  try {
+    await retryDownloadTask(id)
     ensurePolling()
   } catch {}
 }
@@ -831,6 +843,14 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
 }
 
 .resume-btn:hover { background: rgba(34, 197, 94, 0.2); }
+
+.retry-btn {
+  background: rgba(99, 102, 241, 0.1);
+  color: #a78bfa;
+  border-color: rgba(99, 102, 241, 0.2);
+}
+
+.retry-btn:hover { background: rgba(99, 102, 241, 0.2); }
 
 .cancel-btn {
   background: rgba(239, 68, 68, 0.06);

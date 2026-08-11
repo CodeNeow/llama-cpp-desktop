@@ -179,6 +179,10 @@ export async function cancelDownloadTask(id: string): Promise<void> {
   return app().CancelDownloadTask(id)
 }
 
+export async function retryDownloadTask(id: string): Promise<void> {
+  return app().RetryDownloadTask(id)
+}
+
 export async function pauseDownloadTask(id: string): Promise<void> {
   return app().PauseDownloadTask(id)
 }

@@ -2714,6 +2714,23 @@ func getHFModelMaxGGUFSizeAt(baseURL, modelID string) (int64, error) {
 
 // ─── Download task runner ────────────────────────────────────────
 
+// retryDownloadTask 重建任务的下载上下文并重新启动下载 goroutine。任务进入
+// error/cancelled/done 终态时 ctx 已结束（goroutine 已退出），不能复用旧 ctx，
+// 需要新建 context.WithCancel；downloadTask 启动时会读取 .part 文件大小作为
+// 续传 offset，天然复用断点续传。调用方必须持有 dlTasksMu。
+func retryDownloadTask(task *DlTask) {
+	task.ctx, task.cancel = context.WithCancel(context.Background())
+	// 清空错误与旧进度显示，避免前端继续展示上一次失败的红色错误框；
+	// downloadTask 会根据 .part 续传 offset 重新填充 Downloaded/Total/Progress。
+	task.Error = ""
+	task.Downloaded = 0
+	task.Total = 0
+	task.Progress = 0
+	task.SizeHuman = ""
+	task.Status = "queued"
+	go downloadTask(task)
+}
+
 func downloadTask(task *DlTask) {
 	dlTasksMu.Lock()
 	task.Status = "downloading"
@@ -2769,6 +2786,14 @@ func downloadTask(task *DlTask) {
 				dlTasksMu.Unlock()
 				waitForTaskResume(task, resumeCh)
 				continue
+			}
+			// 取消与网络错误的竞态防御：ctx 已取消（如用户刚点取消）时
+			// 任务应标记 cancelled 而非 error，避免取消竞态把任务打回
+			// error 终态（如 hf-mirror 主动取消流的网络错误）。
+			if task.ctx.Err() != nil {
+				task.Status = "cancelled"
+				dlTasksMu.Unlock()
+				return
 			}
 			task.Status = "error"
 			task.Error = err.Error()
@@ -2888,6 +2913,13 @@ func downloadTask(task *DlTask) {
 				resp.Body.Close()
 				out.Close()
 				dlTasksMu.Lock()
+				// 取消与读取错误的竞态防御：ctx 已取消时标记 cancelled 而非
+				// error（与 client.Do 错误分支同策略）。
+				if task.ctx.Err() != nil {
+					task.Status = "cancelled"
+					dlTasksMu.Unlock()
+					return
+				}
 				task.Status = "error"
 				task.Error = rr.err.Error()
 				dlTasksMu.Unlock()

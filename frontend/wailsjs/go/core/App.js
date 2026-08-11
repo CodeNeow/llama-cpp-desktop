@@ -114,6 +114,10 @@ export function ResumeLlamaCppDownload() {
   return window['go']['core']['App']['ResumeLlamaCppDownload']();
 }
 
+export function RetryDownloadTask(arg1) {
+  return window['go']['core']['App']['RetryDownloadTask'](arg1);
+}
+
 export function SaveModelConfig(arg1, arg2) {
   return window['go']['core']['App']['SaveModelConfig'](arg1, arg2);
 }
