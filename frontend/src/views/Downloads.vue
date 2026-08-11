@@ -21,6 +21,10 @@
       <button class="search-btn" @click="doSearch" :disabled="searching || !searchQuery">
         {{ searching ? '搜索中...' : '搜索' }}
       </button>
+      <button class="search-btn download-btn" @click="showTasksModal = true" title="查看下载任务">
+        下载
+        <span v-if="activeTaskCount > 0" class="task-badge">{{ activeTaskCount }}</span>
+      </button>
     </div>
 
     <!-- Search results -->
@@ -95,68 +99,78 @@
       <p>尝试其他关键词</p>
     </div>
 
-    <!-- Download tasks -->
-    <div v-if="tasks.length > 0" class="tasks-section">
-      <h2 class="section-heading">下载任务 ({{ tasks.length }})</h2>
-      <div class="task-list">
-        <div v-for="t in tasks" :key="t.id" class="task-card">
-          <div class="task-info">
-            <span class="task-name">{{ t.fileName }}</span>
-            <span class="task-model">{{ t.modelId }}</span>
+    <!-- Download tasks modal -->
+    <transition name="modal-fade">
+      <div v-if="showTasksModal" class="modal-overlay" @click.self="showTasksModal = false">
+        <div class="modal-panel">
+          <div class="modal-header">
+            <h2 class="modal-title">下载任务 ({{ tasks.length }})</h2>
+            <button class="modal-close" @click="showTasksModal = false" title="关闭">✕</button>
           </div>
-          <div class="task-bar-wrap">
-            <div class="task-bar">
-              <div
-                class="task-fill"
-                :class="taskBarClass(t.status)"
-                :style="{ width: t.progress + '%' }"
-              ></div>
+          <div class="modal-body">
+            <div v-if="tasks.length === 0" class="tasks-empty">暂无下载任务</div>
+            <div v-else class="task-list">
+              <div v-for="t in tasks" :key="t.id" class="task-card">
+                <div class="task-info">
+                  <span class="task-name">{{ t.fileName }}</span>
+                  <span class="task-model">{{ t.modelId }}</span>
+                </div>
+                <div class="task-bar-wrap">
+                  <div class="task-bar">
+                    <div
+                      class="task-fill"
+                      :class="taskBarClass(t.status)"
+                      :style="{ width: t.progress + '%' }"
+                    ></div>
+                  </div>
+                  <span class="task-percent">{{ t.progress }}%</span>
+                </div>
+                <div class="task-meta">
+                  <span class="task-status" :class="'status-' + t.status">{{ statusMap[t.status] || t.status }}</span>
+                  <span class="task-size" v-if="t.sizeHuman && t.sizeHuman !== '0 B'">{{ t.sizeHuman }}</span>
+                </div>
+                <div class="task-error" v-if="t.error">
+                  <span>{{ t.error }}</span>
+                </div>
+                <div class="task-actions">
+                  <button
+                    v-if="t.status === 'downloading'"
+                    class="task-btn pause-btn"
+                    @click="pauseTask(t.id)"
+                  >⏸ 暂停</button>
+                  <button
+                    v-if="t.status === 'paused'"
+                    class="task-btn resume-btn"
+                    @click="resumeTask(t.id)"
+                  >▶ 继续</button>
+                  <button
+                    v-if="t.status === 'error'"
+                    class="task-btn retry-btn"
+                    @click="retryTask(t.id)"
+                  >↻ 重试</button>
+                  <button
+                    v-if="t.status === 'downloading' || t.status === 'paused' || t.status === 'queued' || t.status === 'error'"
+                    class="task-btn cancel-btn"
+                    @click="cancelTask(t.id)"
+                  >✕ 取消</button>
+                </div>
+              </div>
             </div>
-            <span class="task-percent">{{ t.progress }}%</span>
-          </div>
-          <div class="task-meta">
-            <span class="task-status" :class="'status-' + t.status">{{ statusMap[t.status] || t.status }}</span>
-            <span class="task-size" v-if="t.sizeHuman && t.sizeHuman !== '0 B'">{{ t.sizeHuman }}</span>
-          </div>
-          <div class="task-error" v-if="t.error">
-            <span>{{ t.error }}</span>
-          </div>
-          <div class="task-actions">
-            <button
-              v-if="t.status === 'downloading'"
-              class="task-btn pause-btn"
-              @click="pauseTask(t.id)"
-            >⏸ 暂停</button>
-            <button
-              v-if="t.status === 'paused'"
-              class="task-btn resume-btn"
-              @click="resumeTask(t.id)"
-            >▶ 继续</button>
-            <button
-              v-if="t.status === 'error'"
-              class="task-btn retry-btn"
-              @click="retryTask(t.id)"
-            >↻ 重试</button>
-            <button
-              v-if="t.status === 'downloading' || t.status === 'paused' || t.status === 'queued' || t.status === 'error'"
-              class="task-btn cancel-btn"
-              @click="cancelTask(t.id)"
-            >✕ 取消</button>
           </div>
         </div>
       </div>
-    </div>
+    </transition>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import {
   searchDownloads, getModelFiles, getModelDescription, getModelMaxFileSize, startDownload as startHFDownload, getDownloadTasks,
   cancelDownloadTask, retryDownloadTask, pauseDownloadTask, resumeDownloadTask, refreshModels
 } from '../wails'
 import { LatestOnly } from '../lib/latestOnly'
-import { hasActiveTask } from '../lib/taskStatus'
+import { hasActiveTask, countActiveTasks } from '../lib/taskStatus'
 import { LimitedQueue } from '../lib/limitedQueue'
 
 interface HFResult {
@@ -205,6 +219,11 @@ const descriptionsLoading = reactive<Record<string, boolean>>({})
 const tasks = ref<DlTask[]>([])
 let taskPollTimer: ReturnType<typeof setInterval> | null = null
 let lastDoneCount = 0
+
+// 下载任务 Modal：仅控制面板显示/隐藏，不影响后台 1 秒轮询
+const showTasksModal = ref(false)
+// 活跃任务数（downloading/paused/queued），驱动下载按钮角标；fetchTasks 更新 tasks 后自动刷新
+const activeTaskCount = computed(() => countActiveTasks(tasks.value))
 
 const statusMap: Record<string, string> = {
   queued: '排队中',
@@ -485,6 +504,27 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
 .search-btn:disabled {
   opacity: 0.4;
   cursor: default;
+}
+
+.download-btn {
+  position: relative;
+}
+
+.task-badge {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  box-sizing: border-box;
 }
 
 /* ─── Section heading ─── */
@@ -859,6 +899,86 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
 }
 
 .cancel-btn:hover { background: rgba(239, 68, 68, 0.12); }
+
+/* ─── Tasks modal ─── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.modal-panel {
+  width: 100%;
+  max-width: 560px;
+  max-height: 80vh;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.modal-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.modal-close {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.modal-close:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.modal-body {
+  padding: 16px 20px;
+  overflow-y: auto;
+}
+
+.tasks-empty {
+  padding: 48px 0;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 14px;
+}
+
+.modal-fade-enter-active,
+.modal-fade-leave-active {
+  transition: opacity 0.2s;
+}
+
+.modal-fade-enter-from,
+.modal-fade-leave-to {
+  opacity: 0;
+}
 
 /* ─── Empty ─── */
 .empty-state {
