@@ -199,7 +199,7 @@ interface DlTask {
   error: string
 }
 
-const searchQuery = ref('bge-small-zh')
+const searchQuery = ref('')
 const searching = ref(false)
 const searched = ref(false)
 const searchResults = ref<HFResult[]>([])
