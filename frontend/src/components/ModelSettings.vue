@@ -13,145 +13,242 @@
         <button ref="closeBtn" class="modal-close" aria-label="关闭" @click="close">✕</button>
       </div>
 
+      <div class="modal-tabs" role="tablist" aria-label="参数分类">
+        <button
+          v-for="(tab, i) in tabs"
+          :key="tab.id"
+          :id="`${tab.id}-tab`"
+          class="tab-btn"
+          :class="{ active: activeTab === i }"
+          role="tab"
+          :aria-selected="activeTab === i"
+          :aria-controls="tab.id"
+          @click="activeTab = i"
+        >
+          <span class="tab-icon" v-html="tab.icon"></span>
+          {{ tab.label }}
+        </button>
+      </div>
+
       <div class="modal-body">
-        <!-- Performance -->
-        <fieldset class="param-group">
-          <legend>性能</legend>
-          <div class="param-row">
-            <label>CPU 线程 (-t)</label>
-            <input v-model.number="cfg.threads" type="number" min="-1" step="1" class="param-input param-num" placeholder="-1 (自动)" />
+        <!-- 基础 -->
+        <div id="tab-base" role="tabpanel" aria-labelledby="tab-base-tab" v-show="activeTab === 0">
+          <div class="param-group">
+            <h3 class="group-title">基础</h3>
+            <div class="param-grid">
+              <div class="param">
+                <label class="param-field">
+                  <span class="param-label">CPU 线程</span>
+                  <input v-model.number="cfg.threads" type="number" min="-1" step="1" class="param-input" placeholder="-1 自动" />
+                </label>
+                <p class="param-hint">-1 自动;CPU 弱可适当调低,发热/占用明显时减少</p>
+              </div>
+              <div class="param">
+                <label class="param-field">
+                  <span class="param-label">GPU 层数</span>
+                  <select v-model="cfg.gpuLayers" class="param-input">
+                    <option value="auto">auto ★ 推荐</option>
+                    <option value="all">all (全部)</option>
+                    <option value="0">0 (仅 CPU)</option>
+                    <option value="10">10</option>
+                    <option value="20">20</option>
+                    <option value="30">30</option>
+                    <option value="40">40</option>
+                    <option value="50">50</option>
+                    <option value="99">99</option>
+                  </select>
+                </label>
+                <p class="param-hint">auto 自动卸载全部层;显存小(4-8GB)选 10~30;纯 CPU 推理选 0</p>
+              </div>
+              <div class="param">
+                <label class="param-field">
+                  <span class="param-label">上下文大小 (tokens)</span>
+                  <input v-model.number="cfg.ctxSize" type="number" min="1" step="1" class="param-input" placeholder="4096" />
+                </label>
+                <p class="param-hint">对话/文档越长设越大;受显存限制,过大会加载失败</p>
+              </div>
+              <div class="param">
+                <label class="param-field">
+                  <span class="param-label">Batch 大小 (tokens)</span>
+                  <input v-model.number="cfg.batchSize" type="number" min="1" step="1" class="param-input" placeholder="2048" />
+                </label>
+                <p class="param-hint">吞吐优先可加大,默认 2048 稳妥</p>
+              </div>
+              <div class="param">
+                <label class="param-field">
+                  <span class="param-label">μBatch 大小 (tokens)</span>
+                  <input v-model.number="cfg.ubatchSize" type="number" min="1" step="1" class="param-input" placeholder="512" />
+                </label>
+                <p class="param-hint">通常不超过 Batch,默认 512</p>
+              </div>
+            </div>
           </div>
-          <div class="param-row">
-            <label>GPU 层数 (-ngl)</label>
-            <select v-model="cfg.gpuLayers" class="param-input">
-              <option value="auto">auto (自动)</option>
-              <option value="all">all (全部)</option>
-              <option value="0">0 (仅 CPU)</option>
-              <option value="10">10</option>
-              <option value="20">20</option>
-              <option value="30">30</option>
-              <option value="40">40</option>
-              <option value="50">50</option>
-              <option value="99">99</option>
-            </select>
-          </div>
-          <div class="param-row">
-            <label>上下文大小 (-c)</label>
-            <input v-model.number="cfg.ctxSize" type="number" min="1" step="1" class="param-input param-num" placeholder="4096" />
-          </div>
-          <div class="param-row">
-            <label>Batch 大小 (-b)</label>
-            <input v-model.number="cfg.batchSize" type="number" min="1" step="1" class="param-input param-num" placeholder="2048" />
-          </div>
-          <div class="param-row">
-            <label>μBatch 大小 (-ub)</label>
-            <input v-model.number="cfg.ubatchSize" type="number" min="1" step="1" class="param-input param-num" placeholder="512" />
-          </div>
-          <label class="param-check">
-            <input type="checkbox" v-model="cfg.flashAttn" />
-            <span>Flash Attention (-fa) <em>加速推理</em></span>
-          </label>
-          <label class="param-check">
-            <input type="checkbox" v-model="cfg.cpuMoe" />
-            <span>cpu-moe <em>MoE 模型(DeepSeek/Qwen3-MoE)显存不够时,专家层留 CPU、共享层上 GPU</em></span>
-          </label>
-          <div class="param-row">
-            <label>MoE CPU 层数 (-n-cpu-moe)</label>
-            <input v-model.number="cfg.nCpuMoe" type="number" min="0" step="1" class="param-input param-num" placeholder="0 (不启用)" />
-          </div>
-        </fieldset>
+        </div>
 
-        <!-- Memory / Load -->
-        <fieldset class="param-group">
-          <legend>内存 / 加载</legend>
-          <div class="param-hint">KV 缓存量化：<em>q8_0 推荐(省显存几乎无损)；q4_0 最省但质量降；f16/f32 高精度占显存</em></div>
-          <div class="param-row">
-            <label>KV 缓存 K 类型</label>
-            <select v-model="cfg.cacheTypeK" class="param-input">
-              <option value="">默认 (f16)</option>
-              <option value="f32">f32</option>
-              <option value="f16">f16</option>
-              <option value="bf16">bf16</option>
-              <option value="q8_0">q8_0 (推荐)</option>
-              <option value="q4_0">q4_0</option>
-              <option value="q4_1">q4_1</option>
-              <option value="iq4_nl">iq4_nl</option>
-              <option value="q5_0">q5_0</option>
-              <option value="q5_1">q5_1</option>
-            </select>
+        <!-- 推理 -->
+        <div id="tab-infer" role="tabpanel" aria-labelledby="tab-infer-tab" v-show="activeTab === 1">
+          <div class="param-group">
+            <h3 class="group-title">推理</h3>
+            <div class="param-grid col-1">
+              <div class="param">
+                <div class="toggle-row">
+                  <span class="toggle-text">
+                    Flash Attention
+                    <span class="toggle-sub">加速推理,推荐开启</span>
+                  </span>
+                  <label class="switch">
+                    <input type="checkbox" v-model="cfg.flashAttn" aria-label="Flash Attention" />
+                    <span class="slider"></span>
+                  </label>
+                </div>
+                <p class="param-hint">加速推理并省显存,推荐开启</p>
+              </div>
+              <div class="param">
+                <div class="toggle-row">
+                  <span class="toggle-text">
+                    cpu-moe
+                    <span class="toggle-sub">显存不足时启用</span>
+                  </span>
+                  <label class="switch">
+                    <input type="checkbox" v-model="cfg.cpuMoe" aria-label="cpu-moe" />
+                    <span class="slider"></span>
+                  </label>
+                </div>
+                <p class="param-hint">MoE 模型(DeepSeek/Qwen3-MoE)显存不足时,专家层留 CPU、共享层上 GPU</p>
+              </div>
+              <div class="param">
+                <label class="param-field">
+                  <span class="param-label">MoE CPU 层数</span>
+                  <input v-model.number="cfg.nCpuMoe" type="number" min="0" step="1" class="param-input" placeholder="0 不启用" />
+                </label>
+                <p class="param-hint">前 N 层 MoE 专家留 CPU,0 不启用;显存不足时逐步加大</p>
+              </div>
+            </div>
           </div>
-          <div class="param-row">
-            <label>KV 缓存 V 类型</label>
-            <select v-model="cfg.cacheTypeV" class="param-input">
-              <option value="">默认 (f16)</option>
-              <option value="f32">f32</option>
-              <option value="f16">f16</option>
-              <option value="bf16">bf16</option>
-              <option value="q8_0">q8_0 (推荐)</option>
-              <option value="q4_0">q4_0</option>
-              <option value="q4_1">q4_1</option>
-              <option value="iq4_nl">iq4_nl</option>
-              <option value="q5_0">q5_0</option>
-              <option value="q5_1">q5_1</option>
-            </select>
-          </div>
-          <div class="param-row">
-            <label>加载方式</label>
-            <select v-model="cfg.loadMode" class="param-input">
-              <option value="">默认 mmap</option>
-              <option value="mmap">mmap 内存映射(快加载)</option>
-              <option value="mlock">mlock 锁内存防 swap</option>
-              <option value="mmap+mlock">mmap+mlock 映射+锁定</option>
-              <option value="none">none 不映射(慢加载少换页)</option>
-              <option value="dio">dio DirectIO</option>
-            </select>
-          </div>
-          <div class="param-hint"><em>内存够选 mlock 更稳(防换页)；默认 mmap 加载快</em></div>
-        </fieldset>
+        </div>
 
-        <!-- Multi GPU -->
-        <fieldset class="param-group">
-          <legend>多 GPU</legend>
-          <div class="param-row">
-            <label>切分方式</label>
-            <select v-model="cfg.splitMode" class="param-input">
-              <option value="">默认 layer</option>
-              <option value="layer">layer 流水线(默认稳)</option>
-              <option value="row">row 并行(更快兼容性差)</option>
-              <option value="tensor">tensor 实验性</option>
-              <option value="none">none 单卡</option>
-            </select>
+        <!-- 内存 / 加载 -->
+        <div id="tab-memory" role="tabpanel" aria-labelledby="tab-memory-tab" v-show="activeTab === 2">
+          <div class="param-group">
+            <h3 class="group-title">内存 / 加载</h3>
+            <div class="param-grid col-1">
+              <div class="param">
+                <label class="param-field">
+                  <span class="param-label">KV 缓存 K 类型</span>
+                  <select v-model="cfg.cacheTypeK" class="param-input">
+                    <option value="">默认 (f16)</option>
+                    <option value="f32">f32</option>
+                    <option value="f16">f16</option>
+                    <option value="bf16">bf16</option>
+                    <option value="q8_0">q8_0 ★ 推荐</option>
+                    <option value="q4_0">q4_0</option>
+                    <option value="q4_1">q4_1</option>
+                    <option value="iq4_nl">iq4_nl</option>
+                    <option value="q5_0">q5_0</option>
+                    <option value="q5_1">q5_1</option>
+                  </select>
+                </label>
+                <p class="param-hint">q8_0 推荐(省显存几乎无损);f32/f16 精度高占显存;q4 系最省</p>
+              </div>
+              <div class="param">
+                <label class="param-field">
+                  <span class="param-label">KV 缓存 V 类型</span>
+                  <select v-model="cfg.cacheTypeV" class="param-input">
+                    <option value="">默认 (f16)</option>
+                    <option value="f32">f32</option>
+                    <option value="f16">f16</option>
+                    <option value="bf16">bf16</option>
+                    <option value="q8_0">q8_0 ★ 推荐</option>
+                    <option value="q4_0">q4_0</option>
+                    <option value="q4_1">q4_1</option>
+                    <option value="iq4_nl">iq4_nl</option>
+                    <option value="q5_0">q5_0</option>
+                    <option value="q5_1">q5_1</option>
+                  </select>
+                </label>
+                <p class="param-hint">同 K 类型,一般跟随 K 保持一致</p>
+              </div>
+              <div class="param">
+                <label class="param-field">
+                  <span class="param-label">加载方式</span>
+                  <select v-model="cfg.loadMode" class="param-input">
+                    <option value="">默认 mmap</option>
+                    <option value="mmap">mmap 内存映射(快加载)</option>
+                    <option value="mlock">mlock 锁内存防 swap</option>
+                    <option value="mmap+mlock">mmap+mlock 映射+锁定</option>
+                    <option value="none">none 不映射(慢加载少换页)</option>
+                    <option value="dio">dio DirectIO</option>
+                  </select>
+                </label>
+                <p class="param-hint">内存够用选 mlock 防换页更稳;默认 mmap 加载最快</p>
+              </div>
+            </div>
           </div>
-          <div class="param-row">
-            <label>每卡张量比例</label>
-            <input v-model="cfg.tensorSplit" type="text" class="param-input" placeholder="如 3,1" />
-          </div>
-          <div class="param-hint"><em>每卡分担比例,如 3,1=第一卡 3/4</em></div>
-          <div class="param-row">
-            <label>主 GPU</label>
-            <input v-model.number="cfg.mainGpu" type="number" min="0" step="1" class="param-input param-num" placeholder="0" />
-          </div>
-          <div class="param-hint"><em>split-mode=none 时的唯一 GPU</em></div>
-        </fieldset>
+        </div>
 
-        <!-- Long context -->
-        <fieldset class="param-group">
-          <legend>长上下文</legend>
-          <div class="param-row">
-            <label>RoPE 外推方式</label>
-            <select v-model="cfg.ropeScaling" class="param-input">
-              <option value="">默认 none</option>
-              <option value="none">none</option>
-              <option value="linear">linear 线性</option>
-              <option value="yarn">yarn YaRN(效果较好)</option>
-            </select>
+        <!-- 多 GPU -->
+        <div id="tab-gpu" role="tabpanel" aria-labelledby="tab-gpu-tab" v-show="activeTab === 3">
+          <div class="param-group">
+            <h3 class="group-title">多 GPU</h3>
+            <div class="param-grid col-1">
+              <div class="param">
+                <label class="param-field">
+                  <span class="param-label">切分方式</span>
+                  <select v-model="cfg.splitMode" class="param-input">
+                    <option value="">默认 layer</option>
+                    <option value="layer">layer 流水线(默认稳)</option>
+                    <option value="row">row 并行(更快兼容性差)</option>
+                    <option value="tensor">tensor 实验性</option>
+                    <option value="none">none 单卡</option>
+                  </select>
+                </label>
+                <p class="param-hint">单卡选 none;多卡默认 layer 稳定,row 更快但兼容性差</p>
+              </div>
+              <div class="param">
+                <label class="param-field">
+                  <span class="param-label">每卡比例</span>
+                  <input v-model="cfg.tensorSplit" type="text" class="param-input" placeholder="如 3,1" />
+                </label>
+                <p class="param-hint">每张卡分担的比例,如 3,1 = 第一卡 3/4、第二卡 1/4</p>
+              </div>
+              <div class="param">
+                <label class="param-field">
+                  <span class="param-label">主 GPU</span>
+                  <input v-model.number="cfg.mainGpu" type="number" min="0" step="1" class="param-input" placeholder="0" />
+                </label>
+                <p class="param-hint">split-mode=none 时唯一使用的 GPU;多卡时承载 KV 与中间结果</p>
+              </div>
+            </div>
           </div>
-          <div class="param-row">
-            <label>外推倍数</label>
-            <input v-model.number="cfg.ropeScale" type="number" min="0" step="0.5" class="param-input param-num" placeholder="0" />
+        </div>
+
+        <!-- 长上下文 -->
+        <div id="tab-context" role="tabpanel" aria-labelledby="tab-context-tab" v-show="activeTab === 4">
+          <div class="param-group">
+            <h3 class="group-title">长上下文</h3>
+            <div class="param-grid col-1">
+              <div class="param">
+                <label class="param-field">
+                  <span class="param-label">RoPE 外推方式</span>
+                  <select v-model="cfg.ropeScaling" class="param-input">
+                    <option value="">默认 none</option>
+                    <option value="none">none</option>
+                    <option value="linear">linear 线性</option>
+                    <option value="yarn">yarn YaRN(效果较好)</option>
+                  </select>
+                </label>
+                <p class="param-hint">超过模型原生上下文才需要;yarn 效果较好、linear 更简单</p>
+              </div>
+              <div class="param">
+                <label class="param-field">
+                  <span class="param-label">外推倍数</span>
+                  <input v-model.number="cfg.ropeScale" type="number" min="0" step="0.5" class="param-input" placeholder="0" />
+                </label>
+                <p class="param-hint">2.0 = 上下文翻倍;倍数越大质量损失越明显,够用即可</p>
+              </div>
+            </div>
           </div>
-          <div class="param-hint"><em>扩展倍数,2.0=翻倍;超过模型原生上下文才用,越大质量越差</em></div>
-        </fieldset>
+        </div>
       </div>
 
       <div class="modal-footer">
@@ -225,9 +322,43 @@ const cfg = reactive<ModelConfig>({ ...defaults, ...props.initialConfig })
 
 const closeBtn = ref<HTMLButtonElement | null>(null)
 
+/** 当前激活的 tab 索引，配合 v-show 切换面板（不丢已输入未保存的值） */
+const activeTab = ref(0)
+
+/** 5 个参数分类 tab，图标为内联 stroke SVG（16×16，风格与 Sidebar 导航一致） */
+const tabs = [
+  {
+    id: 'tab-base',
+    label: '基础',
+    icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
+  },
+  {
+    id: 'tab-infer',
+    label: '推理',
+    icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
+  },
+  {
+    id: 'tab-memory',
+    label: '内存/加载',
+    icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>`,
+  },
+  {
+    id: 'tab-gpu',
+    label: '多 GPU',
+    icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>`,
+  },
+  {
+    id: 'tab-context',
+    label: '长上下文',
+    icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="9" width="20" height="6" rx="1"/><line x1="6" y1="9" x2="6" y2="12"/><line x1="10" y1="9" x2="10" y2="13"/><line x1="14" y1="9" x2="14" y2="12"/><line x1="18" y1="9" x2="18" y2="13"/></svg>`,
+  },
+]
+
 watch(() => props.visible, (v) => {
   if (v) {
     Object.assign(cfg, defaults, props.initialConfig)
+    // 重新打开弹窗时回到第一个 tab，配合下方 Tab 焦点陷阱（#17）
+    activeTab.value = 0
     // 弹窗打开后把焦点移入弹窗，配合下方 Tab 焦点陷阱（#17）
     nextTick(() => closeBtn.value?.focus())
   }
@@ -280,8 +411,8 @@ function save() {
 .modal {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 16px;
-  width: 560px;
+  border-radius: var(--radius-lg);
+  width: 640px;
   max-height: 80vh;
   display: flex;
   flex-direction: column;
@@ -292,7 +423,7 @@ function save() {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 20px 24px;
+  padding: 18px 24px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -320,7 +451,7 @@ function save() {
   color: var(--text-dim);
   font-size: 16px;
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   transition: all 0.15s;
 }
 
@@ -329,90 +460,201 @@ function save() {
   color: var(--text-primary);
 }
 
+/* Tab 栏（下划线式） */
+.modal-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.tab-btn:hover {
+  color: var(--text-secondary);
+}
+
+.tab-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+.tab-btn .tab-icon {
+  display: flex;
+}
+
 .modal-body {
   padding: 20px 24px;
   overflow-y: auto;
   flex: 1;
 }
 
+/* 参数卡片 */
 .param-group {
+  background: var(--bg-card);
   border: 1px solid var(--border-light);
-  border-radius: 10px;
-  padding: 14px 16px;
-  margin-bottom: 14px;
+  border-radius: var(--radius-md);
+  padding: 16px 18px;
 }
 
-.param-group legend {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--accent-light);
-  padding: 0 6px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.param-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10px;
-}
-
-.param-row label {
+.group-title {
   font-size: 13px;
+  font-weight: 700;
   color: var(--text-secondary);
-  flex-shrink: 0;
+  margin: 0 0 14px;
+}
+
+.param-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px 18px;
+}
+
+.param-grid.col-1 {
+  grid-template-columns: 1fr;
+}
+
+.param-field {
+  display: block;
+}
+
+.param-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  cursor: pointer;
 }
 
 .param-input {
-  width: 180px;
-  padding: 6px 10px;
+  width: 100%;
+  padding: 8px 10px;
   background: var(--bg-primary);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
   font-size: 13px;
+  font-family: inherit;
   outline: none;
-  transition: border-color 0.15s;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.param-input:hover {
+  border-color: var(--overlay-20);
 }
 
 .param-input:focus {
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
 }
 
-.param-num {
-  width: 100px;
-}
-
-.param-check {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--text-secondary);
-  cursor: pointer;
-  margin-top: 4px;
-}
-
-.param-check input {
-  accent-color: var(--accent);
-}
-
-.param-check em {
+.param-input::placeholder {
   color: var(--text-dim);
-  font-style: normal;
-  font-size: 11px;
+}
+
+select.param-input {
+  cursor: pointer;
 }
 
 .param-hint {
+  margin-top: 6px;
   font-size: 11px;
   color: var(--text-dim);
-  margin-bottom: 10px;
   line-height: 1.5;
 }
 
-.param-hint em {
-  font-style: normal;
+/* 胶囊开关（toggle switch） */
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+}
+
+.toggle-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.toggle-sub {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background: var(--overlay-20);
+  border-radius: 22px;
+  transition: background 0.2s;
+}
+
+.slider:before {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  left: 3px;
+  top: 3px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+
+.switch input:checked + .slider {
+  background: var(--accent);
+}
+
+.switch input:checked + .slider:before {
+  transform: translateX(18px);
+}
+
+.switch input:focus-visible + .slider {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .modal-footer {
@@ -427,10 +669,11 @@ function save() {
   padding: 8px 20px;
   background: transparent;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   color: var(--text-muted);
   font-size: 13px;
   font-weight: 600;
+  font-family: inherit;
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -443,10 +686,11 @@ function save() {
   padding: 8px 24px;
   background: var(--accent);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   color: #fff;
   font-size: 13px;
   font-weight: 600;
+  font-family: inherit;
   cursor: pointer;
   transition: opacity 0.15s;
 }
