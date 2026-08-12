@@ -251,10 +251,33 @@ func (a *App) SaveModelConfig(modelID string, config ModelConfig) error {
 		return fmt.Errorf("非法 GPULayers %q：仅允许 auto/all/0 或正整数", config.GPULayers)
 	}
 	if !validCacheTypeValue(config.CacheTypeK) {
-		return fmt.Errorf("非法 CacheTypeK %q：仅允许 q8_0/q4_0/f16/bf16", config.CacheTypeK)
+		return fmt.Errorf("非法 CacheTypeK %q：仅允许 f32/f16/bf16/q8_0/q4_0/q4_1/iq4_nl/q5_0/q5_1", config.CacheTypeK)
 	}
 	if !validCacheTypeValue(config.CacheTypeV) {
-		return fmt.Errorf("非法 CacheTypeV %q：仅允许 q8_0/q4_0/f16/bf16", config.CacheTypeV)
+		return fmt.Errorf("非法 CacheTypeV %q：仅允许 f32/f16/bf16/q8_0/q4_0/q4_1/iq4_nl/q5_0/q5_1", config.CacheTypeV)
+	}
+	// b10342 新参数校验：LoadMode/SplitMode/RopeScaling 走白名单，
+	// TensorSplit 走 INI 注入防御（含换行/首尾空白即拒绝）。
+	if !validLoadModeValue(config.LoadMode) {
+		return fmt.Errorf("非法 LoadMode %q：仅允许 none/mmap/mlock/mmap+mlock/dio", config.LoadMode)
+	}
+	if !validSplitModeValue(config.SplitMode) {
+		return fmt.Errorf("非法 SplitMode %q：仅允许 none/layer/row/tensor", config.SplitMode)
+	}
+	if !validRopeScalingValue(config.RopeScaling) {
+		return fmt.Errorf("非法 RopeScaling %q：仅允许 none/linear/yarn", config.RopeScaling)
+	}
+	if !validIniValue(config.TensorSplit) {
+		return fmt.Errorf("非法 TensorSplit %q：不能包含换行或首尾空白", config.TensorSplit)
+	}
+	if config.MainGPU < 0 {
+		return fmt.Errorf("非法 MainGPU %d：不能为负数", config.MainGPU)
+	}
+	if config.NCpuMoe < 0 {
+		return fmt.Errorf("非法 NCpuMoe %d：不能为负数", config.NCpuMoe)
+	}
+	if config.RopeScale < 0 {
+		return fmt.Errorf("非法 RopeScale %g：不能为负数", config.RopeScale)
 	}
 
 	modelConfigsMu.Lock()

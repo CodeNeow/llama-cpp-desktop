@@ -47,7 +47,7 @@ func TestGenerateModelsPresetFromConfigs(t *testing.T) {
 		"deepseek-r1": {
 			Threads: 8, GPULayers: "99", CtxSize: 8192, BatchSize: 512,
 			UBatchSize: 256, FlashAttn: true, CacheTypeK: "q8_0", CacheTypeV: "q8_0",
-			MLock: true, NoMMap: false,
+			LoadMode: "mlock",
 		},
 	}
 	path, err := generateModelsPresetFrom(models, cfgs)
@@ -67,7 +67,7 @@ func TestGenerateModelsPresetFromConfigs(t *testing.T) {
 		"flash-attn = on",
 		"cache-type-k = q8_0",
 		"cache-type-v = q8_0",
-		"mlock = true",
+		"load-mode = mlock",
 	}
 	for _, w := range wantLines {
 		if !strings.Contains(content, w+"\n") {
@@ -196,5 +196,150 @@ func TestGenerateModelsPresetFromAcceptsValidValues(t *testing.T) {
 	}
 	if strings.Contains(content, "gpu-layers") {
 		t.Errorf("GPULayers=auto 不应输出 gpu-layers 行: %q", content)
+	}
+}
+
+// TestGenerateModelsPresetNewFields 验证 b10342 新字段写入预设 INI：
+// 全部非默认值时逐行输出；旧 mlock/noMmap 兼容字段不再直接写入（迁移后
+// 由 LoadMode 承担），避免废弃键重新进入预设。
+func TestGenerateModelsPresetNewFields(t *testing.T) {
+	models := []ModelInfo{{Name: "m", Path: "/models/m.gguf"}}
+
+	t.Run("all new fields", func(t *testing.T) {
+		cfgs := map[string]ModelConfig{
+			"m": {
+				LoadMode: "mlock", CPUMoe: true, NCpuMoe: 2, SplitMode: "row",
+				TensorSplit: "3,1", MainGPU: 1, RopeScaling: "yarn", RopeScale: 2.0,
+			},
+		}
+		path, err := generateModelsPresetFrom(models, cfgs)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer os.Remove(path)
+
+		data, _ := os.ReadFile(path)
+		content := string(data)
+		wantLines := []string{
+			"load-mode = mlock",
+			"cpu-moe = on",
+			"n-cpu-moe = 2",
+			"split-mode = row",
+			"tensor-split = 3,1",
+			"main-gpu = 1",
+			"rope-scaling = yarn",
+			"rope-scale = 2",
+		}
+		for _, w := range wantLines {
+			if !strings.Contains(content, w+"\n") {
+				t.Errorf("预设缺少 %q: %q", w, content)
+			}
+		}
+	})
+
+	t.Run("defaults not written", func(t *testing.T) {
+		// LoadMode=mmap/空、SplitMode=layer/空、MainGPU=0、RopeScale=0、
+		// CPUMoe=false 等默认值不应产生键，避免预设噪音。
+		for _, lm := range []string{"", "mmap"} {
+			for _, sm := range []string{"", "layer"} {
+				cfgs := map[string]ModelConfig{
+					"m": {LoadMode: lm, SplitMode: sm, MainGPU: 0, RopeScale: 0, RopeScaling: "none"},
+				}
+				path, err := generateModelsPresetFrom(models, cfgs)
+				if err != nil {
+					t.Fatal(err)
+				}
+				data, _ := os.ReadFile(path)
+				content := string(data)
+				for _, banned := range []string{"load-mode", "split-mode", "cpu-moe", "main-gpu", "rope-scale", "rope-scaling"} {
+					if strings.Contains(content, banned+" =") {
+						t.Errorf("默认值不应输出 %q（load-mode=%q split-mode=%q）: %q", banned, lm, sm, content)
+					}
+				}
+				os.Remove(path)
+			}
+		}
+	})
+
+	t.Run("legacy mlock noMmap not written", func(t *testing.T) {
+		// 模拟迁移后状态：旧布尔清零、LoadMode 已派生；即使兼容字段残留
+		// 为 true，预设也只写 load-mode，绝不写废弃键 mlock/no-mmap。
+		cfgs := map[string]ModelConfig{
+			"m": {LoadMode: "mlock", MLock: true, NoMMap: true},
+		}
+		path, err := generateModelsPresetFrom(models, cfgs)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer os.Remove(path)
+
+		data, _ := os.ReadFile(path)
+		content := string(data)
+		if !strings.Contains(content, "load-mode = mlock\n") {
+			t.Errorf("迁移后应输出 load-mode = mlock: %q", content)
+		}
+		if strings.Contains(content, "mlock =") {
+			t.Errorf("兼容字段 MLock 不应直接输出 mlock 键: %q", content)
+		}
+		if strings.Contains(content, "no-mmap") {
+			t.Errorf("兼容字段 NoMMap 不应直接输出 no-mmap 键: %q", content)
+		}
+	})
+}
+
+// TestValidCacheTypeValueExtended 验证 cache-type 白名单在 b10342 下扩展：
+// 新增 f32/q4_1/iq4_nl/q5_0/q5_1 均应合法，列表外取值非法。
+func TestValidCacheTypeValueExtended(t *testing.T) {
+	for _, v := range []string{"", "f32", "f16", "bf16", "q8_0", "q4_0", "q4_1", "iq4_nl", "q5_0", "q5_1"} {
+		if !validCacheTypeValue(v) {
+			t.Errorf("validCacheTypeValue(%q) 应为 true（b10342 支持）", v)
+		}
+	}
+	for _, v := range []string{"q4_2", "q6_k", "f32\nx", " q8_0"} {
+		if validCacheTypeValue(v) {
+			t.Errorf("validCacheTypeValue(%q) 应为 false", v)
+		}
+	}
+}
+
+// TestValidLoadModeValue 验证 load-mode 白名单（b10342 替代 mlock/no-mmap）。
+func TestValidLoadModeValue(t *testing.T) {
+	for _, v := range []string{"", "none", "mmap", "mlock", "mmap+mlock", "dio"} {
+		if !validLoadModeValue(v) {
+			t.Errorf("validLoadModeValue(%q) 应为 true", v)
+		}
+	}
+	for _, v := range []string{"foo", "mmap+", " mlock", "mlock\n"} {
+		if validLoadModeValue(v) {
+			t.Errorf("validLoadModeValue(%q) 应为 false", v)
+		}
+	}
+}
+
+// TestValidSplitModeValue 验证 split-mode 白名单（多 GPU 切分策略）。
+func TestValidSplitModeValue(t *testing.T) {
+	for _, v := range []string{"", "none", "layer", "row", "tensor"} {
+		if !validSplitModeValue(v) {
+			t.Errorf("validSplitModeValue(%q) 应为 true", v)
+		}
+	}
+	for _, v := range []string{"layers", "column", " row"} {
+		if validSplitModeValue(v) {
+			t.Errorf("validSplitModeValue(%q) 应为 false", v)
+		}
+	}
+}
+
+// TestValidRopeScalingValue 验证 rope-scaling 白名单（长上下文外推）。
+func TestValidRopeScalingValue(t *testing.T) {
+	for _, v := range []string{"", "none", "linear", "yarn"} {
+		if !validRopeScalingValue(v) {
+			t.Errorf("validRopeScalingValue(%q) 应为 true", v)
+		}
+	}
+	for _, v := range []string{"dynamic", "linear2", " yarn"} {
+		if validRopeScalingValue(v) {
+			t.Errorf("validRopeScalingValue(%q) 应为 false", v)
+		}
 	}
 }

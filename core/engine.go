@@ -2139,10 +2139,38 @@ func validGPULayersValue(s string) bool {
 	return err == nil && n > 0
 }
 
-// validCacheTypeValue 校验 cache-type-k/v 取值白名单。
+// validCacheTypeValue 校验 cache-type-k/v 取值白名单（b10342 实际支持列表）。
 func validCacheTypeValue(s string) bool {
 	switch s {
-	case "", "q8_0", "q4_0", "f16", "bf16":
+	case "", "f32", "f16", "bf16", "q8_0", "q4_0", "q4_1", "iq4_nl", "q5_0", "q5_1":
+		return true
+	}
+	return false
+}
+
+// validLoadModeValue 校验 load-mode 取值白名单（b10342 起替代 mlock/no-mmap，
+// 空值表示使用 llama-server 默认 mmap）。
+func validLoadModeValue(s string) bool {
+	switch s {
+	case "", "none", "mmap", "mlock", "mmap+mlock", "dio":
+		return true
+	}
+	return false
+}
+
+// validSplitModeValue 校验 split-mode 取值白名单（多 GPU 张量切分策略）。
+func validSplitModeValue(s string) bool {
+	switch s {
+	case "", "none", "layer", "row", "tensor":
+		return true
+	}
+	return false
+}
+
+// validRopeScalingValue 校验 rope-scaling 取值白名单（长上下文外推策略）。
+func validRopeScalingValue(s string) bool {
+	switch s {
+	case "", "none", "linear", "yarn":
 		return true
 	}
 	return false
@@ -2229,11 +2257,44 @@ func generateModelsPresetFrom(models []ModelInfo, cfgs map[string]ModelConfig) (
 				}
 				buf.WriteString(fmt.Sprintf("cache-type-v = %s\n", cfg.CacheTypeV))
 			}
-			if cfg.MLock {
-				buf.WriteString("mlock = true\n")
+			// 以下新参数 b10342 起生效。LoadMode/SplitMode/RopeScaling 空值或
+			// 等于 llama-server 默认时不写入，避免噪音；MLock/NoMMap 已废弃，
+			// 仅由 loadConfig 迁移为 LoadMode，不再直接写入预设。
+			if cfg.LoadMode != "" && cfg.LoadMode != "mmap" {
+				if !validIniValue(cfg.LoadMode) {
+					return "", fmt.Errorf("非法 LoadMode 值 %q：不能包含换行或首尾空白", cfg.LoadMode)
+				}
+				buf.WriteString(fmt.Sprintf("load-mode = %s\n", cfg.LoadMode))
 			}
-			if cfg.NoMMap {
-				buf.WriteString("no-mmap = true\n")
+			if cfg.CPUMoe {
+				buf.WriteString("cpu-moe = on\n")
+			}
+			if cfg.NCpuMoe > 0 {
+				buf.WriteString(fmt.Sprintf("n-cpu-moe = %d\n", cfg.NCpuMoe))
+			}
+			if cfg.SplitMode != "" && cfg.SplitMode != "layer" {
+				if !validIniValue(cfg.SplitMode) {
+					return "", fmt.Errorf("非法 SplitMode 值 %q：不能包含换行或首尾空白", cfg.SplitMode)
+				}
+				buf.WriteString(fmt.Sprintf("split-mode = %s\n", cfg.SplitMode))
+			}
+			if cfg.TensorSplit != "" {
+				if !validIniValue(cfg.TensorSplit) {
+					return "", fmt.Errorf("非法 TensorSplit 值 %q：不能包含换行或首尾空白", cfg.TensorSplit)
+				}
+				buf.WriteString(fmt.Sprintf("tensor-split = %s\n", cfg.TensorSplit))
+			}
+			if cfg.MainGPU > 0 {
+				buf.WriteString(fmt.Sprintf("main-gpu = %d\n", cfg.MainGPU))
+			}
+			if cfg.RopeScaling != "" && cfg.RopeScaling != "none" {
+				if !validIniValue(cfg.RopeScaling) {
+					return "", fmt.Errorf("非法 RopeScaling 值 %q：不能包含换行或首尾空白", cfg.RopeScaling)
+				}
+				buf.WriteString(fmt.Sprintf("rope-scaling = %s\n", cfg.RopeScaling))
+			}
+			if cfg.RopeScale > 0 {
+				buf.WriteString(fmt.Sprintf("rope-scale = %g\n", cfg.RopeScale))
 			}
 		}
 		if m.HasMMProj {
@@ -2299,16 +2360,24 @@ type ServerConfig struct {
 }
 
 type ModelConfig struct {
-	Threads    int    `json:"threads"`
-	GPULayers  string `json:"gpuLayers"`
-	CtxSize    int    `json:"ctxSize"`
-	BatchSize  int    `json:"batchSize"`
-	UBatchSize int    `json:"ubatchSize"`
-	FlashAttn  bool   `json:"flashAttn"`
-	CacheTypeK string `json:"cacheTypeK"`
-	CacheTypeV string `json:"cacheTypeV"`
-	MLock      bool   `json:"mlock"`
-	NoMMap     bool   `json:"noMmap"`
+	Threads     int     `json:"threads"`
+	GPULayers   string  `json:"gpuLayers"`
+	CtxSize     int     `json:"ctxSize"`
+	BatchSize   int     `json:"batchSize"`
+	UBatchSize  int     `json:"ubatchSize"`
+	FlashAttn   bool    `json:"flashAttn"`
+	CacheTypeK  string  `json:"cacheTypeK"`
+	CacheTypeV  string  `json:"cacheTypeV"`
+	LoadMode    string  `json:"loadMode"`         // "", none, mmap, mlock, mmap+mlock, dio
+	CPUMoe      bool    `json:"cpuMoe"`           // 所有 MoE 专家留 CPU
+	NCpuMoe     int     `json:"nCpuMoe"`          // 前 N 层 MoE 留 CPU, 0=不启用
+	SplitMode   string  `json:"splitMode"`        // "", none, layer, row, tensor
+	TensorSplit string  `json:"tensorSplit"`      // 如 "3,1"
+	MainGPU     int     `json:"mainGpu"`          // 默认 0
+	RopeScaling string  `json:"ropeScaling"`      // "", none, linear, yarn
+	RopeScale   float64 `json:"ropeScale"`        // 0=不启用
+	MLock       bool    `json:"mlock,omitempty"`  // 已废弃,仅为读取旧配置迁移
+	NoMMap      bool    `json:"noMmap,omitempty"` // 已废弃,仅为读取旧配置迁移
 }
 
 func loadConfig() {
@@ -2347,6 +2416,24 @@ func loadConfig() {
 		cfg.ModelConfigs = make(map[string]ModelConfig)
 	}
 	cachedModelConfigs = cfg.ModelConfigs
+	// 迁移旧 mlock/noMmap 到 load-mode（b10342 起两者 DEPRECATED）：
+	// 旧配置若未显式设置 loadMode，则按旧布尔组合推导并清零兼容字段，
+	// saveConfig 时 omitempty 保证不再写回旧键（渐进清理）。
+	for k, c := range cachedModelConfigs {
+		if c.LoadMode == "" && (c.MLock || c.NoMMap) {
+			switch {
+			case c.MLock && c.NoMMap:
+				c.LoadMode = "mlock" // mlock 语义优先
+			case c.MLock:
+				c.LoadMode = "mlock"
+			case c.NoMMap:
+				c.LoadMode = "none"
+			}
+		}
+		c.MLock = false
+		c.NoMMap = false
+		cachedModelConfigs[k] = c
+	}
 	// Merge server config with defaults
 	scfg := defaultServerConfig()
 	if cfg.ServerConfig.Host != "" {

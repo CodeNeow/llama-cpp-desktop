@@ -187,6 +187,55 @@ func TestLoadConfigMissingFile(t *testing.T) {
 	loadConfig() // 不应 panic
 }
 
+// TestLoadConfigMigratesMLockNoMMap 验证旧格式配置中的 mlock/noMmap 字段
+// 在 loadConfig 时迁移为 load-mode（b10342 起 mlock/no-mmap DEPRECATED），
+// 兼容字段随即清零，避免旧布尔值被写入新格式配置。
+func TestLoadConfigMigratesMLockNoMMap(t *testing.T) {
+	withTempCwd(t)
+	saveConfigState(t)
+
+	cases := []struct {
+		name       string
+		configJSON string
+		want       string
+	}{
+		{"mlock only", `{"modelConfigs":{"m1":{"threads":4,"mlock":true,"noMmap":false}}}`, "mlock"},
+		{"mlock and noMmap", `{"modelConfigs":{"m1":{"threads":4,"mlock":true,"noMmap":true}}}`, "mlock"}, // mlock 语义优先
+		{"noMmap only", `{"modelConfigs":{"m1":{"threads":4,"mlock":false,"noMmap":true}}}`, "none"},
+		{"neither", `{"modelConfigs":{"m1":{"threads":4,"mlock":false,"noMmap":false}}}`, ""}, // 无旧字段保持默认
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if err := os.WriteFile(configFile, []byte(c.configJSON), 0644); err != nil {
+				t.Fatal(err)
+			}
+			loadConfig()
+			modelConfigsMu.Lock()
+			got := cachedModelConfigs["m1"]
+			modelConfigsMu.Unlock()
+			if got.LoadMode != c.want {
+				t.Errorf("LoadMode = %q, want %q（config %s）", got.LoadMode, c.want, c.configJSON)
+			}
+			if got.MLock || got.NoMMap {
+				t.Errorf("迁移后兼容字段应清零, 实际 MLock=%v NoMMap=%v", got.MLock, got.NoMMap)
+			}
+		})
+	}
+
+	// 新格式配置（已含 loadMode）不应被迁移覆盖
+	writeConfig := `{"modelConfigs":{"m1":{"threads":4,"loadMode":"dio"}}}`
+	if err := os.WriteFile(configFile, []byte(writeConfig), 0644); err != nil {
+		t.Fatal(err)
+	}
+	loadConfig()
+	modelConfigsMu.Lock()
+	got := cachedModelConfigs["m1"]
+	modelConfigsMu.Unlock()
+	if got.LoadMode != "dio" {
+		t.Errorf("新格式 loadMode=dio 应保持不变, 实际 %q", got.LoadMode)
+	}
+}
+
 // TestSaveServerConfigRejectsNonLoopbackHost 验证 SaveServerConfig 拒绝
 // 非环回 Host（#5）。若允许 0.0.0.0 等地址，llama-server 会把推理服务
 // 暴露到局域网/公网，须在存配置前拒绝。
@@ -308,8 +357,8 @@ func TestSaveModelConfigRejectsInvalidWhitelist(t *testing.T) {
 	if err := app.SaveModelConfig("m2", ModelConfig{GPULayers: "1.5"}); err == nil {
 		t.Error("GPULayers=1.5 应返回错误")
 	}
-	if err := app.SaveModelConfig("m2", ModelConfig{CacheTypeV: "q4_1"}); err == nil {
-		t.Error("CacheTypeV=q4_1 不在白名单应返回错误")
+	if err := app.SaveModelConfig("m2", ModelConfig{CacheTypeV: "q4_2"}); err == nil {
+		t.Error("CacheTypeV=q4_2 不在白名单应返回错误")
 	}
 }
 

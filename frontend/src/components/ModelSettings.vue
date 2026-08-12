@@ -51,42 +51,107 @@
             <input type="checkbox" v-model="cfg.flashAttn" />
             <span>Flash Attention (-fa) <em>加速推理</em></span>
           </label>
+          <label class="param-check">
+            <input type="checkbox" v-model="cfg.cpuMoe" />
+            <span>cpu-moe <em>MoE 模型(DeepSeek/Qwen3-MoE)显存不够时,专家层留 CPU、共享层上 GPU</em></span>
+          </label>
+          <div class="param-row">
+            <label>MoE CPU 层数 (-n-cpu-moe)</label>
+            <input v-model.number="cfg.nCpuMoe" type="number" min="0" step="1" class="param-input param-num" placeholder="0 (不启用)" />
+          </div>
         </fieldset>
 
-        <!-- Memory -->
+        <!-- Memory / Load -->
         <fieldset class="param-group">
-          <legend>内存 / KV 缓存</legend>
+          <legend>内存 / 加载</legend>
+          <div class="param-hint">KV 缓存量化：<em>q8_0 推荐(省显存几乎无损)；q4_0 最省但质量降；f16/f32 高精度占显存</em></div>
           <div class="param-row">
             <label>KV 缓存 K 类型</label>
             <select v-model="cfg.cacheTypeK" class="param-input">
               <option value="">默认 (f16)</option>
-              <option value="q8_0">q8_0 (推荐)</option>
-              <option value="q4_0">q4_0</option>
+              <option value="f32">f32</option>
               <option value="f16">f16</option>
               <option value="bf16">bf16</option>
+              <option value="q8_0">q8_0 (推荐)</option>
+              <option value="q4_0">q4_0</option>
+              <option value="q4_1">q4_1</option>
+              <option value="iq4_nl">iq4_nl</option>
+              <option value="q5_0">q5_0</option>
+              <option value="q5_1">q5_1</option>
             </select>
           </div>
           <div class="param-row">
             <label>KV 缓存 V 类型</label>
             <select v-model="cfg.cacheTypeV" class="param-input">
               <option value="">默认 (f16)</option>
-              <option value="q8_0">q8_0 (推荐)</option>
-              <option value="q4_0">q4_0</option>
+              <option value="f32">f32</option>
               <option value="f16">f16</option>
               <option value="bf16">bf16</option>
+              <option value="q8_0">q8_0 (推荐)</option>
+              <option value="q4_0">q4_0</option>
+              <option value="q4_1">q4_1</option>
+              <option value="iq4_nl">iq4_nl</option>
+              <option value="q5_0">q5_0</option>
+              <option value="q5_1">q5_1</option>
             </select>
           </div>
-          <label class="param-check">
-            <input type="checkbox" v-model="cfg.mlock" />
-            <span>mlock <em>锁定内存防止 swap</em></span>
-          </label>
-          <label class="param-check">
-            <input type="checkbox" v-model="cfg.noMmap" />
-            <span>no-mmap <em>禁止内存映射 (内存紧张时)</em></span>
-          </label>
+          <div class="param-row">
+            <label>加载方式</label>
+            <select v-model="cfg.loadMode" class="param-input">
+              <option value="">默认 mmap</option>
+              <option value="mmap">mmap 内存映射(快加载)</option>
+              <option value="mlock">mlock 锁内存防 swap</option>
+              <option value="mmap+mlock">mmap+mlock 映射+锁定</option>
+              <option value="none">none 不映射(慢加载少换页)</option>
+              <option value="dio">dio DirectIO</option>
+            </select>
+          </div>
+          <div class="param-hint"><em>内存够选 mlock 更稳(防换页)；默认 mmap 加载快</em></div>
         </fieldset>
 
+        <!-- Multi GPU -->
+        <fieldset class="param-group">
+          <legend>多 GPU</legend>
+          <div class="param-row">
+            <label>切分方式</label>
+            <select v-model="cfg.splitMode" class="param-input">
+              <option value="">默认 layer</option>
+              <option value="layer">layer 流水线(默认稳)</option>
+              <option value="row">row 并行(更快兼容性差)</option>
+              <option value="tensor">tensor 实验性</option>
+              <option value="none">none 单卡</option>
+            </select>
+          </div>
+          <div class="param-row">
+            <label>每卡张量比例</label>
+            <input v-model="cfg.tensorSplit" type="text" class="param-input" placeholder="如 3,1" />
+          </div>
+          <div class="param-hint"><em>每卡分担比例,如 3,1=第一卡 3/4</em></div>
+          <div class="param-row">
+            <label>主 GPU</label>
+            <input v-model.number="cfg.mainGpu" type="number" min="0" step="1" class="param-input param-num" placeholder="0" />
+          </div>
+          <div class="param-hint"><em>split-mode=none 时的唯一 GPU</em></div>
+        </fieldset>
 
+        <!-- Long context -->
+        <fieldset class="param-group">
+          <legend>长上下文</legend>
+          <div class="param-row">
+            <label>RoPE 外推方式</label>
+            <select v-model="cfg.ropeScaling" class="param-input">
+              <option value="">默认 none</option>
+              <option value="none">none</option>
+              <option value="linear">linear 线性</option>
+              <option value="yarn">yarn YaRN(效果较好)</option>
+            </select>
+          </div>
+          <div class="param-row">
+            <label>外推倍数</label>
+            <input v-model.number="cfg.ropeScale" type="number" min="0" step="0.5" class="param-input param-num" placeholder="0" />
+          </div>
+          <div class="param-hint"><em>扩展倍数,2.0=翻倍;超过模型原生上下文才用,越大质量越差</em></div>
+        </fieldset>
       </div>
 
       <div class="modal-footer">
@@ -113,8 +178,14 @@ export interface ModelConfig {
   flashAttn: boolean
   cacheTypeK: string
   cacheTypeV: string
-  mlock: boolean
-  noMmap: boolean
+  loadMode: string
+  cpuMoe: boolean
+  nCpuMoe: number
+  splitMode: string
+  tensorSplit: string
+  mainGpu: number
+  ropeScaling: string
+  ropeScale: number
 }
 
 const props = defineProps<{
@@ -140,8 +211,14 @@ const defaults: ModelConfig = {
   flashAttn: false,
   cacheTypeK: '',
   cacheTypeV: '',
-  mlock: false,
-  noMmap: false,
+  loadMode: '',
+  cpuMoe: false,
+  nCpuMoe: 0,
+  splitMode: '',
+  tensorSplit: '',
+  mainGpu: 0,
+  ropeScaling: '',
+  ropeScale: 0,
 }
 
 const cfg = reactive<ModelConfig>({ ...defaults, ...props.initialConfig })
@@ -204,7 +281,7 @@ function save() {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: 16px;
-  width: 520px;
+  width: 560px;
   max-height: 80vh;
   display: flex;
   flex-direction: column;
@@ -325,6 +402,17 @@ function save() {
   color: var(--text-dim);
   font-style: normal;
   font-size: 11px;
+}
+
+.param-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+
+.param-hint em {
+  font-style: normal;
 }
 
 .modal-footer {
