@@ -5,44 +5,42 @@
       <p class="page-subtitle">推理服务与系统资源实时状态（每 1 秒刷新）</p>
     </div>
 
-    <!-- 推理（提示词处理）：请求结束时的预填充速度 -->
+    <!-- 推理服务：提示词处理 + 生成速度 -->
     <section class="info-section">
       <h2 class="section-title">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 3 3 0 0 1 1.34-5.22A2.5 2.5 0 0 1 9.5 2z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 3 3 0 0 0-1.34-5.22A2.5 2.5 0 0 0 14.5 2z"/>
+          <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>
         </svg>
-        推理（提示词处理）
-      </h2>
-      <div v-if="!status.serverRunning" class="tps-placeholder">启动服务后显示</div>
-      <div v-else class="tps-block">
-        <span class="tps-value">{{ promptTpsText }}</span>
-        <span class="tps-label">tokens/s</span>
-      </div>
-      <p class="tps-hint">最近一次请求的提示词处理（预填充）速度，请求结束时更新；思考与回答 token 属同一解码过程，服务端不分开计时</p>
-    </section>
-
-    <!-- 生成（解码）：实时解码速度 + 服务状态 + 折线图 -->
-    <section class="info-section">
-      <h2 class="section-title">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M2 13a2 2 0 0 0 2-2V7a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0V4a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0v-4a2 2 0 0 1 2-2"/>
-        </svg>
-        生成（解码）
+        推理服务
       </h2>
       <div class="server-head">
         <span class="status-badge" :class="status.serverRunning ? 'available' : 'unavailable'">
           {{ status.serverRunning ? '运行中' : '未启动' }}
         </span>
-        <div class="uptime-block">
+        <div v-if="status.serverRunning" class="uptime-block">
           <span class="uptime-value">{{ formatUptime(status.uptimeSeconds) }}</span>
           <span class="uptime-label">运行时长</span>
         </div>
       </div>
-      <div v-if="!status.serverRunning" class="tps-placeholder">启动服务后显示推理速度</div>
+      <div v-if="!status.serverRunning" class="tps-placeholder">启动服务后显示</div>
       <template v-else>
-        <div class="tps-block">
-          <span class="tps-value">{{ decodeTpsText }}</span>
-          <span class="tps-label">tokens/s</span>
+        <div class="tps-cards">
+          <div class="tps-card">
+            <span class="tps-card-name">提示词处理速度</span>
+            <span class="tps-card-sub">提示词预填充（prefill）</span>
+            <div class="tps-card-value">
+              <span class="tps-value">{{ promptTpsText }}</span>
+              <span class="tps-label">tokens/s</span>
+            </div>
+          </div>
+          <div class="tps-card">
+            <span class="tps-card-name">生成速度</span>
+            <span class="tps-card-sub">实时解码（decode）</span>
+            <div class="tps-card-value">
+              <span class="tps-value">{{ decodeTpsText }}</span>
+              <span class="tps-label">tokens/s</span>
+            </div>
+          </div>
         </div>
         <div class="tps-chart">
           <svg :viewBox="`0 0 ${chartWidth} ${chartHeight}`" preserveAspectRatio="none">
@@ -50,9 +48,10 @@
             <polyline :points="decodePoints" />
           </svg>
           <div class="tps-chart-meta">
-            <span class="tps-chart-label">近 {{ decodeHistory.length }} 秒解码速度</span>
+            <span class="tps-chart-label">近 {{ decodeHistory.length }} 秒生成速度</span>
           </div>
         </div>
+        <p class="tps-footnote">提示词处理速度在请求结束后更新 · 思考与回答同属解码过程</p>
       </template>
     </section>
 
@@ -125,7 +124,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { getMonitorStatus } from '../wails'
-import { appendHistory, chartPoints, formatUptime, type MonitorStatus } from '../lib/monitor'
+import { appendHistory, chartPoints, formatPromptTps, formatUptime, type MonitorStatus } from '../lib/monitor'
 import { formatBytes } from '../lib/format'
 
 const status = ref<MonitorStatus>({
@@ -139,7 +138,7 @@ const status = ref<MonitorStatus>({
   uptimeSeconds: 0,
 })
 
-// 解码速度折线图历史：1s 轮询追加，保留最近 60 个采样（appendHistory 默认 cap=60）
+// 生成速度折线图历史：1s 轮询追加，保留最近 60 个采样（appendHistory 默认 cap=60）
 const decodeHistory = ref<number[]>([])
 const chartWidth = 560
 const chartHeight = 120
@@ -153,7 +152,7 @@ const memPercent = computed(() => {
   return Math.round((status.value.memUsed / status.value.memTotal) * 100)
 })
 
-const promptTpsText = computed(() => status.value.promptTps.toFixed(1))
+const promptTpsText = computed(() => formatPromptTps(status.value.promptTps))
 
 const decodeTpsText = computed(() => status.value.decodeTps.toFixed(1))
 
@@ -353,11 +352,11 @@ onUnmounted(stopPolling)
 .server-head {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 32px;
   margin-bottom: 18px;
 }
 
-.tps-block,
 .uptime-block {
   display: flex;
   flex-direction: column;
@@ -376,13 +375,6 @@ onUnmounted(stopPolling)
   color: var(--text-dim);
 }
 
-.tps-hint {
-  margin: 12px 0 0;
-  font-size: 12px;
-  line-height: 1.7;
-  color: var(--text-dim);
-}
-
 .uptime-value {
   font-size: 14px;
   font-weight: 600;
@@ -394,6 +386,46 @@ onUnmounted(stopPolling)
   font-size: 13px;
   color: var(--text-dim);
   text-align: center;
+}
+
+/* ─── TPS metric cards ─── */
+.tps-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.tps-card {
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+}
+
+.tps-card-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.tps-card-sub {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.tps-card-value {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.tps-footnote {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: var(--text-dim);
 }
 
 /* ─── TPS chart ─── */

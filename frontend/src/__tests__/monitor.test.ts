@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { appendHistory, chartPoints, formatUptime } from '../lib/monitor'
+import { appendHistory, chartPoints, formatPromptTps, formatUptime } from '../lib/monitor'
 
 describe('appendHistory', () => {
   it('追加新值并返回新数组（不修改入参）', () => {
@@ -56,6 +56,28 @@ describe('chartPoints', () => {
   it('单点时水平居中，且数值即最大值时位于顶部', () => {
     const points = chartPoints([5], 100, 50)
     expect(points).toBe('50.0,2.0')
+  })
+})
+
+describe('formatPromptTps', () => {
+  it('无测量值（0 或负数）返回「—」占位', () => {
+    // 服务运行中但请求尚未结束时 promptTps 为 0，负数同理视为无测量值
+    expect(formatPromptTps(0)).toBe('—')
+    expect(formatPromptTps(-1)).toBe('—')
+  })
+
+  it('NaN 返回「—」占位', () => {
+    expect(formatPromptTps(NaN)).toBe('—')
+  })
+
+  it('正常值保留 1 位小数', () => {
+    // toFixed(1) 四舍五入：128.36 -> 128.4
+    expect(formatPromptTps(128.36)).toBe('128.4')
+    expect(formatPromptTps(12.04)).toBe('12.0')
+  })
+
+  it('极小正数按 1 位小数仍显示 0.0（区别于无测量值的「—」）', () => {
+    expect(formatPromptTps(0.004)).toBe('0.0')
   })
 })
 

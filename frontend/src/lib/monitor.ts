@@ -10,9 +10,9 @@ export interface MonitorStatus {
   memTotal: number
   gpus: { index: number; name: string; utilPercent: number; memUsed: number; memTotal: number }[]
   serverRunning: boolean
-  /** 推理（提示词处理/预填充）速度 tokens/s：请求结束时更新（llama-server print_timing 的 prompt eval time 行） */
+  /** 提示词处理速度 tokens/s（提示词预填充 prefill）：请求结束时更新（llama-server print_timing 的 prompt eval time 行） */
   promptTps: number
-  /** 生成（解码）实时速度 tokens/s：生成期间由 tg_3s 日志行每约 3 秒刷新，请求结束时以 eval time 行兜底 */
+  /** 生成速度 tokens/s（实时解码 decode）：生成期间由 tg_3s 日志行每约 3 秒刷新，请求结束时以 eval time 行兜底 */
   decodeTps: number
   uptimeSeconds: number
 }
@@ -43,6 +43,14 @@ export function chartPoints(history: number[], width: number, height: number, ma
       return `${x.toFixed(1)},${y.toFixed(1)}`
     })
     .join(' ')
+}
+
+/**
+ * 提示词处理速度的显示规则：服务运行中但尚无测量值（tps <= 0，含 NaN）时
+ * 显示「—」占位，有测量值时保留 1 位小数。区别于生成速度（实时 0.0 仍显示 0.0）。
+ */
+export function formatPromptTps(tps: number): string {
+  return tps > 0 ? tps.toFixed(1) : '—'
 }
 
 /** 把秒数格式化为人类可读的中文运行时长，如 "45 秒"、"1 小时 23 分"。 */
