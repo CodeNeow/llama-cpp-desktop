@@ -166,6 +166,12 @@ Remaining gaps:
 - 按明确路径逐个暂存文件。提交前检查 `git status --short`、`git diff --cached --stat` 与 `git diff --cached --check`；提交后工作树必须干净。
 - 外部实施 Agent 不得暂存或提交；只有主审在重新审查实际 diff、确认任务包退出条件全部满足并亲自完成所需验证后可以提交。审查有问题时先进入下一轮修复，不提交。
 
+## 版本发布
+
+- 更新日志的权威来源是根目录 `CHANGELOG.md`：发版前先新增对应版本条目（含日期与逐提交核心改动），**tag 注解消息与 GitHub Release 正文均从该条目复制**，保持一致；不依赖 GitHub「自动生成发布说明」（本仓库直接提交 main、无 PR，自动生成只产生 compare 链接）。
+- 版本标签为注解标签 `git tag -a vX.Y.Z`，消息取自 CHANGELOG 条目；发版前先确认验证门通过，推送 tag 属远程操作需用户授权。
+- GitHub Release 正文不会自动同步 tag 消息：创建/更新 Release 时从 CHANGELOG 条目粘贴正文，该操作属远程操作需用户明确授权。
+
 ## 仓库卫生
 
 - 提交前 `git status --short` 只包含本次任务有意改动的文件；`git diff --check` 无错误。
@@ -208,3 +214,4 @@ Issue 位于 `https://github.com/CodeNeow/llama-cpp-gui/issues`。任何非平�
 - **Windows 下停止服务**：`stopServerInternal` 通过 `cmd.Process.Signal(os.Kill)` 结束 llama-server；不要在外部用 `taskkill /IM llama-server.exe` 宽范围强杀，避免误杀其他实例。
 - **本机 `gofmt -l` 报大量既有文件**：仓库提交为 LF，Windows 检出（`core.autocrlf`）为 CRLF 会导致 gofmt 报告整个文件。判断格式问题时用 `git -c core.autocrlf=false diff` 核对实际改动，不要顺手改写未改动的行尾。
 - **本机前端未构建时报 `frontend/dist: no matching files found`**：`go:embed` 依赖 `frontend/dist`，先执行 `cd frontend && npm run build` 再跑后端命令。
+- **GitHub Release 页面只有 `Full Changelog` 对比链接**：自动生成发布说明按 PR 汇总，本仓库直接提交 main 无 PR，生成结果只剩 compare 链接；tag 消息不会自动同步到 Release 正文，需从 `CHANGELOG.md` 对应条目粘贴（见「版本发布」）。
