@@ -5,6 +5,39 @@
       <p class="page-subtitle">推理服务 TPS 与系统资源实时状态（每 1 秒刷新）</p>
     </div>
 
+    <!-- Server status -->
+    <section class="info-section">
+      <h2 class="section-title">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>
+        </svg>
+        推理服务
+      </h2>
+      <div class="server-head">
+        <span class="status-badge" :class="status.serverRunning ? 'available' : 'unavailable'">
+          {{ status.serverRunning ? '运行中' : '未启动' }}
+        </span>
+        <div class="tps-block">
+          <span class="tps-value">{{ tpsText }}</span>
+          <span class="tps-label">Tokens/s</span>
+        </div>
+        <div class="uptime-block">
+          <span class="uptime-value">{{ formatUptime(status.uptimeSeconds) }}</span>
+          <span class="uptime-label">运行时长</span>
+        </div>
+      </div>
+      <div v-if="!status.serverRunning" class="tps-placeholder">启动服务后显示推理速度</div>
+      <div v-else class="tps-chart">
+        <svg :viewBox="`0 0 ${chartWidth} ${chartHeight}`" preserveAspectRatio="none">
+          <line class="tps-axis" x1="0" :y1="chartHeight - 2" :x2="chartWidth" :y2="chartHeight - 2" />
+          <polyline :points="tpsPoints" />
+        </svg>
+        <div class="tps-chart-meta">
+          <span class="tps-chart-label">近 {{ tpsHistory.length }} 秒 TPS</span>
+        </div>
+      </div>
+    </section>
+
     <!-- CPU -->
     <section class="info-section">
       <h2 class="section-title">
@@ -68,38 +101,6 @@
       <div v-else class="info-empty">未检测到 NVIDIA GPU</div>
     </section>
 
-    <!-- Server status -->
-    <section class="info-section">
-      <h2 class="section-title">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>
-        </svg>
-        推理服务
-      </h2>
-      <div class="server-head">
-        <span class="status-badge" :class="status.serverRunning ? 'available' : 'unavailable'">
-          {{ status.serverRunning ? '运行中' : '未启动' }}
-        </span>
-        <div class="tps-block">
-          <span class="tps-value">{{ tpsText }}</span>
-          <span class="tps-label">Tokens/s</span>
-        </div>
-        <div class="uptime-block">
-          <span class="uptime-value">{{ formatUptime(status.uptimeSeconds) }}</span>
-          <span class="uptime-label">运行时长</span>
-        </div>
-      </div>
-      <div v-if="!status.serverRunning" class="tps-placeholder">启动服务后显示推理速度</div>
-      <div v-else class="tps-chart">
-        <svg :viewBox="`0 0 ${chartWidth} ${chartHeight}`" preserveAspectRatio="none">
-          <line class="tps-axis" x1="0" :y1="chartHeight - 2" :x2="chartWidth" :y2="chartHeight - 2" />
-          <polyline :points="tpsPoints" />
-        </svg>
-        <div class="tps-chart-meta">
-          <span class="tps-chart-label">近 {{ tpsHistory.length }} 秒 TPS</span>
-        </div>
-      </div>
-    </section>
   </div>
 </template>
 
