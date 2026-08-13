@@ -34,6 +34,10 @@ export function GetConfig() {
   return window['go']['core']['App']['GetConfig']();
 }
 
+export function GetDownloadSource() {
+  return window['go']['core']['App']['GetDownloadSource']();
+}
+
 export function GetDownloadTasks() {
   return window['go']['core']['App']['GetDownloadTasks']();
 }
@@ -72,6 +76,10 @@ export function GetModelMaxFileSize(arg1) {
 
 export function GetModels() {
   return window['go']['core']['App']['GetModels']();
+}
+
+export function GetMonitorStatus() {
+  return window['go']['core']['App']['GetMonitorStatus']();
 }
 
 export function GetOS() {
@@ -128,6 +136,10 @@ export function SaveServerConfig(arg1) {
 
 export function SearchDownloads(arg1, arg2) {
   return window['go']['core']['App']['SearchDownloads'](arg1, arg2);
+}
+
+export function SetDownloadSource(arg1) {
+  return window['go']['core']['App']['SetDownloadSource'](arg1);
 }
 
 export function SetModelsDir(arg1) {

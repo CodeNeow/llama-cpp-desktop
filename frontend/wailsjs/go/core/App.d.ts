@@ -18,6 +18,8 @@ export function GetCUDA():Promise<core.CUDAInfo>;
 
 export function GetConfig():Promise<Record<string, any>>;
 
+export function GetDownloadSource():Promise<string>;
+
 export function GetDownloadTasks():Promise<Array<core.DlTask>>;
 
 export function GetGPU():Promise<Array<core.GPUInfo>>;
@@ -37,6 +39,8 @@ export function GetModelFiles(arg1:string):Promise<Array<core.HFFileOut>>;
 export function GetModelMaxFileSize(arg1:string):Promise<number>;
 
 export function GetModels():Promise<Array<core.ModelInfo>>;
+
+export function GetMonitorStatus():Promise<core.MonitorStatus>;
 
 export function GetOS():Promise<Record<string, string>>;
 
@@ -65,6 +69,8 @@ export function SaveModelConfig(arg1:string,arg2:core.ModelConfig):Promise<void>
 export function SaveServerConfig(arg1:core.ServerConfig):Promise<void>;
 
 export function SearchDownloads(arg1:string,arg2:string):Promise<Array<core.HFSearchResult>>;
+
+export function SetDownloadSource(arg1:string):Promise<void>;
 
 export function SetModelsDir(arg1:string):Promise<void>;
 

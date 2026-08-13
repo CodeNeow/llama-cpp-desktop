@@ -37,11 +37,13 @@ export namespace core {
 	    modelId: string;
 	    fileName: string;
 	    destDir: string;
+	    source: string;
 	    status: string;
 	    progress: number;
 	    total: number;
 	    downloaded: number;
 	    sizeHuman: string;
+	    speed: number;
 	    error: string;
 
 	    static createFrom(source: any = {}) {
@@ -54,11 +56,13 @@ export namespace core {
 	        this.modelId = source["modelId"];
 	        this.fileName = source["fileName"];
 	        this.destDir = source["destDir"];
+	        this.source = source["source"];
 	        this.status = source["status"];
 	        this.progress = source["progress"];
 	        this.total = source["total"];
 	        this.downloaded = source["downloaded"];
 	        this.sizeHuman = source["sizeHuman"];
+	        this.speed = source["speed"];
 	        this.error = source["error"];
 	    }
 	}
@@ -217,8 +221,20 @@ export namespace core {
 	    flashAttn: boolean;
 	    cacheTypeK: string;
 	    cacheTypeV: string;
-	    mlock: boolean;
-	    noMmap: boolean;
+	    loadMode: string;
+	    cpuMoe: boolean;
+	    nCpuMoe: number;
+	    splitMode: string;
+	    tensorSplit: string;
+	    mainGpu: number;
+	    ropeScaling: string;
+	    ropeScale: number;
+	    mmproj: string;
+	    reasoning: boolean;
+	    specType: string;
+	    specDraftNMax: number;
+	    mlock?: boolean;
+	    noMmap?: boolean;
 
 	    static createFrom(source: any = {}) {
 	        return new ModelConfig(source);
@@ -234,6 +250,18 @@ export namespace core {
 	        this.flashAttn = source["flashAttn"];
 	        this.cacheTypeK = source["cacheTypeK"];
 	        this.cacheTypeV = source["cacheTypeV"];
+	        this.loadMode = source["loadMode"];
+	        this.cpuMoe = source["cpuMoe"];
+	        this.nCpuMoe = source["nCpuMoe"];
+	        this.splitMode = source["splitMode"];
+	        this.tensorSplit = source["tensorSplit"];
+	        this.mainGpu = source["mainGpu"];
+	        this.ropeScaling = source["ropeScaling"];
+	        this.ropeScale = source["ropeScale"];
+	        this.mmproj = source["mmproj"];
+	        this.reasoning = source["reasoning"];
+	        this.specType = source["specType"];
+	        this.specDraftNMax = source["specDraftNMax"];
 	        this.mlock = source["mlock"];
 	        this.noMmap = source["noMmap"];
 	    }
@@ -263,6 +291,68 @@ export namespace core {
 	        this.quantization = source["quantization"];
 	        this.hasMmproj = source["hasMmproj"];
 	    }
+	}
+	export class MonitorGPU {
+	    index: number;
+	    name: string;
+	    utilPercent: number;
+	    memUsed: number;
+	    memTotal: number;
+
+	    static createFrom(source: any = {}) {
+	        return new MonitorGPU(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.index = source["index"];
+	        this.name = source["name"];
+	        this.utilPercent = source["utilPercent"];
+	        this.memUsed = source["memUsed"];
+	        this.memTotal = source["memTotal"];
+	    }
+	}
+	export class MonitorStatus {
+	    cpuPercent: number;
+	    memUsed: number;
+	    memTotal: number;
+	    gpus: MonitorGPU[];
+	    serverRunning: boolean;
+	    tps: number;
+	    uptimeSeconds: number;
+
+	    static createFrom(source: any = {}) {
+	        return new MonitorStatus(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.cpuPercent = source["cpuPercent"];
+	        this.memUsed = source["memUsed"];
+	        this.memTotal = source["memTotal"];
+	        this.gpus = this.convertValues(source["gpus"], MonitorGPU);
+	        this.serverRunning = source["serverRunning"];
+	        this.tps = source["tps"];
+	        this.uptimeSeconds = source["uptimeSeconds"];
+	    }
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class ServerConfig {
 	    host: string;
