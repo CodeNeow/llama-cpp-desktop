@@ -58,6 +58,31 @@ func TestParseTPS(t *testing.T) {
 	}
 }
 
+// TestParseTPSMultiLineEntry 验证一个条目内含多行（历史遗留的一次 stderr Write
+// 含两行 timing）时，parseTPS 先按行切分再分类：预填充行被跳过，返回解码行数值
+// 89.82。该用例覆盖 parseTPS 自身的多行切行能力；与写入侧行缓冲（serverLogWriter
+// 按行重组）配合，双保险保证 print_timing 行整体进入分类、预填充值不漏入 TPS。
+func TestParseTPSMultiLineEntry(t *testing.T) {
+	got := parseTPS([]string{
+		"I slot print_timing:      prompt eval time =     271.14 ms /    15 tokens (   18.08 ms per token,    55.32 tokens per second)\n" +
+			"I slot print_timing:             eval time =     712.56 ms /    64 tokens (   11.13 ms per token,    89.82 tokens per second)",
+	})
+	if got != 89.82 {
+		t.Errorf("parseTPS 多行条目 = %v, want 89.82", got)
+	}
+}
+
+// TestParseTPSTruncatedFragment 固定截断分片的现状：分片「( 2362.80 tokens per
+// second)」单独出现时不含 "prompt eval time" 标记，parseTPS 无法判断它属于预填充
+// 行，会把它当作解码值返回（2362.80）。这不是 parseTPS 的缺陷——分片重组是写入
+// 侧行缓冲（serverLogWriter）的职责，parseTPS 只保证收到的都是完整行；本用例按
+// 当前行为断言（不弱化、不自相矛盾），与写入侧按行缓冲配合才是完整修复。
+func TestParseTPSTruncatedFragment(t *testing.T) {
+	if got := parseTPS([]string{"( 2362.80 tokens per second)"}); got != 2362.80 {
+		t.Errorf("parseTPS 截断分片 = %v, want 2362.80（分片重组由写入侧负责）", got)
+	}
+}
+
 // ─── parseNVLine ──────────────────────────────────────────────────
 
 // TestParseNVLine 验证 nvidia-smi 单行 CSV 解析：完整 5 列、缺列（尽力解析）、

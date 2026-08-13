@@ -65,7 +65,10 @@ var tpsLogRegex = regexp.MustCompile(`([\d.]+)\s+tokens?\s+per\s+second`)
 // 纯函数：无解码行返回 0；多行多值取最后一条解码行（最新采样为准）；支持小数。
 func parseTPS(logs []string) float64 {
 	var last float64
-	for _, line := range logs {
+	// 先把所有条目拼成文本再按行切分：历史遗留的多行条目（一次 stderr Write 含
+	// 多行）在此被拆成独立行，逐行分类与写入侧行缓冲（serverLogWriter）配合，
+	// 双保险保证 print_timing 行整体进入分类，预填充值不会漏入 TPS。
+	for _, line := range strings.Split(strings.Join(logs, "\n"), "\n") {
 		// 预填充行先行排除：其中同样含 "tokens per second" 片段（如 55.32），
 		// 不跳过会污染 TPS（长 prompt 预填充可达 2362.8 t/s 这类荒谬值）。
 		if strings.Contains(line, "prompt eval time") {

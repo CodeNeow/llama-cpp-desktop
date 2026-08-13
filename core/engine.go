@@ -2136,10 +2136,42 @@ var serverMu sync.Mutex
 // GetMonitorStatus 计算运行时长；进程退出（cmd.Wait goroutine）置零。
 var serverStartTime time.Time
 
-type serverLogWriter struct{}
+// serverLogWriter 把子进程 stdout/stderr 的写入按行重组后再进入环形日志，避免
+// 日志条目被任意分片拦腰截断。此前 Write 把每次 stderr 写入的任意分片直接当作
+// 一条日志（addServerLog(strings.TrimSpace(string(p)))）：llama-server 输出按小块
+// 写入，print_timing 行可能被拆成多次 Write——用户实贴日志出现「0.00.136.078」
+// 单独成条，以及「( 0.63 ms per token, 2362.80 tokens per second)」这种只剩后半句
+// 的分片；后者不再含 "prompt eval time" 标记，parseTPS 无法把它归类为预填充行，
+// 2362.80 这类长 prompt 预填充速度就漏进了 TPS。按行缓冲让 addServerLog 永远收到
+// 完整行，从根上消除截断（日志显示拆行与 TPS 误读同源）。
+//
+// 每个实例持有独立缓冲与互斥锁（项目「显式互斥」惯例），bridge.go 中
+// cmd.Stdout 与 cmd.Stderr 各挂一个实例，各自缓冲自己的流，互不干扰。
+type serverLogWriter struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
 
 func (w *serverLogWriter) Write(p []byte) (int, error) {
-	addServerLog(strings.TrimSpace(string(p)))
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.buf.Write(p)
+	for {
+		line, err := w.buf.ReadString('\n')
+		if err != nil {
+			// 无换行结尾：ReadString 已消费整个缓冲，line 为未完成残片。
+			// 清空后把残片写回，与下一次 Write 拼成完整行；无残片时直接
+			// 清空，防止缓冲随已消费字节无限增长。
+			w.buf.Reset()
+			if line != "" {
+				w.buf.WriteString(line)
+			}
+			break
+		}
+		if line = strings.TrimSpace(line); line != "" {
+			addServerLog(line)
+		}
+	}
 	return len(p), nil
 }
 
