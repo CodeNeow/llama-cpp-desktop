@@ -318,7 +318,8 @@ export namespace core {
 	    memTotal: number;
 	    gpus: MonitorGPU[];
 	    serverRunning: boolean;
-	    tps: number;
+	    promptTps: number;
+	    decodeTps: number;
 	    uptimeSeconds: number;
 
 	    static createFrom(source: any = {}) {
@@ -332,7 +333,8 @@ export namespace core {
 	        this.memTotal = source["memTotal"];
 	        this.gpus = this.convertValues(source["gpus"], MonitorGPU);
 	        this.serverRunning = source["serverRunning"];
-	        this.tps = source["tps"];
+	        this.promptTps = source["promptTps"];
+	        this.decodeTps = source["decodeTps"];
 	        this.uptimeSeconds = source["uptimeSeconds"];
 	    }
 

@@ -10,7 +10,10 @@ export interface MonitorStatus {
   memTotal: number
   gpus: { index: number; name: string; utilPercent: number; memUsed: number; memTotal: number }[]
   serverRunning: boolean
-  tps: number
+  /** 推理（提示词处理/预填充）速度 tokens/s：请求结束时更新（llama-server print_timing 的 prompt eval time 行） */
+  promptTps: number
+  /** 生成（解码）实时速度 tokens/s：生成期间由 tg_3s 日志行每约 3 秒刷新，请求结束时以 eval time 行兜底 */
+  decodeTps: number
   uptimeSeconds: number
 }
 

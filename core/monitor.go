@@ -23,7 +23,8 @@ type MonitorStatus struct {
 	MemTotal      uint64       `json:"memTotal"`
 	GPUs          []MonitorGPU `json:"gpus"`
 	ServerRunning bool         `json:"serverRunning"`
-	TPS           float64      `json:"tps"`
+	PromptTPS     float64      `json:"promptTps"`
+	DecodeTPS     float64      `json:"decodeTps"`
 	UptimeSeconds int64        `json:"uptimeSeconds"`
 }
 
@@ -48,30 +49,37 @@ var monitorOnce sync.Once
 // 上次采样值（仅采样 goroutine 读写，无需加锁）；首轮返回 0。
 var linuxCPUPrevIdle, linuxCPUPrevTotal uint64
 
-// tpsLogRegex 匹配 llama-server 日志中的吞吐行，如 "12.34 tokens per second"。
-// 预填充（prompt eval）与解码（eval）行都含该片段，是否采用由 parseTPS 按行
-// 分类决定（预填充行先行排除）。
+// tpsLogRegex 匹配 llama-server 日志中的吞吐片段 "N tokens per second"
+// （预填充 prompt eval 行与解码 eval 行都含该片段，属于哪类由 parsePromptTPS /
+// parseDecodeTPS 按行分类决定）。
 var tpsLogRegex = regexp.MustCompile(`([\d.]+)\s+tokens?\s+per\s+second`)
 
-// parseTPS 从服务日志行中提取最后一条解码行的 "N tokens per second" 数值
-// （tokens/s）。llama-server 每次生成结束会打印两行 timing：
+// tg3sLogRegex 匹配实时解码行的 3 秒窗口速度 "tg_3s = N t/s"（N 为浮点数）。
+var tg3sLogRegex = regexp.MustCompile(`tg_3s\s*=\s*([\d.]+)\s+t/s`)
+
+// splitLogLines 先把日志条目拼成文本再按行切分：历史遗留的多行条目（一次
+// stderr Write 含多行）在此被拆成独立行，与写入侧行缓冲（serverLogWriter）
+// 双保险，保证 print_timing 行整体进入后续分类、预填充值不会漏入解码速度。
+// 纯函数：空列表经 Join 为 "" 再 Split 得到单条空行（各解析函数无关键词命中
+// 时自然返回 0）。
+func splitLogLines(logs []string) []string {
+	return strings.Split(strings.Join(logs, "\n"), "\n")
+}
+
+// parsePromptTPS 从服务日志行中提取最后一条预填充行的 "N tokens per second"
+// 数值（tokens/s），即提示词处理 / 预填充（prefill）速度。llama-server 每次
+// 请求结束会打印预填充计时行：
 //
-//	I slot print_timing:      prompt eval time =     271.14 ms /    15 tokens (   18.08 ms per token,    55.32 tokens per second)
-//	I slot print_timing:             eval time =     712.56 ms /    64 tokens (   11.13 ms per token,    89.82 tokens per second)
+//	I slot print_timing:      prompt eval time =     357.49 ms /    27 tokens (   13.24 ms per token,    75.53 tokens per second)
 //
-// 第一行是提示词预填充（prefill）速度，长 prompt 上可达数千 t/s（如监控页曾显示
-// 2362.8 t/s），不是用户认知的推理速度；第二行才是生成解码速度，必须只取解码行。
-// 注意 "prompt eval time" 是 "eval time" 的子串，必须先判 prompt 再判 eval。
-// 纯函数：无解码行返回 0；多行多值取最后一条解码行（最新采样为准）；支持小数。
-func parseTPS(logs []string) float64 {
+// 该值反映提示词吞吐（长 prompt 上可达数千 t/s），与解码速度是两个独立指标，
+// 由监控页「推理」模块展示。纯函数：无预填充行返回 0；多行多值取最后一条
+// 预填充行（最新采样为准）；单行内多个匹配只取第一个命中（regexp
+// FindStringSubmatch 语义）；支持小数。
+func parsePromptTPS(logs []string) float64 {
 	var last float64
-	// 先把所有条目拼成文本再按行切分：历史遗留的多行条目（一次 stderr Write 含
-	// 多行）在此被拆成独立行，逐行分类与写入侧行缓冲（serverLogWriter）配合，
-	// 双保险保证 print_timing 行整体进入分类，预填充值不会漏入 TPS。
-	for _, line := range strings.Split(strings.Join(logs, "\n"), "\n") {
-		// 预填充行先行排除：其中同样含 "tokens per second" 片段（如 55.32），
-		// 不跳过会污染 TPS（长 prompt 预填充可达 2362.8 t/s 这类荒谬值）。
-		if strings.Contains(line, "prompt eval time") {
+	for _, line := range splitLogLines(logs) {
+		if !strings.Contains(line, "prompt eval time") {
 			continue
 		}
 		if m := tpsLogRegex.FindStringSubmatch(line); m != nil {
@@ -81,6 +89,50 @@ func parseTPS(logs []string) float64 {
 		}
 	}
 	return last
+}
+
+// parseDecodeTPS 从服务日志行中提取生成（解码）实时速度（tokens/s）。路由器
+// 模式 llama-server 生成期间每约 3 秒打印一行实时统计、请求结束打印总计时行：
+//
+//	I slot print_timing:              n_decoded = 414, tg = 68.82 t/s, tg_3s = 67.32 t/s
+//	I slot print_timing:             eval time = 12334.07 ms / 900 tokens ( 72.97 tokens per second)
+//
+// 实时行中 tg 为累计平均解码速度、tg_3s 为最近 3 秒窗口速度（实时值），本函数
+// 只取 tg_3s 并优先返回（即使其后还有 eval time 行，实时值优先于请求结束时
+// 的总计时）；旧版二进制无实时行时回退最后一条 eval time 行的数值。回退分支
+// 严格要求 "eval time" 标记：仅剩 "tokens per second" 片段的截断分片不再被采用
+// （分片重组是写入侧行缓冲 serverLogWriter 的职责）。曾经的「TPS 恒 0」根因：
+// 旧实现只解析生成结束才打印的 eval time 行，而实时行不含 "tokens per second"，
+// 导致生成期间无值。
+// 纯函数：无候选返回 0；多行多值取最后一行（最新采样为准）；支持小数。
+func parseDecodeTPS(logs []string) float64 {
+	var lastTg3s, lastEval float64
+	for _, line := range splitLogLines(logs) {
+		if strings.Contains(line, "tg_3s =") {
+			if m := tg3sLogRegex.FindStringSubmatch(line); m != nil {
+				if v, err := strconv.ParseFloat(m[1], 64); err == nil {
+					lastTg3s = v
+				}
+			}
+			continue
+		}
+		// 预填充行先行排除：prompt eval time 是 eval time 的子串，且其中同样含
+		// "tokens per second" 片段（如 75.53），不跳过会污染解码速度。
+		if strings.Contains(line, "prompt eval time") {
+			continue
+		}
+		if strings.Contains(line, "eval time") {
+			if m := tpsLogRegex.FindStringSubmatch(line); m != nil {
+				if v, err := strconv.ParseFloat(m[1], 64); err == nil {
+					lastEval = v
+				}
+			}
+		}
+	}
+	if lastTg3s > 0 {
+		return lastTg3s
+	}
+	return lastEval
 }
 
 // StartMonitorSampler 启动后台采样器（sync.Once 保证只启动一次）。采样间隔
@@ -97,8 +149,8 @@ func StartMonitorSampler() {
 }
 
 // GetMonitorStatus 返回当前监控采样快照：读 monitorStatus 缓存（monitorMu），
-// ServerRunning / UptimeSeconds / TPS 每次现取（serverMu / serverLogsMu），保证
-// 缓存采样周期内这些高频变化字段仍是实时的。
+// ServerRunning / UptimeSeconds / PromptTPS / DecodeTPS 每次现取（serverMu /
+// serverLogsMu），保证缓存采样周期内这些高频变化字段仍是实时的。
 func GetMonitorStatus() *MonitorStatus {
 	monitorMu.Lock()
 	st := monitorStatus
@@ -115,7 +167,7 @@ func GetMonitorStatus() *MonitorStatus {
 		st.UptimeSeconds = 0
 	}
 
-	// TPS：读服务日志尾部 50 条（serverLogsMu）
+	// TPS：读服务日志尾部 50 条（serverLogsMu），现算预填充与解码速度
 	serverLogsMu.Lock()
 	logs := serverLogs
 	if n := len(logs); n > 50 {
@@ -124,7 +176,8 @@ func GetMonitorStatus() *MonitorStatus {
 	tail := make([]string, len(logs))
 	copy(tail, logs)
 	serverLogsMu.Unlock()
-	st.TPS = parseTPS(tail)
+	st.PromptTPS = parsePromptTPS(tail)
+	st.DecodeTPS = parseDecodeTPS(tail)
 
 	return &st
 }

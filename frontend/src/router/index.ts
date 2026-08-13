@@ -14,12 +14,6 @@ const routes = [
     meta: { title: '主页', icon: 'home' }
   },
   {
-    path: '/monitor',
-    name: 'Monitor',
-    component: Monitor,
-    meta: { title: '推理监控', icon: 'chart' }
-  },
-  {
     path: '/downloads',
     name: 'Downloads',
     component: Downloads,
@@ -36,6 +30,12 @@ const routes = [
     name: 'Api',
     component: Api,
     meta: { title: 'API', icon: 'terminal' }
+  },
+  {
+    path: '/monitor',
+    name: 'Monitor',
+    component: Monitor,
+    meta: { title: '监控', icon: 'chart' }
   },
   {
     path: '/settings',

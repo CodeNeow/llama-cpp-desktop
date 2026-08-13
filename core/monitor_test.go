@@ -1,85 +1,157 @@
 package core
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
-// ─── parseTPS ─────────────────────────────────────────────────────
+// ─── parsePromptTPS ────────────────────────────────────────────────
 
-// TestParseTPS 验证从服务日志提取解码（生成）速度：只采用解码行（eval time）
-// 的数值，预填充行（prompt eval time）必须排除；多行多值取最后一条解码行
-// （最新采样为准）、支持小数、支持 token 单复数、无解码行返回 0。单行内的多个
-// 匹配只取第一个命中（regexp FindStringSubmatch 语义），以此为准断言。
-func TestParseTPS(t *testing.T) {
+// TestParsePromptTPS 验证从服务日志提取提示词预填充（prefill）速度：只采用含
+// "prompt eval time" 的预填充行数值，解码行（eval time）不进入该指标；多行多值
+// 取最后一条预填充行（最新采样为准）；无预填充行返回 0。实测样例：
+// `prompt eval time = 357.49 ms / 27 tokens ( 75.53 tokens per second)`。
+func TestParsePromptTPS(t *testing.T) {
 	cases := []struct {
 		name string
 		logs []string
 		want float64
 	}{
 		{"no match", []string{"loading model", "another line"}, 0},
-		{"single", []string{"12.34 tokens per second"}, 12.34},
-		{"singular token", []string{"5 token per second"}, 5},
-		{"last of multiple", []string{"12.34 tokens per second", "log noise", "56.7 tokens per second"}, 56.7},
-		{"first match in single line", []string{"a 3.5 tokens per second and 4.5 tokens per second"}, 3.5},
-		{"empty", nil, 0},
-		// 真实 llama-server 输出：预填充行在前、解码行在后（print_timing 实际
-		// 打印顺序），须返回解码行数值 89.82，不能取预填充行的 55.32。
-		{"prefill then decode",
+		{"single prefill",
+			[]string{"I slot print_timing:      prompt eval time =     357.49 ms /    27 tokens ( 75.53 tokens per second)"},
+			75.53},
+		// 预填充+解码共存：解码行数值（72.97）不得进入预填充指标，仍取预填充值 75.53。
+		{"prefill with decode coexist",
 			[]string{
-				"I slot print_timing:      prompt eval time =     271.14 ms /    15 tokens (   18.08 ms per token,    55.32 tokens per second)",
-				"I slot print_timing:             eval time =     712.56 ms /    64 tokens (   11.13 ms per token,    89.82 tokens per second)",
-			}, 89.82},
-		// 只有预填充行、无解码行：预填充行被跳过，无有效值，返回 0。
-		{"prefill only",
+				"I slot print_timing:      prompt eval time =     357.49 ms /    27 tokens ( 75.53 tokens per second)",
+				"I slot print_timing:             eval time =   12334.07 ms /   900 tokens ( 72.97 tokens per second)",
+			}, 75.53},
+		// 多轮生成多对 timing：取最后一条预填充行（长 prompt 高值 2362.80）。
+		{"multiple rounds take last prefill",
 			[]string{
-				"I slot print_timing:      prompt eval time =     271.14 ms /    15 tokens (   18.08 ms per token,    55.32 tokens per second)",
-			}, 0},
-		// 多轮生成多对 timing：预填充行（含 4230.00 这类长 prompt 高值）不得覆盖
-		// 解码值，取最后一轮解码行的 95.40。
-		{"multiple rounds",
-			[]string{
-				"I slot print_timing:      prompt eval time =     271.14 ms /    15 tokens (   18.08 ms per token,    55.32 tokens per second)",
-				"I slot print_timing:             eval time =     712.56 ms /    64 tokens (   11.13 ms per token,    89.82 tokens per second)",
+				"I slot print_timing:      prompt eval time =     357.49 ms /    27 tokens ( 75.53 tokens per second)",
 				"llama_server: unrelated log noise",
-				"I slot print_timing:      prompt eval time =  4230.00 ms / 10000 tokens (    0.42 ms per token,  2362.80 tokens per second)",
-				"I slot print_timing:             eval time =     500.00 ms /    50 tokens (   10.00 ms per token,    95.40 tokens per second)",
-			}, 95.40},
-		// 解码行带 llama-server 前缀（I slot print_timing:）与毫秒/ms 单位等
-		// 噪声，正则仍只提取 "tokens per second" 数值。
-		{"decode line with prefix noise",
+				"I slot print_timing:      prompt eval time =    4230.00 ms / 10000 tokens ( 2362.80 tokens per second)",
+			}, 2362.80},
+		// 只有解码行、无预填充行：预填充指标无值，返回 0。
+		{"decode only",
 			[]string{
-				"llama server   : I slot print_timing:             eval time =     712.56 ms /    64 tokens (   11.13 ms per token,    89.82 tokens per second)",
-			}, 89.82},
+				"I slot print_timing:             eval time =   12334.07 ms /   900 tokens ( 72.97 tokens per second)",
+			}, 0},
+		{"empty", nil, 0},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := parseTPS(c.logs); got != c.want {
-				t.Errorf("parseTPS(%v) = %v, want %v", c.logs, got, c.want)
+			if got := parsePromptTPS(c.logs); got != c.want {
+				t.Errorf("parsePromptTPS(%v) = %v, want %v", c.logs, got, c.want)
 			}
 		})
 	}
 }
 
-// TestParseTPSMultiLineEntry 验证一个条目内含多行（历史遗留的一次 stderr Write
-// 含两行 timing）时，parseTPS 先按行切分再分类：预填充行被跳过，返回解码行数值
-// 89.82。该用例覆盖 parseTPS 自身的多行切行能力；与写入侧行缓冲（serverLogWriter
-// 按行重组）配合，双保险保证 print_timing 行整体进入分类、预填充值不漏入 TPS。
-func TestParseTPSMultiLineEntry(t *testing.T) {
-	got := parseTPS([]string{
-		"I slot print_timing:      prompt eval time =     271.14 ms /    15 tokens (   18.08 ms per token,    55.32 tokens per second)\n" +
-			"I slot print_timing:             eval time =     712.56 ms /    64 tokens (   11.13 ms per token,    89.82 tokens per second)",
+// TestParsePromptTPSMultiLineEntry 验证一个条目内含多行（一次 stderr Write 含
+// 预填充+解码两行）时正确切行：解码行不进入预填充指标，返回预填充值 75.53。
+func TestParsePromptTPSMultiLineEntry(t *testing.T) {
+	got := parsePromptTPS([]string{
+		"I slot print_timing:      prompt eval time =     357.49 ms /    27 tokens ( 75.53 tokens per second)\n" +
+			"I slot print_timing:             eval time =   12334.07 ms /   900 tokens ( 72.97 tokens per second)",
 	})
-	if got != 89.82 {
-		t.Errorf("parseTPS 多行条目 = %v, want 89.82", got)
+	if got != 75.53 {
+		t.Errorf("parsePromptTPS 多行条目 = %v, want 75.53", got)
 	}
 }
 
-// TestParseTPSTruncatedFragment 固定截断分片的现状：分片「( 2362.80 tokens per
-// second)」单独出现时不含 "prompt eval time" 标记，parseTPS 无法判断它属于预填充
-// 行，会把它当作解码值返回（2362.80）。这不是 parseTPS 的缺陷——分片重组是写入
-// 侧行缓冲（serverLogWriter）的职责，parseTPS 只保证收到的都是完整行；本用例按
-// 当前行为断言（不弱化、不自相矛盾），与写入侧按行缓冲配合才是完整修复。
-func TestParseTPSTruncatedFragment(t *testing.T) {
-	if got := parseTPS([]string{"( 2362.80 tokens per second)"}); got != 2362.80 {
-		t.Errorf("parseTPS 截断分片 = %v, want 2362.80（分片重组由写入侧负责）", got)
+// ─── parseDecodeTPS ────────────────────────────────────────────────
+
+// TestParseDecodeTPS 验证从服务日志提取生成（解码）实时速度：实时行
+// `n_decoded = 414, tg = 68.82 t/s, tg_3s = 67.32 t/s` 只取 tg_3s（3 秒窗口实时
+// 值 67.32）而非 tg（累计均值 68.82）；tg_3s 优先于 eval time 兜底值（实时值
+// 优先，即使 eval time 行在其后）；无 tg 行时回退 eval time 行数值；预填充行
+// （prompt eval time 含 eval time 子串）须先排除、不进入候选；无候选返回 0。
+// 实测样例：解码总计时 `eval time = 12334.07 ms / 900 tokens ( 72.97 tokens per
+// second)`。
+func TestParseDecodeTPS(t *testing.T) {
+	cases := []struct {
+		name string
+		logs []string
+		want float64
+	}{
+		{"no match", []string{"loading model", "another line"}, 0},
+		{"empty", nil, 0},
+		// 实时行：tg 与 tg_3s 并存，只取 tg_3s（3 秒窗口实时值），不得取 tg（累计均值）。
+		{"real-time line takes tg_3s",
+			[]string{"I slot print_timing:              n_decoded = 414, tg = 68.82 t/s, tg_3s = 67.32 t/s"},
+			67.32},
+		// 多行实时行：取最后一条 tg_3s（最新采样为准）。
+		{"multiple real-time lines take last tg_3s",
+			[]string{
+				"I slot print_timing:              n_decoded = 100, tg = 60.00 t/s, tg_3s = 61.50 t/s",
+				"llama_server: unrelated log noise",
+				"I slot print_timing:              n_decoded = 414, tg = 68.82 t/s, tg_3s = 70.50 t/s",
+			}, 70.50},
+		// 无实时行（旧版二进制）：回退解码总计时行数值。
+		{"fallback eval time",
+			[]string{"I slot print_timing:             eval time =   12334.07 ms /   900 tokens ( 72.97 tokens per second)"},
+			72.97},
+		// 实时行在前、eval time 行在后：仍返回实时 tg_3s（实时值优先于请求结束时
+		// 的总计时），断言依据：生成期间监控取 3 秒窗口速度。
+		{"realtime line before eval line, realtime wins",
+			[]string{
+				"I slot print_timing:              n_decoded = 414, tg = 68.82 t/s, tg_3s = 67.32 t/s",
+				"I slot print_timing:             eval time =   12334.07 ms /   900 tokens ( 72.97 tokens per second)",
+			}, 67.32},
+		// 预填充行不进入候选：prompt eval time 是 eval time 子串，须先排除；
+		// 预填充+解码共存时取解码值 72.97 而非预填充值 75.53。
+		{"prefill excluded, decode value used",
+			[]string{
+				"I slot print_timing:      prompt eval time =     357.49 ms /    27 tokens ( 75.53 tokens per second)",
+				"I slot print_timing:             eval time =   12334.07 ms /   900 tokens ( 72.97 tokens per second)",
+			}, 72.97},
+		// 只有预填充行、无解码/实时行：解码指标无候选，返回 0。
+		{"prefill only",
+			[]string{
+				"I slot print_timing:      prompt eval time =     357.49 ms /    27 tokens ( 75.53 tokens per second)",
+			}, 0},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := parseDecodeTPS(c.logs); got != c.want {
+				t.Errorf("parseDecodeTPS(%v) = %v, want %v", c.logs, got, c.want)
+			}
+		})
+	}
+}
+
+// TestParseDecodeTPSMultiLineEntry 验证一个条目内含多行（实时行+解码总计时行）
+// 时正确切行：取实时 tg_3s 67.32。
+func TestParseDecodeTPSMultiLineEntry(t *testing.T) {
+	got := parseDecodeTPS([]string{
+		"I slot print_timing:              n_decoded = 414, tg = 68.82 t/s, tg_3s = 67.32 t/s\n" +
+			"I slot print_timing:             eval time =   12334.07 ms /   900 tokens ( 72.97 tokens per second)",
+	})
+	if got != 67.32 {
+		t.Errorf("parseDecodeTPS 多行条目 = %v, want 67.32", got)
+	}
+}
+
+// ─── splitLogLines ─────────────────────────────────────────────────
+
+// TestSplitLogLines 验证共享切行 helper：单条目内嵌多行被拆成独立行、多条目
+// 合并后顺序保持、空列表经 Join("")→Split("") 得到单条空行（各解析函数对空行
+// 无关键词命中，结果仍为 0）。
+func TestSplitLogLines(t *testing.T) {
+	if got := splitLogLines([]string{"line1\nline2"}); !reflect.DeepEqual(got, []string{"line1", "line2"}) {
+		t.Errorf("splitLogLines 多行条目 = %v, want [line1 line2]", got)
+	}
+	if got := splitLogLines([]string{"a\nb", "c"}); !reflect.DeepEqual(got, []string{"a", "b", "c"}) {
+		t.Errorf("splitLogLines 多条目 = %v, want [a b c]", got)
+	}
+	if got := splitLogLines([]string{"single"}); !reflect.DeepEqual(got, []string{"single"}) {
+		t.Errorf("splitLogLines 单行条目 = %v, want [single]", got)
+	}
+	if got := splitLogLines(nil); !reflect.DeepEqual(got, []string{""}) {
+		t.Errorf("splitLogLines(nil) = %v, want [\"\"]", got)
 	}
 }
 

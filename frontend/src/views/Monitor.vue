@@ -1,41 +1,59 @@
 <template>
   <div class="page">
     <div class="page-header">
-      <h1 class="page-title">推理监控</h1>
-      <p class="page-subtitle">推理服务 TPS 与系统资源实时状态（每 1 秒刷新）</p>
+      <h1 class="page-title">监控</h1>
+      <p class="page-subtitle">推理服务与系统资源实时状态（每 1 秒刷新）</p>
     </div>
 
-    <!-- Server status -->
+    <!-- 推理（提示词处理）：请求结束时的预填充速度 -->
     <section class="info-section">
       <h2 class="section-title">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>
+          <path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 3 3 0 0 1 1.34-5.22A2.5 2.5 0 0 1 9.5 2z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 3 3 0 0 0-1.34-5.22A2.5 2.5 0 0 0 14.5 2z"/>
         </svg>
-        推理服务
+        推理（提示词处理）
+      </h2>
+      <div v-if="!status.serverRunning" class="tps-placeholder">启动服务后显示</div>
+      <div v-else class="tps-block">
+        <span class="tps-value">{{ promptTpsText }}</span>
+        <span class="tps-label">tokens/s</span>
+      </div>
+      <p class="tps-hint">最近一次请求的提示词处理（预填充）速度，请求结束时更新；思考与回答 token 属同一解码过程，服务端不分开计时</p>
+    </section>
+
+    <!-- 生成（解码）：实时解码速度 + 服务状态 + 折线图 -->
+    <section class="info-section">
+      <h2 class="section-title">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2 13a2 2 0 0 0 2-2V7a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0V4a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0v-4a2 2 0 0 1 2-2"/>
+        </svg>
+        生成（解码）
       </h2>
       <div class="server-head">
         <span class="status-badge" :class="status.serverRunning ? 'available' : 'unavailable'">
           {{ status.serverRunning ? '运行中' : '未启动' }}
         </span>
-        <div class="tps-block">
-          <span class="tps-value">{{ tpsText }}</span>
-          <span class="tps-label">Tokens/s</span>
-        </div>
         <div class="uptime-block">
           <span class="uptime-value">{{ formatUptime(status.uptimeSeconds) }}</span>
           <span class="uptime-label">运行时长</span>
         </div>
       </div>
       <div v-if="!status.serverRunning" class="tps-placeholder">启动服务后显示推理速度</div>
-      <div v-else class="tps-chart">
-        <svg :viewBox="`0 0 ${chartWidth} ${chartHeight}`" preserveAspectRatio="none">
-          <line class="tps-axis" x1="0" :y1="chartHeight - 2" :x2="chartWidth" :y2="chartHeight - 2" />
-          <polyline :points="tpsPoints" />
-        </svg>
-        <div class="tps-chart-meta">
-          <span class="tps-chart-label">近 {{ tpsHistory.length }} 秒 TPS</span>
+      <template v-else>
+        <div class="tps-block">
+          <span class="tps-value">{{ decodeTpsText }}</span>
+          <span class="tps-label">tokens/s</span>
         </div>
-      </div>
+        <div class="tps-chart">
+          <svg :viewBox="`0 0 ${chartWidth} ${chartHeight}`" preserveAspectRatio="none">
+            <line class="tps-axis" x1="0" :y1="chartHeight - 2" :x2="chartWidth" :y2="chartHeight - 2" />
+            <polyline :points="decodePoints" />
+          </svg>
+          <div class="tps-chart-meta">
+            <span class="tps-chart-label">近 {{ decodeHistory.length }} 秒解码速度</span>
+          </div>
+        </div>
+      </template>
     </section>
 
     <!-- CPU -->
@@ -116,12 +134,13 @@ const status = ref<MonitorStatus>({
   memTotal: 0,
   gpus: [],
   serverRunning: false,
-  tps: 0,
+  promptTps: 0,
+  decodeTps: 0,
   uptimeSeconds: 0,
 })
 
-// TPS 折线图历史：1s 轮询追加，保留最近 60 个采样（appendHistory 默认 cap=60）
-const tpsHistory = ref<number[]>([])
+// 解码速度折线图历史：1s 轮询追加，保留最近 60 个采样（appendHistory 默认 cap=60）
+const decodeHistory = ref<number[]>([])
 const chartWidth = 560
 const chartHeight = 120
 
@@ -134,9 +153,11 @@ const memPercent = computed(() => {
   return Math.round((status.value.memUsed / status.value.memTotal) * 100)
 })
 
-const tpsText = computed(() => status.value.tps.toFixed(1))
+const promptTpsText = computed(() => status.value.promptTps.toFixed(1))
 
-const tpsPoints = computed(() => chartPoints(tpsHistory.value, chartWidth, chartHeight))
+const decodeTpsText = computed(() => status.value.decodeTps.toFixed(1))
+
+const decodePoints = computed(() => chartPoints(decodeHistory.value, chartWidth, chartHeight))
 
 // 显存/内存可能为 0（如数据未到），formatBytes(0) 返回空串，此处兜底为 "0 B"
 function memText(bytes: number): string {
@@ -147,7 +168,7 @@ async function fetchMonitorStatus() {
   try {
     const s = await getMonitorStatus()
     status.value = s
-    tpsHistory.value = appendHistory(tpsHistory.value, s.tps)
+    decodeHistory.value = appendHistory(decodeHistory.value, s.decodeTps)
   } catch {
     // 轮询失败静默保持上次数据，不打断监控页
   }
@@ -355,6 +376,13 @@ onUnmounted(stopPolling)
   color: var(--text-dim);
 }
 
+.tps-hint {
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--text-dim);
+}
+
 .uptime-value {
   font-size: 14px;
   font-weight: 600;
@@ -369,6 +397,10 @@ onUnmounted(stopPolling)
 }
 
 /* ─── TPS chart ─── */
+.tps-chart {
+  margin-top: 18px;
+}
+
 .tps-chart svg {
   display: block;
   width: 100%;

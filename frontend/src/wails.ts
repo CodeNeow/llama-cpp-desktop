@@ -57,7 +57,7 @@ export async function getOS(): Promise<{ os: string; arch: string }> {
 
 // ─── Monitor ─────────────────────────────────────────────────────
 
-// 实时监控（CPU / 内存 / GPU / 推理服务 TPS），返回结构与 lib/monitor.ts 的 MonitorStatus 对应
+// 实时监控（CPU / 内存 / GPU / 推理提示词处理与生成解码速度），返回结构与 lib/monitor.ts 的 MonitorStatus 对应
 export async function getMonitorStatus(): Promise<MonitorStatus> {
   return app().GetMonitorStatus()
 }
