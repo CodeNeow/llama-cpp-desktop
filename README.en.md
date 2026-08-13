@@ -220,7 +220,7 @@ cd frontend && npm run build    # build the frontend only
 
 ## Release
 
-CI (`.github/workflows/ci.yml`) automatically builds and publishes Windows artifacts (portable `llama-gui.exe` + NSIS installer `llama-gui-amd64-setup.exe`) in these scenarios:
+CI (`.github/workflows/ci.yml`) automatically builds and publishes Windows artifacts (portable `llama-gui.exe` + NSIS installer `llama-gui-amd64-installer.exe`) in these scenarios:
 
 - **Stable release**: pushing a `v*` tag (e.g. `v1.0.0`) automatically creates a full release with change notes;
 - **Preview release**: manually running CI from the GitHub Actions page (`workflow_dispatch`) creates a draft release.

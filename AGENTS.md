@@ -37,15 +37,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check.ps1  # 组�
 | 文件 | 职责 |
 | --- | --- |
 | `main.go` | Wails 入口：窗口配置（1200×800、Frameless）、资源嵌入、绑定 `core.App`（根目录仅此一个源文件） |
-| `core/app.go` | 全部 Wails 绑定方法：配置 / 系统信息 / 模型 / 服务 / 下载（薄封装），以及 `Startup` / `Shutdown` 生命周期 |
-| `core/engine.go` | 核心逻辑：环境检测、GGUF 扫描、llama.cpp 下载（断点续传）、HF Mirror 搜索、配置持久化、模型预设生成 |
+| `core/app.go` | 全部 Wails 绑定方法：配置 / 系统信息 / 模型 / 服务 / 下载 / 监控 / 更新（薄封装），以及 `Startup` / `Shutdown` 生命周期 |
+| `core/engine.go` | 核心逻辑：环境检测、GGUF 扫描、llama.cpp 下载（断点续传）、模型下载任务队列、HF Mirror 搜索、配置持久化、模型预设生成 |
+| `core/monitor.go` | 实时监控：服务日志 TPS 解析与 CPU / 内存 / GPU 采样 |
+| `core/modelscope.go` | ModelScope（魔搭）模型源：搜索、文件列表、描述与下载 URL 构建 |
 | `core/bridge.go` | 服务启停与下载触发的桥接实现 |
 | `core/hidewindow_windows.go` / `core/hidewindow_other.go` | 子进程隐藏控制台窗口（Windows 实现 / 其他平台 no-op） |
-| `core/*_test.go` | 后端单测（`runCmd` 跨平台、`hideWindow` 平台分支、config 持久化、GGUF 解析、模型扫描、预设生成、下载/HF 网络测试等） |
+| `core/*_test.go` | 后端单测（`runCmd` 跨平台、`hideWindow` 平台分支、config 持久化、GGUF 解析、模型扫描、预设生成、下载/HF/ModelScope 网络测试、监控、更新等） |
 | `frontend/src/wails.ts` | 前端调用后端的唯一入口（`window.go.core.App.*` 桥接层） |
-| `frontend/src/views/` | 页面：`Home`（系统状态）、`Models`（模型列表+设置弹窗）、`Api`（服务启停）、`Downloads`（HF Mirror）、`Settings`（主题） |
-| `frontend/src/components/` | `Sidebar`、`ModelSettings`（模型参数弹窗） |
-| `frontend/src/__tests__/` | 前端单测（vitest，目前覆盖 `store.ts` 配置加载） |
+| `frontend/src/views/` | 页面：`Home`（系统状态）、`Downloads`（HF Mirror / ModelScope 搜索与下载队列）、`Models`（模型列表+设置弹窗）、`Api`（服务启停）、`Monitor`（推理监控）、`Settings`（主题 / 下载源 / 检查更新） |
+| `frontend/src/components/` | `Sidebar`、`ModelSettings`（模型参数弹窗）、`UpdateModal`（更新下载弹窗） |
+| `frontend/src/__tests__/` | 前端单测（vitest，覆盖 `store.ts` 配置加载与 `lib/` 纯函数：格式化、下载队列 / 任务状态、监控采样、更新等） |
 | `frontend/wailsjs/` | Wails 自动生成的绑定，**勿手改**，`wails build` 时自动重新生成 |
 
 ## Wails 绑定机制（重要）
@@ -144,7 +146,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check.ps1  # 组�
   - 改动共享测试基础设施、CI 配置或验证门脚本本身。
 - 文件数量统计排除纯文档、纯注释和由同一命令机械生成且已做漂移验证的产物；新增测试、fixture、快照和配置属于非文档文件。
 - 要求执行的验证只要有一项不通过，就绝对不能提交；必须修复后重新运行相应验证并确认通过。
-- **当前测试基线**：后端已有覆盖 `core` 包的聚焦测试（config 持久化、GGUF 解析、模型扫描、预设生成、下载/HF 网络测试、系统解析、服务命令构建等）；前端有 `store.ts` 的 vitest。新增行为必须补聚焦测试，不得以「没有测试框架」为由跳过。
+- **当前测试基线**：后端已有覆盖 `core` 包的聚焦测试（config 持久化、GGUF 解析、模型扫描、预设生成、下载/HF/ModelScope 网络测试、系统解析、服务命令构建等）；前端有 `store.ts` 与 `lib/` 纯函数的 vitest。新增行为必须补聚焦测试，不得以「没有测试框架」为由跳过。
 
 ## 本地提交策略
 
