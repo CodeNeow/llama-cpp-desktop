@@ -62,6 +62,36 @@ func TestParsePromptTPSMultiLineEntry(t *testing.T) {
 	}
 }
 
+// TestParsePromptTPSNewFormat 验证新版 llama.cpp 预填充日志的两类行都能提取数值：
+// 预填充期间按批打印的实时行（prompt processing，仅预填充耗时 >=3s 时出现）与
+// 请求结束的终结行（prompt eval time，新旧版本都有）。多行取最后一条：实时行
+// 持续刷新，终结行因日志顺序最后出现，其值即最终权威值。
+func TestParsePromptTPSNewFormat(t *testing.T) {
+	progressLine := "I slot print_timing: id  3 | task 0 | prompt processing, n_tokens =   2048, progress = 0.16, t =  20.47 s / 100.05 tokens per second"
+	progressLine2 := "I slot print_timing: id  3 | task 0 | prompt processing, n_tokens =   1024, progress = 0.51, t =  10.48 s / 97.89 tokens per second"
+	finalLine := "I slot print_timing: id  3 | task 0 | prompt eval time =    357.49 ms /     27 tokens (   75.53 tokens per second)"
+
+	cases := []struct {
+		name string
+		logs []string
+		want float64
+	}{
+		// 新版预填充实时行：tpsLogRegex 提取 "100.05 tokens per second"。
+		{"new format real-time line", []string{progressLine}, 100.05},
+		// 多条进度行取最后一条：实时行持续刷新，最新采样 97.89。
+		{"multiple progress lines take last", []string{progressLine, progressLine2}, 97.89},
+		// 实时行之后出现终结行：终结值 75.53 为最终权威值（覆盖此前实时值）。
+		{"final line wins after progress", []string{progressLine, progressLine2, finalLine}, 75.53},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := parsePromptTPS(c.logs); got != c.want {
+				t.Errorf("parsePromptTPS(%v) = %v, want %v", c.logs, got, c.want)
+			}
+		})
+	}
+}
+
 // ─── parseDecodeTPS ────────────────────────────────────────────────
 
 // TestParseDecodeTPS 验证从服务日志提取生成（解码）实时速度：实时行
@@ -132,6 +162,36 @@ func TestParseDecodeTPSMultiLineEntry(t *testing.T) {
 	})
 	if got != 67.32 {
 		t.Errorf("parseDecodeTPS 多行条目 = %v, want 67.32", got)
+	}
+}
+
+// TestParseDecodeTPSNewFormat 验证新版 llama.cpp 解码日志（带 "id N | task N |"
+// 前缀、eval time 行数值前有多余空格）仍被现有关键词 Contains 与正则命中：
+// tg_3s 实时行直接提取 3 秒窗口速度；无实时行时回退 eval time 行数值；预填充
+// 实时行（prompt processing）不含 "eval time" / "tg_3s =" 标记，不进入解码候选。
+func TestParseDecodeTPSNewFormat(t *testing.T) {
+	tg3sLine := "I slot print_timing: id  3 | task 0 | n_decoded =    414, tg =  68.82 t/s, tg_3s =  67.32 t/s"
+	evalLine := "I slot print_timing: id  3 | task 0 |        eval time =  12334.07 ms /    900 tokens (   72.97 tokens per second)"
+	progressLine := "I slot print_timing: id  3 | task 0 | prompt processing, n_tokens =   2048, progress = 0.16, t =  20.47 s / 100.05 tokens per second"
+
+	cases := []struct {
+		name string
+		logs []string
+		want float64
+	}{
+		// 新格式实时行带 "id  3 | task 0 |" 前缀：tg3sLogRegex 子串匹配仍命中，返回 67.32。
+		{"new format real-time line", []string{tg3sLine}, 67.32},
+		// 仅新格式 eval time 行（无 tg_3s 实时行）：回退解析最后一条 eval time 72.97。
+		{"new format fallback eval time", []string{evalLine}, 72.97},
+		// 仅预填充实时行：不含 "eval time" / "tg_3s =" 标记，解码指标无候选返回 0。
+		{"prefill progress line does not pollute decode", []string{progressLine}, 0},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := parseDecodeTPS(c.logs); got != c.want {
+				t.Errorf("parseDecodeTPS(%v) = %v, want %v", c.logs, got, c.want)
+			}
+		})
 	}
 }
 

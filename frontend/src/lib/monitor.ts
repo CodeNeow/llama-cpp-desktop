@@ -10,7 +10,7 @@ export interface MonitorStatus {
   memTotal: number
   gpus: { index: number; name: string; utilPercent: number; memUsed: number; memTotal: number }[]
   serverRunning: boolean
-  /** 提示词处理速度 tokens/s（提示词预填充 prefill）：请求结束时更新（llama-server print_timing 的 prompt eval time 行） */
+  /** 提示词处理速度 tokens/s（提示词预填充 prefill）：预填充期间按批实时刷新（prompt processing 行，新 llama.cpp），请求结束时更新为最终值（prompt eval time 行） */
   promptTps: number
   /** 生成速度 tokens/s（实时解码 decode）：生成期间由 tg_3s 日志行每约 3 秒刷新，请求结束时以 eval time 行兜底 */
   decodeTps: number

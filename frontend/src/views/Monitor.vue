@@ -51,7 +51,7 @@
             <span class="tps-chart-label">近 {{ decodeHistory.length }} 秒生成速度</span>
           </div>
         </div>
-        <p class="tps-footnote">提示词处理速度在请求结束后更新 · 思考与回答同属解码过程</p>
+        <p class="tps-footnote">提示词处理速度在预填充期间实时刷新 · 思考与回答同属解码过程</p>
       </template>
     </section>
 

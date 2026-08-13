@@ -67,19 +67,26 @@ func splitLogLines(logs []string) []string {
 }
 
 // parsePromptTPS 从服务日志行中提取最后一条预填充行的 "N tokens per second"
-// 数值（tokens/s），即提示词处理 / 预填充（prefill）速度。llama-server 每次
-// 请求结束会打印预填充计时行：
+// 数值（tokens/s），即提示词处理 / 预填充（prefill）速度。llama-server 的预填充
+// 计时来自两类行，实时行（新版 llama.cpp）与终结行（新旧版本都有）：
 //
-//	I slot print_timing:      prompt eval time =     357.49 ms /    27 tokens (   13.24 ms per token,    75.53 tokens per second)
+//	I slot print_timing: id  3 | task 0 | prompt processing, n_tokens =   2048, progress = 0.16, t =  20.47 s / 100.05 tokens per second
+//	I slot print_timing: id  3 | task 0 | prompt eval time =    357.49 ms /     27 tokens (   75.53 tokens per second)
 //
-// 该值反映提示词吞吐（长 prompt 上可达数千 t/s），与解码速度是两个独立指标，
-// 由监控页「推理」模块展示。纯函数：无预填充行返回 0；多行多值取最后一条
-// 预填充行（最新采样为准）；单行内多个匹配只取第一个命中（regexp
-// FindStringSubmatch 语义）；支持小数。
+// 实时行（prompt processing）是预填充期间按批打印的进度行，仅当预填充耗时
+// >=3s 时出现（短预填充没有该行）；终结行（prompt eval time）在每次请求结束时
+// 打印。两者都提取、多行取最后一条：实时行持续刷新，日志顺序天然保证终结行
+// 最后出现，终结值即最终权威值；旧版二进制只有终结行，同样兼容。该值反映提示
+// 词吞吐（长 prompt 上可达数千 t/s），与解码速度是两个独立指标，由监控页
+// 「推理」模块展示。纯函数：无预填充行返回 0；多行多值取最后一条预填充行
+// （最新采样为准）；单行内多个匹配只取第一个命中（regexp FindStringSubmatch
+// 语义）；支持小数。
 func parsePromptTPS(logs []string) float64 {
 	var last float64
 	for _, line := range splitLogLines(logs) {
-		if !strings.Contains(line, "prompt eval time") {
+		// 两类预填充行都认：新版预填充实时行（prompt processing）与新旧版通用
+		// 的请求结束终结行（prompt eval time）。
+		if !strings.Contains(line, "prompt processing") && !strings.Contains(line, "prompt eval time") {
 			continue
 		}
 		if m := tpsLogRegex.FindStringSubmatch(line); m != nil {
@@ -94,16 +101,18 @@ func parsePromptTPS(logs []string) float64 {
 // parseDecodeTPS 从服务日志行中提取生成（解码）实时速度（tokens/s）。路由器
 // 模式 llama-server 生成期间每约 3 秒打印一行实时统计、请求结束打印总计时行：
 //
-//	I slot print_timing:              n_decoded = 414, tg = 68.82 t/s, tg_3s = 67.32 t/s
-//	I slot print_timing:             eval time = 12334.07 ms / 900 tokens ( 72.97 tokens per second)
+//	I slot print_timing: id  3 | task 0 | n_decoded =    414, tg =  68.82 t/s, tg_3s =  67.32 t/s
+//	I slot print_timing: id  3 | task 0 |        eval time =  12334.07 ms /    900 tokens (   72.97 tokens per second)
 //
-// 实时行中 tg 为累计平均解码速度、tg_3s 为最近 3 秒窗口速度（实时值），本函数
-// 只取 tg_3s 并优先返回（即使其后还有 eval time 行，实时值优先于请求结束时
-// 的总计时）；旧版二进制无实时行时回退最后一条 eval time 行的数值。回退分支
-// 严格要求 "eval time" 标记：仅剩 "tokens per second" 片段的截断分片不再被采用
-// （分片重组是写入侧行缓冲 serverLogWriter 的职责）。曾经的「TPS 恒 0」根因：
-// 旧实现只解析生成结束才打印的 eval time 行，而实时行不含 "tokens per second"，
-// 导致生成期间无值。
+// 新版本行带 "id N | task N |" 前缀、eval time 行数值前有多余空格：行分类依赖
+// 关键词 Contains、数值提取依赖 tpsLogRegex / tg3sLogRegex 子串匹配，前缀与空格
+// 均不影响命中，旧版无前缀行同样兼容。实时行中 tg 为累计平均解码速度、tg_3s 为
+// 最近 3 秒窗口速度（实时值），本函数只取 tg_3s 并优先返回（即使其后还有 eval
+// time 行，实时值优先于请求结束时的总计时）；旧版二进制无实时行时回退最后一条
+// eval time 行的数值。回退分支严格要求 "eval time" 标记：仅剩 "tokens per second"
+// 片段的截断分片不再被采用（分片重组是写入侧行缓冲 serverLogWriter 的职责）。
+// 曾经的「TPS 恒 0」根因：旧实现只解析生成结束才打印的 eval time 行，而实时行
+// 不含 "tokens per second"，导致生成期间无值。
 // 纯函数：无候选返回 0；多行多值取最后一行（最新采样为准）；支持小数。
 func parseDecodeTPS(logs []string) float64 {
 	var lastTg3s, lastEval float64
