@@ -4,6 +4,8 @@
  * The `core` namespace comes from the Go package core/ that hosts the App struct.
  */
 
+import type { MonitorStatus } from './lib/monitor'
+
 // Wails injects window.go when running in the Wails runtime.
 // When running standalone (vite dev only), we fall back to a mock/error.
 
@@ -15,7 +17,7 @@ function app(): any {
 
 // ─── Config ─────────────────────────────────────────────────────
 
-export async function getConfig(): Promise<{ theme: string; llamaCppDir: string; modelsDir: string }> {
+export async function getConfig(): Promise<{ theme: string; llamaCppDir: string; modelsDir: string; downloadSource: string }> {
   return app().GetConfig()
 }
 
@@ -51,6 +53,13 @@ export async function getLlamaCpp(): Promise<any> {
 
 export async function getOS(): Promise<{ os: string; arch: string }> {
   return app().GetOS()
+}
+
+// ─── Monitor ─────────────────────────────────────────────────────
+
+// 实时监控（CPU / 内存 / GPU / 推理服务 TPS），返回结构与 lib/monitor.ts 的 MonitorStatus 对应
+export async function getMonitorStatus(): Promise<MonitorStatus> {
+  return app().GetMonitorStatus()
 }
 
 // ─── Models ──────────────────────────────────────────────────────
@@ -189,4 +198,15 @@ export async function pauseDownloadTask(id: string): Promise<void> {
 
 export async function resumeDownloadTask(id: string): Promise<void> {
   return app().ResumeDownloadTask(id)
+}
+
+// ─── Download Source ─────────────────────────────────────────────
+
+// 当前模型下载源（"hf" | "modelscope"），决定搜索与下载走哪个镜像后端
+export async function getDownloadSource(): Promise<string> {
+  return app().GetDownloadSource()
+}
+
+export async function setDownloadSource(source: string): Promise<void> {
+  return app().SetDownloadSource(source)
 }

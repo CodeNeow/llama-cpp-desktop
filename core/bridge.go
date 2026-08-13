@@ -3,13 +3,13 @@ package core
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // ─── Wails binding helpers ───────────────────────────────────────
@@ -57,6 +57,7 @@ func startServerInternal() error {
 		serverMu.Lock()
 		serverCmd = nil
 		serverRunning = false
+		serverStartTime = time.Time{}
 		serverMu.Unlock()
 		addServerLog("[ERROR] Failed to start: " + err.Error())
 		return err
@@ -65,12 +66,14 @@ func startServerInternal() error {
 	serverMu.Lock()
 	serverCmd = cmd
 	serverRunning = true
+	serverStartTime = time.Now()
 	serverMu.Unlock()
 
 	go func(cmd *exec.Cmd) {
 		err := cmd.Wait()
 		serverMu.Lock()
 		serverRunning = false
+		serverStartTime = time.Time{}
 		// 仅当全局仍指向本命令时清理，避免覆盖新启动的实例
 		if serverCmd == cmd {
 			serverCmd = nil
@@ -177,20 +180,39 @@ func startHFDownload(modelID string, files []string) error {
 		return fmt.Errorf("invalid modelID: %q", modelID)
 	}
 
-	dlTasksMu.Lock()
-	defer dlTasksMu.Unlock()
+	// 当前下载源决定 URL 构建方式：hf 走 hf-mirror resolve 端点，modelscope
+	// 走 legacy repo 端点；任务记录 Source 供队列持久化恢复时重建 URL。
+	source := activeDownloadSource()
 
+	// 入队前预校验 source 并预构建一次 URL（#B2）：buildModelDownloadURL 仅在
+	// 未知 source 下返回错误（防御纵深，activeDownloadSource 已被白名单约束）。
+	// 在入队任何任务之前一次性探测，失败即整体返回错误，不留半入队状态，也
+	// 不存在「弹出上一个已入队任务」的误回滚。合法 source 下各文件 URL 构建
+	// 不会失败，循环内的错误分支仅作防御。
+	if _, err := buildModelDownloadURL(source, modelID, "probe.gguf"); err != nil {
+		return err
+	}
+
+	dlTasksMu.Lock()
 	for _, fileName := range files {
+		cleanName := filepath.Clean(fileName)
+		url, err := buildModelDownloadURL(source, modelID, cleanName)
+		if err != nil {
+			// 防御分支：URL 构建失败视为整体错误，已入队任务保持原样（#B2），
+			// 先解锁再返回（不能持有 dlTasksMu 返回，见下方 #B1 说明）。
+			dlTasksMu.Unlock()
+			return err
+		}
+
 		dlTaskCounter++
 		id := fmt.Sprintf("dl-%d", dlTaskCounter)
-
-		cleanName := filepath.Clean(fileName)
 		task := &DlTask{
 			ID:       id,
 			ModelID:  modelID,
 			FileName: cleanName,
 			DestDir:  filepath.Join(effectiveModelsDir(), authorPart, repoPart),
-			URL:      fmt.Sprintf("%s/%s/resolve/main/%s", hfMirrorBase, modelID, url.PathEscape(cleanName)),
+			Source:   source,
+			URL:      url,
 			Status:   "queued",
 			resumeCh: make(chan struct{}, 1),
 		}
@@ -198,5 +220,10 @@ func startHFDownload(modelID string, files []string) error {
 		dlTasks = append(dlTasks, task)
 		go downloadTask(task)
 	}
+	// 入队完成后先解锁再持久化队列（#B1）：persistTasksNow → saveConfig 末尾会
+	// 再次获取 dlTasksMu 做快照。若此处仍持有 dlTasksMu（如 defer Unlock 作用域
+	// 内调用），将自死锁——这是此前 go test 600s 超时卡在 dlTasksMu.Lock() 的根因。
+	dlTasksMu.Unlock()
+	persistTasksNow()
 	return nil
 }

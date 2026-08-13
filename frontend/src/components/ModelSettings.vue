@@ -249,6 +249,52 @@
             </div>
           </div>
         </div>
+
+        <!-- 高级 -->
+        <div id="tab-advanced" role="tabpanel" aria-labelledby="tab-advanced-tab" v-show="activeTab === 5">
+          <div class="param-group">
+            <h3 class="group-title">高级</h3>
+            <div class="param-grid col-1">
+              <div class="param">
+                <label class="param-field">
+                  <span class="param-label">视觉投影文件 (mmproj)</span>
+                  <input v-model="cfg.mmproj" type="text" class="param-input" placeholder="留空自动查找" />
+                </label>
+                <p class="param-hint">留空时自动使用模型同目录下的 mmproj 文件;填写则显式指定视觉模型路径</p>
+              </div>
+              <div class="param">
+                <div class="toggle-row">
+                  <span class="toggle-text">
+                    Reasoning 推理输出
+                    <span class="toggle-sub">关闭模型思考输出</span>
+                  </span>
+                  <label class="switch">
+                    <input type="checkbox" v-model="cfg.reasoning" aria-label="Reasoning" />
+                    <span class="slider"></span>
+                  </label>
+                </div>
+                <p class="param-hint">开启后以 --reasoning off 关闭模型思考输出</p>
+              </div>
+              <div class="param">
+                <label class="param-field">
+                  <span class="param-label">投机解码 (MTP)</span>
+                  <select v-model="cfg.specType" class="param-input">
+                    <option value="">关闭</option>
+                    <option value="draft-mtp">draft-mtp</option>
+                  </select>
+                </label>
+                <p class="param-hint">MTP 投机预测,需模型支持</p>
+              </div>
+              <div class="param">
+                <label class="param-field">
+                  <span class="param-label">额外预测 token 数</span>
+                  <input v-model.number="cfg.specDraftNMax" type="number" min="0" step="1" class="param-input" placeholder="0" />
+                </label>
+                <p class="param-hint">额外预测 token 数,>0 生效</p>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="modal-footer">
@@ -283,6 +329,10 @@ export interface ModelConfig {
   mainGpu: number
   ropeScaling: string
   ropeScale: number
+  mmproj: string
+  reasoning: boolean
+  specType: string
+  specDraftNMax: number
 }
 
 const props = defineProps<{
@@ -316,6 +366,10 @@ const defaults: ModelConfig = {
   mainGpu: 0,
   ropeScaling: '',
   ropeScale: 0,
+  mmproj: '',
+  reasoning: false,
+  specType: '',
+  specDraftNMax: 0,
 }
 
 const cfg = reactive<ModelConfig>({ ...defaults, ...props.initialConfig })
@@ -325,7 +379,7 @@ const closeBtn = ref<HTMLButtonElement | null>(null)
 /** 当前激活的 tab 索引，配合 v-show 切换面板（不丢已输入未保存的值） */
 const activeTab = ref(0)
 
-/** 5 个参数分类 tab，图标为内联 stroke SVG（16×16，风格与 Sidebar 导航一致） */
+/** 6 个参数分类 tab，图标为内联 stroke SVG（16×16，风格与 Sidebar 导航一致） */
 const tabs = [
   {
     id: 'tab-base',
@@ -351,6 +405,11 @@ const tabs = [
     id: 'tab-context',
     label: '长上下文',
     icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="9" width="20" height="6" rx="1"/><line x1="6" y1="9" x2="6" y2="12"/><line x1="10" y1="9" x2="10" y2="13"/><line x1="14" y1="9" x2="14" y2="12"/><line x1="18" y1="9" x2="18" y2="13"/></svg>`,
+  },
+  {
+    id: 'tab-advanced',
+    label: '高级',
+    icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>`,
   },
 ]
 

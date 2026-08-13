@@ -3,6 +3,7 @@ import Home from '../views/Home.vue'
 import Models from '../views/Models.vue'
 import Api from '../views/Api.vue'
 import Downloads from '../views/Downloads.vue'
+import Monitor from '../views/Monitor.vue'
 import Settings from '../views/Settings.vue'
 
 const routes = [
@@ -29,6 +30,12 @@ const routes = [
     name: 'Downloads',
     component: Downloads,
     meta: { title: '下载', icon: 'download' }
+  },
+  {
+    path: '/monitor',
+    name: 'Monitor',
+    component: Monitor,
+    meta: { title: '监控', icon: 'chart' }
   },
   {
     path: '/settings',

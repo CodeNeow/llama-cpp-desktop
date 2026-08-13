@@ -8,9 +8,7 @@ import (
 	"runtime"
 
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
-)
-
-// App is the Wails application struct whose methods are bound to the frontend.
+) // App is the Wails application struct whose methods are bound to the frontend.
 type App struct {
 	ctx context.Context
 }
@@ -27,6 +25,9 @@ func (a *App) Startup(ctx context.Context) {
 	// Load persisted config on startup
 	loadConfig()
 
+	// Start the background monitor sampler (CPU / memory / GPU / TPS)
+	StartMonitorSampler()
+
 	// Set initial window background from saved theme
 	configMu.Lock()
 	theme := currentTheme
@@ -40,9 +41,13 @@ func (a *App) Startup(ctx context.Context) {
 	log.Println("[INFO] Llama GUI started")
 }
 
-// Shutdown is called by Wails on application exit; it stops llama-server and
-// cancels all in-flight downloads.
+// Shutdown is called by Wails on application exit; it persists the download
+// queue, stops llama-server and cancels all in-flight downloads.
 func (a *App) Shutdown(ctx context.Context) {
+	// 退出前先持久化下载任务队列（#12）：在取消任何下载之前保存，保证重启后
+	// 恢复的是最新状态。saveConfig 末尾会获取 dlTasksMu，此处未持有它。
+	saveConfig()
+
 	// Stop running llama-server if any（#3）：在 serverMu 锁内取局部副本，
 	// 锁外对副本 Signal，避免与应用退出期间并发启停的数据竞争。
 	serverMu.Lock()
@@ -98,11 +103,34 @@ func (a *App) GetConfig() map[string]interface{} {
 	theme := currentTheme
 	configMu.Unlock()
 
+	downloadSourceMu.Lock()
+	dsrc := downloadSource
+	downloadSourceMu.Unlock()
+
 	return map[string]interface{}{
-		"theme":       theme,
-		"llamaCppDir": dir,
-		"modelsDir":   modelDir,
+		"theme":          theme,
+		"llamaCppDir":    dir,
+		"modelsDir":      modelDir,
+		"downloadSource": dsrc,
 	}
+}
+
+// GetDownloadSource 返回当前模型下载源（"hf" | "modelscope"）。
+func (a *App) GetDownloadSource() string {
+	return activeDownloadSource()
+}
+
+// SetDownloadSource 设置模型下载源：仅允许 hf / modelscope 白名单值，非法值
+// 返回中文错误且不改写状态；合法值写入全局并持久化。
+func (a *App) SetDownloadSource(source string) error {
+	if source != sourceHF && source != sourceModelScope {
+		return fmt.Errorf("非法下载源 %q：仅允许 hf 或 modelscope", source)
+	}
+	downloadSourceMu.Lock()
+	downloadSource = source
+	downloadSourceMu.Unlock()
+	saveConfig()
+	return nil
 }
 
 func (a *App) SetTheme(theme string) {
@@ -269,6 +297,18 @@ func (a *App) SaveModelConfig(modelID string, config ModelConfig) error {
 	}
 	if !validIniValue(config.TensorSplit) {
 		return fmt.Errorf("非法 TensorSplit %q：不能包含换行或首尾空白", config.TensorSplit)
+	}
+	// mmproj 显式路径覆盖：非空时必须通过 INI 注入校验（含换行/首尾空白即拒绝）；
+	// 不要求文件存在（模型可能移动）。空值表示保持自动检测。
+	if !validIniValue(config.MMProj) {
+		return fmt.Errorf("非法 MMProj %q：不能包含换行或首尾空白", config.MMProj)
+	}
+	// spec-type 白名单：仅允许空或 draft-mtp。
+	if !validSpecTypeValue(config.SpecType) {
+		return fmt.Errorf("非法 SpecType %q：仅允许 draft-mtp", config.SpecType)
+	}
+	if config.SpecDraftNMax < 0 {
+		return fmt.Errorf("非法 SpecDraftNMax %d：不能为负数", config.SpecDraftNMax)
 	}
 	if config.MainGPU < 0 {
 		return fmt.Errorf("非法 MainGPU %d：不能为负数", config.MainGPU)
@@ -462,23 +502,51 @@ func (a *App) StopUpdateDownload() {
 	}
 }
 
-// ─── Downloads (HF Mirror) ───────────────────────────────────────
+// ─── Downloads (HF Mirror / ModelScope) ──────────────────────────
 
+// SearchDownloads 按当前下载源路由搜索：modelscope → searchModelScopeAt，
+// 其余（默认 hf）→ searchHFMirror。
 func (a *App) SearchDownloads(query, filter string) ([]HFSearchResult, error) {
+	if activeDownloadSource() == sourceModelScope {
+		return searchModelScope(query)
+	}
 	return searchHFMirror(query, filter)
 }
 
+// GetModelFiles 按当前下载源路由文件列表：modelscope → listModelScopeFiles，
+// 其余（默认 hf）→ getHFModelFiles。
 func (a *App) GetModelFiles(modelID string) ([]HFFileOut, error) {
+	if activeDownloadSource() == sourceModelScope {
+		return listModelScopeFiles(modelID)
+	}
 	return getHFModelFiles(modelID)
 }
 
 // GetModelMaxFileSize 返回模型最大的 GGUF 文件大小（供搜索卡片展示模型大小）。
+// modelscope 源用文件列表取最大；hf 源走详情接口（blobs=true 才有真实 size）。
 func (a *App) GetModelMaxFileSize(modelID string) (int64, error) {
+	if activeDownloadSource() == sourceModelScope {
+		files, err := listModelScopeFiles(modelID)
+		if err != nil {
+			return 0, err
+		}
+		var max int64
+		for _, f := range files {
+			if f.Size > max {
+				max = f.Size
+			}
+		}
+		return max, nil
+	}
 	return getHFModelMaxGGUFSize(modelID)
 }
 
 // GetModelDescription 获取模型 README 中的自然语言描述（供下载页展示模型说明）。
+// 按当前下载源路由到 HF 或 ModelScope 的 README 端点。
 func (a *App) GetModelDescription(modelID string) (string, error) {
+	if activeDownloadSource() == sourceModelScope {
+		return getModelScopeDescription(modelID)
+	}
 	return getModelDescription(modelID)
 }
 
@@ -498,7 +566,7 @@ func (a *App) GetDownloadTasks() []DlTask {
 
 func (a *App) CancelDownloadTask(id string) error {
 	dlTasksMu.Lock()
-	defer dlTasksMu.Unlock()
+	var found bool
 	for _, t := range dlTasks {
 		if t.ID == id {
 			// 锁内置 cancelled 状态再 cancel()：对 error/cancelled 等终态任务
@@ -509,28 +577,39 @@ func (a *App) CancelDownloadTask(id string) error {
 			if t.cancel != nil {
 				t.cancel()
 			}
-			return nil
+			found = true
+			break
 		}
+	}
+	dlTasksMu.Unlock()
+	// 状态变更后持久化：必须在解锁后调用（saveConfig 末尾会获取 dlTasksMu）。
+	if found {
+		persistTasksNow()
 	}
 	return nil
 }
 
 func (a *App) PauseDownloadTask(id string) error {
 	dlTasksMu.Lock()
-	defer dlTasksMu.Unlock()
+	var found bool
 	for _, t := range dlTasks {
 		if t.ID == id && t.Status == "downloading" {
 			t.Status = "paused"
 			t.resumeCh = make(chan struct{}, 1) // fresh channel for resume signal
-			return nil
+			found = true
+			break
 		}
+	}
+	dlTasksMu.Unlock()
+	if found {
+		persistTasksNow()
 	}
 	return nil
 }
 
 func (a *App) ResumeDownloadTask(id string) error {
 	dlTasksMu.Lock()
-	defer dlTasksMu.Unlock()
+	var found bool
 	for _, t := range dlTasks {
 		if t.ID == id && t.Status == "paused" {
 			t.Status = "downloading"
@@ -539,8 +618,13 @@ func (a *App) ResumeDownloadTask(id string) error {
 			case t.resumeCh <- struct{}{}:
 			default:
 			}
-			return nil
+			found = true
+			break
 		}
+	}
+	dlTasksMu.Unlock()
+	if found {
+		persistTasksNow()
 	}
 	return nil
 }
@@ -552,15 +636,28 @@ func (a *App) ResumeDownloadTask(id string) error {
 // .part 文件；找不到 id 时静默返回 nil，与 CancelDownloadTask 语义一致。
 func (a *App) RetryDownloadTask(id string) error {
 	dlTasksMu.Lock()
-	defer dlTasksMu.Unlock()
+	var found bool
 	for _, t := range dlTasks {
 		if t.ID == id {
 			if t.Status == "downloading" || t.Status == "paused" {
-				return nil
+				found = true // 不重试，但该分支无状态变更，无需持久化
+				break
 			}
 			retryDownloadTask(t)
-			return nil
+			found = true
+			break
 		}
 	}
+	dlTasksMu.Unlock()
+	// 状态变更后持久化（retryDownloadTask 置 Status=queued 并启动 goroutine）。
+	if found {
+		persistTasksNow()
+	}
 	return nil
+}
+
+// GetMonitorStatus 返回实时监控采样快照（CPU/内存/GPU 由后台采样器缓存，
+// ServerRunning / TPS / UptimeSeconds 现取）。
+func (a *App) GetMonitorStatus() *MonitorStatus {
+	return GetMonitorStatus()
 }

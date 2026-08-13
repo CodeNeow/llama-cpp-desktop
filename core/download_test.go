@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -339,5 +340,85 @@ func TestMoveFileExdevDoesNotDeleteExistingDest(t *testing.T) {
 	}
 	if _, err := os.Stat(src); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("源文件应已被删除, stat err = %v", err)
+	}
+}
+
+// TestDownloadTaskRangeIgnoredRestart 是 #B3 的回归测试：服务器忽略 Range 头
+// （带 offset 的续传请求返回 200 + 全量内容）时，downloadTask 必须先截断 .part
+// 再重新从 0 下载，否则会把全量内容重复追加到已有部分导致文件损坏。
+// 测试构造带 Range 头的场景：先注入一个已有 .part 文件（offset>0）并置
+// Downloaded>0 模拟断点续传，httptest 服务器对带 Range 的请求返回 200 全量
+// body（对不带 Range 的请求也返回 200 全量 body，保证 offset 归零后能跑通）。
+// 断言：最终文件内容等于全量 body（不重复拼接）、服务器对带 Range 的请求恰好
+// 只请求一次（offset 归零后重连不带 Range，不陷入无限循环）。
+func TestDownloadTaskRangeIgnoredRestart(t *testing.T) {
+	withTempCwd(t)
+	dlTasksMu.Lock()
+	dlTasks = nil
+	dlTaskCounter = 0
+	dlTasksMu.Unlock()
+	defer func() {
+		dlTasksMu.Lock()
+		dlTasks = nil
+		dlTaskCounter = 0
+		dlTasksMu.Unlock()
+	}()
+
+	payload := []byte("0123456789abcdef") // 16 字节全量内容
+	rangeReqCount := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Range") != "" {
+			rangeReqCount++
+		}
+		w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
+		w.Write(payload)
+	}))
+	defer srv.Close()
+
+	destDir := filepath.Join(effectiveModelsDir(), "author")
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// 预置已有 .part 文件（模拟中断的断点续传状态）与任务进度
+	tmpPath := filepath.Join(destDir, "model.gguf.part")
+	if err := os.WriteFile(tmpPath, []byte("partial"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	task := &DlTask{
+		ID:         "dl-1",
+		ModelID:    "author/model",
+		FileName:   "model.gguf",
+		DestDir:    destDir,
+		URL:        srv.URL,
+		Status:     "queued",
+		Downloaded: int64(len("partial")),
+		Total:      int64(len(payload) + len("partial")),
+	}
+	task.ctx, task.cancel = context.WithCancel(context.Background())
+	defer task.cancel()
+
+	downloadTask(task)
+
+	dlTasksMu.Lock()
+	status := task.Status
+	dlTasksMu.Unlock()
+	if status != "done" {
+		t.Fatalf("任务状态 = %q, want done（服务器忽略 Range 时应截断重下）", status)
+	}
+
+	got, err := os.ReadFile(filepath.Join(destDir, "model.gguf"))
+	if err != nil {
+		t.Fatalf("下载文件未落盘: %v", err)
+	}
+	// 文件内容必须等于全量 body，且不含旧部分（partial）——一旦重复追加即损坏
+	if string(got) != string(payload) {
+		t.Errorf("文件内容 = %q, want 全量 %q（不得把全量内容追加到旧 .part 上）", got, payload)
+	}
+
+	// offset 归零后的重连请求不带 Range，服务器不再收到带 Range 的请求
+	if rangeReqCount != 1 {
+		t.Errorf("带 Range 的请求次数 = %d, want 1（应只触发一次截断重连，offset=0 后不再带 Range）", rangeReqCount)
 	}
 }

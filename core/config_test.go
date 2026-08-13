@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
 // withTempCwd 切到临时目录并在测试结束后恢复原工作目录。
@@ -478,4 +480,235 @@ func TestSetModelsDir(t *testing.T) {
 	if modelsCacheValid.Load() {
 		t.Error("SetModelsDir 成功后模型缓存应失效")
 	}
+}
+
+// ─── downloadSource 持久化 ────────────────────────────────────────
+
+// TestLoadConfigDownloadSourceDefault 验证旧配置没有 downloadSource 字段时
+// 下载源兜底为 hf（#12：旧数据兼容，不因缺字段报错或留下空值）。
+func TestLoadConfigDownloadSourceDefault(t *testing.T) {
+	withTempCwd(t)
+	saveConfigState(t)
+
+	if err := os.WriteFile(configFile, []byte(`{"serverConfig":{"host":"127.0.0.1"}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	loadConfig()
+
+	if got := activeDownloadSource(); got != sourceHF {
+		t.Errorf("旧配置无 downloadSource 字段时应兜底 hf, 实际 %q", got)
+	}
+}
+
+// TestSetDownloadSourcePersist 验证 SetDownloadSource 合法值写入并持久化往返：
+// 设置 modelscope 后 activeDownloadSource 立即生效，saveConfig + loadConfig 后
+// 仍为 modelscope（含非默认值在重启后恢复）。
+func TestSetDownloadSourcePersist(t *testing.T) {
+	withTempCwd(t)
+	saveConfigState(t)
+
+	app := &App{}
+	if err := app.SetDownloadSource(sourceModelScope); err != nil {
+		t.Fatal(err)
+	}
+	if got := activeDownloadSource(); got != sourceModelScope {
+		t.Errorf("设置后 activeDownloadSource = %q, want modelscope", got)
+	}
+
+	// 重启模拟：读回配置文件
+	downloadSourceMu.Lock()
+	downloadSource = sourceHF
+	downloadSourceMu.Unlock()
+	loadConfig()
+	if got := activeDownloadSource(); got != sourceModelScope {
+		t.Errorf("持久化往返后 activeDownloadSource = %q, want modelscope", got)
+	}
+}
+
+// TestSetDownloadSourceRejectsInvalid 验证 SetDownloadSource 拒绝白名单外的值
+// 且不改写当前状态（非法值返回中文错误）。
+func TestSetDownloadSourceRejectsInvalid(t *testing.T) {
+	withTempCwd(t)
+	saveConfigState(t)
+
+	downloadSourceMu.Lock()
+	downloadSource = sourceHF
+	downloadSourceMu.Unlock()
+
+	app := &App{}
+	if err := app.SetDownloadSource("github"); err == nil {
+		t.Error("非法下载源 github 应返回错误")
+	}
+	if err := app.SetDownloadSource(""); err == nil {
+		t.Error("空下载源应返回错误")
+	}
+	if got := activeDownloadSource(); got != sourceHF {
+		t.Errorf("非法值不应改写下载源, 实际 %q", got)
+	}
+}
+
+// ─── 下载任务队列持久化 ───────────────────────────────────────────
+
+// TestDownloadTasksPersistRoundTrip 验证下载任务队列 saveConfig/loadConfig 往返：
+// 含终态任务（done）在内全部字段（ID/ModelID/FileName/DestDir/Source/Status/
+// Progress/Total/Downloaded/SizeHuman/Error）保持一致，运行期字段（URL/ctx/
+// cancel/resumeCh）不持久化、URL 在恢复时重建。
+func TestDownloadTasksPersistRoundTrip(t *testing.T) {
+	withTempCwd(t)
+	saveConfigState(t)
+
+	dlTasksMu.Lock()
+	dlTasks = []*DlTask{
+		{ID: "dl-1", ModelID: "author/model", FileName: "a.gguf", DestDir: "D:/models/author/model", Source: "hf", Status: "done", Progress: 100, Total: 100, Downloaded: 100, SizeHuman: "100 B"},
+		{ID: "dl-2", ModelID: "author/model2", FileName: "b.gguf", DestDir: "D:/models/author/model2", Source: "modelscope", Status: "paused", Progress: 50, Total: 200, Downloaded: 100, SizeHuman: "200 B", Error: "曾失败"},
+	}
+	dlTasksMu.Unlock()
+
+	saveConfig()
+
+	// 清空全局，模拟全新启动
+	dlTasksMu.Lock()
+	dlTasks = nil
+	dlTaskCounter = 0
+	dlTasksMu.Unlock()
+
+	loadConfig()
+
+	dlTasksMu.Lock()
+	restored := dlTasks
+	dlTasksMu.Unlock()
+	if len(restored) != 2 {
+		t.Fatalf("恢复任务数 = %d, want 2", len(restored))
+	}
+	got := restored[0]
+	if got.ID != "dl-1" || got.ModelID != "author/model" || got.FileName != "a.gguf" ||
+		got.DestDir != "D:/models/author/model" || got.Source != "hf" || got.Status != "done" ||
+		got.Progress != 100 || got.Total != 100 || got.Downloaded != 100 || got.SizeHuman != "100 B" {
+		t.Errorf("done 任务字段读回不一致: %+v", got)
+	}
+	got2 := restored[1]
+	if got2.Source != "modelscope" || got2.Status != "paused" || got2.Error != "曾失败" || got2.Downloaded != 100 {
+		t.Errorf("paused 任务字段读回不一致: %+v", got2)
+	}
+	// URL 恢复时按 Source 重建（不持久化原始 URL）
+	wantURL, err := buildModelDownloadURL("hf", "author/model", "a.gguf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored[0].URL != wantURL {
+		t.Errorf("URL 应按 source 重建, got %q", restored[0].URL)
+	}
+}
+
+// TestLoadConfigRestoresDownloadTasks 验证恢复规范化（#12）：
+//   - downloading 状态（进程退出后 goroutine 已消亡）规整为 paused；
+//   - 非法/空 status 规整为 paused；
+//   - Source 为空兜底 hf；
+//   - URL 按 source 重建正确。
+func TestLoadConfigRestoresDownloadTasks(t *testing.T) {
+	withTempCwd(t)
+	saveConfigState(t)
+
+	dlTasksMu.Lock()
+	dlTasks = nil
+	dlTaskCounter = 0
+	dlTasksMu.Unlock()
+
+	configJSON := `{
+		"downloadTasks": [
+			{"id":"dl-1","modelId":"author/model","fileName":"a.gguf","destDir":"D:/m/author/model","source":"hf","status":"downloading","progress":50,"total":100,"downloaded":50,"sizeHuman":"100 B"},
+			{"id":"dl-2","modelId":"author/model","fileName":"b.gguf","destDir":"D:/m/author/model","source":"","status":"weird","progress":0},
+			{"id":"dl-3","modelId":"author/model","fileName":"c.gguf","destDir":"D:/m/author/model","source":"modelscope","status":"queued","progress":0}
+		]
+	}`
+	if err := os.WriteFile(configFile, []byte(configJSON), 0644); err != nil {
+		t.Fatal(err)
+	}
+	loadConfig()
+
+	dlTasksMu.Lock()
+	defer dlTasksMu.Unlock()
+	if len(dlTasks) != 3 {
+		t.Fatalf("恢复任务数 = %d, want 3", len(dlTasks))
+	}
+	// downloading → paused
+	if dlTasks[0].Status != "paused" {
+		t.Errorf("dl-1 downloading 应规整为 paused, 实际 %q", dlTasks[0].Status)
+	}
+	if dlTasks[0].Source != "hf" {
+		t.Errorf("dl-1 Source = %q, want hf", dlTasks[0].Source)
+	}
+	wantURL := hfMirrorBase + "/author/model/resolve/main/a.gguf"
+	if dlTasks[0].URL != wantURL {
+		t.Errorf("dl-1 URL 重建 = %q, want %q", dlTasks[0].URL, wantURL)
+	}
+	// 非法 status + 空 source → paused / hf
+	if dlTasks[1].Status != "paused" {
+		t.Errorf("dl-2 非法 status 应规整为 paused, 实际 %q", dlTasks[1].Status)
+	}
+	if dlTasks[1].Source != sourceHF {
+		t.Errorf("dl-2 空 Source 应兜底 hf, 实际 %q", dlTasks[1].Source)
+	}
+	// queued 保持原样，modelscope URL 用默认 Legacy Base 重建
+	if dlTasks[2].Status != "queued" {
+		t.Errorf("dl-3 queued 应保持原样, 实际 %q", dlTasks[2].Status)
+	}
+	if !strings.HasPrefix(dlTasks[2].URL, "https://modelscope.cn/api/v1/models/") {
+		t.Errorf("dl-3 modelscope URL 重建前缀错误: %q", dlTasks[2].URL)
+	}
+}
+
+// TestDownloadTaskCounterNoConflict 验证恢复任务后 dlTaskCounter 与既有任务不冲突：
+// 配置文件含 dl-3 任务，loadConfig 后 counter 至少为 3；再经 startHFDownload 入队
+// 新任务，新任务 id 唯一（dl-4）且不覆盖既有任务。
+func TestDownloadTaskCounterNoConflict(t *testing.T) {
+	withTempCwd(t)
+	saveConfigState(t)
+	restoreSource := withModelScope404Server(t)
+	defer restoreSource()
+
+	configJSON := `{"downloadTasks":[{"id":"dl-3","modelId":"author/model","fileName":"x.gguf","destDir":"D:/m","source":"hf","status":"paused"}]}`
+	if err := os.WriteFile(configFile, []byte(configJSON), 0644); err != nil {
+		t.Fatal(err)
+	}
+	dlTasksMu.Lock()
+	dlTasks = nil
+	dlTaskCounter = 0
+	dlTasksMu.Unlock()
+	loadConfig()
+
+	dlTasksMu.Lock()
+	restoredCounter := dlTaskCounter
+	dlTasksMu.Unlock()
+	if restoredCounter < 3 {
+		t.Errorf("恢复后 dlTaskCounter = %d, want >= 3（不得小于已恢复任务最大序号）", restoredCounter)
+	}
+
+	// 经真实入队路径新增任务：id 应唯一（dl-4）
+	if err := startHFDownload("author/model", []string{"new.gguf"}); err != nil {
+		t.Fatal(err)
+	}
+	dlTasksMu.Lock()
+	var ids []string
+	for _, tt := range dlTasks {
+		ids = append(ids, tt.ID)
+	}
+	dlTasksMu.Unlock()
+	seen := map[string]bool{}
+	for _, id := range ids {
+		if seen[id] {
+			t.Errorf("任务 id 重复: %v", ids)
+		}
+		seen[id] = true
+	}
+	if !seen["dl-4"] {
+		t.Errorf("新入队任务 id 应为 dl-4（恢复 dl-3 后 counter=3）, 实际 ids=%v", ids)
+	}
+	if len(ids) != 2 {
+		t.Errorf("任务总数 = %d, want 2（dl-3 恢复 + dl-4 新入队）: %v", len(ids), ids)
+	}
+
+	// 等待新任务 goroutine 进入终态（404 快速失败），避免残留；恢复的 dl-3 为
+	// paused 无 goroutine，不参与等待。
+	waitTaskTerminal(t, "dl-4", 5*time.Second)
 }

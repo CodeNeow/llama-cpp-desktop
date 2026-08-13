@@ -34,6 +34,44 @@
       </div>
     </section>
 
+    <!-- 下载 -->
+    <section class="settings-section">
+      <h2 class="section-title">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        模型下载源
+      </h2>
+      <div class="source-grid">
+        <div
+          class="source-card"
+          :class="{ active: downloadSource === 'hf' }"
+          role="radio"
+          :aria-checked="downloadSource === 'hf'"
+          tabindex="0"
+          @click="setSource('hf')"
+          @keydown.enter="setSource('hf')"
+        >
+          <span class="source-name">Hugging Face 镜像（hf-mirror.com）</span>
+          <span v-if="downloadSource === 'hf'" class="source-check">✓</span>
+        </div>
+        <div
+          class="source-card"
+          :class="{ active: downloadSource === 'modelscope' }"
+          role="radio"
+          :aria-checked="downloadSource === 'modelscope'"
+          tabindex="0"
+          @click="setSource('modelscope')"
+          @keydown.enter="setSource('modelscope')"
+        >
+          <span class="source-name">ModelScope（魔搭）</span>
+          <span v-if="downloadSource === 'modelscope'" class="source-check">✓</span>
+        </div>
+      </div>
+      <p class="source-hint">该设置同时作用于搜索与下载。</p>
+      <p v-if="sourceError" class="source-error">{{ sourceError }}</p>
+    </section>
+
     <!-- 更新 -->
     <section class="settings-section">
       <h2 class="section-title">
@@ -63,7 +101,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { appConfig, setTheme, loadConfig } from '../store'
+import { appConfig, setTheme, loadConfig, setDownloadSource as applyDownloadSource } from '../store'
 import { updateState, checkForUpdate, closeUpdateModal } from '../lib/update'
 import { getAppVersion } from '../wails'
 import UpdateModal from '../components/UpdateModal.vue'
@@ -72,6 +110,23 @@ const currentTheme = computed({
   get: () => appConfig.theme,
   set: (v) => setTheme(v)
 })
+
+const downloadSource = computed(() => appConfig.downloadSource)
+const sourceError = ref('')
+const sourceSwitching = ref(false)
+
+async function setSource(source: string) {
+  if (source === appConfig.downloadSource || sourceSwitching.value) return
+  sourceSwitching.value = true
+  sourceError.value = ''
+  try {
+    await applyDownloadSource(source)
+  } catch {
+    sourceError.value = '切换下载源失败，请稍后重试'
+  } finally {
+    sourceSwitching.value = false
+  }
+}
 
 const appVersion = ref('')
 const checking = computed(() => updateState.checking)
@@ -212,6 +267,65 @@ async function manualCheck() {
   font-weight: 500;
   color: var(--text-muted);
   min-width: 28px;
+}
+
+/* ─── 模型下载源 ─── */
+.source-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.source-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 16px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  user-select: none;
+}
+
+.source-card:hover {
+  border-color: var(--overlay-20);
+}
+
+.source-card.active {
+  border-color: rgba(99, 102, 241, 0.5);
+  background: rgba(99, 102, 241, 0.08);
+}
+
+.source-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.source-card.active .source-name {
+  color: var(--accent-light);
+}
+
+.source-check {
+  color: var(--accent-light);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.source-hint {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin: 0;
+}
+
+.source-error {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: #ef4444;
 }
 
 /* ─── 更新 ─── */

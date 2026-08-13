@@ -343,3 +343,117 @@ func TestValidRopeScalingValue(t *testing.T) {
 		}
 	}
 }
+
+// TestValidSpecTypeValue 验证 spec-type 白名单（MTP 多 token 预测）。
+func TestValidSpecTypeValue(t *testing.T) {
+	for _, v := range []string{"", "draft-mtp"} {
+		if !validSpecTypeValue(v) {
+			t.Errorf("validSpecTypeValue(%q) 应为 true", v)
+		}
+	}
+	for _, v := range []string{"draft", "mtp", "draft-mtp2", " draft-mtp"} {
+		if validSpecTypeValue(v) {
+			t.Errorf("validSpecTypeValue(%q) 应为 false", v)
+		}
+	}
+}
+
+// TestGenerateModelsPresetFromMMProjReasoningSpec 验证模型新参数写入预设 INI：
+// 显式 mmproj 路径（优先于自动检测，输出且仅输出一条 mmproj 行）、reasoning=off、
+// spec-type / spec-draft-n-max。MMProj 为空且 HasMMProj=true 时维持自动检测。
+func TestGenerateModelsPresetFromMMProjReasoningSpec(t *testing.T) {
+	// 显式 mmproj 场景：同目录放一个真实 mmproj 文件，显式路径应覆盖自动检测
+	dir := t.TempDir()
+	autoMMProj := filepath.Join(dir, "mmproj-auto.gguf")
+	if err := os.WriteFile(autoMMProj, []byte("proj"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	modelPath := filepath.Join(dir, "llava.gguf")
+
+	models := []ModelInfo{{Name: "llava", Path: modelPath, HasMMProj: true}}
+	cfgs := map[string]ModelConfig{
+		"llava": {
+			MMProj:        filepath.Join(dir, "mmproj-explicit.gguf"),
+			Reasoning:     true,
+			SpecType:      "draft-mtp",
+			SpecDraftNMax: 4,
+		},
+	}
+	path, err := generateModelsPresetFrom(models, cfgs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(path)
+
+	data, _ := os.ReadFile(path)
+	content := string(data)
+
+	// 显式 mmproj 行存在且使用正斜杠
+	wantMM := "mmproj = " + filepath.ToSlash(cfgs["llava"].MMProj)
+	if !strings.Contains(content, wantMM+"\n") {
+		t.Errorf("预设缺少显式 mmproj 行 %q: %q", wantMM, content)
+	}
+	// 显式路径存在时不得再输出自动检测的 mmproj 行（仅一条 mmproj）
+	if strings.Contains(content, "mmproj-auto.gguf") {
+		t.Errorf("显式 mmproj 存在时不应输出自动检测的 mmproj: %q", content)
+	}
+	if strings.Count(content, "mmproj =") != 1 {
+		t.Errorf("应只输出一条 mmproj 行: %q", content)
+	}
+	if !strings.Contains(content, "reasoning = off\n") {
+		t.Errorf("预设缺少 reasoning = off: %q", content)
+	}
+	if !strings.Contains(content, "spec-type = draft-mtp\n") {
+		t.Errorf("预设缺少 spec-type = draft-mtp: %q", content)
+	}
+	if !strings.Contains(content, "spec-draft-n-max = 4\n") {
+		t.Errorf("预设缺少 spec-draft-n-max = 4: %q", content)
+	}
+}
+
+// TestGenerateModelsPresetFromMMProjAutoDetection 验证 MMProj 为空时维持既有
+// 同目录自动检测逻辑（HasMMProj=true 且目录存在 mmproj-*.gguf 时输出 mmproj 行）。
+func TestGenerateModelsPresetFromMMProjAutoDetection(t *testing.T) {
+	dir := t.TempDir()
+	mmprojPath := filepath.Join(dir, "mmproj-f16.gguf")
+	if err := os.WriteFile(mmprojPath, []byte("proj"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	modelPath := filepath.Join(dir, "llava.gguf")
+
+	models := []ModelInfo{{Name: "llava", Path: modelPath, HasMMProj: true}}
+	// MMProj 为空：行为与未配置该字段一致，走自动检测
+	path, err := generateModelsPresetFrom(models, map[string]ModelConfig{"llava": {}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(path)
+
+	data, _ := os.ReadFile(path)
+	content := string(data)
+	if !strings.Contains(content, "mmproj = "+filepath.ToSlash(mmprojPath)) {
+		t.Errorf("MMProj 为空时应自动检测 mmproj: %q", content)
+	}
+}
+
+// TestGenerateModelsPresetFromRejectsSpecAndMMProj 验证预设生成对非法 SpecType
+// 与非法 mmproj（INI 注入 payload）返回错误（第二层防御）。
+func TestGenerateModelsPresetFromRejectsSpecAndMMProj(t *testing.T) {
+	models := []ModelInfo{{Name: "m", Path: "/models/m.gguf"}}
+	badCfgs := []map[string]ModelConfig{
+		{"m": {SpecType: "draft-unknown"}},
+		{"m": {MMProj: "x.gguf\n[evil]\nmodel=/tmp/x"}},
+		{"m": {MMProj: " /etc/x.gguf"}}, // 首尾空白拒绝
+	}
+	for i, cfgs := range badCfgs {
+		if _, err := generateModelsPresetFrom(models, cfgs); err == nil {
+			t.Errorf("case %d: 非法 SpecType/MMProj 应返回错误", i)
+		}
+	}
+
+	// 对照组：SpecDraftNMax 默认 0 与合法 SpecType 生成成功
+	okCfgs := map[string]ModelConfig{"m": {SpecType: "draft-mtp", SpecDraftNMax: 0}}
+	if _, err := generateModelsPresetFrom(models, okCfgs); err != nil {
+		t.Errorf("合法 SpecType 应生成成功: %v", err)
+	}
+}

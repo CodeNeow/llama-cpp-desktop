@@ -2,11 +2,17 @@
   <div class="page">
     <div class="page-header">
       <h1 class="page-title">下载</h1>
-      <p class="page-subtitle">从 HF Mirror 搜索和下载模型</p>
+      <p class="page-subtitle">从 {{ sourceLabel }} 搜索和下载模型</p>
     </div>
 
     <!-- Search bar -->
     <div class="search-bar">
+      <span class="source-tag" :class="'source-' + downloadSource" title="当前模型下载源（可在设置页切换）">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+        </svg>
+        源：{{ sourceLabel }}
+      </span>
       <div class="search-input-wrap">
         <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -50,8 +56,8 @@
                 <span class="result-author">{{ r.author }}</span>
                 <span v-if="r.pipelineTag" class="result-tag">{{ r.pipelineTag }}</span>
                 <span class="result-downloads">⬇ {{ formatNum(r.downloads) }}</span>
-                <span v-if="r.likes > 0" class="result-likes">♥ {{ formatNum(r.likes) }}</span>
-                <span v-if="modelSizes[r.modelId]" class="result-size">💾 {{ formatSize(modelSizes[r.modelId]) }}</span>
+                <span v-if="(r.likes || 0) > 0" class="result-likes">♥ {{ formatNum(r.likes) }}</span>
+                <span v-if="modelSizes[r.modelId]" class="result-size">💾 {{ formatBytes(modelSizes[r.modelId]) }}</span>
               </div>
             </div>
             <span class="result-arrow" :class="{ open: expandedModel === r.modelId }">▾</span>
@@ -76,7 +82,7 @@
                 />
                 <span class="file-name">{{ f.filename }}</span>
                 <span v-if="guessQuant(f.filename)" class="file-quant">{{ guessQuant(f.filename) }}</span>
-                <span class="file-size" v-if="f.size">{{ formatSize(f.size) }}</span>
+                <span class="file-size" v-if="f.size">{{ formatBytes(f.size) }}</span>
               </label>
               <div class="files-actions">
                 <button class="select-all-btn" @click="selectAllFiles(r.modelId)">全选</button>
@@ -127,6 +133,7 @@
                 </div>
                 <div class="task-meta">
                   <span class="task-status" :class="'status-' + t.status">{{ statusMap[t.status] || t.status }}</span>
+                  <span v-if="t.status === 'downloading' && t.speed > 0" class="task-speed">{{ formatSpeed(t.speed) }}</span>
                   <span class="task-size" v-if="t.sizeHuman && t.sizeHuman !== '0 B'">{{ t.sizeHuman }}</span>
                 </div>
                 <div class="task-error" v-if="t.error">
@@ -167,8 +174,9 @@
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import {
   searchDownloads, getModelFiles, getModelDescription, getModelMaxFileSize, startDownload as startHFDownload, getDownloadTasks,
-  cancelDownloadTask, retryDownloadTask, pauseDownloadTask, resumeDownloadTask, refreshModels
+  cancelDownloadTask, retryDownloadTask, pauseDownloadTask, resumeDownloadTask, refreshModels, getDownloadSource
 } from '../wails'
+import { formatSpeed, formatBytes } from '../lib/format'
 import { LatestOnly } from '../lib/latestOnly'
 import { hasActiveTask, countActiveTasks } from '../lib/taskStatus'
 import { LimitedQueue } from '../lib/limitedQueue'
@@ -176,15 +184,15 @@ import { LimitedQueue } from '../lib/limitedQueue'
 interface HFResult {
   modelId: string
   author: string
-  downloads: number
-  likes: number
-  pipelineTag: string
-  tags: string[]
+  downloads?: number
+  likes?: number
+  pipelineTag?: string
+  tags?: string[]
 }
 
 interface HFFile {
   filename: string
-  size: number
+  size?: number
 }
 
 interface DlTask {
@@ -197,12 +205,17 @@ interface DlTask {
   downloaded: number
   sizeHuman: string
   error: string
+  source: string
+  speed: number
 }
 
 const searchQuery = ref('')
 const searching = ref(false)
 const searched = ref(false)
 const searchResults = ref<HFResult[]>([])
+// 当前下载源（"hf" | "modelscope"），挂载时从后端读取，切换由设置页完成
+const downloadSource = ref('')
+const sourceLabel = computed(() => downloadSource.value === 'modelscope' ? 'ModelScope' : 'HF 镜像')
 // 模型大小缓存：值为最大 GGUF 文件字节数，0 表示已尝试查询（无 GGUF 或失败），
 // 用于避免重复请求；按 modelId 缓存，跨搜索复用
 const modelSizes = reactive<Record<string, number>>({})
@@ -234,17 +247,11 @@ const statusMap: Record<string, string> = {
   cancelled: '已取消',
 }
 
-function formatNum(n: number): string {
-  if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M'
-  if (n >= 1000) return (n / 1000).toFixed(1) + 'K'
-  return String(n)
-}
-
-function formatSize(bytes: number): string {
-  if (!bytes) return ''
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' KB'
-  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
-  return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB'
+function formatNum(n: number | undefined): string {
+  const v = n || 0
+  if (v >= 1000000) return (v / 1000000).toFixed(1) + 'M'
+  if (v >= 1000) return (v / 1000).toFixed(1) + 'K'
+  return String(v)
 }
 
 function taskBarClass(status: string): string {
@@ -254,7 +261,8 @@ function taskBarClass(status: string): string {
 }
 
 function sortedFiles(files: HFFile[]): HFFile[] {
-  return [...files].sort((a, b) => b.size - a.size)
+  // ModelScope 源的文件可能缺 size，按 0 兜底排序避免 NaN
+  return [...files].sort((a, b) => (b.size || 0) - (a.size || 0))
 }
 
 function guessQuant(filename: string): string {
@@ -420,7 +428,18 @@ function startTaskPolling() {
   fetchTasks()
 }
 
-onMounted(startTaskPolling)
+/** 挂载时读取当前下载源；失败时静默保持默认 "hf"（HF 镜像） */
+async function loadDownloadSource() {
+  try {
+    const source = await getDownloadSource()
+    downloadSource.value = source || 'hf'
+  } catch {}
+}
+
+onMounted(() => {
+  startTaskPolling()
+  loadDownloadSource()
+})
 onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
 </script>
 
@@ -842,6 +861,11 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
 
 .task-size {
   color: var(--text-dim);
+}
+
+.task-speed {
+  color: var(--accent-light);
+  font-weight: 600;
 }
 
 .task-error {

@@ -15,6 +15,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -113,17 +114,19 @@ type HFFileOut struct {
 // ─── Download task types ─────────────────────────────────────────
 
 type DlTask struct {
-	ID         string `json:"id"`
-	ModelID    string `json:"modelId"`
-	FileName   string `json:"fileName"`
-	DestDir    string `json:"destDir"`
-	URL        string `json:"-"`
-	Status     string `json:"status"`
-	Progress   int    `json:"progress"`
-	Total      int64  `json:"total"`
-	Downloaded int64  `json:"downloaded"`
-	SizeHuman  string `json:"sizeHuman"`
-	Error      string `json:"error"`
+	ID         string  `json:"id"`
+	ModelID    string  `json:"modelId"`
+	FileName   string  `json:"fileName"`
+	DestDir    string  `json:"destDir"`
+	Source     string  `json:"source"` // 下载源: hf / modelscope
+	URL        string  `json:"-"`
+	Status     string  `json:"status"`
+	Progress   int     `json:"progress"`
+	Total      int64   `json:"total"`
+	Downloaded int64   `json:"downloaded"`
+	SizeHuman  string  `json:"sizeHuman"`
+	Speed      float64 `json:"speed"` // 当前下载速度（字节/秒）
+	Error      string  `json:"error"`
 	ctx        context.Context
 	cancel     context.CancelFunc
 	resumeCh   chan struct{}
@@ -187,6 +190,28 @@ var customLlamaCppMu sync.Mutex
 var dlTasks []*DlTask
 var dlTasksMu sync.Mutex
 var dlTaskCounter int
+
+// ─── Download source (HF Mirror / ModelScope) ────────────────────
+
+const (
+	sourceHF              = "hf"
+	sourceModelScope      = "modelscope"
+	defaultDownloadSource = sourceHF
+)
+
+// downloadSource 为当前模型下载源（hf / modelscope），downloadSourceMu 保护其
+// 读写，与 customLlamaCppDir 等配置项的风格保持一致。搜索、文件列表、描述与
+// 下载 URL 构建均以 activeDownloadSource() 的当前值路由。
+var downloadSource = defaultDownloadSource
+var downloadSourceMu sync.Mutex
+
+// activeDownloadSource 返回当前生效的下载源，在锁内读取。
+func activeDownloadSource() string {
+	downloadSourceMu.Lock()
+	s := downloadSource
+	downloadSourceMu.Unlock()
+	return s
+}
 
 type DownloadState struct {
 	Status     string `json:"status"` // idle, fetching, downloading, paused, extracting, done, error
@@ -2107,6 +2132,10 @@ var serverRunning bool
 // 路径必须按「先 serverMu 后 serverLogsMu」的顺序获取，避免死锁。
 var serverMu sync.Mutex
 
+// serverStartTime 记录 llama-server 成功启动的时刻（serverMu 保护），供
+// GetMonitorStatus 计算运行时长；进程退出（cmd.Wait goroutine）置零。
+var serverStartTime time.Time
+
 type serverLogWriter struct{}
 
 func (w *serverLogWriter) Write(p []byte) (int, error) {
@@ -2176,6 +2205,16 @@ func validRopeScalingValue(s string) bool {
 	return false
 }
 
+// validSpecTypeValue 校验 spec-type 取值白名单（MTP 多 token 预测策略，
+// 空值表示使用 llama-server 默认单 token 预测）。
+func validSpecTypeValue(s string) bool {
+	switch s {
+	case "", "draft-mtp":
+		return true
+	}
+	return false
+}
+
 // generateModelsPreset scans the default model directory and writes a llama-server
 // INI preset to a temp file, returning its path.
 func generateModelsPreset() (string, error) {
@@ -2221,6 +2260,9 @@ func generateModelsPresetFrom(models []ModelInfo, cfgs map[string]ModelConfig) (
 		if isEmbeddingModel(m) {
 			buf.WriteString("embeddings = true\n")
 		}
+
+		// 显式 mmproj 路径覆盖时跳过下方同目录自动检测（避免输出两条 mmproj）
+		explicitMMProj := false
 
 		// Apply per-model config if set
 		if cfg, ok := cfgs[m.Name]; ok {
@@ -2296,8 +2338,29 @@ func generateModelsPresetFrom(models []ModelInfo, cfgs map[string]ModelConfig) (
 			if cfg.RopeScale > 0 {
 				buf.WriteString(fmt.Sprintf("rope-scale = %g\n", cfg.RopeScale))
 			}
+			// 显式 mmproj 路径覆盖：非空且通过 INI 注入校验时优先于同目录自动检测，
+			// 不要求文件存在（模型可能移动，llama-server 启动时自行报错）。
+			if cfg.MMProj != "" {
+				if !validIniValue(cfg.MMProj) {
+					return "", fmt.Errorf("非法 MMProj 值 %q：不能包含换行或首尾空白", cfg.MMProj)
+				}
+				buf.WriteString(fmt.Sprintf("mmproj = %s\n", filepath.ToSlash(cfg.MMProj)))
+				explicitMMProj = true
+			}
+			if cfg.Reasoning {
+				buf.WriteString("reasoning = off\n")
+			}
+			if cfg.SpecType != "" {
+				if !validSpecTypeValue(cfg.SpecType) {
+					return "", fmt.Errorf("非法 SpecType 值 %q：仅允许 draft-mtp", cfg.SpecType)
+				}
+				buf.WriteString(fmt.Sprintf("spec-type = %s\n", cfg.SpecType))
+			}
+			if cfg.SpecDraftNMax > 0 {
+				buf.WriteString(fmt.Sprintf("spec-draft-n-max = %d\n", cfg.SpecDraftNMax))
+			}
 		}
-		if m.HasMMProj {
+		if m.HasMMProj && !explicitMMProj {
 			// Look for mmproj file in same directory
 			dir := filepath.Dir(m.Path)
 			entries, _ := os.ReadDir(dir)
@@ -2345,11 +2408,30 @@ func sanitizeAlias(name string) string {
 // ─── Config persistence ─────────────────────────────────────────
 
 type appConfig struct {
-	LlamaCppDir  string                 `json:"llamaCppDir"`
-	ModelDir     string                 `json:"modelDir"`
-	Theme        string                 `json:"theme"`
-	ModelConfigs map[string]ModelConfig `json:"modelConfigs"`
-	ServerConfig ServerConfig           `json:"serverConfig"`
+	LlamaCppDir    string                 `json:"llamaCppDir"`
+	ModelDir       string                 `json:"modelDir"`
+	Theme          string                 `json:"theme"`
+	ModelConfigs   map[string]ModelConfig `json:"modelConfigs"`
+	ServerConfig   ServerConfig           `json:"serverConfig"`
+	DownloadSource string                 `json:"downloadSource"`
+	DownloadTasks  []PersistedDlTask      `json:"downloadTasks,omitempty"`
+}
+
+// PersistedDlTask 是下载任务队列的持久化形态（写入 llama-gui-config.json）。
+// 与 DlTask 的区别：URL / ctx / cancel / resumeCh 这类运行时状态不持久化，
+// URL 在 loadConfig 恢复时按 Source + buildModelDownloadURL 重建。
+type PersistedDlTask struct {
+	ID         string `json:"id"`
+	ModelID    string `json:"modelId"`
+	FileName   string `json:"fileName"`
+	DestDir    string `json:"destDir"`
+	Source     string `json:"source"`
+	Status     string `json:"status"`
+	Progress   int    `json:"progress"`
+	Total      int64  `json:"total"`
+	Downloaded int64  `json:"downloaded"`
+	SizeHuman  string `json:"sizeHuman"`
+	Error      string `json:"error"`
 }
 
 type ServerConfig struct {
@@ -2360,24 +2442,28 @@ type ServerConfig struct {
 }
 
 type ModelConfig struct {
-	Threads     int     `json:"threads"`
-	GPULayers   string  `json:"gpuLayers"`
-	CtxSize     int     `json:"ctxSize"`
-	BatchSize   int     `json:"batchSize"`
-	UBatchSize  int     `json:"ubatchSize"`
-	FlashAttn   bool    `json:"flashAttn"`
-	CacheTypeK  string  `json:"cacheTypeK"`
-	CacheTypeV  string  `json:"cacheTypeV"`
-	LoadMode    string  `json:"loadMode"`         // "", none, mmap, mlock, mmap+mlock, dio
-	CPUMoe      bool    `json:"cpuMoe"`           // 所有 MoE 专家留 CPU
-	NCpuMoe     int     `json:"nCpuMoe"`          // 前 N 层 MoE 留 CPU, 0=不启用
-	SplitMode   string  `json:"splitMode"`        // "", none, layer, row, tensor
-	TensorSplit string  `json:"tensorSplit"`      // 如 "3,1"
-	MainGPU     int     `json:"mainGpu"`          // 默认 0
-	RopeScaling string  `json:"ropeScaling"`      // "", none, linear, yarn
-	RopeScale   float64 `json:"ropeScale"`        // 0=不启用
-	MLock       bool    `json:"mlock,omitempty"`  // 已废弃,仅为读取旧配置迁移
-	NoMMap      bool    `json:"noMmap,omitempty"` // 已废弃,仅为读取旧配置迁移
+	Threads       int     `json:"threads"`
+	GPULayers     string  `json:"gpuLayers"`
+	CtxSize       int     `json:"ctxSize"`
+	BatchSize     int     `json:"batchSize"`
+	UBatchSize    int     `json:"ubatchSize"`
+	FlashAttn     bool    `json:"flashAttn"`
+	CacheTypeK    string  `json:"cacheTypeK"`
+	CacheTypeV    string  `json:"cacheTypeV"`
+	LoadMode      string  `json:"loadMode"`         // "", none, mmap, mlock, mmap+mlock, dio
+	CPUMoe        bool    `json:"cpuMoe"`           // 所有 MoE 专家留 CPU
+	NCpuMoe       int     `json:"nCpuMoe"`          // 前 N 层 MoE 留 CPU, 0=不启用
+	SplitMode     string  `json:"splitMode"`        // "", none, layer, row, tensor
+	TensorSplit   string  `json:"tensorSplit"`      // 如 "3,1"
+	MainGPU       int     `json:"mainGpu"`          // 默认 0
+	RopeScaling   string  `json:"ropeScaling"`      // "", none, linear, yarn
+	RopeScale     float64 `json:"ropeScale"`        // 0=不启用
+	MMProj        string  `json:"mmproj"`           // 显式 mmproj 路径覆盖, 空=自动检测
+	Reasoning     bool    `json:"reasoning"`        // 关闭思考（写 reasoning = off）
+	SpecType      string  `json:"specType"`         // "", draft-mtp
+	SpecDraftNMax int     `json:"specDraftNMax"`    // >0 时写 spec-draft-n-max
+	MLock         bool    `json:"mlock,omitempty"`  // 已废弃,仅为读取旧配置迁移
+	NoMMap        bool    `json:"noMmap,omitempty"` // 已废弃,仅为读取旧配置迁移
 }
 
 func loadConfig() {
@@ -2449,6 +2535,68 @@ func loadConfig() {
 		scfg.CacheRAM = cfg.ServerConfig.CacheRAM
 	}
 	cachedServerConfig = scfg
+
+	// 下载源：空值或非法值兜底默认 hf（旧配置无此字段或数据损坏时不报错）。
+	if cfg.DownloadSource != sourceHF && cfg.DownloadSource != sourceModelScope {
+		cfg.DownloadSource = defaultDownloadSource
+	}
+	downloadSourceMu.Lock()
+	downloadSource = cfg.DownloadSource
+	downloadSourceMu.Unlock()
+
+	// 恢复下载任务队列（进程重启后无活跃 goroutine，任何任务都不自动启动下载）：
+	// Source 兜底 hf；Status 白名单外与 downloading 一律规整为 paused（downloading
+	// 状态的 goroutine 已随进程退出消亡，前端可对任务继续/重试）；URL 按
+	// buildModelDownloadURL 重建；resumeCh 新建缓冲 channel，ctx/cancel 留 nil
+	//（RetryDownloadTask 重建 ctx 后再启动）。恢复后调整 dlTaskCounter 避免与
+	// 既有任务 id 冲突。
+	restored := make([]*DlTask, 0, len(cfg.DownloadTasks))
+	for _, pt := range cfg.DownloadTasks {
+		src := pt.Source
+		if src == "" {
+			src = sourceHF
+		}
+		status := pt.Status
+		switch status {
+		case "done", "error", "cancelled", "queued", "paused":
+			// 终态与可控状态保持原样
+		default:
+			// 空值、非法值或 downloading → paused
+			status = "paused"
+		}
+		task := &DlTask{
+			ID:         pt.ID,
+			ModelID:    pt.ModelID,
+			FileName:   pt.FileName,
+			DestDir:    pt.DestDir,
+			Source:     src,
+			Status:     status,
+			Progress:   pt.Progress,
+			Total:      pt.Total,
+			Downloaded: pt.Downloaded,
+			SizeHuman:  pt.SizeHuman,
+			Error:      pt.Error,
+			resumeCh:   make(chan struct{}, 1),
+		}
+		if url, err := buildModelDownloadURL(src, pt.ModelID, pt.FileName); err == nil {
+			task.URL = url
+		}
+		restored = append(restored, task)
+	}
+	dlTasksMu.Lock()
+	dlTasks = restored
+	// id 取已恢复任务的最大序号 +1（解析 "dl-N"），避免新增任务 id 冲突；
+	// 解析失败或没有已恢复任务时保持原值。
+	maxSeq := 0
+	for _, t := range restored {
+		if n, err := strconv.Atoi(strings.TrimPrefix(t.ID, "dl-")); err == nil && n > maxSeq {
+			maxSeq = n
+		}
+	}
+	if maxSeq > dlTaskCounter {
+		dlTaskCounter = maxSeq
+	}
+	dlTasksMu.Unlock()
 }
 
 var cachedModelConfigs = make(map[string]ModelConfig)
@@ -2489,7 +2637,42 @@ func saveConfig() {
 	scfg := cachedServerConfig
 	serverConfigMu.Unlock()
 
-	cfg := appConfig{LlamaCppDir: dir, ModelDir: modelDir, Theme: theme, ModelConfigs: mcfgs, ServerConfig: scfg}
+	downloadSourceMu.Lock()
+	dlsrc := downloadSource
+	downloadSourceMu.Unlock()
+
+	// 锁序铁律：saveConfig 内 dlTasksMu 必须是最后获取的锁。任何调用点都不得
+	// 在持有 dlTasksMu 时调用 saveConfig——调用方须先锁内取副本、解锁、再
+	// save（如 CancelDownloadTask 在 defer Unlock 前不调 saveConfig）。否则会
+	// 违反 dlTasksMu 与其他锁（configMu 等）的全局顺序，造成死锁。
+	dlTasksMu.Lock()
+	persistedTasks := make([]PersistedDlTask, 0, len(dlTasks))
+	for _, t := range dlTasks {
+		persistedTasks = append(persistedTasks, PersistedDlTask{
+			ID:         t.ID,
+			ModelID:    t.ModelID,
+			FileName:   t.FileName,
+			DestDir:    t.DestDir,
+			Source:     t.Source,
+			Status:     t.Status,
+			Progress:   t.Progress,
+			Total:      t.Total,
+			Downloaded: t.Downloaded,
+			SizeHuman:  t.SizeHuman,
+			Error:      t.Error,
+		})
+	}
+	dlTasksMu.Unlock()
+
+	cfg := appConfig{
+		LlamaCppDir:    dir,
+		ModelDir:       modelDir,
+		Theme:          theme,
+		ModelConfigs:   mcfgs,
+		ServerConfig:   scfg,
+		DownloadSource: dlsrc,
+		DownloadTasks:  persistedTasks,
+	}
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		log.Printf("[WARN] Failed to marshal config: %v", err)
@@ -2503,6 +2686,21 @@ func saveConfig() {
 // ─── HF Mirror API ───────────────────────────────────────────────
 
 const hfMirrorBase = "https://hf-mirror.com"
+
+// buildModelDownloadURL 按下载源构建模型文件下载 URL：
+//   - hf：{hfMirrorBase}/{modelID}/resolve/main/{fileName}（PathEscape 转义文件名）
+//   - modelscope：委托 buildModelScopeDownloadURL（legacy API 的 repo 端点）
+//   - 未知 source 返回错误（防御纵深，调用方不应传入非法值）
+func buildModelDownloadURL(source, modelID, fileName string) (string, error) {
+	switch source {
+	case sourceHF:
+		return fmt.Sprintf("%s/%s/resolve/main/%s", hfMirrorBase, modelID, url.PathEscape(fileName)), nil
+	case sourceModelScope:
+		return buildModelScopeDownloadURL(modelscopeLegacyBase, modelID, fileName), nil
+	default:
+		return "", fmt.Errorf("未知下载源 %q", source)
+	}
+}
 
 // searchHFMirror queries the default HF Mirror endpoint.
 func searchHFMirror(q string, filter string) ([]HFSearchResult, error) {
@@ -2672,7 +2870,15 @@ func getModelDescriptionAt(baseURL, modelID string) (string, error) {
 		return "", err
 	}
 
-	lines := strings.Split(string(body), "\n")
+	return extractDescription(string(body)), nil
+}
+
+// extractDescription 从 README 正文提取自然语言描述（HF 与 ModelScope 共用）：
+//   - 跳过 YAML front-matter（首行 trim 后为 --- 的块）
+//   - 按空行分段，取第一个「非空且不以 # 开头」的段落，trim 后截断 200 rune
+//   - 正文没有描述段落时返回空串（静默，不视为失败）
+func extractDescription(body string) string {
+	lines := strings.Split(body, "\n")
 	start := 0
 	// 跳过 YAML front-matter：首行 trim 后为 ---，则跳过到下一个 --- 之后
 	if len(lines) > 0 && strings.TrimSpace(lines[0]) == "---" {
@@ -2713,12 +2919,12 @@ func getModelDescriptionAt(baseURL, modelID string) (string, error) {
 		// 截断 200 个 rune，超出加省略号
 		runes := []rune(trimmed)
 		if len(runes) > 200 {
-			return string(runes[:200]) + "...", nil
+			return string(runes[:200]) + "..."
 		}
-		return trimmed, nil
+		return trimmed
 	}
 
-	return "", nil
+	return ""
 }
 
 // getHFModelFiles lists downloadable GGUF files for a model via the default mirror.
@@ -2819,6 +3025,43 @@ func getHFModelMaxGGUFSizeAt(baseURL, modelID string) (int64, error) {
 
 // ─── Download task runner ────────────────────────────────────────
 
+// computeSpeed 由采样间隔（秒）与间隔内下载字节数计算下载速度（字节/秒）。
+// 纯函数：elapsed 非正或 delta 非正时返回 0（无法计算或没有有效进度）。
+func computeSpeed(elapsedSec float64, deltaBytes int64) float64 {
+	if elapsedSec <= 0 || deltaBytes <= 0 {
+		return 0
+	}
+	return float64(deltaBytes) / elapsedSec
+}
+
+// lastTaskPersist 为下载任务队列最近一次持久化时间戳，lastTaskPersistMu 保护其
+// 读写。进度更新路径用 persistTasksThrottled 节流：距上次保存不足 5 秒跳过，
+// 避免下载高频进度把配置文件写入打满（#12 队列持久化）。
+var lastTaskPersist time.Time
+var lastTaskPersistMu sync.Mutex
+
+// persistTasksNow 立即持久化下载任务队列（入队、状态变更与终态路径）。
+// 调用方必须不持有 dlTasksMu：saveConfig 末尾会再获取 dlTasksMu 做快照。
+func persistTasksNow() {
+	lastTaskPersistMu.Lock()
+	lastTaskPersist = time.Now()
+	lastTaskPersistMu.Unlock()
+	saveConfig()
+}
+
+// persistTasksThrottled 节流持久化下载任务队列（进度更新路径）：距上次保存
+// （无论 persistTasksNow 还是本函数触发的保存）不足 5 秒时直接跳过。
+func persistTasksThrottled() {
+	lastTaskPersistMu.Lock()
+	if time.Since(lastTaskPersist) < 5*time.Second {
+		lastTaskPersistMu.Unlock()
+		return
+	}
+	lastTaskPersist = time.Now()
+	lastTaskPersistMu.Unlock()
+	saveConfig()
+}
+
 // retryDownloadTask 重建任务的下载上下文并重新启动下载 goroutine。任务进入
 // error/cancelled/done 终态时 ctx 已结束（goroutine 已退出），不能复用旧 ctx，
 // 需要新建 context.WithCancel；downloadTask 启动时会读取 .part 文件大小作为
@@ -2832,6 +3075,7 @@ func retryDownloadTask(task *DlTask) {
 	task.Total = 0
 	task.Progress = 0
 	task.SizeHuman = ""
+	task.Speed = 0
 	task.Status = "queued"
 	go downloadTask(task)
 }
@@ -2840,13 +3084,16 @@ func downloadTask(task *DlTask) {
 	dlTasksMu.Lock()
 	task.Status = "downloading"
 	dlTasksMu.Unlock()
+	persistTasksNow()
 
 	// Create dest directory
 	if err := os.MkdirAll(task.DestDir, 0755); err != nil {
 		dlTasksMu.Lock()
 		task.Status = "error"
 		task.Error = "创建目录失败: " + err.Error()
+		task.Speed = 0
 		dlTasksMu.Unlock()
+		persistTasksNow()
 		return
 	}
 
@@ -2859,6 +3106,11 @@ func downloadTask(task *DlTask) {
 		offset = fi.Size()
 	}
 
+	// 速度采样状态（downloadTask goroutine 独占，无需加锁）：记录上次采样时间与
+	// 字节数，读循环内间隔 ≥1s 时更新 task.Speed。
+	var lastSampleTime time.Time
+	var lastSampleBytes int64
+
 	client := &http.Client{Timeout: 30 * time.Minute}
 
 	for {
@@ -2869,7 +3121,9 @@ func downloadTask(task *DlTask) {
 			if task.Status != "paused" {
 				task.Status = "cancelled"
 			}
+			task.Speed = 0
 			dlTasksMu.Unlock()
+			persistTasksNow()
 			return
 		default:
 		}
@@ -2879,7 +3133,9 @@ func downloadTask(task *DlTask) {
 			dlTasksMu.Lock()
 			task.Status = "error"
 			task.Error = err.Error()
+			task.Speed = 0
 			dlTasksMu.Unlock()
+			persistTasksNow()
 			return
 		}
 
@@ -2897,12 +3153,16 @@ func downloadTask(task *DlTask) {
 			// error 终态（如 hf-mirror 主动取消流的网络错误）。
 			if task.ctx.Err() != nil {
 				task.Status = "cancelled"
+				task.Speed = 0
 				dlTasksMu.Unlock()
+				persistTasksNow()
 				return
 			}
 			task.Status = "error"
 			task.Error = err.Error()
+			task.Speed = 0
 			dlTasksMu.Unlock()
+			persistTasksNow()
 			return
 		}
 
@@ -2911,8 +3171,42 @@ func downloadTask(task *DlTask) {
 			dlTasksMu.Lock()
 			task.Status = "error"
 			task.Error = fmt.Sprintf("HTTP %d", resp.StatusCode)
+			task.Speed = 0
 			dlTasksMu.Unlock()
+			persistTasksNow()
 			return
+		}
+
+		// 服务器忽略 Range 的健壮性（#B3）：offset>0 时本次请求带了 Range 头，
+		// 但部分服务器（如 ModelScope repo 端点）不保证支持 Range，会忽略该头
+		// 返回 200 全量内容。若仍按 offset 追加写入 .part，会把全量内容重复追加
+		// 到已有部分导致文件损坏。处理：关闭响应、截断 .part 到 0、offset 归零、
+		// 清零进度显示，随后 continue 走外层循环重连。offset=0 后再请求不带 Range
+		// 头，服务器若继续忽略 Range 返回 200 也从零开始写——内容正确且只会重连
+		// 这一次，不会无限循环。
+		if offset > 0 && resp.StatusCode == http.StatusOK {
+			resp.Body.Close()
+			dlTasksMu.Lock()
+			task.Downloaded = 0
+			task.Total = 0
+			task.Progress = 0
+			task.SizeHuman = ""
+			task.Speed = 0
+			dlTasksMu.Unlock()
+			if err := os.Truncate(tmpPath, 0); err != nil {
+				dlTasksMu.Lock()
+				task.Status = "error"
+				task.Error = "重置 .part 文件失败: " + err.Error()
+				task.Speed = 0
+				dlTasksMu.Unlock()
+				persistTasksNow()
+				return
+			}
+			offset = 0
+			// 重置速度采样基线：全量重写后 downloaded 从 0 重新累计。
+			lastSampleTime = time.Time{}
+			lastSampleBytes = 0
+			continue
 		}
 
 		if resp.ContentLength > 0 {
@@ -2929,7 +3223,9 @@ func downloadTask(task *DlTask) {
 			dlTasksMu.Lock()
 			task.Status = "error"
 			task.Error = err.Error()
+			task.Speed = 0
 			dlTasksMu.Unlock()
+			persistTasksNow()
 			return
 		}
 
@@ -2945,11 +3241,19 @@ func downloadTask(task *DlTask) {
 			if paused {
 				resp.Body.Close()
 				out.Close()
+				dlTasksMu.Lock()
+				task.Speed = 0
+				dlTasksMu.Unlock()
+				persistTasksNow()
 				waitForTaskResume(task, resumeCh)
 				// Update offset for resume
 				if fi, err := os.Stat(tmpPath); err == nil {
 					offset = fi.Size()
 				}
+				// 重置速度采样基线：暂停期间 elapsed 会虚高，恢复后从新 offset
+				// 重新建立采样，避免第一段速度被暂停时长拉低。
+				lastSampleTime = time.Time{}
+				lastSampleBytes = 0
 				break // outer loop will re-establish connection
 			}
 
@@ -2971,7 +3275,9 @@ func downloadTask(task *DlTask) {
 				out.Close()
 				dlTasksMu.Lock()
 				task.Status = "cancelled"
+				task.Speed = 0
 				dlTasksMu.Unlock()
+				persistTasksNow()
 				return
 			case rr = <-ch:
 			}
@@ -2983,7 +3289,9 @@ func downloadTask(task *DlTask) {
 					dlTasksMu.Lock()
 					task.Status = "error"
 					task.Error = err.Error()
+					task.Speed = 0
 					dlTasksMu.Unlock()
+					persistTasksNow()
 					return
 				}
 				downloaded += int64(rr.n)
@@ -2992,7 +3300,23 @@ func downloadTask(task *DlTask) {
 				if task.Total > 0 {
 					task.Progress = int(float64(downloaded) * 100 / float64(task.Total))
 				}
+				// 速度采样：间隔 ≥1s 才更新，避免高频计算与波动。暂停恢复后
+				// downloaded 从新 offset 重新累计，delta 为负时按 0 处理。
+				now := time.Now()
+				if lastSampleTime.IsZero() {
+					lastSampleTime = now
+					lastSampleBytes = downloaded
+				} else if elapsed := now.Sub(lastSampleTime).Seconds(); elapsed >= 1.0 {
+					delta := downloaded - lastSampleBytes
+					if delta < 0 {
+						delta = 0
+					}
+					task.Speed = computeSpeed(elapsed, delta)
+					lastSampleTime = now
+					lastSampleBytes = downloaded
+				}
 				dlTasksMu.Unlock()
+				persistTasksThrottled()
 			}
 			if rr.err == io.EOF {
 				resp.Body.Close()
@@ -3004,13 +3328,17 @@ func downloadTask(task *DlTask) {
 					dlTasksMu.Lock()
 					task.Status = "error"
 					task.Error = "重命名失败: " + err.Error()
+					task.Speed = 0
 					dlTasksMu.Unlock()
+					persistTasksNow()
 					return
 				}
 				dlTasksMu.Lock()
 				task.Status = "done"
 				task.Progress = 100
+				task.Speed = 0
 				dlTasksMu.Unlock()
+				persistTasksNow()
 				invalidateModelCache()
 				return
 			}
@@ -3022,12 +3350,13 @@ func downloadTask(task *DlTask) {
 				// error（与 client.Do 错误分支同策略）。
 				if task.ctx.Err() != nil {
 					task.Status = "cancelled"
-					dlTasksMu.Unlock()
-					return
+				} else {
+					task.Status = "error"
+					task.Error = rr.err.Error()
 				}
-				task.Status = "error"
-				task.Error = rr.err.Error()
+				task.Speed = 0
 				dlTasksMu.Unlock()
+				persistTasksNow()
 				return
 			}
 		}
