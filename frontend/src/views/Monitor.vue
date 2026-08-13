@@ -1,8 +1,8 @@
 <template>
   <div class="page">
     <div class="page-header">
-      <h1 class="page-title">监控</h1>
-      <p class="page-subtitle">系统资源与推理服务实时状态（每 1 秒刷新）</p>
+      <h1 class="page-title">推理监控</h1>
+      <p class="page-subtitle">推理服务 TPS 与系统资源实时状态（每 1 秒刷新）</p>
     </div>
 
     <!-- CPU -->

@@ -66,7 +66,7 @@
             <span class="info-value">{{ formatGB(info.memory.totalGb) }}</span>
           </div>
         </div>
-        <router-link to="/monitor" class="monitor-hint">实时负载与推理速度前往 监控页 →</router-link>
+        <router-link to="/monitor" class="monitor-hint">实时负载与推理速度前往 推理监控页 →</router-link>
       </section>
 
       <!-- GPU Card -->

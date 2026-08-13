@@ -14,6 +14,18 @@ const routes = [
     meta: { title: '主页', icon: 'home' }
   },
   {
+    path: '/monitor',
+    name: 'Monitor',
+    component: Monitor,
+    meta: { title: '推理监控', icon: 'chart' }
+  },
+  {
+    path: '/downloads',
+    name: 'Downloads',
+    component: Downloads,
+    meta: { title: '下载', icon: 'download' }
+  },
+  {
     path: '/models',
     name: 'Models',
     component: Models,
@@ -24,18 +36,6 @@ const routes = [
     name: 'Api',
     component: Api,
     meta: { title: 'API', icon: 'terminal' }
-  },
-  {
-    path: '/downloads',
-    name: 'Downloads',
-    component: Downloads,
-    meta: { title: '下载', icon: 'download' }
-  },
-  {
-    path: '/monitor',
-    name: 'Monitor',
-    component: Monitor,
-    meta: { title: '监控', icon: 'chart' }
   },
   {
     path: '/settings',
