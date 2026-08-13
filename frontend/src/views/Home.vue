@@ -61,24 +61,12 @@
           内存
         </h2>
         <div class="info-grid">
-          <div class="info-item">
+          <div class="info-item info-item-full">
             <span class="info-label">总内存</span>
             <span class="info-value">{{ formatGB(info.memory.totalGb) }}</span>
           </div>
-          <div class="info-item">
-            <span class="info-label">可用内存</span>
-            <span class="info-value">{{ formatGB(info.memory.freeGb) }}</span>
-          </div>
-          <div class="info-item info-item-full">
-            <span class="info-label">使用率</span>
-            <div class="usage-bar-wrapper">
-              <div class="usage-bar">
-                <div class="usage-fill" :style="{ width: memoryUsagePercent + '%' }"></div>
-              </div>
-              <span class="usage-text">{{ memoryUsagePercent }}%</span>
-            </div>
-          </div>
         </div>
+        <router-link to="/monitor" class="monitor-hint">实时负载与推理速度前往 监控页 →</router-link>
       </section>
 
       <!-- GPU Card -->
@@ -310,12 +298,6 @@ let pollTimer: ReturnType<typeof setInterval> | null = null
 
 // 下载区显示条件：按钮组 / 自定义路径信息 / 进度区各自独立渲染（见 lib/llamaDownload）
 const dlVisibility = computed(() => downloadVisibility(dlStatus.value.status))
-
-const memoryUsagePercent = computed(() => {
-  if (info.value.memory.totalGb === 0) return 0
-  const used = info.value.memory.totalGb - info.value.memory.freeGb
-  return Math.round((used / info.value.memory.totalGb) * 100)
-})
 
 const osLabel = computed(() => {
   const labels: Record<string, string> = {
@@ -624,34 +606,18 @@ onUnmounted(() => {
   border: 1px solid rgba(239, 68, 68, 0.15);
 }
 
-/* ─── Memory bar ─── */
-.usage-bar-wrapper {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+/* ─── Monitor page hint ─── */
+.monitor-hint {
+  display: inline-block;
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--text-dim);
+  text-decoration: none;
+  transition: color 0.2s;
 }
 
-.usage-bar {
-  flex: 1;
-  height: 6px;
-  background: var(--overlay-8);
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.usage-fill {
-  height: 100%;
-  border-radius: 3px;
-  background: linear-gradient(90deg, #6366f1, #a78bfa);
-  transition: width 0.6s ease;
-}
-
-.usage-text {
-  font-size: 13px;
-  font-weight: 600;
-  color: #a78bfa;
-  min-width: 36px;
-  text-align: right;
+.monitor-hint:hover {
+  color: var(--text-secondary);
 }
 
 /* ─── Empty ─── */
