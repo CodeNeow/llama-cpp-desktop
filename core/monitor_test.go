@@ -4,8 +4,9 @@ import "testing"
 
 // ─── parseTPS ─────────────────────────────────────────────────────
 
-// TestParseTPS 验证从服务日志提取最后命中的吞吐数值：多行多值取最后一个
-// （最新采样为准）、支持小数、支持 token 单复数、无匹配返回 0。单行内的多个
+// TestParseTPS 验证从服务日志提取解码（生成）速度：只采用解码行（eval time）
+// 的数值，预填充行（prompt eval time）必须排除；多行多值取最后一条解码行
+// （最新采样为准）、支持小数、支持 token 单复数、无解码行返回 0。单行内的多个
 // 匹配只取第一个命中（regexp FindStringSubmatch 语义），以此为准断言。
 func TestParseTPS(t *testing.T) {
 	cases := []struct {
@@ -19,6 +20,34 @@ func TestParseTPS(t *testing.T) {
 		{"last of multiple", []string{"12.34 tokens per second", "log noise", "56.7 tokens per second"}, 56.7},
 		{"first match in single line", []string{"a 3.5 tokens per second and 4.5 tokens per second"}, 3.5},
 		{"empty", nil, 0},
+		// 真实 llama-server 输出：预填充行在前、解码行在后（print_timing 实际
+		// 打印顺序），须返回解码行数值 89.82，不能取预填充行的 55.32。
+		{"prefill then decode",
+			[]string{
+				"I slot print_timing:      prompt eval time =     271.14 ms /    15 tokens (   18.08 ms per token,    55.32 tokens per second)",
+				"I slot print_timing:             eval time =     712.56 ms /    64 tokens (   11.13 ms per token,    89.82 tokens per second)",
+			}, 89.82},
+		// 只有预填充行、无解码行：预填充行被跳过，无有效值，返回 0。
+		{"prefill only",
+			[]string{
+				"I slot print_timing:      prompt eval time =     271.14 ms /    15 tokens (   18.08 ms per token,    55.32 tokens per second)",
+			}, 0},
+		// 多轮生成多对 timing：预填充行（含 4230.00 这类长 prompt 高值）不得覆盖
+		// 解码值，取最后一轮解码行的 95.40。
+		{"multiple rounds",
+			[]string{
+				"I slot print_timing:      prompt eval time =     271.14 ms /    15 tokens (   18.08 ms per token,    55.32 tokens per second)",
+				"I slot print_timing:             eval time =     712.56 ms /    64 tokens (   11.13 ms per token,    89.82 tokens per second)",
+				"llama_server: unrelated log noise",
+				"I slot print_timing:      prompt eval time =  4230.00 ms / 10000 tokens (    0.42 ms per token,  2362.80 tokens per second)",
+				"I slot print_timing:             eval time =     500.00 ms /    50 tokens (   10.00 ms per token,    95.40 tokens per second)",
+			}, 95.40},
+		// 解码行带 llama-server 前缀（I slot print_timing:）与毫秒/ms 单位等
+		// 噪声，正则仍只提取 "tokens per second" 数值。
+		{"decode line with prefix noise",
+			[]string{
+				"llama server   : I slot print_timing:             eval time =     712.56 ms /    64 tokens (   11.13 ms per token,    89.82 tokens per second)",
+			}, 89.82},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

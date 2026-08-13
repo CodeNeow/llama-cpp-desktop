@@ -49,14 +49,28 @@ var monitorOnce sync.Once
 var linuxCPUPrevIdle, linuxCPUPrevTotal uint64
 
 // tpsLogRegex 匹配 llama-server 日志中的吞吐行，如 "12.34 tokens per second"。
-// 多行时取最后命中的数值（以最新采样为准）。
+// 预填充（prompt eval）与解码（eval）行都含该片段，是否采用由 parseTPS 按行
+// 分类决定（预填充行先行排除）。
 var tpsLogRegex = regexp.MustCompile(`([\d.]+)\s+tokens?\s+per\s+second`)
 
-// parseTPS 从服务日志行中提取最后命中的 "N tokens per second" 数值（tokens/s）。
-// 纯函数：无匹配返回 0；多行多值取最后一个命中（最新采样）；支持小数。
+// parseTPS 从服务日志行中提取最后一条解码行的 "N tokens per second" 数值
+// （tokens/s）。llama-server 每次生成结束会打印两行 timing：
+//
+//	I slot print_timing:      prompt eval time =     271.14 ms /    15 tokens (   18.08 ms per token,    55.32 tokens per second)
+//	I slot print_timing:             eval time =     712.56 ms /    64 tokens (   11.13 ms per token,    89.82 tokens per second)
+//
+// 第一行是提示词预填充（prefill）速度，长 prompt 上可达数千 t/s（如监控页曾显示
+// 2362.8 t/s），不是用户认知的推理速度；第二行才是生成解码速度，必须只取解码行。
+// 注意 "prompt eval time" 是 "eval time" 的子串，必须先判 prompt 再判 eval。
+// 纯函数：无解码行返回 0；多行多值取最后一条解码行（最新采样为准）；支持小数。
 func parseTPS(logs []string) float64 {
 	var last float64
 	for _, line := range logs {
+		// 预填充行先行排除：其中同样含 "tokens per second" 片段（如 55.32），
+		// 不跳过会污染 TPS（长 prompt 预填充可达 2362.8 t/s 这类荒谬值）。
+		if strings.Contains(line, "prompt eval time") {
+			continue
+		}
 		if m := tpsLogRegex.FindStringSubmatch(line); m != nil {
 			if v, err := strconv.ParseFloat(m[1], 64); err == nil {
 				last = v
