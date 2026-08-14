@@ -66,7 +66,6 @@
             <span class="info-value">{{ formatGB(info.memory.totalGb) }}</span>
           </div>
         </div>
-        <router-link to="/monitor" class="monitor-hint">{{ t('home.memory.hint') }}</router-link>
       </section>
 
       <!-- GPU Card -->
@@ -607,20 +606,6 @@ onUnmounted(() => {
   background: rgba(239, 68, 68, 0.1);
   color: #ef4444;
   border: 1px solid rgba(239, 68, 68, 0.15);
-}
-
-/* ─── Monitor page hint ─── */
-.monitor-hint {
-  display: inline-block;
-  margin-top: 14px;
-  font-size: 12px;
-  color: var(--text-dim);
-  text-decoration: none;
-  transition: color 0.2s;
-}
-
-.monitor-hint:hover {
-  color: var(--text-secondary);
 }
 
 /* ─── Empty ─── */
