@@ -2,6 +2,19 @@
 
 更新日志的**权威来源**（见 `AGENTS.md`「版本发布」）：发版时先在此新增版本条目（含日期与逐提交核心改动），`git tag` 注解消息与 GitHub Release 正文均从该条目复制，保持一致。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本。
 
+## [v0.1.8] - 2026-08-14
+
+v0.1.8: Windows 系统托盘与下载/界面修复（v0.1.7 以来 4 个提交，按提交逐一说明核心改动）：
+
+1. `07e76bf` fix(downloads): 修复 Windows 跨盘保存下载文件失败
+   - 核心：moveFile 跨设备判定改用平台常量 crossDeviceRenameErr（Windows 为真实错误码 ERROR_NOT_SAME_DEVICE，其他平台 EXDEV），修复 Go 在 Windows 的 syscall.EXDEV 是发明常量导致跨盘 rename 回退复制永不触发、模型/更新下载跨盘保存直接报错的问题；新增 crossdevice_windows/other 平台分支文件与 Windows 真实跨盘错误回归测试
+2. `0429778` fix(frontend): 模型设置弹窗切换分类页时高度跳动
+   - 核心：ModelSettings 弹窗新增确定高度 height: min(620px, 80vh)，六个分类页切换时弹窗高度恒定；.modal-body 加 scrollbar-gutter: stable，消除滚动条出现/消失导致的内容区宽度抖动
+3. `4aacac2` feat(server): 新增 Windows 系统托盘（关闭缩到托盘、托盘退出）
+   - 核心：引入 fyne.io/systray（Windows 纯 Win32 无 cgo，可与 Wails 主线程共存），托盘图标 + 菜单「显示主窗口 / 退出」，托盘退出经 OnShutdown 清理；Windows 关闭按钮改为缩到托盘（llama-server 可后台运行），其他平台保持直接退出（no-op 存根）
+4. `00b2944` feat(config): 设置页新增系统托盘启用开关（持久化 + 按需启停）
+   - 核心：appConfig 新增 trayEnabled（默认 true，旧配置缺字段兜底）；设置页新增「系统托盘」开关，持久化配置并即时启停托盘；禁用后重新启用需重启应用（systray quitOnce 限制，设置项有常驻提示）
+
 ## [v0.1.7] - 2026-08-14
 
 v0.1.7: 多语言支持、服务访问范围、按安装类型更新与发布产物命名规范化（v0.1.6 以来 9 个提交，按提交逐一说明核心改动）：
@@ -52,5 +65,6 @@ v0.1.6: 实时推理监控、ModelScope 下载源与多项修复（v0.1.5 以来
 11. `1699907` fix(server): 兼容新版 llama.cpp 日志格式，预填充期间实时刷新提示词处理速度
     - 核心：适配新版 llama.cpp 日志格式变化，预填充期间提示词处理速度实时刷新
 
+[v0.1.8]: https://github.com/CodeNeow/llama-cpp-gui/compare/v0.1.7...v0.1.8
 [v0.1.7]: https://github.com/CodeNeow/llama-cpp-gui/compare/v0.1.6...v0.1.7
 [v0.1.6]: https://github.com/CodeNeow/llama-cpp-gui/compare/v0.1.5...v0.1.6
