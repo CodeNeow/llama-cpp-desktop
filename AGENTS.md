@@ -2,7 +2,7 @@
 
 ## 项目概览
 
-Llama GUI 是一个本地大模型桌面管理工具：基于 **Wails v2**（Go 1.22 后端 + WebView2 前端），前端为 **Vue 3 + TypeScript + Vite 5**（无第三方 UI 库，手写 CSS 变量主题），推理引擎为 **llama.cpp**（llama-server 路由器模式）。
+Llama GUI 是一个本地大模型桌面管理工具：基于 **Wails v2**（Go 1.25 后端 + WebView2 前端），前端为 **Vue 3 + TypeScript + Vite 5**（无第三方 UI 库，手写 CSS 变量主题），推理引擎为 **llama.cpp**（llama-server 路由器模式）。
 
 核心链路：`LLM-Models/` 目录扫描 GGUF → 逐模型推理参数配置 → 生成 llama-server 模型预设（INI）→ 启动 OpenAI 兼容服务（默认 `127.0.0.1:8080`）。
 
