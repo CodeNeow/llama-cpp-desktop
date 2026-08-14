@@ -26,6 +26,7 @@ export interface UpdateDownloadState {
   version: string
   filePath: string
   error: string
+  kind: string // 本次下载产物类型：setup（安装器） / portable（便携版）
 }
 
 export const updateState = reactive({
@@ -87,6 +88,7 @@ export function startUpdateDownload(): void {
     version,
     filePath: '',
     error: '',
+    kind: '', // 下载启动前未知产物类型，轮询到后端状态后由 kind 字段填充
   }
   startUpdateDownloadBackend(version).catch(() => {
     if (updateState.download) {

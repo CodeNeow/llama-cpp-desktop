@@ -163,7 +163,7 @@ export async function startUpdateDownload(version: string): Promise<void> {
   return app().StartUpdateDownload(version)
 }
 
-export async function getUpdateDownloadStatus(): Promise<{ status: string; progress: number; total: number; downloaded: number; version: string; filePath: string; error: string }> {
+export async function getUpdateDownloadStatus(): Promise<{ status: string; progress: number; total: number; downloaded: number; version: string; filePath: string; error: string; kind: string }> {
   return app().GetUpdateDownloadStatus()
 }
 

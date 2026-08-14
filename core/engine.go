@@ -1934,6 +1934,7 @@ type UpdateDownloadState struct {
 	Version    string `json:"version"`
 	FilePath   string `json:"filePath"`
 	Error      string `json:"error"`
+	Kind       string `json:"kind"` // 本次下载产物类型：setup（安装器） / portable（便携版）
 }
 
 var updateDownloadState = &UpdateDownloadState{Status: "idle"}
@@ -1944,21 +1945,60 @@ var updateDownloadCancel context.CancelFunc
 // 返回当前可执行文件路径，用于确定更新 exe 的目标目录。
 var updateExePath = os.Executable
 
-// pickUpdateAsset 挑选更新下载使用的资产：优先主程序 exe，跳过 installer。
-// 若版本低于当前版本或没有可用的 exe 资产，返回 nil。
-func pickUpdateAsset(assets []GitHubAsset) *GitHubAsset {
+// 安装类型常量：setup 为 NSIS 安装版（下载 setup 安装器），
+// portable 为便携版（下载便携版 exe）。用于更新产物挑选与前端提示区分。
+const (
+	installKindSetup    = "setup"
+	installKindPortable = "portable"
+)
+
+// detectInstallKind 判断当前安装类型：setup 安装版由 NSIS 安装，安装目录必有
+// uninstall.exe；portable 便携版为绿色版，目录下无 uninstall.exe。纯文件系统
+// 判断，跨平台。复用 updateExePath（os.Executable 的测试注入点）保证可测。
+func detectInstallKind() string {
+	exePath, err := updateExePath()
+	if err != nil {
+		return installKindPortable
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(exePath), "uninstall.exe")); err == nil {
+		return installKindSetup
+	}
+	return installKindPortable
+}
+
+// pickUpdateAsset 按安装类型挑选更新下载使用的资产，兼容新旧两种命名：
+//   - 新命名：setup 安装器 llama-gui-setup-vX.Y.Z-amd64.exe、便携版
+//     llama-gui-portable-vX.Y.Z-amd64.exe；
+//   - 旧命名（v0.1.6）：安装器 llama-gui-amd64-installer.exe、便携版 llama-gui.exe。
+//
+// setup 返回第一个安装器资产（名字含 installer 或 setup）；
+// portable 返回第一个含 portable 或非安装器的 exe 资产（旧命名 llama-gui.exe
+// 不含 portable/installer/setup，命中「非安装器」分支）。
+func pickUpdateAsset(assets []GitHubAsset, kind string) *GitHubAsset {
 	for i := range assets {
 		a := &assets[i]
 		name := strings.ToLower(a.Name)
-		if strings.HasSuffix(name, ".exe") && !strings.Contains(name, "installer") {
-			return a
+		if !strings.HasSuffix(name, ".exe") {
+			continue
+		}
+		isInstaller := strings.Contains(name, "installer") || strings.Contains(name, "setup")
+		switch kind {
+		case installKindSetup:
+			if isInstaller {
+				return a
+			}
+		default: // installKindPortable（含未知取值兜底为便携版语义）
+			if strings.Contains(name, "portable") || !isInstaller {
+				return a
+			}
 		}
 	}
 	return nil
 }
 
-// downloadUpdateRelease 下载新版本 exe 到可执行文件同目录（无法直接替换
-// 正在运行的自身），完成后提示用户关闭应用后手动替换。
+// downloadUpdateRelease 按当前安装类型下载新版本对应产物到可执行文件同目录：
+// setup 安装版下载安装器、portable 便携版下载便携版 exe（无法直接替换正在运行
+// 的自身），完成后提示用户关闭应用后按安装类型完成更新。
 func downloadUpdateRelease(version string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	updateDownloadMu.Lock()
@@ -1972,7 +2012,11 @@ func downloadUpdateRelease(version string) {
 		cancel()
 	}()
 
-	// Step 1: 拉取最新发布信息，挑主程序 exe 资产
+	// 下载开始前先判定安装类型：决定挑选哪种资产与下载命名（setup 安装器 /
+	// portable 便携版 exe）。
+	kind := detectInstallKind()
+
+	// Step 1: 拉取最新发布信息，按安装类型挑对应 exe 资产
 	updateDownloadMu.Lock()
 	updateDownloadState.Status = "downloading"
 	updateDownloadState.Progress = 0
@@ -1980,6 +2024,7 @@ func downloadUpdateRelease(version string) {
 	updateDownloadState.Total = 0
 	updateDownloadState.Version = version
 	updateDownloadState.Error = ""
+	updateDownloadState.Kind = kind
 	updateDownloadMu.Unlock()
 
 	release, err := fetchLatestReleaseAt(updateRepoAPI)
@@ -1987,7 +2032,7 @@ func downloadUpdateRelease(version string) {
 		setUpdateDownloadError(tr("获取发布信息失败: ", "Failed to fetch release info: ") + err.Error())
 		return
 	}
-	asset := pickUpdateAsset(release.Assets)
+	asset := pickUpdateAsset(release.Assets, kind)
 	if asset == nil {
 		setUpdateDownloadError(tr("未找到适用于当前平台的主程序", "No main executable found for the current platform"))
 		return
@@ -1997,14 +2042,20 @@ func downloadUpdateRelease(version string) {
 	updateDownloadState.Total = asset.Size
 	updateDownloadMu.Unlock()
 
-	// Step 2: 下载到可执行文件同目录，命名 llama-gui-v<tag>.exe
+	// Step 2: 下载到可执行文件同目录，命名按安装类型区分：
+	// setup → llama-gui-setup-v<tag>.exe；portable → llama-gui-portable-v<tag>.exe
 	exePath, err := updateExePath()
 	if err != nil {
 		setUpdateDownloadError(tr("无法定位可执行文件路径: ", "Unable to locate the executable path: ") + err.Error())
 		return
 	}
 	dir := filepath.Dir(exePath)
-	fileName := "llama-gui-" + release.TagName + ".exe"
+	var fileName string
+	if kind == installKindSetup {
+		fileName = "llama-gui-setup-" + release.TagName + ".exe"
+	} else {
+		fileName = "llama-gui-portable-" + release.TagName + ".exe"
+	}
 	destPath := filepath.Join(dir, fileName)
 
 	tmpPath, err := downloadUpdateWithResume(ctx, asset.BrowserDownloadURL, asset.Size)
@@ -2032,6 +2083,7 @@ func downloadUpdateRelease(version string) {
 	updateDownloadState.Status = "done"
 	updateDownloadState.Progress = 100
 	updateDownloadState.FilePath = destPath
+	updateDownloadState.Kind = kind
 	updateDownloadMu.Unlock()
 
 	log.Printf("[OK] update %s downloaded to %s", release.TagName, destPath)

@@ -102,7 +102,7 @@ describe('lib/update', () => {
     mockStartUpdateDownload.mockResolvedValue(undefined)
     mockGetStatus.mockResolvedValue({
       status: 'done', progress: 100, total: 100, downloaded: 100,
-      version: 'v0.2.0', filePath: 'C:/app/llama-gui-v0.2.0.exe', error: '',
+      version: 'v0.2.0', filePath: 'C:/app/llama-gui-portable-v0.2.0.exe', error: '', kind: 'portable',
     })
 
     await checkForUpdate()
@@ -113,7 +113,7 @@ describe('lib/update', () => {
 
     await vi.advanceTimersByTimeAsync(1100) // 触发一次轮询
     expect(updateState.download?.status).toBe('done')
-    expect(updateState.download?.filePath).toContain('llama-gui-v0.2.0.exe')
+    expect(updateState.download?.filePath).toContain('llama-gui-portable-v0.2.0.exe')
 
     // 完成后轮询应停止（再推进时间不应重复拉取）
     const callsAfterDone = mockGetStatus.mock.calls.length

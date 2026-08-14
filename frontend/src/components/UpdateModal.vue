@@ -28,7 +28,8 @@
                   <p class="done-title">{{ t('updateModal.doneTitle') }}</p>
                   <p class="done-detail">{{ t('updateModal.doneDetail') }}</p>
                   <code class="done-path">{{ download.filePath }}</code>
-                  <p class="done-tip">{{ t('updateModal.doneTip') }}</p>
+                  <!-- setup 安装版：提示运行安装器；portable 或旧状态（kind 为空）：保持替换 exe 提示 -->
+                  <p class="done-tip">{{ download.kind === 'setup' ? t('updateModal.doneTipSetup') : t('updateModal.doneTip') }}</p>
                 </div>
               </div>
             </template>
