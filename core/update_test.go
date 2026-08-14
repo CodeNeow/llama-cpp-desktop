@@ -9,7 +9,6 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 )
 
@@ -316,10 +315,12 @@ func TestDownloadUpdateReleaseCrossDeviceFallback(t *testing.T) {
 	defer srv.Close()
 	updateRepoAPI = srv.URL
 
-	// 注入 renameFile 模拟跨设备失败（moveFile 内部调用该包级变量）
+	// 注入 renameFile 模拟跨设备失败（moveFile 内部调用该包级变量；
+	// crossDeviceRenameErr 为当前平台真实跨设备错误：Windows 跨盘
+	// ERROR_NOT_SAME_DEVICE=17 / Unix EXDEV，LinkError 包裹模拟真实形态）
 	origRename := renameFile
 	renameFile = func(oldpath, newpath string) error {
-		return syscall.EXDEV
+		return &os.LinkError{Op: "rename", Old: oldpath, New: newpath, Err: crossDeviceRenameErr}
 	}
 	defer func() { renameFile = origRename }()
 

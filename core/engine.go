@@ -25,7 +25,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 )
 
@@ -1191,14 +1190,16 @@ func copyFile(src, dst string) error {
 // moveFile 把 src 移动到 dst：优先 renameFile（包级注入点，测试可模拟失败）；
 // 跨设备（Windows 跨盘 ERROR_NOT_SAME_DEVICE / Unix 跨挂载点 EXDEV）时
 // os.Rename 必然失败，回退为 copyFile + os.Remove(src)，并保留源文件权限。
+// 跨设备判定用平台常量 crossDeviceRenameErr：Windows 上 syscall.EXDEV 是
+// Go 发明的常量，与真实错误码永不相等，不能用它判断。
 // 其他失败（如目标已存在）保持原语义：删除 dst 后重试一次 renameFile。
-// 关键顺序：必须先判定 EXDEV 再走删旧重试，避免跨设备时误删已存在的旧文件。
+// 关键顺序：必须先判定跨设备再走删旧重试，避免跨设备时误删已存在的旧文件。
 func moveFile(src, dst string) error {
 	err := renameFile(src, dst)
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, syscall.EXDEV) {
+	if errors.Is(err, crossDeviceRenameErr) {
 		// 跨设备无法 rename：复制到目标（覆盖已存在的同名文件）后删除源文件
 		if copyErr := copyFile(src, dst); copyErr != nil {
 			return copyErr

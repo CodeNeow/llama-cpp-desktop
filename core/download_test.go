@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 )
 
@@ -234,7 +233,9 @@ func TestDownloadTaskRenameFailure(t *testing.T) {
 }
 
 // TestMoveFileCrossDeviceFallbackCopy 验证 moveFile 在 renameFile 返回
-// EXDEV（Windows 跨盘 ERROR_NOT_SAME_DEVICE / Unix 跨挂载点）时回退为
+// 当前平台的真实跨设备错误（Windows 跨盘 ERROR_NOT_SAME_DEVICE=17 /
+// Unix 跨挂载点 EXDEV，常量 crossDeviceRenameErr 按平台取值，并用
+// LinkError 包裹模拟 os.Rename 的真实错误形态）时回退为
 // 复制 + 删除源文件：断言目标内容与源一致、源已删除、目标保留源文件权限
 // （Linux 更新 exe 依赖执行位；Windows 上 os.Stat 恒报 0666，故断言与源
 // 实际 mode 一致而非硬编码 0755）。renameFile 为包级注入点，defer 恢复。
@@ -253,7 +254,7 @@ func TestMoveFileCrossDeviceFallbackCopy(t *testing.T) {
 
 	origRename := renameFile
 	renameFile = func(oldpath, newpath string) error {
-		return syscall.EXDEV
+		return &os.LinkError{Op: "rename", Old: oldpath, New: newpath, Err: crossDeviceRenameErr}
 	}
 	defer func() { renameFile = origRename }()
 
@@ -279,7 +280,7 @@ func TestMoveFileCrossDeviceFallbackCopy(t *testing.T) {
 	}
 }
 
-// TestMoveFileNonCrossDeviceError 验证 renameFile 返回非 EXDEV 错误且目标
+// TestMoveFileNonCrossDeviceError 验证 renameFile 返回非跨设备错误且目标
 // 不存在时（模拟 TestDownloadTaskRenameFailure 的场景），moveFile 不触发
 // 复制回退、不误删/误动源文件，按原语义返回原始错误。
 func TestMoveFileNonCrossDeviceError(t *testing.T) {
@@ -310,9 +311,10 @@ func TestMoveFileNonCrossDeviceError(t *testing.T) {
 	}
 }
 
-// TestMoveFileExdevDoesNotDeleteExistingDest 验证 EXDEV 判定优先于「删旧重试」：
+// TestMoveFileExdevDoesNotDeleteExistingDest 验证跨设备判定优先于「删旧重试」：
 // 目标已存在旧文件且跨设备时，moveFile 走复制覆盖而非先删除旧文件，避免
-// 旧文件在复制失败时丢失。注入 renameFile 返回 EXDEV，断言旧文件内容被覆盖、
+// 旧文件在复制失败时丢失。注入 renameFile 返回当前平台真实跨设备错误
+// （crossDeviceRenameErr，LinkError 包裹），断言旧文件内容被覆盖、
 // 源文件被删除。
 func TestMoveFileExdevDoesNotDeleteExistingDest(t *testing.T) {
 	src := filepath.Join(t.TempDir(), "src.bin")
@@ -326,7 +328,7 @@ func TestMoveFileExdevDoesNotDeleteExistingDest(t *testing.T) {
 
 	origRename := renameFile
 	renameFile = func(oldpath, newpath string) error {
-		return syscall.EXDEV
+		return &os.LinkError{Op: "rename", Old: oldpath, New: newpath, Err: crossDeviceRenameErr}
 	}
 	defer func() { renameFile = origRename }()
 
