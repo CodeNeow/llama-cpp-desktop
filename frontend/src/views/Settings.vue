@@ -160,6 +160,38 @@
       <p v-if="accessError" class="source-error">{{ accessError }}</p>
     </section>
 
+    <!-- 系统托盘（仅 Windows 渲染；其他平台无托盘需求，关闭按钮直接退出） -->
+    <section v-if="isWindows" class="settings-section">
+      <h2 class="section-title">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+        </svg>
+        {{ t('settings.tray') }}
+      </h2>
+      <div class="setting-row">
+        <div class="setting-info">
+          <span class="setting-label">{{ t('settings.tray') }}</span>
+          <span class="setting-desc">{{ t('settings.trayDesc') }}</span>
+        </div>
+        <div class="theme-toggle" @click="toggleTray">
+          <div class="toggle-track" :class="{ light: appConfig.trayEnabled }">
+            <div class="toggle-thumb">
+              <svg v-if="appConfig.trayEnabled" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+              <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </div>
+          </div>
+          <span class="toggle-label">{{ appConfig.trayEnabled ? t('settings.on') : t('settings.off') }}</span>
+        </div>
+      </div>
+      <!-- systray 同进程不可二次启动：关闭托盘后再次启用须重启应用 -->
+      <p class="source-hint">{{ t('settings.trayHint') }}</p>
+      <p v-if="trayError" class="source-error">{{ trayError }}</p>
+    </section>
+
     <!-- 更新 -->
     <section class="settings-section">
       <h2 class="section-title">
@@ -189,9 +221,9 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { appConfig, setTheme, loadConfig, setDownloadSource as applyDownloadSource, setLanguage as applyLanguage, setServerAccessMode as applyServerAccessMode } from '../store'
+import { appConfig, setTheme, loadConfig, setDownloadSource as applyDownloadSource, setLanguage as applyLanguage, setServerAccessMode as applyServerAccessMode, setTrayEnabled as applyTrayEnabled } from '../store'
 import { updateState, checkForUpdate, closeUpdateModal } from '../lib/update'
-import { getAppVersion, getServerConfig } from '../wails'
+import { getAppVersion, getOS, getServerConfig } from '../wails'
 import { t } from '../lib/i18n'
 import UpdateModal from '../components/UpdateModal.vue'
 
@@ -251,6 +283,25 @@ async function setAccessScope(mode: string) {
   }
 }
 
+// 系统托盘开关：仅 Windows 显示设置项。关闭托盘时立即生效（后端摘图标并
+// 持久化）；systray 同进程不可二次启动，再次启用须重启应用（开关下有提示）。
+const isWindows = ref(false)
+const trayError = ref('')
+const traySwitching = ref(false)
+
+async function toggleTray() {
+  if (traySwitching.value) return
+  traySwitching.value = true
+  trayError.value = ''
+  try {
+    await applyTrayEnabled(!appConfig.trayEnabled)
+  } catch {
+    trayError.value = t('settings.trayError')
+  } finally {
+    traySwitching.value = false
+  }
+}
+
 const appVersion = ref('')
 const checking = computed(() => updateState.checking)
 const checkError = computed(() => updateState.error)
@@ -259,6 +310,8 @@ const showUpdateModal = computed(() => updateState.showModal)
 
 onMounted(async () => {
   if (!appConfig.loaded) await loadConfig()
+  // 系统托盘设置项仅 Windows 渲染（其他平台后端持久化但无托盘行为）
+  getOS().then((info) => { isWindows.value = info.os === 'windows' }).catch(() => {})
   // 从后端读取当前服务访问范围（默认 local），保证页面选中态与持久化值一致
   getServerConfig().then((scfg) => {
     if (scfg.accessMode === 'local' || scfg.accessMode === 'lan') {

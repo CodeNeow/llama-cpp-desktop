@@ -35,6 +35,7 @@ import Sidebar from './components/Sidebar.vue'
 import UpdateModal from './components/UpdateModal.vue'
 import { updateState, checkForUpdate, shouldAutoCheck, closeUpdateModal } from './lib/update'
 import { t } from './lib/i18n'
+import { appConfig } from './store'
 import { getOS } from './wails'
 
 const w = window as any
@@ -47,9 +48,11 @@ function maximize() {
   w.runtime?.WindowToggleMaximise()
 }
 
-// 关闭按钮：Windows 上缩到系统托盘（llama-server 可后台继续运行），
-// 其他平台保持原直接退出行为。getOS 失败（如 vite 单独运行）时静默回退
-// 直接退出，与既有 w.runtime?. 可选链风格一致。
+// 关闭按钮：仅当 Windows 且系统托盘已启用（设置页开关）时缩到托盘
+// （llama-server 可后台继续运行）；否则直接退出。托盘启用状态优先读 store
+// 缓存——main.ts 在 mount 前已 loadConfig，后端配置（含持久化 trayEnabled）
+// 在用户点击关闭按钮时必然已加载完成，无需再调 getConfig。getOS 失败
+// （如 vite 单独运行）时静默回退直接退出，与既有 w.runtime?. 可选链风格一致。
 async function closeWindow() {
   let onWindows = false
   try {
@@ -58,7 +61,7 @@ async function closeWindow() {
   } catch {
     // 后端不可用（vite 单独运行）：保持默认行为
   }
-  if (onWindows) {
+  if (onWindows && appConfig.trayEnabled) {
     w.runtime?.WindowHide()
   } else {
     w.runtime?.Quit()

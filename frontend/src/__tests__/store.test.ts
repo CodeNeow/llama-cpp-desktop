@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { appConfig, loadConfig, setTheme, setDownloadSource, setLanguage, setServerAccessMode } from '../store'
-import { getConfig, setTheme as setThemeBackend, setDownloadSource as setDownloadSourceBackend, setLanguage as setLanguageBackend, getServerConfig, saveServerConfig as saveServerConfigBackend } from '../wails'
+import { appConfig, loadConfig, setTheme, setDownloadSource, setLanguage, setServerAccessMode, setTrayEnabled } from '../store'
+import { getConfig, setTheme as setThemeBackend, setDownloadSource as setDownloadSourceBackend, setLanguage as setLanguageBackend, setTrayEnabled as setTrayEnabledBackend, getServerConfig, saveServerConfig as saveServerConfigBackend } from '../wails'
 import { locale } from '../lib/i18n'
 
 // mock Wails 桥接层：window.go 仅由 Wails 运行时注入，单测环境不可用
@@ -9,6 +9,7 @@ vi.mock('../wails', () => ({
   setTheme: vi.fn(),
   setDownloadSource: vi.fn(),
   setLanguage: vi.fn(),
+  setTrayEnabled: vi.fn(),
   getServerConfig: vi.fn(),
   saveServerConfig: vi.fn(),
 }))
@@ -17,6 +18,7 @@ const mockGetConfig = vi.mocked(getConfig)
 const mockSetTheme = vi.mocked(setThemeBackend)
 const mockSetDownloadSource = vi.mocked(setDownloadSourceBackend)
 const mockSetLanguage = vi.mocked(setLanguageBackend)
+const mockSetTrayEnabled = vi.mocked(setTrayEnabledBackend)
 const mockGetServerConfig = vi.mocked(getServerConfig)
 const mockSaveServerConfig = vi.mocked(saveServerConfigBackend)
 
@@ -31,12 +33,13 @@ describe('store', () => {
     appConfig.serverAccessMode = 'local'
     appConfig.language = 'auto'
     appConfig.resolvedLanguage = 'zh'
+    appConfig.trayEnabled = true
     appConfig.loaded = false
     locale.value = 'zh'
   })
 
   it('loadConfig 成功时写入主题、llamaCppDir 与 modelsDir', async () => {
-    mockGetConfig.mockResolvedValue({ theme: 'light', llamaCppDir: 'C:/llama-cpp', modelsDir: 'D:/models', downloadSource: 'modelscope', language: 'auto', resolvedLanguage: 'en' })
+    mockGetConfig.mockResolvedValue({ theme: 'light', llamaCppDir: 'C:/llama-cpp', modelsDir: 'D:/models', downloadSource: 'modelscope', language: 'auto', resolvedLanguage: 'en', trayEnabled: false })
 
     await loadConfig()
 
@@ -44,13 +47,14 @@ describe('store', () => {
     expect(appConfig.llamaCppDir).toBe('C:/llama-cpp')
     expect(appConfig.modelsDir).toBe('D:/models')
     expect(appConfig.downloadSource).toBe('modelscope')
+    expect(appConfig.trayEnabled).toBe(false)
     expect(appConfig.loaded).toBe(true)
     expect(localStorage.getItem('llama-gui-theme')).toBe('light')
     expect(document.documentElement.getAttribute('data-theme')).toBe('light')
   })
 
   it('loadConfig 读 language/resolvedLanguage 并联动 locale', async () => {
-    mockGetConfig.mockResolvedValue({ theme: 'dark', llamaCppDir: '', modelsDir: '', downloadSource: '', language: 'en', resolvedLanguage: 'en' })
+    mockGetConfig.mockResolvedValue({ theme: 'dark', llamaCppDir: '', modelsDir: '', downloadSource: '', language: 'en', resolvedLanguage: 'en', trayEnabled: true })
 
     await loadConfig()
 
@@ -60,7 +64,7 @@ describe('store', () => {
   })
 
   it('loadConfig auto 解析结果 zh 时 locale 切为中文', async () => {
-    mockGetConfig.mockResolvedValue({ theme: 'dark', llamaCppDir: '', modelsDir: '', downloadSource: '', language: 'auto', resolvedLanguage: 'zh' })
+    mockGetConfig.mockResolvedValue({ theme: 'dark', llamaCppDir: '', modelsDir: '', downloadSource: '', language: 'auto', resolvedLanguage: 'zh', trayEnabled: true })
 
     await loadConfig()
 
@@ -70,7 +74,7 @@ describe('store', () => {
   })
 
   it('loadConfig 后端未返回 modelsDir 时兜底为空串', async () => {
-    mockGetConfig.mockResolvedValue({ theme: 'dark', llamaCppDir: 'C:/llama-cpp', modelsDir: '', downloadSource: '', language: 'auto', resolvedLanguage: 'zh' })
+    mockGetConfig.mockResolvedValue({ theme: 'dark', llamaCppDir: 'C:/llama-cpp', modelsDir: '', downloadSource: '', language: 'auto', resolvedLanguage: 'zh', trayEnabled: true })
 
     await loadConfig()
 
@@ -79,11 +83,21 @@ describe('store', () => {
   })
 
   it('loadConfig 后端未返回 downloadSource 时兜底为 hf', async () => {
-    mockGetConfig.mockResolvedValue({ theme: 'dark', llamaCppDir: '', modelsDir: '', downloadSource: '', language: 'auto', resolvedLanguage: 'zh' })
+    mockGetConfig.mockResolvedValue({ theme: 'dark', llamaCppDir: '', modelsDir: '', downloadSource: '', language: 'auto', resolvedLanguage: 'zh', trayEnabled: true })
 
     await loadConfig()
 
     expect(appConfig.downloadSource).toBe('hf')
+  })
+
+  it('loadConfig 后端未返回 trayEnabled 时兜底为 true', async () => {
+    // 模拟旧后端/缺字段响应：trayEnabled 不存在时 store 应保持默认 true
+    //（as any 仅限测试中构造缺字段响应，与后端 GetConfig 强类型返回不一致）
+    mockGetConfig.mockResolvedValue({ theme: 'dark', llamaCppDir: '', modelsDir: '', downloadSource: '', language: 'auto', resolvedLanguage: 'zh' } as any)
+
+    await loadConfig()
+
+    expect(appConfig.trayEnabled).toBe(true)
   })
 
   it('loadConfig 失败时仍标记 loaded，保留默认主题', async () => {
@@ -154,6 +168,22 @@ describe('store', () => {
 
     await expect(setLanguage('en')).rejects.toThrow('backend unavailable')
     expect(appConfig.language).toBe('auto')
+  })
+
+  it('setTrayEnabled 成功后更新本地状态并调用后端', async () => {
+    mockSetTrayEnabled.mockResolvedValue(undefined)
+
+    await setTrayEnabled(false)
+
+    expect(mockSetTrayEnabled).toHaveBeenCalledWith(false)
+    expect(appConfig.trayEnabled).toBe(false)
+  })
+
+  it('setTrayEnabled 后端失败时回滚本地状态并向调用方抛错', async () => {
+    mockSetTrayEnabled.mockRejectedValue(new Error('backend unavailable'))
+
+    await expect(setTrayEnabled(false)).rejects.toThrow('backend unavailable')
+    expect(appConfig.trayEnabled).toBe(true)
   })
 
   it('setServerAccessMode 成功后取完整配置并带 accessMode 保存，更新本地状态', async () => {

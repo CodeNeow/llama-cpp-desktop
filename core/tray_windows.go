@@ -11,11 +11,24 @@ import (
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
+// TrayIcon 保存托盘图标字节（main.go embed build/windows/icon.ico 后注入）。
+// 由 main.go 在 wails.Run 前赋值；core 包在 OnStartup 启动托盘与
+// SetTrayEnabled 按配置启停托盘时使用（后者运行时无法访问 main 包的 embed）。
+var TrayIcon []byte
+
 // trayMu 保护托盘启动状态的并发读写（项目显式互斥惯例：configMu /
 // serverLogsMu 等同风格），保证 InitTray / QuitTray 幂等且并发安全。
 var trayMu sync.Mutex
 
 // trayStarted 标记托盘是否已启动，未启动时 QuitTray 直接返回（幂等）。
+//
+// 注意：fyne.io/systray 的包级 quitOnce（sync.Once，见 systray.go）保证
+// systray.Quit 只生效一次，且内部 window class 注册/消息循环状态不随 Run
+// 退出而复位——同进程内一次 Run 退出后无法再次 Run。因此：
+//   - 启动路径（OnStartup 或 SetTrayEnabled(true)）只允许调用一次 InitTray，
+//     已启动时重复调用直接返回；
+//   - QuitTray（OnShutdown 或 SetTrayEnabled(false)）摘除图标后，本次进程内
+//     不再重启托盘，再次启用须重启应用（设置页有对应提示文案）。
 var trayStarted bool
 
 // trayMenuLabels 返回托盘菜单两个条目的标签（显示主窗口 / 退出），
@@ -74,8 +87,9 @@ func InitTray(ctx context.Context, icon []byte) {
 }
 
 // QuitTray 结束系统托盘并移除托盘图标；幂等（未初始化时调用不 panic），
-// 并发安全（trayMu 保护）。供 main.go 的 OnShutdown 在 app.Shutdown 之前
-// 调用，先摘托盘再做应用清理。
+// 并发安全（trayMu 保护）。调用方：main.go 的 OnShutdown（先摘托盘再做应用
+// 清理）与 SetTrayEnabled(false)（禁用托盘）。摘除后受 systray quitOnce 限制
+// 本进程内不可再次启动托盘（见 trayStarted 注释）。
 func QuitTray() {
 	trayMu.Lock()
 	started := trayStarted

@@ -17,12 +17,18 @@ function app(): any {
 
 // ─── Config ─────────────────────────────────────────────────────
 
-export async function getConfig(): Promise<{ theme: string; llamaCppDir: string; modelsDir: string; downloadSource: string; language: string; resolvedLanguage: 'zh' | 'en' }> {
+export async function getConfig(): Promise<{ theme: string; llamaCppDir: string; modelsDir: string; downloadSource: string; language: string; resolvedLanguage: 'zh' | 'en'; trayEnabled: boolean }> {
   return app().GetConfig()
 }
 
 export async function setTheme(theme: string): Promise<void> {
   return app().SetTheme(theme)
+}
+
+// 设置 Windows 系统托盘开关（仅 Windows 渲染设置项；非 Windows 平台后端仅
+// 持久化不启停）。systray 同进程不可二次启动：关闭托盘后在重启应用前保持禁用。
+export async function setTrayEnabled(enabled: boolean): Promise<void> {
+  return app().SetTrayEnabled(enabled)
 }
 
 // 设置界面语言偏好（"zh" | "en" | "auto"）；后端返回生效语言 resolvedLanguage

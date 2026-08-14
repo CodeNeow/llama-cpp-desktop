@@ -1,5 +1,5 @@
 import { reactive } from 'vue'
-import { getConfig, setTheme as setThemeBackend, setDownloadSource as setDownloadSourceBackend, setLanguage as setLanguageBackend, getServerConfig, saveServerConfig as saveServerConfigBackend } from './wails'
+import { getConfig, setTheme as setThemeBackend, setDownloadSource as setDownloadSourceBackend, setLanguage as setLanguageBackend, setTrayEnabled as setTrayEnabledBackend, getServerConfig, saveServerConfig as saveServerConfigBackend } from './wails'
 import { setLocale } from './lib/i18n'
 
 export const appConfig = reactive({
@@ -10,6 +10,9 @@ export const appConfig = reactive({
   serverAccessMode: 'local',
   language: 'auto',
   resolvedLanguage: 'zh' as 'zh' | 'en',
+  // Windows 系统托盘开关：默认 true（与后端 loadConfig 兜底一致）；仅在
+  // loadConfig 拉取到后端持久化值后覆盖。
+  trayEnabled: true,
   loaded: false,
 })
 
@@ -22,6 +25,8 @@ export async function loadConfig() {
     appConfig.downloadSource = config.downloadSource || 'hf'
     appConfig.language = config.language || 'auto'
     appConfig.resolvedLanguage = config.resolvedLanguage === 'en' ? 'en' : 'zh'
+    // 后端缺省/未返回 trayEnabled 时保持默认 true（与后端 loadConfig 兜底一致）
+    appConfig.trayEnabled = config.trayEnabled !== false
     setLocale(appConfig.resolvedLanguage)
     localStorage.setItem('llama-gui-theme', appConfig.theme)
     document.documentElement.setAttribute('data-theme', appConfig.theme)
@@ -81,6 +86,20 @@ export async function setLanguage(language: string) {
     setLocale(l)
   } catch (e) {
     appConfig.language = previous
+    throw e
+  }
+}
+
+/** 切换 Windows 系统托盘开关：本地乐观更新，后端持久化成功即生效
+ * （禁用时立即摘托盘图标；再次启用需重启应用，见 wails.ts 注释）。
+ * 后端失败回滚本地状态并向上抛错供 UI 提示。 */
+export async function setTrayEnabled(enabled: boolean) {
+  const previous = appConfig.trayEnabled
+  appConfig.trayEnabled = enabled
+  try {
+    await setTrayEnabledBackend(enabled)
+  } catch (e) {
+    appConfig.trayEnabled = previous
     throw e
   }
 }

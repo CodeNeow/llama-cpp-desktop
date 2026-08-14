@@ -43,6 +43,7 @@ func saveConfigState(t *testing.T) (origModels map[string]ModelConfig, origServe
 	serverConfigMu.Unlock()
 	configMu.Lock()
 	origTheme = currentTheme
+	origTray := trayEnabled
 	configMu.Unlock()
 	customLlamaCppMu.Lock()
 	origDir = customLlamaCppDir
@@ -62,6 +63,7 @@ func saveConfigState(t *testing.T) (origModels map[string]ModelConfig, origServe
 		serverConfigMu.Unlock()
 		configMu.Lock()
 		currentTheme = origTheme
+		trayEnabled = origTray
 		configMu.Unlock()
 		customLlamaCppMu.Lock()
 		customLlamaCppDir = origDir
@@ -108,6 +110,9 @@ func TestSaveLoadConfigRoundTrip(t *testing.T) {
 	languageMu.Lock()
 	currentLanguage = "en"
 	languageMu.Unlock()
+	configMu.Lock()
+	trayEnabled = false
+	configMu.Unlock()
 	saveConfig()
 
 	if _, err := os.Stat(configFile); err != nil {
@@ -133,6 +138,9 @@ func TestSaveLoadConfigRoundTrip(t *testing.T) {
 	languageMu.Lock()
 	currentLanguage = ""
 	languageMu.Unlock()
+	configMu.Lock()
+	trayEnabled = true // 与包级默认一致；loadConfig 应读回 false（显式禁用被持久化）
+	configMu.Unlock()
 
 	loadConfig()
 
@@ -168,6 +176,12 @@ func TestSaveLoadConfigRoundTrip(t *testing.T) {
 		t.Errorf("语言偏好读回错误: %q, want %q", currentLanguage, "en")
 	}
 	languageMu.Unlock()
+	// trayEnabled=false（非默认）持久化往返：saveConfig 写回、loadConfig 恢复
+	configMu.Lock()
+	if trayEnabled != false {
+		t.Errorf("trayEnabled 读回错误: %v, want false（非默认值必须持久化恢复）", trayEnabled)
+	}
+	configMu.Unlock()
 }
 
 // TestLoadConfigDefaults 验证缺失/部分配置时用默认值兜底，不因旧数据崩溃。
@@ -206,6 +220,59 @@ func TestLoadConfigDefaults(t *testing.T) {
 		t.Errorf("旧配置无 language 字段时应兜底 auto, 实际 %q", currentLanguage)
 	}
 	languageMu.Unlock()
+	// 旧配置无 trayEnabled 字段：兜底 true（保持 4aacac2 无条件启托盘的行为）
+	configMu.Lock()
+	if trayEnabled != true {
+		t.Errorf("旧配置无 trayEnabled 字段时应兜底 true, 实际 %v", trayEnabled)
+	}
+	configMu.Unlock()
+}
+
+// TestLoadConfigTrayEnabledExplicitFalse 验证显式写 trayEnabled=false 的配置
+// 不会被默认值兜底覆盖（缺字段与显式禁用必须区分）。
+func TestLoadConfigTrayEnabledExplicitFalse(t *testing.T) {
+	withTempCwd(t)
+	saveConfigState(t)
+
+	if err := os.WriteFile(configFile, []byte(`{"trayEnabled":false}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	loadConfig()
+	configMu.Lock()
+	if trayEnabled != false {
+		t.Errorf("显式 trayEnabled=false 应保持不变, 实际 %v", trayEnabled)
+	}
+	configMu.Unlock()
+}
+
+// TestSetTrayEnabledPersists 验证 SetTrayEnabled 持久化往返：设为 false 后
+// saveConfig 写回、loadConfig 恢复为 false；显式禁用与缺字段默认 true 区分。
+// 不实际启动 systray（Windows 分支的 InitTray/QuitTray 在测试进程无窗口消息
+// 循环的环境不可靠），仅断言配置状态机行为。
+func TestSetTrayEnabledPersists(t *testing.T) {
+	withTempCwd(t)
+	saveConfigState(t)
+
+	app := &App{}
+	if err := app.SetTrayEnabled(false); err != nil {
+		t.Fatal(err)
+	}
+	configMu.Lock()
+	if trayEnabled != false {
+		t.Errorf("SetTrayEnabled(false) 后 trayEnabled = %v, want false", trayEnabled)
+	}
+	configMu.Unlock()
+
+	// 重启模拟：读回配置文件
+	configMu.Lock()
+	trayEnabled = true
+	configMu.Unlock()
+	loadConfig()
+	configMu.Lock()
+	if trayEnabled != false {
+		t.Errorf("持久化往返后 trayEnabled = %v, want false（显式禁用必须恢复）", trayEnabled)
+	}
+	configMu.Unlock()
 }
 
 // TestLoadConfigAccessModeFallback 验证旧配置的 host 值不再被信任：无

@@ -20,6 +20,10 @@ var trayIcon []byte
 func main() {
 	app := core.NewApp()
 
+	// 托盘图标在 Wails 启动前注入（SetTrayEnabled 运行时按配置启停托盘时需要），
+	// main 包仅声明 embed，图标字节经 core.TrayIcon 供 core 包使用。
+	core.TrayIcon = trayIcon
+
 	err := wails.Run(&options.App{
 		Title:     "Llama GUI",
 		Width:     1200,
@@ -32,8 +36,12 @@ func main() {
 		Frameless: true,
 		OnStartup: func(ctx context.Context) {
 			app.Startup(ctx)
-			// Windows 上启动系统托盘（缩到托盘/托盘菜单退出）；其他平台 no-op
-			core.InitTray(ctx, trayIcon)
+			// 按持久化配置决定是否启动系统托盘（4aacac2 起为无条件启动；
+			// 设置页可关闭）。loadConfig 已把旧配置缺字段兜底为 true。
+			// 默认 true 时应用启动即带托盘，用户关闭设置项需重启应用生效。
+			if core.TrayEnabled() {
+				core.InitTray(ctx, trayIcon)
+			}
 		},
 		OnShutdown: func(ctx context.Context) {
 			// 先摘托盘图标，再做应用清理（停止服务/持久化配置等）

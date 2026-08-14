@@ -197,6 +197,12 @@ const messages: Record<Locale, Record<string, string>> = {
     'settings.languageZh': '中文',
     'settings.languageEn': 'English',
     'settings.languageError': '切换语言失败，请稍后重试',
+    'settings.tray': '系统托盘',
+    'settings.trayDesc': '关闭窗口时最小化到系统托盘，llama-server 可后台继续运行',
+    'settings.trayHint': '关闭托盘后再次启用需重启应用生效',
+    'settings.trayError': '切换系统托盘失败，请稍后重试',
+    'settings.on': '开',
+    'settings.off': '关',
 
     // ─── 模型设置弹窗（ModelSettings.vue） ───
     'modelSettings.title': '模型设置',
@@ -494,6 +500,12 @@ const messages: Record<Locale, Record<string, string>> = {
     'settings.languageZh': '中文',
     'settings.languageEn': 'English',
     'settings.languageError': 'Failed to switch language, please try again later',
+    'settings.tray': 'System Tray',
+    'settings.trayDesc': 'Minimize to the system tray when the window is closed; llama-server keeps running in the background',
+    'settings.trayHint': 'Re-enabling the tray takes effect after restarting the app',
+    'settings.trayError': 'Failed to switch system tray, please try again later',
+    'settings.on': 'On',
+    'settings.off': 'Off',
 
     // ─── Model settings dialog (ModelSettings.vue) ───
     'modelSettings.title': 'Model Settings',

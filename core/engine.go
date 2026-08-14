@@ -2499,7 +2499,8 @@ type appConfig struct {
 	ModelConfigs   map[string]ModelConfig `json:"modelConfigs"`
 	ServerConfig   ServerConfig           `json:"serverConfig"`
 	DownloadSource string                 `json:"downloadSource"`
-	Language       string                 `json:"language"` // 语言偏好: zh / en / auto（空或非法值兜底 auto）
+	Language       string                 `json:"language"`    // 语言偏好: zh / en / auto（空或非法值兜底 auto）
+	TrayEnabled    bool                   `json:"trayEnabled"` // Windows 系统托盘开关，默认 true
 	DownloadTasks  []PersistedDlTask      `json:"downloadTasks,omitempty"`
 }
 
@@ -2577,6 +2578,10 @@ func loadConfig() {
 		return // file doesn't exist yet, that's ok
 	}
 	var cfg appConfig
+	// 预置默认值后再 Unmarshal：Go 零值 false 无法区分「旧配置缺字段」与
+	// 「显式设为 false」，trayEnabled 缺省时必须兜底 true（历史配置升级后
+	// 托盘默认开启，与 4aacac2 无条件启托盘的行为一致）。
+	cfg.TrayEnabled = true
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		log.Printf("[WARN] Failed to parse config file: %v", err)
 		return
@@ -2663,6 +2668,12 @@ func loadConfig() {
 	currentLanguage = cfg.Language
 	languageMu.Unlock()
 
+	// 系统托盘开关：字段缺失时保持预置默认 true；显式 false 才禁用
+	//（旧配置升级后托盘默认开启，与 4aacac2 无条件启托盘的行为一致）。
+	configMu.Lock()
+	trayEnabled = cfg.TrayEnabled
+	configMu.Unlock()
+
 	// 恢复下载任务队列（进程重启后无活跃 goroutine，任何任务都不自动启动下载）：
 	// Source 兜底 hf；Status 白名单外与 downloading 一律规整为 paused（downloading
 	// 状态的 goroutine 已随进程退出消亡，前端可对任务继续/重试）；URL 按
@@ -2732,6 +2743,19 @@ func defaultServerConfig() ServerConfig {
 var currentTheme = "light"
 var configMu sync.Mutex
 
+// trayEnabled 表示是否启用 Windows 系统托盘（关闭窗口缩到托盘），默认 true；
+// 受 configMu 保护，持久化到配置文件的 trayEnabled 字段。旧配置缺该字段时
+// loadConfig 兜底 true（见 loadConfig 的 appConfig{TrayEnabled: true} 预置）。
+var trayEnabled = true
+
+// TrayEnabled 返回当前托盘启用偏好（并发安全，configMu 保护）。供 main.go 的
+// OnStartup 按持久化配置决定是否启动托盘。
+func TrayEnabled() bool {
+	configMu.Lock()
+	defer configMu.Unlock()
+	return trayEnabled
+}
+
 func saveConfig() {
 	customLlamaCppMu.Lock()
 	dir := customLlamaCppDir
@@ -2764,6 +2788,10 @@ func saveConfig() {
 	lang := currentLanguage
 	languageMu.Unlock()
 
+	configMu.Lock()
+	tray := trayEnabled
+	configMu.Unlock()
+
 	// 锁序铁律：saveConfig 内 dlTasksMu 必须是最后获取的锁。任何调用点都不得
 	// 在持有 dlTasksMu 时调用 saveConfig——调用方须先锁内取副本、解锁、再
 	// save（如 CancelDownloadTask 在 defer Unlock 前不调 saveConfig）。否则会
@@ -2795,6 +2823,7 @@ func saveConfig() {
 		ServerConfig:   scfg,
 		DownloadSource: dlsrc,
 		Language:       lang,
+		TrayEnabled:    tray,
 		DownloadTasks:  persistedTasks,
 	}
 	data, err := json.MarshalIndent(cfg, "", "  ")

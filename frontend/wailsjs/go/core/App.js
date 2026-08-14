@@ -154,6 +154,14 @@ export function SetTheme(arg1) {
   return window['go']['core']['App']['SetTheme'](arg1);
 }
 
+export function SetTrayEnabled(arg1) {
+  return window['go']['core']['App']['SetTrayEnabled'](arg1);
+}
+
+export function Shutdown(arg1) {
+  return window['go']['core']['App']['Shutdown'](arg1);
+}
+
 export function StartDownload(arg1, arg2) {
   return window['go']['core']['App']['StartDownload'](arg1, arg2);
 }
@@ -168,6 +176,10 @@ export function StartServer() {
 
 export function StartUpdateDownload(arg1) {
   return window['go']['core']['App']['StartUpdateDownload'](arg1);
+}
+
+export function Startup(arg1) {
+  return window['go']['core']['App']['Startup'](arg1);
 }
 
 export function StopLlamaCppDownload() {

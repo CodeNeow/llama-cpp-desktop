@@ -101,6 +101,7 @@ func (a *App) GetConfig() map[string]interface{} {
 
 	configMu.Lock()
 	theme := currentTheme
+	tray := trayEnabled
 	configMu.Unlock()
 
 	downloadSourceMu.Lock()
@@ -118,6 +119,7 @@ func (a *App) GetConfig() map[string]interface{} {
 		"downloadSource":   dsrc,
 		"language":         lang,                // 语言原始偏好: zh / en / auto
 		"resolvedLanguage": effectiveLanguage(), // 生效语言: zh / en（auto 按系统检测结果）
+		"trayEnabled":      tray,                // Windows 系统托盘开关
 	}
 }
 
@@ -169,6 +171,37 @@ func (a *App) SetTheme(theme string) {
 			wailsRuntime.WindowSetBackgroundColour(a.ctx, 15, 15, 20, 255)
 		}
 	}
+}
+
+// SetTrayEnabled 设置 Windows 系统托盘开关：持久化偏好到配置文件；Windows 上
+// 按持久化值启动或退出托盘，其他平台只持久化不启停（InitTray/QuitTray 为
+// no-op 存根）。并发安全（configMu 与 trayMu 保护全局状态），由前端设置页的
+// 系统托盘开关调用。
+//
+// 注意：fyne.io/systray 的包级 quitOnce（sync.Once）使得同进程内一次 Run 退出
+// 后无法再次 Run——因此启用托盘时仅调用 InitTray 启动尚未启动的托盘（幂等），
+// 绝不重复调用 Run；禁用托盘时 QuitTray 摘除图标后，本次进程内不再重启（见
+// core/tray_windows.go 的 trayStarted 注释与 systray 源码 quitOnce）。再次启用
+// 在重启应用后生效。
+func (a *App) SetTrayEnabled(enabled bool) error {
+	configMu.Lock()
+	trayEnabled = enabled
+	configMu.Unlock()
+
+	if enabled {
+		// 启用：systray 同进程不可二次 Run，仅当托盘从未启动过时启动（幂等）
+		if runtime.GOOS == "windows" {
+			InitTray(a.ctx, TrayIcon)
+		}
+	} else {
+		// 禁用：摘除托盘图标（systray.Quit 由 quitOnce 保证只生效一次）
+		if runtime.GOOS == "windows" {
+			QuitTray()
+		}
+	}
+	saveConfig()
+	log.Printf("[INFO] trayEnabled set to %v", enabled)
+	return nil
 }
 
 // SetModelsDir 设置自定义模型目录：合法目录写入全局状态、持久化配置并使
