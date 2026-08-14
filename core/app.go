@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -209,7 +210,7 @@ func (a *App) SetTrayEnabled(enabled bool) error {
 // 不改写状态。
 func (a *App) SetModelsDir(dir string) error {
 	if dir == "" {
-		return fmt.Errorf(tr("模型目录不能为空", "models directory cannot be empty"))
+		return errors.New(tr("模型目录不能为空", "models directory cannot be empty"))
 	}
 	fi, err := os.Stat(dir)
 	if err != nil {
@@ -534,7 +535,7 @@ func (a *App) StartUpdateDownload(version string) error {
 	inProgress := updateDownloadState.Status == "downloading"
 	updateDownloadMu.Unlock()
 	if inProgress {
-		return fmt.Errorf(tr("更新下载已在进行中", "update download already in progress"))
+		return errors.New(tr("更新下载已在进行中", "update download already in progress"))
 	}
 	go downloadUpdateRelease(version)
 	return nil

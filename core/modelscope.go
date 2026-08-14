@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -98,7 +99,7 @@ func searchModelScopeAt(openAPIBase, q string) ([]HFSearchResult, error) {
 		return nil, err
 	}
 	if !raw.Success {
-		return nil, fmt.Errorf(tr("ModelScope 搜索失败: success=false", "ModelScope search failed: success=false"))
+		return nil, errors.New(tr("ModelScope 搜索失败: success=false", "ModelScope search failed: success=false"))
 	}
 
 	results := make([]HFSearchResult, 0, len(raw.Data.Models))

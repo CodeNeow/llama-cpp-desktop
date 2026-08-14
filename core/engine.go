@@ -2305,7 +2305,7 @@ func validSpecTypeValue(s string) bool {
 func generateModelsPreset() (string, error) {
 	models := scanModels()
 	if len(models) == 0 {
-		return "", fmt.Errorf(tr("LLM-Models 目录中没有模型", "no models found in the LLM-Models directory"))
+		return "", errors.New(tr("LLM-Models 目录中没有模型", "no models found in the LLM-Models directory"))
 	}
 	modelConfigsMu.Lock()
 	cfgs := cachedModelConfigs
@@ -2318,7 +2318,7 @@ func generateModelsPreset() (string, error) {
 // matching config entry only emit the model path (plus auto-detected options).
 func generateModelsPresetFrom(models []ModelInfo, cfgs map[string]ModelConfig) (string, error) {
 	if len(models) == 0 {
-		return "", fmt.Errorf(tr("LLM-Models 目录中没有模型", "no models found in the LLM-Models directory"))
+		return "", errors.New(tr("LLM-Models 目录中没有模型", "no models found in the LLM-Models directory"))
 	}
 
 	var buf bytes.Buffer
@@ -2911,7 +2911,7 @@ func searchHFMirrorAt(baseURL, q, filter string) ([]HFSearchResult, error) {
 	}
 
 	if failed == len(sorts) {
-		return nil, fmt.Errorf(tr("HF 搜索三路排序（downloads/likes/lastModified）请求全部失败", "all three HF search sort routes (downloads/likes/lastModified) failed"))
+		return nil, errors.New(tr("HF 搜索三路排序（downloads/likes/lastModified）请求全部失败", "all three HF search sort routes (downloads/likes/lastModified) failed"))
 	}
 	return results, nil
 }
