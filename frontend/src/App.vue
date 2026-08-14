@@ -35,6 +35,7 @@ import Sidebar from './components/Sidebar.vue'
 import UpdateModal from './components/UpdateModal.vue'
 import { updateState, checkForUpdate, shouldAutoCheck, closeUpdateModal } from './lib/update'
 import { t } from './lib/i18n'
+import { getOS } from './wails'
 
 const w = window as any
 const isDesktop = !!(w.go || w.electronAPI)  // Wails or Electron
@@ -45,8 +46,23 @@ function minimize() {
 function maximize() {
   w.runtime?.WindowToggleMaximise()
 }
-function closeWindow() {
-  w.runtime?.Quit()
+
+// 关闭按钮：Windows 上缩到系统托盘（llama-server 可后台继续运行），
+// 其他平台保持原直接退出行为。getOS 失败（如 vite 单独运行）时静默回退
+// 直接退出，与既有 w.runtime?. 可选链风格一致。
+async function closeWindow() {
+  let onWindows = false
+  try {
+    const info = await getOS()
+    onWindows = info.os === 'windows'
+  } catch {
+    // 后端不可用（vite 单独运行）：保持默认行为
+  }
+  if (onWindows) {
+    w.runtime?.WindowHide()
+  } else {
+    w.runtime?.Quit()
+  }
 }
 
 // 启动静默检查更新：距上次检查超过 48 小时才自动检查（本地时间），

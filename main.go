@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 
 	"llama-gui/core"
@@ -12,6 +13,9 @@ import (
 
 //go:embed frontend/dist
 var assets embed.FS
+
+//go:embed build/windows/icon.ico
+var trayIcon []byte
 
 func main() {
 	app := core.NewApp()
@@ -25,9 +29,17 @@ func main() {
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
-		Frameless:        true,
-		OnStartup:        app.Startup,
-		OnShutdown:       app.Shutdown,
+		Frameless: true,
+		OnStartup: func(ctx context.Context) {
+			app.Startup(ctx)
+			// Windows 上启动系统托盘（缩到托盘/托盘菜单退出）；其他平台 no-op
+			core.InitTray(ctx, trayIcon)
+		},
+		OnShutdown: func(ctx context.Context) {
+			// 先摘托盘图标，再做应用清理（停止服务/持久化配置等）
+			core.QuitTray()
+			app.Shutdown(ctx)
+		},
 		Bind:             []interface{}{app},
 		BackgroundColour: &options.RGBA{R: 248, G: 250, B: 252, A: 1},
 	})
