@@ -2,6 +2,29 @@
 
 更新日志的**权威来源**（见 `AGENTS.md`「版本发布」）：发版时先在此新增版本条目（含日期与逐提交核心改动），`git tag` 注解消息与 GitHub Release 正文均从该条目复制，保持一致。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本。
 
+## [v0.1.7] - 2026-08-14
+
+v0.1.7: 多语言支持、服务访问范围、按安装类型更新与发布产物命名规范化（v0.1.6 以来 9 个提交，按提交逐一说明核心改动）：
+
+1. `53b8f93` docs: 引入 CHANGELOG.md 并固化版本发布流程
+   - 核心：新增根目录 CHANGELOG.md 作为更新日志权威来源；AGENTS.md 新增「版本发布」小节与「Release 页面只有 compare 链接」常见坑条目
+2. `4f2d185` docs: README 中英文重写并新增 MIT 协议，更新全部界面截图
+   - 核心：README.md 重写（中文默认）并新增 README.en.md 英文版，新增 MIT LICENSE，docs/screenshots/ 更新为 8 张界面截图（含监控页）
+3. `ab1f178` docs: 修正发布产物文件名并同步 AGENTS.md 架构导航与测试基线
+   - 核心：修正 README 中 NSIS 安装器文件名，AGENTS.md 架构导航表与测试基线描述同步当前现状
+4. `e8f042b` feat(i18n): 引入多语言支持（中文/英文/自动）
+   - 核心：新增三语言模式 zh/en/auto（默认 auto 跟随系统，中文环境中文、其余英文）；后端 tr(zh,en) 翻译全部用户可见错误串，语言检测按平台分支（Windows 注册表 / 其他环境变量）；前端手写轻量 i18n 字典，设置页新增「界面语言」三选一，切换即时生效
+5. `065cf3e` feat(server): 新增服务访问范围选项（本地/局域网）
+   - 核心：设置页新增「服务访问范围」本地（127.0.0.1，默认）/局域网（0.0.0.0）二选一；后端 ServerConfig 新增 AccessMode，SaveServerConfig 按白名单校验并派生 Host；API 页移除 Host 输入框
+6. `fe70845` refactor(frontend): 移除主页内存卡片的监控页跳转提示
+   - 核心：删除主页内存卡片下的「实时负载与推理速度前往监控页」跳转链接及配套样式
+7. `e4ddf1d` fix(build): 覆盖安装时记住上次自定义安装路径
+   - 核心：新增自定义 NSIS 模板 project.nsi，安装时把 InstallLocation 写回注册表、覆盖安装时读回上次路径，修复自定义路径安装后覆盖安装回到默认路径的问题
+8. `e7505da` chore(build): 规范化发布产物命名（setup/portable 带版本号）
+   - 核心：发布产物改为 llama-gui-setup-vX.Y.Z-amd64.exe（安装器）+ llama-gui-portable-vX.Y.Z-amd64.exe（便携版），版本号随 tag 动态注入
+9. `e18ef6b` feat(update): 按安装类型下载对应更新产物
+   - 核心：应用内更新按当前安装类型（setup/portable，以是否存在 uninstall.exe 判定）下载对应产物；setup 提示运行安装器、portable 提示替换 exe；资产挑选兼容新旧两种命名
+
 ## [v0.1.6] - 2026-08-13
 
 v0.1.6: 实时推理监控、ModelScope 下载源与多项修复（v0.1.5 以来 11 个提交，按提交逐一说明核心改动）：
@@ -29,4 +52,5 @@ v0.1.6: 实时推理监控、ModelScope 下载源与多项修复（v0.1.5 以来
 11. `1699907` fix(server): 兼容新版 llama.cpp 日志格式，预填充期间实时刷新提示词处理速度
     - 核心：适配新版 llama.cpp 日志格式变化，预填充期间提示词处理速度实时刷新
 
+[v0.1.7]: https://github.com/CodeNeow/llama-cpp-gui/compare/v0.1.6...v0.1.7
 [v0.1.6]: https://github.com/CodeNeow/llama-cpp-gui/compare/v0.1.5...v0.1.6
