@@ -474,6 +474,7 @@ function save() {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   width: 640px;
+  height: min(620px, 80vh);
   max-height: 80vh;
   display: flex;
   flex-direction: column;
@@ -564,6 +565,7 @@ function save() {
 .modal-body {
   padding: 20px 24px;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   flex: 1;
 }
 
