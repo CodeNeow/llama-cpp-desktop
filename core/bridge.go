@@ -102,7 +102,7 @@ func buildServerCommand(cfg ServerConfig, presetPath string) (string, []string) 
 	}
 
 	args := []string{
-		"--host", cfg.Host,
+		"--host", effectiveHost(cfg.AccessMode),
 		"--port", strconv.Itoa(cfg.Port),
 		"--models-dir", effectiveModelsDir(),
 		"--models-preset", presetPath,

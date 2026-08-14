@@ -1,5 +1,5 @@
 import { reactive } from 'vue'
-import { getConfig, setTheme as setThemeBackend, setDownloadSource as setDownloadSourceBackend, setLanguage as setLanguageBackend } from './wails'
+import { getConfig, setTheme as setThemeBackend, setDownloadSource as setDownloadSourceBackend, setLanguage as setLanguageBackend, getServerConfig, saveServerConfig as saveServerConfigBackend } from './wails'
 import { setLocale } from './lib/i18n'
 
 export const appConfig = reactive({
@@ -7,6 +7,7 @@ export const appConfig = reactive({
   llamaCppDir: '',
   modelsDir: '',
   downloadSource: 'hf',
+  serverAccessMode: 'local',
   language: 'auto',
   resolvedLanguage: 'zh' as 'zh' | 'en',
   loaded: false,
@@ -46,6 +47,23 @@ export async function setDownloadSource(source: string) {
     await setDownloadSourceBackend(source)
   } catch (e) {
     appConfig.downloadSource = previous
+    throw e
+  }
+}
+
+/** 切换服务访问范围（"local" | "lan"）：先乐观更新本地状态，再取后端最新
+ * 完整 serverConfig 修改 accessMode 后整体保存（避免覆盖用户在同一页设置的
+ * 其他字段）；后端失败时回滚本地状态并向上抛错供 UI 提示。saveServerConfig
+ * 返回 void，成功后后端已持久化派生 host，无需再刷新。 */
+export async function setServerAccessMode(mode: string) {
+  const previous = appConfig.serverAccessMode
+  appConfig.serverAccessMode = mode
+  try {
+    const scfg = await getServerConfig()
+    scfg.accessMode = mode
+    await saveServerConfigBackend(scfg)
+  } catch (e) {
+    appConfig.serverAccessMode = previous
     throw e
   }
 }

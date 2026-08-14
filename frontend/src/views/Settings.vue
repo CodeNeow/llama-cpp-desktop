@@ -122,6 +122,44 @@
       <p v-if="sourceError" class="source-error">{{ sourceError }}</p>
     </section>
 
+    <!-- 服务访问范围 -->
+    <section class="settings-section">
+      <h2 class="section-title">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
+        </svg>
+        {{ t('settings.accessScope') }}
+      </h2>
+      <div class="source-grid">
+        <div
+          class="source-card"
+          :class="{ active: appConfig.serverAccessMode === 'local' }"
+          role="radio"
+          :aria-checked="appConfig.serverAccessMode === 'local'"
+          tabindex="0"
+          @click="setAccessScope('local')"
+          @keydown.enter="setAccessScope('local')"
+        >
+          <span class="source-name">{{ t('settings.accessLocal') }}</span>
+          <span v-if="appConfig.serverAccessMode === 'local'" class="source-check">✓</span>
+        </div>
+        <div
+          class="source-card"
+          :class="{ active: appConfig.serverAccessMode === 'lan' }"
+          role="radio"
+          :aria-checked="appConfig.serverAccessMode === 'lan'"
+          tabindex="0"
+          @click="setAccessScope('lan')"
+          @keydown.enter="setAccessScope('lan')"
+        >
+          <span class="source-name">{{ t('settings.accessLan') }}</span>
+          <span v-if="appConfig.serverAccessMode === 'lan'" class="source-check">✓</span>
+        </div>
+      </div>
+      <p class="source-hint">{{ t('settings.accessDesc') }}</p>
+      <p v-if="accessError" class="source-error">{{ accessError }}</p>
+    </section>
+
     <!-- 更新 -->
     <section class="settings-section">
       <h2 class="section-title">
@@ -151,9 +189,9 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { appConfig, setTheme, loadConfig, setDownloadSource as applyDownloadSource, setLanguage as applyLanguage } from '../store'
+import { appConfig, setTheme, loadConfig, setDownloadSource as applyDownloadSource, setLanguage as applyLanguage, setServerAccessMode as applyServerAccessMode } from '../store'
 import { updateState, checkForUpdate, closeUpdateModal } from '../lib/update'
-import { getAppVersion } from '../wails'
+import { getAppVersion, getServerConfig } from '../wails'
 import { t } from '../lib/i18n'
 import UpdateModal from '../components/UpdateModal.vue'
 
@@ -195,6 +233,24 @@ async function setLanguagePref(lang: string) {
   }
 }
 
+// 服务访问范围（服务监听地址，见后端 SaveServerConfig）：挂载时从后端
+// 配置刷新，避免与 API 页/其他来源的持久化值脱节。
+const accessError = ref('')
+const accessSwitching = ref(false)
+
+async function setAccessScope(mode: string) {
+  if (mode === appConfig.serverAccessMode || accessSwitching.value) return
+  accessSwitching.value = true
+  accessError.value = ''
+  try {
+    await applyServerAccessMode(mode)
+  } catch {
+    accessError.value = t('settings.accessError')
+  } finally {
+    accessSwitching.value = false
+  }
+}
+
 const appVersion = ref('')
 const checking = computed(() => updateState.checking)
 const checkError = computed(() => updateState.error)
@@ -203,6 +259,12 @@ const showUpdateModal = computed(() => updateState.showModal)
 
 onMounted(async () => {
   if (!appConfig.loaded) await loadConfig()
+  // 从后端读取当前服务访问范围（默认 local），保证页面选中态与持久化值一致
+  getServerConfig().then((scfg) => {
+    if (scfg.accessMode === 'local' || scfg.accessMode === 'lan') {
+      appConfig.serverAccessMode = scfg.accessMode
+    }
+  }).catch(() => {})
   getAppVersion().then((v) => { appVersion.value = v }).catch(() => {})
 })
 

@@ -120,7 +120,7 @@ func TestBuildServerCommandDetectsDownloadDir(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg := ServerConfig{Host: "127.0.0.1", Port: 8080, MaxModels: 1, CacheRAM: 0}
+	cfg := ServerConfig{AccessMode: accessLocal, Host: "127.0.0.1", Port: 8080, MaxModels: 1, CacheRAM: 0}
 	bin, _ := buildServerCommand(cfg, "/tmp/preset.ini")
 
 	want := filepath.Join(tmp, "llama-cpp", binName)

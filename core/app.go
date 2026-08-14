@@ -359,12 +359,13 @@ func (a *App) GetServerConfig() ServerConfig {
 }
 
 func (a *App) SaveServerConfig(cfg ServerConfig) error {
-	// Host 白名单：仅允许环回地址，避免把推理服务暴露到局域网/公网（#5）。
-	switch cfg.Host {
-	case "127.0.0.1", "localhost", "::1":
-	default:
-		return fmt.Errorf(tr("非法 Host %q：仅允许环回地址，避免将推理服务暴露到局域网", "invalid Host %q: only loopback addresses are allowed to avoid exposing the inference service to the LAN"), cfg.Host)
+	// 访问范围白名单：仅允许 local/lan 两档，避免任意 host 值把推理服务
+	// 暴露到局域网/公网（#5）。通过后 Host 由 effectiveHost 按 AccessMode
+	// 强制派生，不信任前端传入的 host。
+	if cfg.AccessMode != accessLocal && cfg.AccessMode != accessLAN {
+		return fmt.Errorf(tr("非法访问范围 %q：仅允许 local/lan", "invalid access mode %q: only local/lan"), cfg.AccessMode)
 	}
+	cfg.Host = effectiveHost(cfg.AccessMode)
 	if cfg.Port < 1024 || cfg.Port > 65535 {
 		return fmt.Errorf(tr("非法 Port %d：端口范围应为 1024-65535", "invalid Port %d: port must be in range 1024-65535"), cfg.Port)
 	}

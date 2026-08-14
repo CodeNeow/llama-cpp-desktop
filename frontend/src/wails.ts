@@ -88,11 +88,21 @@ export async function saveModelConfig(modelID: string, config: any): Promise<voi
 
 // ─── Server ──────────────────────────────────────────────────────
 
-export async function getServerConfig(): Promise<any> {
+// ServerConfig 对应后端 core.ServerConfig：accessMode 为服务访问范围
+// （"local" | "lan"），host 为按 accessMode 派生后的实际监听地址。
+export interface ServerConfig {
+  accessMode: string
+  host: string
+  port: number
+  maxModels: number
+  cacheRam: number
+}
+
+export async function getServerConfig(): Promise<ServerConfig> {
   return app().GetServerConfig()
 }
 
-export async function saveServerConfig(cfg: any): Promise<void> {
+export async function saveServerConfig(cfg: ServerConfig): Promise<void> {
   return app().SaveServerConfig(cfg)
 }
 

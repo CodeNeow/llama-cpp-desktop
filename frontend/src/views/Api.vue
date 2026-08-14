@@ -33,10 +33,6 @@
       <h2 class="section-title">{{ t('api.cfgTitle') }}</h2>
       <div class="cfg-grid">
         <div class="cfg-item">
-          <label>{{ t('api.cfgHost') }}</label>
-          <input v-model="cfg.host" class="cfg-input" :disabled="serverRunning" />
-        </div>
-        <div class="cfg-item">
           <label>{{ t('api.cfgPort') }}</label>
           <input v-model.number="cfg.port" type="number" min="1024" max="65535" step="1" class="cfg-input cfg-num" :disabled="serverRunning" />
         </div>
@@ -76,6 +72,7 @@ const logEl = ref<HTMLElement | null>(null)
 
 const cfg = reactive({
   host: '127.0.0.1',
+  accessMode: 'local', // 服务访问范围来自后端配置（设置页修改），此处仅随保存透传
   port: 8080,
   maxModels: 1,
   cacheRam: 8192,
@@ -98,6 +95,7 @@ watch(cfg, () => {
   saveTimer = setTimeout(() => {
     saveServerConfig({
       host: cfg.host,
+      accessMode: cfg.accessMode,
       port: cfg.port,
       maxModels: cfg.maxModels,
       cacheRam: cfg.cacheRam,

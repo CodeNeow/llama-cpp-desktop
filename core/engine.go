@@ -2467,11 +2467,30 @@ type PersistedDlTask struct {
 	Error      string `json:"error"`
 }
 
+// 服务访问范围取值：local 表示仅本机可访问（监听 127.0.0.1），lan 表示允许
+// 同网络设备访问（监听 0.0.0.0）。ServerConfig.AccessMode 只接受这两个值，
+// 其余（含空串）一律兜底 local。
+const accessLocal = "local"
+const accessLAN = "lan"
+
 type ServerConfig struct {
-	Host      string `json:"host"`
-	Port      int    `json:"port"`
-	MaxModels int    `json:"maxModels"`
-	CacheRAM  int    `json:"cacheRam"`
+	// AccessMode 是服务访问范围（"local" | "lan"，默认 "local"）；Host 为
+	// 按 AccessMode 派生后的实际监听地址，不直接接受用户输入。
+	AccessMode string `json:"accessMode"`
+	Host       string `json:"host"`
+	Port       int    `json:"port"`
+	MaxModels  int    `json:"maxModels"`
+	CacheRAM   int    `json:"cacheRam"`
+}
+
+// effectiveHost 按访问范围派生实际监听地址：lan → "0.0.0.0"，其余任何取值
+// （含空串与非法值）→ "127.0.0.1"。纯函数，供 SaveServerConfig 归一化、
+// loadConfig 兼容与 buildServerCommand 共用，保证各处 Host 口径一致。
+func effectiveHost(mode string) string {
+	if mode == accessLAN {
+		return "0.0.0.0"
+	}
+	return "127.0.0.1"
 }
 
 type ModelConfig struct {
@@ -2555,9 +2574,14 @@ func loadConfig() {
 	}
 	// Merge server config with defaults
 	scfg := defaultServerConfig()
-	if cfg.ServerConfig.Host != "" {
-		scfg.Host = cfg.ServerConfig.Host
+	// 访问范围：空值或不在 {local,lan} 白名单时兜底 local（旧配置无
+	// accessMode 字段或数据损坏时不报错）。Host 一律由 effectiveHost 按
+	// accessMode 派生，不信任旧配置里可能存在的非法 host 值（#5 防御延续）。
+	if cfg.ServerConfig.AccessMode != accessLocal && cfg.ServerConfig.AccessMode != accessLAN {
+		cfg.ServerConfig.AccessMode = accessLocal
 	}
+	scfg.AccessMode = cfg.ServerConfig.AccessMode
+	scfg.Host = effectiveHost(scfg.AccessMode)
 	if cfg.ServerConfig.Port != 0 {
 		scfg.Port = cfg.ServerConfig.Port
 	}
@@ -2648,7 +2672,7 @@ var serverConfigMu sync.Mutex
 
 func defaultServerConfig() ServerConfig {
 	return ServerConfig{
-		Host: "127.0.0.1", Port: 8080, MaxModels: 1, CacheRAM: 8192,
+		AccessMode: accessLocal, Host: "127.0.0.1", Port: 8080, MaxModels: 1, CacheRAM: 8192,
 	}
 }
 

@@ -94,7 +94,7 @@ func TestSaveLoadConfigRoundTrip(t *testing.T) {
 	}
 	modelConfigsMu.Unlock()
 	serverConfigMu.Lock()
-	cachedServerConfig = ServerConfig{Host: "0.0.0.0", Port: 9000, MaxModels: 2, CacheRAM: 4096}
+	cachedServerConfig = ServerConfig{AccessMode: accessLAN, Host: "0.0.0.0", Port: 9000, MaxModels: 2, CacheRAM: 4096}
 	serverConfigMu.Unlock()
 	configMu.Lock()
 	currentTheme = "light"
@@ -145,8 +145,8 @@ func TestSaveLoadConfigRoundTrip(t *testing.T) {
 	serverConfigMu.Lock()
 	scfg := cachedServerConfig
 	serverConfigMu.Unlock()
-	if scfg.Port != 9000 || scfg.Host != "0.0.0.0" || scfg.MaxModels != 2 {
-		t.Errorf("服务器配置读回错误: %+v", scfg)
+	if scfg.AccessMode != accessLAN || scfg.Host != "0.0.0.0" || scfg.Port != 9000 || scfg.MaxModels != 2 {
+		t.Errorf("服务器配置读回错误（accessMode 与派生 host 应一致）: %+v", scfg)
 	}
 	configMu.Lock()
 	if currentTheme != "light" {
@@ -187,6 +187,10 @@ func TestLoadConfigDefaults(t *testing.T) {
 	if scfg.Port != 8080 || scfg.MaxModels != 1 || scfg.CacheRAM != 8192 {
 		t.Errorf("残缺配置应回退默认端口/模型数/缓存: %+v", scfg)
 	}
+	// 旧配置无 accessMode 字段：兜底 local 且 host 派生为 127.0.0.1
+	if scfg.AccessMode != accessLocal || scfg.Host != "127.0.0.1" {
+		t.Errorf("旧配置无 accessMode 时应兜底 local 且 host=127.0.0.1, 实际 %+v", scfg)
+	}
 	configMu.Lock()
 	if currentTheme != "light" {
 		t.Errorf("无主题时应回退 light, 实际 %q", currentTheme)
@@ -202,6 +206,45 @@ func TestLoadConfigDefaults(t *testing.T) {
 		t.Errorf("旧配置无 language 字段时应兜底 auto, 实际 %q", currentLanguage)
 	}
 	languageMu.Unlock()
+}
+
+// TestLoadConfigAccessModeFallback 验证旧配置的 host 值不再被信任：无
+// accessMode 字段时兜底 local 且 host 强制派生为 127.0.0.1；即使旧配置
+// 写了 0.0.0.0 这类原本不允许的值，也不会把服务悄悄暴露到局域网。
+func TestLoadConfigAccessModeFallback(t *testing.T) {
+	withTempCwd(t)
+	saveConfigState(t)
+
+	if err := os.WriteFile(configFile, []byte(`{"serverConfig":{"host":"0.0.0.0"}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	loadConfig()
+
+	serverConfigMu.Lock()
+	scfg := cachedServerConfig
+	serverConfigMu.Unlock()
+	if scfg.AccessMode != accessLocal || scfg.Host != "127.0.0.1" {
+		t.Errorf("旧配置非法 host 应兜底 local 且 host=127.0.0.1, 实际 %+v", scfg)
+	}
+}
+
+// TestLoadConfigAccessModeLAN 验证配置了 accessMode=lan 时 loadConfig 保留
+// lan 并把 host 派生为 0.0.0.0。
+func TestLoadConfigAccessModeLAN(t *testing.T) {
+	withTempCwd(t)
+	saveConfigState(t)
+
+	if err := os.WriteFile(configFile, []byte(`{"serverConfig":{"accessMode":"lan","host":"127.0.0.1"}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	loadConfig()
+
+	serverConfigMu.Lock()
+	scfg := cachedServerConfig
+	serverConfigMu.Unlock()
+	if scfg.AccessMode != accessLAN || scfg.Host != "0.0.0.0" {
+		t.Errorf("accessMode=lan 应保留并派生 host=0.0.0.0, 实际 %+v", scfg)
+	}
 }
 
 // TestLoadConfigLanguageFallback 验证语言偏好白名单兜底：缺失字段与非法值均
@@ -289,26 +332,59 @@ func TestLoadConfigMigratesMLockNoMMap(t *testing.T) {
 	}
 }
 
-// TestSaveServerConfigRejectsNonLoopbackHost 验证 SaveServerConfig 拒绝
-// 非环回 Host（#5）。若允许 0.0.0.0 等地址，llama-server 会把推理服务
-// 暴露到局域网/公网，须在存配置前拒绝。
-func TestSaveServerConfigRejectsNonLoopbackHost(t *testing.T) {
+// TestSaveServerConfigRejectsInvalidAccessMode 验证 SaveServerConfig 拒绝
+// 白名单（local/lan）之外的访问范围（#5）。若允许任意 host 值，llama-server
+// 可能把推理服务暴露到局域网/公网，须在存配置前拒绝；拒绝分支不得改写
+// 已存的 cachedServerConfig。
+func TestSaveServerConfigRejectsInvalidAccessMode(t *testing.T) {
 	withTempCwd(t)
 	saveConfigState(t)
 
 	app := &App{}
-	if err := app.SaveServerConfig(ServerConfig{Host: "0.0.0.0", Port: 8080, MaxModels: 1, CacheRAM: 0}); err == nil {
-		t.Error("Host=0.0.0.0 应返回错误")
+	if err := app.SaveServerConfig(ServerConfig{AccessMode: "wan", Host: "0.0.0.0", Port: 8080, MaxModels: 1, CacheRAM: 0}); err == nil {
+		t.Error("AccessMode=wan 应返回错误")
 	}
-	if err := app.SaveServerConfig(ServerConfig{Host: "192.168.1.10", Port: 8080, MaxModels: 1, CacheRAM: 0}); err == nil {
-		t.Error("局域网地址应返回错误")
+	if err := app.SaveServerConfig(ServerConfig{AccessMode: "192.168.1.10", Host: "0.0.0.0", Port: 8080, MaxModels: 1, CacheRAM: 0}); err == nil {
+		t.Error("非法局域网地址值应返回错误")
+	}
+	if err := app.SaveServerConfig(ServerConfig{AccessMode: "", Host: "0.0.0.0", Port: 8080, MaxModels: 1, CacheRAM: 0}); err == nil {
+		t.Error("空 AccessMode 应返回错误")
 	}
 	// 拒绝分支不得改动已存配置
 	serverConfigMu.Lock()
 	got := cachedServerConfig
 	serverConfigMu.Unlock()
-	if got.Host != "127.0.0.1" {
-		t.Errorf("非法 Host 不应改写配置, 当前 Host = %q", got.Host)
+	if got.Host != "127.0.0.1" || got.AccessMode != accessLocal {
+		t.Errorf("非法 AccessMode 不应改写配置, 当前 = %+v", got)
+	}
+}
+
+// TestSaveServerConfigDerivesHostFromAccessMode 验证 SaveServerConfig 通过后
+// Host 按 AccessMode 强制派生：lan → 0.0.0.0，local → 127.0.0.1，不信任前端
+// 传入的 host 值。
+func TestSaveServerConfigDerivesHostFromAccessMode(t *testing.T) {
+	withTempCwd(t)
+	saveConfigState(t)
+
+	app := &App{}
+	if err := app.SaveServerConfig(ServerConfig{AccessMode: accessLAN, Host: "1.2.3.4", Port: 8080, MaxModels: 2, CacheRAM: 4096}); err != nil {
+		t.Fatalf("AccessMode=lan 应被接受: %v", err)
+	}
+	serverConfigMu.Lock()
+	got := cachedServerConfig
+	serverConfigMu.Unlock()
+	if got.AccessMode != accessLAN || got.Host != "0.0.0.0" {
+		t.Errorf("lan 保存后 Host 应派生为 0.0.0.0, 实际 %+v", got)
+	}
+
+	if err := app.SaveServerConfig(ServerConfig{AccessMode: accessLocal, Host: "0.0.0.0", Port: 8080, MaxModels: 1, CacheRAM: 0}); err != nil {
+		t.Fatalf("AccessMode=local 应被接受: %v", err)
+	}
+	serverConfigMu.Lock()
+	got = cachedServerConfig
+	serverConfigMu.Unlock()
+	if got.AccessMode != accessLocal || got.Host != "127.0.0.1" {
+		t.Errorf("local 保存后 Host 应派生为 127.0.0.1, 实际 %+v", got)
 	}
 }
 
@@ -319,10 +395,10 @@ func TestSaveServerConfigRejectsInvalidPort(t *testing.T) {
 	saveConfigState(t)
 
 	app := &App{}
-	if err := app.SaveServerConfig(ServerConfig{Host: "127.0.0.1", Port: 80, MaxModels: 1, CacheRAM: 0}); err == nil {
+	if err := app.SaveServerConfig(ServerConfig{AccessMode: accessLocal, Host: "127.0.0.1", Port: 80, MaxModels: 1, CacheRAM: 0}); err == nil {
 		t.Error("Port=80（特权端口）应返回错误")
 	}
-	if err := app.SaveServerConfig(ServerConfig{Host: "127.0.0.1", Port: 99999, MaxModels: 1, CacheRAM: 0}); err == nil {
+	if err := app.SaveServerConfig(ServerConfig{AccessMode: accessLocal, Host: "127.0.0.1", Port: 99999, MaxModels: 1, CacheRAM: 0}); err == nil {
 		t.Error("Port=99999 超出范围应返回错误")
 	}
 }
@@ -334,31 +410,30 @@ func TestSaveServerConfigRejectsInvalidNumbers(t *testing.T) {
 	saveConfigState(t)
 
 	app := &App{}
-	if err := app.SaveServerConfig(ServerConfig{Host: "127.0.0.1", Port: 8080, MaxModels: 0, CacheRAM: 0}); err == nil {
+	if err := app.SaveServerConfig(ServerConfig{AccessMode: accessLocal, Host: "127.0.0.1", Port: 8080, MaxModels: 0, CacheRAM: 0}); err == nil {
 		t.Error("MaxModels=0 应返回错误")
 	}
-	if err := app.SaveServerConfig(ServerConfig{Host: "127.0.0.1", Port: 8080, MaxModels: 1, CacheRAM: -1}); err == nil {
+	if err := app.SaveServerConfig(ServerConfig{AccessMode: accessLocal, Host: "127.0.0.1", Port: 8080, MaxModels: 1, CacheRAM: -1}); err == nil {
 		t.Error("CacheRAM 为负应返回错误")
 	}
 }
 
-// TestSaveServerConfigAcceptsLoopback 验证合法环回配置被接受并写入
-// 全局缓存与配置文件（#5 对照组：localhost / ::1 均合法）。
-func TestSaveServerConfigAcceptsLoopback(t *testing.T) {
+// TestSaveServerConfigAcceptsLocalAccessMode 验证合法访问范围被接受并写入
+// 全局缓存与配置文件：local 模式下 host 恒被派生为 127.0.0.1（无论前端传入
+// 什么 host 值，如 localhost/::1 也归一化为 127.0.0.1）。
+func TestSaveServerConfigAcceptsLocalAccessMode(t *testing.T) {
 	withTempCwd(t)
 	saveConfigState(t)
 
 	app := &App{}
-	for _, host := range []string{"127.0.0.1", "localhost", "::1"} {
-		if err := app.SaveServerConfig(ServerConfig{Host: host, Port: 8080, MaxModels: 2, CacheRAM: 4096}); err != nil {
-			t.Errorf("Host=%q 应被接受: %v", host, err)
-		}
-		serverConfigMu.Lock()
-		got := cachedServerConfig
-		serverConfigMu.Unlock()
-		if got.Host != host || got.Port != 8080 || got.MaxModels != 2 || got.CacheRAM != 4096 {
-			t.Errorf("Host=%q 配置未正确写入: %+v", host, got)
-		}
+	if err := app.SaveServerConfig(ServerConfig{AccessMode: accessLocal, Host: "localhost", Port: 8080, MaxModels: 2, CacheRAM: 4096}); err != nil {
+		t.Fatalf("AccessMode=local 应被接受: %v", err)
+	}
+	serverConfigMu.Lock()
+	got := cachedServerConfig
+	serverConfigMu.Unlock()
+	if got.AccessMode != accessLocal || got.Host != "127.0.0.1" || got.Port != 8080 || got.MaxModels != 2 || got.CacheRAM != 4096 {
+		t.Errorf("AccessMode=local 配置未正确写入（host 应归一化 127.0.0.1）: %+v", got)
 	}
 }
 

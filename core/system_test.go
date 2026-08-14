@@ -63,10 +63,11 @@ func TestParseVMStat(t *testing.T) {
 	}
 }
 
-// TestDefaultServerConfig 验证服务器配置默认值兜底（端口 8080、host 127.0.0.1）。
+// TestDefaultServerConfig 验证服务器配置默认值兜底（accessMode local、
+// host 派生 127.0.0.1、端口 8080）。
 func TestDefaultServerConfig(t *testing.T) {
 	cfg := defaultServerConfig()
-	if cfg.Host != "127.0.0.1" || cfg.Port != 8080 || cfg.MaxModels != 1 || cfg.CacheRAM != 8192 {
+	if cfg.AccessMode != accessLocal || cfg.Host != "127.0.0.1" || cfg.Port != 8080 || cfg.MaxModels != 1 || cfg.CacheRAM != 8192 {
 		t.Errorf("默认服务器配置不符合预期: %+v", cfg)
 	}
 }

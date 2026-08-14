@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { appConfig, loadConfig, setTheme, setDownloadSource, setLanguage } from '../store'
-import { getConfig, setTheme as setThemeBackend, setDownloadSource as setDownloadSourceBackend, setLanguage as setLanguageBackend } from '../wails'
+import { appConfig, loadConfig, setTheme, setDownloadSource, setLanguage, setServerAccessMode } from '../store'
+import { getConfig, setTheme as setThemeBackend, setDownloadSource as setDownloadSourceBackend, setLanguage as setLanguageBackend, getServerConfig, saveServerConfig as saveServerConfigBackend } from '../wails'
 import { locale } from '../lib/i18n'
 
 // mock Wails 桥接层：window.go 仅由 Wails 运行时注入，单测环境不可用
@@ -9,12 +9,16 @@ vi.mock('../wails', () => ({
   setTheme: vi.fn(),
   setDownloadSource: vi.fn(),
   setLanguage: vi.fn(),
+  getServerConfig: vi.fn(),
+  saveServerConfig: vi.fn(),
 }))
 
 const mockGetConfig = vi.mocked(getConfig)
 const mockSetTheme = vi.mocked(setThemeBackend)
 const mockSetDownloadSource = vi.mocked(setDownloadSourceBackend)
 const mockSetLanguage = vi.mocked(setLanguageBackend)
+const mockGetServerConfig = vi.mocked(getServerConfig)
+const mockSaveServerConfig = vi.mocked(saveServerConfigBackend)
 
 describe('store', () => {
   beforeEach(() => {
@@ -24,6 +28,7 @@ describe('store', () => {
     appConfig.llamaCppDir = ''
     appConfig.modelsDir = ''
     appConfig.downloadSource = 'hf'
+    appConfig.serverAccessMode = 'local'
     appConfig.language = 'auto'
     appConfig.resolvedLanguage = 'zh'
     appConfig.loaded = false
@@ -149,5 +154,32 @@ describe('store', () => {
 
     await expect(setLanguage('en')).rejects.toThrow('backend unavailable')
     expect(appConfig.language).toBe('auto')
+  })
+
+  it('setServerAccessMode 成功后取完整配置并带 accessMode 保存，更新本地状态', async () => {
+    mockGetServerConfig.mockResolvedValue({ accessMode: 'local', host: '127.0.0.1', port: 8080, maxModels: 1, cacheRam: 8192 })
+    mockSaveServerConfig.mockResolvedValue(undefined)
+
+    await setServerAccessMode('lan')
+
+    expect(appConfig.serverAccessMode).toBe('lan')
+    // 保存的是后端最新完整配置（含用户可能在别处设置的字段），仅覆盖 accessMode
+    expect(mockSaveServerConfig).toHaveBeenCalledWith({ accessMode: 'lan', host: '127.0.0.1', port: 8080, maxModels: 1, cacheRam: 8192 })
+  })
+
+  it('setServerAccessMode 取配置失败时回滚本地状态并向调用方抛错', async () => {
+    mockGetServerConfig.mockRejectedValue(new Error('backend unavailable'))
+
+    await expect(setServerAccessMode('lan')).rejects.toThrow('backend unavailable')
+    expect(appConfig.serverAccessMode).toBe('local')
+    expect(mockSaveServerConfig).not.toHaveBeenCalled()
+  })
+
+  it('setServerAccessMode 保存失败时回滚本地状态并向调用方抛错', async () => {
+    mockGetServerConfig.mockResolvedValue({ accessMode: 'local', host: '127.0.0.1', port: 8080, maxModels: 1, cacheRam: 8192 })
+    mockSaveServerConfig.mockRejectedValue(new Error('backend unavailable'))
+
+    await expect(setServerAccessMode('lan')).rejects.toThrow('backend unavailable')
+    expect(appConfig.serverAccessMode).toBe('local')
   })
 })

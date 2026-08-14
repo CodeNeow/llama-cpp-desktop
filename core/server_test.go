@@ -49,7 +49,7 @@ func saveServerState(t *testing.T) (origLogs []string, origDir string) {
 // 与固定参数序列（host/port/models-dir/preset/max/batching/webui）。
 func TestBuildServerCommand(t *testing.T) {
 	saveServerState(t)
-	cfg := ServerConfig{Host: "127.0.0.1", Port: 8080, MaxModels: 1, CacheRAM: 0}
+	cfg := ServerConfig{AccessMode: accessLocal, Host: "127.0.0.1", Port: 8080, MaxModels: 1, CacheRAM: 0}
 	bin, args := buildServerCommand(cfg, "/tmp/preset.ini")
 
 	if bin != "llama-server" {
@@ -74,10 +74,32 @@ func TestBuildServerCommand(t *testing.T) {
 	}
 }
 
+// TestBuildServerCommandLANHost 验证 AccessMode=lan 时 --host 派生为
+// 0.0.0.0；即使 cfg.Host 仍是 127.0.0.1（未归一化），也以 effectiveHost
+// 的派生结果为准。
+func TestBuildServerCommandLANHost(t *testing.T) {
+	saveServerState(t)
+	cfg := ServerConfig{AccessMode: accessLAN, Host: "127.0.0.1", Port: 8080, MaxModels: 1, CacheRAM: 0}
+	_, args := buildServerCommand(cfg, "/tmp/preset.ini")
+
+	found := false
+	for i, a := range args {
+		if a == "--host" && i+1 < len(args) {
+			if args[i+1] != "0.0.0.0" {
+				t.Fatalf("lan 模式 --host = %q, want 0.0.0.0 (args=%v)", args[i+1], args)
+			}
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("args 缺少 --host: %v", args)
+	}
+}
+
 // TestBuildServerCommandCacheRAM 验证 CacheRAM 配置追加 --cache-ram 参数，
 // 且 MaxModels 最小为 1（防止向 llama-server 传 0）。
 func TestBuildServerCommandCacheRAM(t *testing.T) {
-	cfg := ServerConfig{Host: "127.0.0.1", Port: 8080, MaxModels: 0, CacheRAM: 4096}
+	cfg := ServerConfig{AccessMode: accessLocal, Host: "127.0.0.1", Port: 8080, MaxModels: 0, CacheRAM: 4096}
 	_, args := buildServerCommand(cfg, "/tmp/preset.ini")
 
 	joined := strings.Join(args, " ")
@@ -105,7 +127,7 @@ func TestBuildServerCommandCustomDir(t *testing.T) {
 	customLlamaCppDir = custom
 	customLlamaCppMu.Unlock()
 
-	cfg := ServerConfig{Host: "127.0.0.1", Port: 8080, MaxModels: 1, CacheRAM: 0}
+	cfg := ServerConfig{AccessMode: accessLocal, Host: "127.0.0.1", Port: 8080, MaxModels: 1, CacheRAM: 0}
 	bin, _ := buildServerCommand(cfg, "/tmp/preset.ini")
 
 	want := filepath.Join(custom, binName)
@@ -124,7 +146,7 @@ func TestBuildServerCommandCustomModelsDir(t *testing.T) {
 	customModelsDir = customModels
 	modelsDirMu.Unlock()
 
-	cfg := ServerConfig{Host: "127.0.0.1", Port: 8080, MaxModels: 1, CacheRAM: 0}
+	cfg := ServerConfig{AccessMode: accessLocal, Host: "127.0.0.1", Port: 8080, MaxModels: 1, CacheRAM: 0}
 	_, args := buildServerCommand(cfg, "/tmp/preset.ini")
 
 	found := false
