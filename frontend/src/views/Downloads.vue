@@ -1,8 +1,8 @@
 <template>
   <div class="page">
     <div class="page-header">
-      <h1 class="page-title">下载</h1>
-      <p class="page-subtitle">从 {{ sourceLabel }} 搜索和下载模型</p>
+      <h1 class="page-title">{{ t('downloads.title') }}</h1>
+      <p class="page-subtitle">{{ t('downloads.subtitle', { source: sourceLabel }) }}</p>
     </div>
 
     <!-- Search bar -->
@@ -14,22 +14,22 @@
         <input
           v-model="searchQuery"
           class="search-input"
-          placeholder="搜索模型... (如 bge, all-MiniLM, gte)"
+          :placeholder="t('downloads.searchPlaceholder')"
           @keydown.enter="doSearch"
         />
       </div>
       <button class="search-btn" @click="doSearch" :disabled="searching || !searchQuery">
-        {{ searching ? '搜索中...' : '搜索' }}
+        {{ searching ? t('downloads.searching') : t('downloads.search') }}
       </button>
-      <button class="search-btn download-btn" @click="showTasksModal = true" title="查看下载任务">
-        下载
+      <button class="search-btn download-btn" @click="showTasksModal = true" :title="t('downloads.downloadTitle')">
+        {{ t('downloads.download') }}
         <span v-if="activeTaskCount > 0" class="task-badge">{{ activeTaskCount }}</span>
       </button>
     </div>
 
     <!-- Search results -->
     <div v-if="searchResults.length > 0" class="results-section">
-      <h2 class="section-heading">搜索结果 ({{ searchResults.length }})</h2>
+      <h2 class="section-heading">{{ t('downloads.resultsTitle', { n: searchResults.length }) }}</h2>
       <div class="results-grid">
         <div
           v-for="r in searchResults"
@@ -59,9 +59,9 @@
 
           <!-- Expanded: description + file list -->
           <div v-if="expandedModel === r.modelId" class="result-files" @click.stop>
-            <div v-if="descriptionsLoading[r.modelId]" class="result-desc">加载描述中...</div>
+            <div v-if="descriptionsLoading[r.modelId]" class="result-desc">{{ t('downloads.loadingDesc') }}</div>
             <div v-else-if="modelDescriptions[r.modelId]" class="result-desc">{{ modelDescriptions[r.modelId] }}</div>
-            <div v-if="modelFilesLoading[r.modelId]" class="files-loading">加载文件列表...</div>
+            <div v-if="modelFilesLoading[r.modelId]" class="files-loading">{{ t('downloads.loadingFiles') }}</div>
             <div v-else-if="modelFiles[r.modelId] && modelFiles[r.modelId].length > 0" class="files-list">
               <label
                 v-for="f in sortedFiles(modelFiles[r.modelId])"
@@ -79,15 +79,15 @@
                 <span class="file-size" v-if="f.size">{{ formatBytes(f.size) }}</span>
               </label>
               <div class="files-actions">
-                <button class="select-all-btn" @click="selectAllFiles(r.modelId)">全选</button>
+                <button class="select-all-btn" @click="selectAllFiles(r.modelId)">{{ t('downloads.selectAll') }}</button>
                 <button
                   class="download-files-btn"
                   :disabled="!selectedFiles[r.modelId]?.length"
                   @click="startDownload(r.modelId)"
-                >下载选中文件</button>
+                >{{ t('downloads.downloadSelected') }}</button>
               </div>
             </div>
-            <div v-else class="files-empty">无可用文件</div>
+            <div v-else class="files-empty">{{ t('downloads.noFiles') }}</div>
           </div>
         </div>
       </div>
@@ -95,8 +95,8 @@
 
     <!-- No results -->
     <div v-else-if="searched && !searching" class="empty-state">
-      <h2>未找到结果</h2>
-      <p>尝试其他关键词</p>
+      <h2>{{ t('downloads.noResults') }}</h2>
+      <p>{{ t('downloads.tryOther') }}</p>
     </div>
 
     <!-- Download tasks modal -->
@@ -104,56 +104,56 @@
       <div v-if="showTasksModal" class="modal-overlay" @click.self="showTasksModal = false">
         <div class="modal-panel">
           <div class="modal-header">
-            <h2 class="modal-title">下载任务 ({{ tasks.length }})</h2>
-            <button class="modal-close" @click="showTasksModal = false" title="关闭">✕</button>
+            <h2 class="modal-title">{{ t('downloads.tasksTitle', { n: tasks.length }) }}</h2>
+            <button class="modal-close" @click="showTasksModal = false" :title="t('downloads.close')">✕</button>
           </div>
           <div class="modal-body">
-            <div v-if="tasks.length === 0" class="tasks-empty">暂无下载任务</div>
+            <div v-if="tasks.length === 0" class="tasks-empty">{{ t('downloads.noTasks') }}</div>
             <div v-else class="task-list">
-              <div v-for="t in tasks" :key="t.id" class="task-card">
+              <div v-for="task in tasks" :key="task.id" class="task-card">
                 <div class="task-info">
-                  <span class="task-name">{{ t.fileName }}</span>
-                  <span class="task-model">{{ t.modelId }}</span>
+                  <span class="task-name">{{ task.fileName }}</span>
+                  <span class="task-model">{{ task.modelId }}</span>
                 </div>
                 <div class="task-bar-wrap">
                   <div class="task-bar">
                     <div
                       class="task-fill"
-                      :class="taskBarClass(t.status)"
-                      :style="{ width: t.progress + '%' }"
+                      :class="taskBarClass(task.status)"
+                      :style="{ width: task.progress + '%' }"
                     ></div>
                   </div>
-                  <span class="task-percent">{{ t.progress }}%</span>
+                  <span class="task-percent">{{ task.progress }}%</span>
                 </div>
                 <div class="task-meta">
-                  <span class="task-status" :class="'status-' + t.status">{{ statusMap[t.status] || t.status }}</span>
-                  <span v-if="t.status === 'downloading' && t.speed > 0" class="task-speed">{{ formatSpeed(t.speed) }}</span>
-                  <span class="task-size" v-if="t.sizeHuman && t.sizeHuman !== '0 B'">{{ t.sizeHuman }}</span>
+                  <span class="task-status" :class="'status-' + task.status">{{ statusMap[task.status] || task.status }}</span>
+                  <span v-if="task.status === 'downloading' && task.speed > 0" class="task-speed">{{ formatSpeed(task.speed) }}</span>
+                  <span class="task-size" v-if="task.sizeHuman && task.sizeHuman !== '0 B'">{{ task.sizeHuman }}</span>
                 </div>
-                <div class="task-error" v-if="t.error">
-                  <span>{{ t.error }}</span>
+                <div class="task-error" v-if="task.error">
+                  <span>{{ task.error }}</span>
                 </div>
                 <div class="task-actions">
                   <button
-                    v-if="t.status === 'downloading'"
+                    v-if="task.status === 'downloading'"
                     class="task-btn pause-btn"
-                    @click="pauseTask(t.id)"
-                  >⏸ 暂停</button>
+                    @click="pauseTask(task.id)"
+                  >⏸ {{ t('downloads.pause') }}</button>
                   <button
-                    v-if="t.status === 'paused'"
+                    v-if="task.status === 'paused'"
                     class="task-btn resume-btn"
-                    @click="resumeTask(t.id)"
-                  >▶ 继续</button>
+                    @click="resumeTask(task.id)"
+                  >▶ {{ t('downloads.resume') }}</button>
                   <button
-                    v-if="t.status === 'error'"
+                    v-if="task.status === 'error'"
                     class="task-btn retry-btn"
-                    @click="retryTask(t.id)"
-                  >↻ 重试</button>
+                    @click="retryTask(task.id)"
+                  >↻ {{ t('downloads.retry') }}</button>
                   <button
-                    v-if="t.status === 'downloading' || t.status === 'paused' || t.status === 'queued' || t.status === 'error'"
+                    v-if="task.status === 'downloading' || task.status === 'paused' || task.status === 'queued' || task.status === 'error'"
                     class="task-btn cancel-btn"
-                    @click="cancelTask(t.id)"
-                  >✕ 取消</button>
+                    @click="cancelTask(task.id)"
+                  >✕ {{ t('downloads.cancel') }}</button>
                 </div>
               </div>
             </div>
@@ -174,6 +174,7 @@ import { formatSpeed, formatBytes } from '../lib/format'
 import { LatestOnly } from '../lib/latestOnly'
 import { hasActiveTask, countActiveTasks } from '../lib/taskStatus'
 import { LimitedQueue } from '../lib/limitedQueue'
+import { t } from '../lib/i18n'
 
 interface HFResult {
   modelId: string
@@ -209,7 +210,7 @@ const searched = ref(false)
 const searchResults = ref<HFResult[]>([])
 // 当前下载源（"hf" | "modelscope"），挂载时从后端读取，切换由设置页完成
 const downloadSource = ref('')
-const sourceLabel = computed(() => downloadSource.value === 'modelscope' ? 'ModelScope' : 'HF 镜像')
+const sourceLabel = computed(() => downloadSource.value === 'modelscope' ? t('downloads.sourceModelScope') : t('downloads.sourceHf'))
 // 模型大小缓存：值为最大 GGUF 文件字节数，0 表示已尝试查询（无 GGUF 或失败），
 // 用于避免重复请求；按 modelId 缓存，跨搜索复用
 const modelSizes = reactive<Record<string, number>>({})
@@ -232,14 +233,16 @@ const showTasksModal = ref(false)
 // 活跃任务数（downloading/paused/queued），驱动下载按钮角标；fetchTasks 更新 tasks 后自动刷新
 const activeTaskCount = computed(() => countActiveTasks(tasks.value))
 
-const statusMap: Record<string, string> = {
-  queued: '排队中',
-  downloading: '下载中',
-  paused: '已暂停',
-  done: '已完成',
-  error: '下载失败',
-  cancelled: '已取消',
-}
+// 下载任务状态 → 文案映射：用 computed 包裹使 t() 在 locale 切换后重新求值，
+// 保证切语言时状态标签即时更新（computed ref 在模板中自动解包，无需改模板）
+const statusMap = computed<Record<string, string>>(() => ({
+  queued: t('downloads.statusQueued'),
+  downloading: t('downloads.statusDownloading'),
+  paused: t('downloads.statusPaused'),
+  done: t('downloads.statusDone'),
+  error: t('downloads.statusError'),
+  cancelled: t('downloads.statusCancelled'),
+}))
 
 function formatNum(n: number | undefined): string {
   const v = n || 0

@@ -1,8 +1,8 @@
 <template>
   <div class="page">
     <div class="page-header">
-      <h1 class="page-title">主页</h1>
-      <p class="page-subtitle">系统状态概览</p>
+      <h1 class="page-title">{{ t('home.title') }}</h1>
+      <p class="page-subtitle">{{ t('home.subtitle') }}</p>
     </div>
 
     <!-- Loading skeleton -->
@@ -21,9 +21,9 @@
           <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
         </svg>
       </div>
-      <h2>无法获取系统信息</h2>
+      <h2>{{ t('home.errorTitle') }}</h2>
       <p>{{ error }}</p>
-      <button class="retry-btn" @click="fetchSystemInfo">重试</button>
+      <button class="retry-btn" @click="fetchSystemInfo">{{ t('home.retry') }}</button>
     </div>
 
     <!-- Data -->
@@ -34,20 +34,20 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/>
           </svg>
-          处理器
+          {{ t('home.cpu') }}
         </h2>
         <div class="info-grid">
           <div class="info-item">
-            <span class="info-label">型号</span>
+            <span class="info-label">{{ t('home.cpu.model') }}</span>
             <span class="info-value">{{ info.cpu.model }}</span>
           </div>
           <div class="info-item">
-            <span class="info-label">物理核心</span>
-            <span class="info-value">{{ info.cpu.cores }} 核</span>
+            <span class="info-label">{{ t('home.cpu.cores') }}</span>
+            <span class="info-value">{{ t('home.cpu.coresValue', { n: info.cpu.cores }) }}</span>
           </div>
           <div class="info-item">
-            <span class="info-label">逻辑核心</span>
-            <span class="info-value">{{ info.cpu.logicalCpus }} 线程</span>
+            <span class="info-label">{{ t('home.cpu.threads') }}</span>
+            <span class="info-value">{{ t('home.cpu.threadsValue', { n: info.cpu.logicalCpus }) }}</span>
           </div>
         </div>
       </section>
@@ -58,15 +58,15 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="10" x2="6" y2="14"/><line x1="10" y1="10" x2="10" y2="14"/><line x1="14" y1="10" x2="14" y2="14"/><line x1="18" y1="10" x2="18" y2="14"/>
           </svg>
-          内存
+          {{ t('home.memory') }}
         </h2>
         <div class="info-grid">
           <div class="info-item info-item-full">
-            <span class="info-label">总内存</span>
+            <span class="info-label">{{ t('home.memory.total') }}</span>
             <span class="info-value">{{ formatGB(info.memory.totalGb) }}</span>
           </div>
         </div>
-        <router-link to="/monitor" class="monitor-hint">实时负载与推理速度前往 监控页 →</router-link>
+        <router-link to="/monitor" class="monitor-hint">{{ t('home.memory.hint') }}</router-link>
       </section>
 
       <!-- GPU Card -->
@@ -75,26 +75,26 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
           </svg>
-          显卡
+          {{ t('home.gpu') }}
         </h2>
         <div v-if="info.gpu && info.gpu.length > 0">
           <div v-for="(gpu, i) in info.gpu" :key="i" class="info-grid gpu-grid">
             <div class="info-item info-item-full">
-              <span class="info-label">型号</span>
+              <span class="info-label">{{ t('home.gpu.model') }}</span>
               <span class="info-value gpu-name">{{ gpu.name }}</span>
             </div>
             <div class="info-item">
-              <span class="info-label">显存</span>
+              <span class="info-label">{{ t('home.gpu.memory') }}</span>
               <span class="info-value">{{ formatMB(gpu.memoryMb) }}</span>
             </div>
             <div class="info-item">
-              <span class="info-label">驱动版本</span>
+              <span class="info-label">{{ t('home.gpu.driver') }}</span>
               <span class="info-value">{{ gpu.driverVersion }}</span>
             </div>
           </div>
         </div>
         <div v-else class="info-empty">
-          <span>未检测到 NVIDIA 显卡</span>
+          <span>{{ t('home.gpu.none') }}</span>
         </div>
       </section>
 
@@ -104,24 +104,24 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"/><line x1="12" y1="22" x2="12" y2="15.5"/><polyline points="22 8.5 12 15.5 2 8.5"/>
           </svg>
-          CUDA
+          {{ t('home.cuda') }}
         </h2>
         <div class="info-grid">
           <div class="info-item">
-            <span class="info-label">状态</span>
+            <span class="info-label">{{ t('home.cuda.status') }}</span>
             <span class="info-value">
               <span class="status-badge" :class="info.cuda.available ? 'available' : 'unavailable'">
-                {{ info.cuda.available ? '可用' : '不可用' }}
+                {{ info.cuda.available ? t('home.cuda.available') : t('home.cuda.unavailable') }}
               </span>
             </span>
           </div>
           <div class="info-item">
-            <span class="info-label">驱动版本</span>
+            <span class="info-label">{{ t('home.cuda.driver') }}</span>
             <span class="info-value">{{ info.cuda.driverVersion || 'N/A' }}</span>
           </div>
           <div class="info-item">
-            <span class="info-label">Toolkit 版本</span>
-            <span class="info-value">{{ info.cuda.toolkitVersion || '未安装' }}</span>
+            <span class="info-label">{{ t('home.cuda.toolkit') }}</span>
+            <span class="info-value">{{ info.cuda.toolkitVersion || t('home.cuda.notInstalled') }}</span>
           </div>
         </div>
       </section>
@@ -132,23 +132,23 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
           </svg>
-          llama.cpp
+          {{ t('home.llamacpp') }}
         </h2>
         <div class="info-grid">
           <div class="info-item">
-            <span class="info-label">状态</span>
+            <span class="info-label">{{ t('home.llamacpp.status') }}</span>
             <span class="info-value">
               <span class="status-badge" :class="info.llamaCpp.installed ? 'available' : 'unavailable'">
-                {{ info.llamaCpp.installed ? '已安装' : '未找到' }}
+                {{ info.llamaCpp.installed ? t('home.llamacpp.installed') : t('home.llamacpp.notFound') }}
               </span>
             </span>
           </div>
           <div class="info-item info-item-full" v-if="info.llamaCpp.installed">
-            <span class="info-label">路径</span>
+            <span class="info-label">{{ t('home.llamacpp.path') }}</span>
             <span class="info-value path-value">{{ info.llamaCpp.path }}</span>
           </div>
           <div class="info-item info-item-full" v-if="info.llamaCpp.version">
-            <span class="info-label">版本</span>
+            <span class="info-label">{{ t('home.llamacpp.version') }}</span>
             <span class="info-value">{{ info.llamaCpp.version }}</span>
           </div>
         </div>
@@ -164,18 +164,18 @@
                 <polyline points="7 10 12 15 17 10"/>
                 <line x1="12" y1="15" x2="12" y2="3"/>
               </svg>
-              下载 llama.cpp
+              {{ t('home.downloadLlamaCpp') }}
             </button>
             <button class="custom-btn" @click="browseCustomDir">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
               </svg>
-              自定义
+              {{ t('home.custom') }}
             </button>
           </div>
           <!-- Custom path info：独立 v-if，与进度区互不绑定 -->
           <div v-if="customPath" class="custom-path-info">
-            <span class="custom-path-label">自定义路径：</span>
+            <span class="custom-path-label">{{ t('home.customPath') }}</span>
             <span class="custom-path-value">{{ customPath }}</span>
           </div>
 
@@ -202,25 +202,25 @@
             <div class="dl-actions" v-if="dlStatus.status === 'downloading' || dlStatus.status === 'paused' || dlStatus.status === 'fetching'">
               <button v-if="dlStatus.status === 'downloading'" class="dl-btn pause-btn" @click="pauseDownload">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
-                暂停
+                {{ t('home.pause') }}
               </button>
               <button v-if="dlStatus.status === 'paused'" class="dl-btn resume-btn" @click="resumeDownload">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                继续
+                {{ t('home.resume') }}
               </button>
               <button class="dl-btn stop-btn" @click="stopDownload">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
-                停止
+                {{ t('home.stop') }}
               </button>
             </div>
 
             <div class="dl-paused-hint" v-if="dlStatus.status === 'paused'">
-              下载已暂停，点击"继续"恢复
+              {{ t('home.dlPausedHint') }}
             </div>
 
             <div class="dl-error" v-if="dlStatus.status === 'error'">
               <span>{{ dlStatus.error }}</span>
-              <button class="retry-btn-sm" @click="startDownload">重试</button>
+              <button class="retry-btn-sm" @click="startDownload">{{ t('home.retry') }}</button>
             </div>
           </div>
         </div>
@@ -232,15 +232,15 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
           </svg>
-          系统
+          {{ t('home.os') }}
         </h2>
         <div class="info-grid">
           <div class="info-item">
-            <span class="info-label">操作系统</span>
+            <span class="info-label">{{ t('home.os.name') }}</span>
             <span class="info-value">{{ osLabel }}</span>
           </div>
           <div class="info-item">
-            <span class="info-label">架构</span>
+            <span class="info-label">{{ t('home.os.arch') }}</span>
             <span class="info-value">{{ info.arch }}</span>
           </div>
         </div>
@@ -257,6 +257,7 @@ import {
   resumeLlamaCppDownload, stopLlamaCppDownload, browseLlamaCppDir, getConfig
 } from '../wails'
 import { downloadVisibility, initialDownloadAction } from '../lib/llamaDownload'
+import { t } from '../lib/i18n'
 
 interface SystemInfo {
   os: string
@@ -326,15 +327,17 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
 }
 
-const statusLabel: Record<string, string> = {
+// 下载状态 → 文案映射：用 computed 包裹使 t() 在 locale 切换后重新求值，
+// 保证切语言时状态标签即时更新（computed ref 在模板中自动解包，无需改模板）
+const statusLabel = computed<Record<string, string>>(() => ({
   idle: '',
-  fetching: '正在获取最新版本信息...',
-  downloading: '正在下载',
-  paused: '已暂停',
-  extracting: '正在解压...',
-  done: '下载完成',
-  error: '下载失败'
-}
+  fetching: t('home.dlFetching'),
+  downloading: t('home.dlDownloading'),
+  paused: t('home.dlPaused'),
+  extracting: t('home.dlExtracting'),
+  done: t('home.dlDone'),
+  error: t('home.dlError'),
+}))
 
 // Poll download status
 function pollDownloadStatus() {
@@ -371,7 +374,7 @@ async function startDownload() {
     await startLlamaCppDownload()
   } catch (e: any) {
     dlStatus.value.status = 'error'
-    dlStatus.value.error = `无法连接后端: ${e.message}`
+    dlStatus.value.error = t('home.backendError', { msg: e.message })
     stopPolling()
   }
 }

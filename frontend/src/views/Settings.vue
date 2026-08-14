@@ -1,8 +1,8 @@
 <template>
   <div class="page">
     <div class="page-header">
-      <h1 class="page-title">设置</h1>
-      <p class="page-subtitle">应用程序配置与偏好</p>
+      <h1 class="page-title">{{ t('settings.title') }}</h1>
+      <p class="page-subtitle">{{ t('settings.subtitle') }}</p>
     </div>
 
     <!-- UI Style -->
@@ -11,12 +11,12 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
         </svg>
-        UI 样式
+        {{ t('settings.uiStyle') }}
       </h2>
       <div class="setting-row">
         <div class="setting-info">
-          <span class="setting-label">主题模式</span>
-          <span class="setting-desc">切换深色 / 浅色外观</span>
+          <span class="setting-label">{{ t('settings.themeMode') }}</span>
+          <span class="setting-desc">{{ t('settings.themeDesc') }}</span>
         </div>
         <div class="theme-toggle" @click="currentTheme = currentTheme === 'dark' ? 'light' : 'dark'">
           <div class="toggle-track" :class="{ light: currentTheme === 'light' }">
@@ -29,9 +29,59 @@
               </svg>
             </div>
           </div>
-          <span class="toggle-label">{{ currentTheme === 'dark' ? '深色' : '浅色' }}</span>
+          <span class="toggle-label">{{ currentTheme === 'dark' ? t('settings.dark') : t('settings.light') }}</span>
         </div>
       </div>
+    </section>
+
+    <!-- 界面语言 -->
+    <section class="settings-section">
+      <h2 class="section-title">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+        </svg>
+        {{ t('settings.language') }}
+      </h2>
+      <div class="source-grid source-grid-col3">
+        <div
+          class="source-card"
+          :class="{ active: appConfig.language === 'auto' }"
+          role="radio"
+          :aria-checked="appConfig.language === 'auto'"
+          tabindex="0"
+          @click="setLanguagePref('auto')"
+          @keydown.enter="setLanguagePref('auto')"
+        >
+          <span class="source-name">{{ t('settings.languageAuto') }}</span>
+          <span v-if="appConfig.language === 'auto'" class="source-check">✓</span>
+        </div>
+        <div
+          class="source-card"
+          :class="{ active: appConfig.language === 'zh' }"
+          role="radio"
+          :aria-checked="appConfig.language === 'zh'"
+          tabindex="0"
+          @click="setLanguagePref('zh')"
+          @keydown.enter="setLanguagePref('zh')"
+        >
+          <span class="source-name">{{ t('settings.languageZh') }}</span>
+          <span v-if="appConfig.language === 'zh'" class="source-check">✓</span>
+        </div>
+        <div
+          class="source-card"
+          :class="{ active: appConfig.language === 'en' }"
+          role="radio"
+          :aria-checked="appConfig.language === 'en'"
+          tabindex="0"
+          @click="setLanguagePref('en')"
+          @keydown.enter="setLanguagePref('en')"
+        >
+          <span class="source-name">{{ t('settings.languageEn') }}</span>
+          <span v-if="appConfig.language === 'en'" class="source-check">✓</span>
+        </div>
+      </div>
+      <p class="source-hint">{{ t('settings.languageDesc') }}</p>
+      <p v-if="languageError" class="source-error">{{ languageError }}</p>
     </section>
 
     <!-- 下载 -->
@@ -40,7 +90,7 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
         </svg>
-        模型下载源
+        {{ t('settings.downloadSource') }}
       </h2>
       <div class="source-grid">
         <div
@@ -52,7 +102,7 @@
           @click="setSource('hf')"
           @keydown.enter="setSource('hf')"
         >
-          <span class="source-name">Hugging Face 镜像（hf-mirror.com）</span>
+          <span class="source-name">{{ t('settings.sourceHf') }}</span>
           <span v-if="downloadSource === 'hf'" class="source-check">✓</span>
         </div>
         <div
@@ -64,11 +114,11 @@
           @click="setSource('modelscope')"
           @keydown.enter="setSource('modelscope')"
         >
-          <span class="source-name">ModelScope（魔搭）</span>
+          <span class="source-name">{{ t('settings.sourceModelScope') }}</span>
           <span v-if="downloadSource === 'modelscope'" class="source-check">✓</span>
         </div>
       </div>
-      <p class="source-hint">该设置同时作用于搜索与下载。</p>
+      <p class="source-hint">{{ t('settings.sourceHint') }}</p>
       <p v-if="sourceError" class="source-error">{{ sourceError }}</p>
     </section>
 
@@ -78,18 +128,18 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M20 6 9 17l-5-5"/>
         </svg>
-        更新
+        {{ t('settings.update') }}
       </h2>
       <div class="setting-row">
         <div class="setting-info">
-          <span class="setting-label">检查更新</span>
-          <span class="setting-desc">当前版本 {{ appVersion }} · 自动检查每两天一次</span>
+          <span class="setting-label">{{ t('settings.checkUpdate') }}</span>
+          <span class="setting-desc">{{ t('settings.updateDesc', { version: appVersion }) }}</span>
         </div>
         <div class="update-actions">
           <span v-if="checkError" class="update-error">{{ checkError }}</span>
-          <span v-else-if="checkResult && !checkResult.hasUpdate" class="update-latest">✓ 已是最新版本</span>
+          <span v-else-if="checkResult && !checkResult.hasUpdate" class="update-latest">{{ t('settings.latest') }}</span>
           <button class="btn-check" :disabled="checking" @click="manualCheck">
-            {{ checking ? '检查中...' : '检查更新' }}
+            {{ checking ? t('settings.checking') : t('settings.checkUpdate') }}
           </button>
         </div>
       </div>
@@ -101,9 +151,10 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { appConfig, setTheme, loadConfig, setDownloadSource as applyDownloadSource } from '../store'
+import { appConfig, setTheme, loadConfig, setDownloadSource as applyDownloadSource, setLanguage as applyLanguage } from '../store'
 import { updateState, checkForUpdate, closeUpdateModal } from '../lib/update'
 import { getAppVersion } from '../wails'
+import { t } from '../lib/i18n'
 import UpdateModal from '../components/UpdateModal.vue'
 
 const currentTheme = computed({
@@ -122,9 +173,25 @@ async function setSource(source: string) {
   try {
     await applyDownloadSource(source)
   } catch {
-    sourceError.value = '切换下载源失败，请稍后重试'
+    sourceError.value = t('settings.sourceError')
   } finally {
     sourceSwitching.value = false
+  }
+}
+
+const languageError = ref('')
+const languageSwitching = ref(false)
+
+async function setLanguagePref(lang: string) {
+  if (lang === appConfig.language || languageSwitching.value) return
+  languageSwitching.value = true
+  languageError.value = ''
+  try {
+    await applyLanguage(lang)
+  } catch {
+    languageError.value = t('settings.languageError')
+  } finally {
+    languageSwitching.value = false
   }
 }
 
@@ -275,6 +342,10 @@ async function manualCheck() {
   grid-template-columns: 1fr 1fr;
   gap: 12px;
   margin-bottom: 12px;
+}
+
+.source-grid-col3 {
+  grid-template-columns: repeat(3, 1fr);
 }
 
 .source-card {

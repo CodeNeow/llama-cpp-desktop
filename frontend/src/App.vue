@@ -6,13 +6,13 @@
       <div class="title-bar" v-if="isDesktop">
         <div></div>
         <div class="window-controls">
-          <button class="win-btn win-min" @click="minimize" title="最小化">
+          <button class="win-btn win-min" @click="minimize" :title="t('title.minimize')">
             <svg width="12" height="12" viewBox="0 0 12 12"><rect x="1" y="5.5" width="10" height="1" fill="currentColor"/></svg>
           </button>
-          <button class="win-btn win-max" @click="maximize" title="最大化">
+          <button class="win-btn win-max" @click="maximize" :title="t('title.maximize')">
             <svg width="12" height="12" viewBox="0 0 12 12"><rect x="1.5" y="1.5" width="9" height="9" stroke="currentColor" stroke-width="1" fill="none"/></svg>
           </button>
-          <button class="win-btn win-close" @click="closeWindow" title="关闭">
+          <button class="win-btn win-close" @click="closeWindow" :title="t('title.close')">
             <svg width="12" height="12" viewBox="0 0 12 12"><line x1="1" y1="1" x2="11" y2="11" stroke="currentColor" stroke-width="1.5"/><line x1="11" y1="1" x2="1" y2="11" stroke="currentColor" stroke-width="1.5"/></svg>
           </button>
         </div>
@@ -34,6 +34,7 @@ import { onMounted } from 'vue'
 import Sidebar from './components/Sidebar.vue'
 import UpdateModal from './components/UpdateModal.vue'
 import { updateState, checkForUpdate, shouldAutoCheck, closeUpdateModal } from './lib/update'
+import { t } from './lib/i18n'
 
 const w = window as any
 const isDesktop = !!(w.go || w.electronAPI)  // Wails or Electron

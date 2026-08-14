@@ -14,7 +14,9 @@ import (
 // TestExtractZipFileTooLarge 验证 extractZip 拒绝超过单文件上限的条目。
 // 测试把 maxExtractFileSize 临时改小到 16 字节，构造含 100 字节文件的 zip
 // fixture，断言返回错误且目标文件未被写出（#2 解压炸弹单文件限制）。
+// 错误串经 tr 按当前语言返回，固定 zh 保证「超出解压大小上限」断言稳定。
 func TestExtractZipFileTooLarge(t *testing.T) {
+	setLanguageForTest(t, "zh")
 	orig := maxExtractFileSize
 	maxExtractFileSize = 16
 	defer func() { maxExtractFileSize = orig }()

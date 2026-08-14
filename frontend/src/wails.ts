@@ -17,12 +17,18 @@ function app(): any {
 
 // ─── Config ─────────────────────────────────────────────────────
 
-export async function getConfig(): Promise<{ theme: string; llamaCppDir: string; modelsDir: string; downloadSource: string }> {
+export async function getConfig(): Promise<{ theme: string; llamaCppDir: string; modelsDir: string; downloadSource: string; language: string; resolvedLanguage: 'zh' | 'en' }> {
   return app().GetConfig()
 }
 
 export async function setTheme(theme: string): Promise<void> {
   return app().SetTheme(theme)
+}
+
+// 设置界面语言偏好（"zh" | "en" | "auto"）；后端返回生效语言 resolvedLanguage
+// （zh/en，auto 按系统检测结果解析），由 store 据此刷新界面文案
+export async function setLanguage(language: string): Promise<string> {
+  return app().SetLanguage(language)
 }
 
 // ─── System Info ─────────────────────────────────────────────────

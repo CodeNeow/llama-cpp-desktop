@@ -82,28 +82,40 @@ describe('formatPromptTps', () => {
 })
 
 describe('formatUptime', () => {
-  it('不足 1 分钟显示秒', () => {
-    expect(formatUptime(0)).toBe('0 秒')
-    expect(formatUptime(59)).toBe('59 秒')
+  it('中文：不足 1 分钟显示秒', () => {
+    expect(formatUptime(0, 'zh')).toBe('0 秒')
+    expect(formatUptime(59, 'zh')).toBe('59 秒')
   })
 
-  it('1 分钟内含秒数按秒显示（60 秒 = 1 分钟）', () => {
-    expect(formatUptime(60)).toBe('1 分钟')
-    expect(formatUptime(45)).toBe('45 秒')
+  it('中文：1 分钟整与不足 1 小时显示分钟', () => {
+    expect(formatUptime(60, 'zh')).toBe('1 分钟')
+    expect(formatUptime(3599, 'zh')).toBe('59 分钟')
   })
 
-  it('不足 1 小时显示分钟', () => {
-    expect(formatUptime(3599)).toBe('59 分钟')
+  it('中文：超过 1 小时显示小时 + 分钟', () => {
+    expect(formatUptime(3600, 'zh')).toBe('1 小时 0 分')
+    expect(formatUptime(3600 + 23 * 60, 'zh')).toBe('1 小时 23 分')
+    expect(formatUptime(7200 + 45, 'zh')).toBe('2 小时 0 分')
   })
 
-  it('超过 1 小时显示小时 + 分钟', () => {
-    expect(formatUptime(3600)).toBe('1 小时 0 分')
-    expect(formatUptime(3600 + 23 * 60)).toBe('1 小时 23 分')
-    expect(formatUptime(7200 + 45)).toBe('2 小时 0 分')
+  it('中文：负数与小数按 0 处理', () => {
+    expect(formatUptime(-5, 'zh')).toBe('0 秒')
+    expect(formatUptime(45.9, 'zh')).toBe('45 秒')
   })
 
-  it('负数与小数按 0 处理', () => {
-    expect(formatUptime(-5)).toBe('0 秒')
-    expect(formatUptime(45.9)).toBe('45 秒')
+  it('英文：不足 1 分钟显示 {n}s', () => {
+    expect(formatUptime(0, 'en')).toBe('0s')
+    expect(formatUptime(59, 'en')).toBe('59s')
+  })
+
+  it('英文：不足 1 小时显示 {n}m', () => {
+    expect(formatUptime(60, 'en')).toBe('1m')
+    expect(formatUptime(3599, 'en')).toBe('59m')
+  })
+
+  it('英文：超过 1 小时显示 {h}h {m}m', () => {
+    expect(formatUptime(3600, 'en')).toBe('1h 0m')
+    expect(formatUptime(3600 + 23 * 60, 'en')).toBe('1h 23m')
+    expect(formatUptime(7200 + 45, 'en')).toBe('2h 0m')
   })
 })

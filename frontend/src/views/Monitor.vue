@@ -1,8 +1,8 @@
 <template>
   <div class="page">
     <div class="page-header">
-      <h1 class="page-title">监控</h1>
-      <p class="page-subtitle">推理服务与系统资源实时状态（每 1 秒刷新）</p>
+      <h1 class="page-title">{{ t('monitor.title') }}</h1>
+      <p class="page-subtitle">{{ t('monitor.subtitle') }}</p>
     </div>
 
     <!-- 推理服务：提示词处理 + 生成速度 -->
@@ -11,31 +11,31 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>
         </svg>
-        推理服务
+        {{ t('monitor.inference') }}
       </h2>
       <div class="server-head">
         <span class="status-badge" :class="status.serverRunning ? 'available' : 'unavailable'">
-          {{ status.serverRunning ? '运行中' : '未启动' }}
+          {{ status.serverRunning ? t('monitor.running') : t('monitor.notStarted') }}
         </span>
         <div v-if="status.serverRunning" class="uptime-block">
-          <span class="uptime-value">{{ formatUptime(status.uptimeSeconds) }}</span>
-          <span class="uptime-label">运行时长</span>
+          <span class="uptime-value">{{ formatUptime(status.uptimeSeconds, locale) }}</span>
+          <span class="uptime-label">{{ t('monitor.uptimeLabel') }}</span>
         </div>
       </div>
-      <div v-if="!status.serverRunning" class="tps-placeholder">启动服务后显示</div>
+      <div v-if="!status.serverRunning" class="tps-placeholder">{{ t('monitor.uptimePlaceholder') }}</div>
       <template v-else>
         <div class="tps-cards">
           <div class="tps-card">
-            <span class="tps-card-name">提示词处理速度</span>
-            <span class="tps-card-sub">提示词预填充（prefill）</span>
+            <span class="tps-card-name">{{ t('monitor.promptSpeed') }}</span>
+            <span class="tps-card-sub">{{ t('monitor.promptSub') }}</span>
             <div class="tps-card-value">
               <span class="tps-value">{{ promptTpsText }}</span>
               <span class="tps-label">tokens/s</span>
             </div>
           </div>
           <div class="tps-card">
-            <span class="tps-card-name">生成速度</span>
-            <span class="tps-card-sub">实时解码（decode）</span>
+            <span class="tps-card-name">{{ t('monitor.decodeSpeed') }}</span>
+            <span class="tps-card-sub">{{ t('monitor.decodeSub') }}</span>
             <div class="tps-card-value">
               <span class="tps-value">{{ decodeTpsText }}</span>
               <span class="tps-label">tokens/s</span>
@@ -48,10 +48,10 @@
             <polyline :points="decodePoints" />
           </svg>
           <div class="tps-chart-meta">
-            <span class="tps-chart-label">近 {{ decodeHistory.length }} 秒生成速度</span>
+            <span class="tps-chart-label">{{ t('monitor.chartLabel', { n: decodeHistory.length }) }}</span>
           </div>
         </div>
-        <p class="tps-footnote">提示词处理速度在预填充期间实时刷新 · 思考与回答同属解码过程</p>
+        <p class="tps-footnote">{{ t('monitor.footnote') }}</p>
       </template>
     </section>
 
@@ -61,7 +61,7 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/>
         </svg>
-        处理器
+        {{ t('monitor.cpu') }}
       </h2>
       <div class="usage-bar-wrapper">
         <div class="usage-bar">
@@ -77,7 +77,7 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="10" x2="6" y2="14"/><line x1="10" y1="10" x2="10" y2="14"/><line x1="14" y1="10" x2="14" y2="14"/><line x1="18" y1="10" x2="18" y2="14"/>
         </svg>
-        内存
+        {{ t('monitor.memory') }}
       </h2>
       <div class="usage-bar-wrapper">
         <div class="usage-bar">
@@ -86,9 +86,9 @@
         <span class="usage-text">{{ memPercent }}%</span>
       </div>
       <div class="metric-sub">
-        <span>已用 {{ memText(status.memUsed) }}</span>
+        <span>{{ t('monitor.memUsed', { n: memText(status.memUsed) }) }}</span>
         <span class="metric-divider">/</span>
-        <span>总计 {{ memText(status.memTotal) }}</span>
+        <span>{{ t('monitor.memTotal', { n: memText(status.memTotal) }) }}</span>
       </div>
     </section>
 
@@ -112,10 +112,10 @@
             </div>
             <span class="usage-text">{{ gpu.utilPercent }}%</span>
           </div>
-          <div class="gpu-mem">显存 {{ memText(gpu.memUsed) }} / {{ memText(gpu.memTotal) }}</div>
+          <div class="gpu-mem">{{ t('monitor.gpuMem', { used: memText(gpu.memUsed), total: memText(gpu.memTotal) }) }}</div>
         </div>
       </div>
-      <div v-else class="info-empty">未检测到 NVIDIA GPU</div>
+      <div v-else class="info-empty">{{ t('monitor.noGpu') }}</div>
     </section>
 
   </div>
@@ -126,6 +126,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { getMonitorStatus } from '../wails'
 import { appendHistory, chartPoints, formatPromptTps, formatUptime, type MonitorStatus } from '../lib/monitor'
 import { formatBytes } from '../lib/format'
+import { locale, t } from '../lib/i18n'
 
 const status = ref<MonitorStatus>({
   cpuPercent: 0,

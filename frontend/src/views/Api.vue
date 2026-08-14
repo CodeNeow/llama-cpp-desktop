@@ -1,8 +1,8 @@
 <template>
   <div class="page">
     <div class="page-header">
-      <h1 class="page-title">API</h1>
-      <p class="page-subtitle">llama-server 路由器模式</p>
+      <h1 class="page-title">{{ t('api.title') }}</h1>
+      <p class="page-subtitle">{{ t('api.subtitle') }}</p>
     </div>
 
     <!-- Server status -->
@@ -10,7 +10,7 @@
       <div class="status-row">
         <div class="status-indicator">
           <span class="status-dot" :class="serverRunning ? 'running' : 'stopped'"></span>
-          <span class="status-text">{{ serverRunning ? '运行中' : '已停止' }}</span>
+          <span class="status-text">{{ serverRunning ? t('api.running') : t('api.stopped') }}</span>
           <span v-if="serverRunning" class="status-url">http://{{ cfg.host }}:{{ cfg.port }}</span>
         </div>
         <button
@@ -18,7 +18,7 @@
           :class="serverRunning ? 'btn-stop' : 'btn-start'"
           @click="toggleServer"
         >
-          {{ serverRunning ? '停止服务' : '启动服务' }}
+          {{ serverRunning ? t('api.stopServer') : t('api.startServer') }}
         </button>
       </div>
 
@@ -30,22 +30,22 @@
 
     <!-- Config -->
     <section class="cfg-section">
-      <h2 class="section-title">服务器配置</h2>
+      <h2 class="section-title">{{ t('api.cfgTitle') }}</h2>
       <div class="cfg-grid">
         <div class="cfg-item">
-          <label>Host</label>
+          <label>{{ t('api.cfgHost') }}</label>
           <input v-model="cfg.host" class="cfg-input" :disabled="serverRunning" />
         </div>
         <div class="cfg-item">
-          <label>Port</label>
+          <label>{{ t('api.cfgPort') }}</label>
           <input v-model.number="cfg.port" type="number" min="1024" max="65535" step="1" class="cfg-input cfg-num" :disabled="serverRunning" />
         </div>
         <div class="cfg-item">
-          <label>最大并发模型</label>
+          <label>{{ t('api.cfgMaxModels') }}</label>
           <input v-model.number="cfg.maxModels" type="number" min="1" step="1" class="cfg-input cfg-num" :disabled="serverRunning" />
         </div>
         <div class="cfg-item">
-          <label>Prompt 缓存 (MiB)</label>
+          <label>{{ t('api.cfgCacheRam') }}</label>
           <input v-model.number="cfg.cacheRam" type="number" min="0" step="1" class="cfg-input cfg-num" :disabled="serverRunning" placeholder="8192" />
         </div>
       </div>
@@ -53,13 +53,13 @@
 
     <!-- Available models -->
     <section class="models-section">
-      <h2 class="section-title">可用模型 ({{ modelCount }})</h2>
-      <p class="section-desc">通过 API 请求中的 <code>model</code> 字段指定，llama-server 会自动加载/卸载</p>
+      <h2 class="section-title">{{ t('api.modelsTitle', { n: modelCount }) }}</h2>
+      <p class="section-desc">{{ t('api.modelsDescPrefix') }} <code>model</code> {{ t('api.modelsDescSuffix') }}</p>
       <div class="model-tags">
         <span v-for="m in availableModels" :key="m" class="model-tag">{{ m }}</span>
       </div>
       <div v-if="modelCount === 0" class="empty-hint">
-        将 .gguf 文件放入模型目录即可自动识别
+        {{ t('api.emptyHint') }}
       </div>
     </section>
   </div>
@@ -68,6 +68,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { getServerConfig, getModels, getServerStatus, refreshModels, saveServerConfig, startServer, stopServer } from '../wails'
+import { t } from '../lib/i18n'
 
 const serverRunning = ref(false)
 const serverLog = ref<string[]>([])
@@ -101,7 +102,7 @@ watch(cfg, () => {
       maxModels: cfg.maxModels,
       cacheRam: cfg.cacheRam,
     }).catch((e) => {
-      serverLog.value.push('配置保存失败: ' + (e instanceof Error ? e.message : String(e)))
+      serverLog.value.push(t('api.saveFailed', { msg: e instanceof Error ? e.message : String(e) }))
     })
   }, 500)
 })
@@ -149,7 +150,7 @@ async function toggleServer() {
       await startServer()
     }
   } catch (e) {
-    serverLog.value.push('启动/停止服务失败: ' + (e instanceof Error ? e.message : String(e)))
+    serverLog.value.push(t('api.toggleFailed', { msg: e instanceof Error ? e.message : String(e) }))
   }
   // 状态统一由 checkServerStatus 延迟刷新真实值，不做乐观翻转（#14）
   setTimeout(checkServerStatus, 500)

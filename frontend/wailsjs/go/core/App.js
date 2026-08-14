@@ -142,6 +142,10 @@ export function SetDownloadSource(arg1) {
   return window['go']['core']['App']['SetDownloadSource'](arg1);
 }
 
+export function SetLanguage(arg1) {
+  return window['go']['core']['App']['SetLanguage'](arg1);
+}
+
 export function SetModelsDir(arg1) {
   return window['go']['core']['App']['SetModelsDir'](arg1);
 }

@@ -182,6 +182,8 @@ func TestFetchLatestReleaseAtHTTPError(t *testing.T) {
 // 即置 error。测试用 httptest 提供固定字节流，注入 renameFile 失败并
 // 完整跑通 downloadTask，断言任务状态与错误信息。
 func TestDownloadTaskRenameFailure(t *testing.T) {
+	// 错误串经 tr 按当前语言返回，固定 zh 保证「重命名失败」断言与语言无关。
+	setLanguageForTest(t, "zh")
 	withTempCwd(t)
 	dlTasksMu.Lock()
 	dlTasks = nil

@@ -107,11 +107,17 @@ func (a *App) GetConfig() map[string]interface{} {
 	dsrc := downloadSource
 	downloadSourceMu.Unlock()
 
+	languageMu.Lock()
+	lang := currentLanguage
+	languageMu.Unlock()
+
 	return map[string]interface{}{
-		"theme":          theme,
-		"llamaCppDir":    dir,
-		"modelsDir":      modelDir,
-		"downloadSource": dsrc,
+		"theme":            theme,
+		"llamaCppDir":      dir,
+		"modelsDir":        modelDir,
+		"downloadSource":   dsrc,
+		"language":         lang,                // 语言原始偏好: zh / en / auto
+		"resolvedLanguage": effectiveLanguage(), // 生效语言: zh / en（auto 按系统检测结果）
 	}
 }
 
@@ -124,13 +130,29 @@ func (a *App) GetDownloadSource() string {
 // 返回中文错误且不改写状态；合法值写入全局并持久化。
 func (a *App) SetDownloadSource(source string) error {
 	if source != sourceHF && source != sourceModelScope {
-		return fmt.Errorf("非法下载源 %q：仅允许 hf 或 modelscope", source)
+		return fmt.Errorf(tr("非法下载源 %q：仅允许 hf 或 modelscope", "invalid download source %q: only hf or modelscope are allowed"), source)
 	}
 	downloadSourceMu.Lock()
 	downloadSource = source
 	downloadSourceMu.Unlock()
 	saveConfig()
 	return nil
+}
+
+// SetLanguage 设置界面语言：仅允许 zh / en / auto 白名单值，非法值返回错误且
+// 不改写状态；合法值写入全局并持久化，并返回生效语言（zh/en，auto 时按系统
+// 检测结果解析）。前端用返回值立即刷新界面文案，避免依赖 GetConfig 二次读取。
+func (a *App) SetLanguage(language string) (string, error) {
+	switch language {
+	case "zh", "en", "auto":
+	default:
+		return "", fmt.Errorf(tr("非法语言 %q：仅允许 zh/en/auto", "invalid language %q: only zh/en/auto"), language)
+	}
+	languageMu.Lock()
+	currentLanguage = language
+	languageMu.Unlock()
+	saveConfig()
+	return effectiveLanguage(), nil
 }
 
 func (a *App) SetTheme(theme string) {
@@ -154,14 +176,14 @@ func (a *App) SetTheme(theme string) {
 // 不改写状态。
 func (a *App) SetModelsDir(dir string) error {
 	if dir == "" {
-		return fmt.Errorf("模型目录不能为空")
+		return fmt.Errorf(tr("模型目录不能为空", "models directory cannot be empty"))
 	}
 	fi, err := os.Stat(dir)
 	if err != nil {
-		return fmt.Errorf("模型目录不存在: %s", dir)
+		return fmt.Errorf(tr("模型目录不存在: %s", "models directory does not exist: %s"), dir)
 	}
 	if !fi.IsDir() {
-		return fmt.Errorf("模型目录不是有效目录: %s", dir)
+		return fmt.Errorf(tr("模型目录不是有效目录: %s", "models directory is not a valid directory: %s"), dir)
 	}
 	modelsDirMu.Lock()
 	customModelsDir = dir
@@ -178,7 +200,7 @@ func (a *App) BrowseModelsDir() (string, error) {
 		return "", nil
 	}
 	dir, err := wailsRuntime.OpenDirectoryDialog(a.ctx, wailsRuntime.OpenDialogOptions{
-		Title: "选择模型目录",
+		Title: tr("选择模型目录", "Select Models Directory"),
 	})
 	if err != nil || dir == "" {
 		return "", err
@@ -276,48 +298,48 @@ func (a *App) SaveModelConfig(modelID string, config ModelConfig) error {
 	// 校验字符串字段白名单，防止非法取值（含 INI 注入 payload）进入
 	// 配置并被预设生成直接写入 INI（#9 第一层防御）。
 	if !validGPULayersValue(config.GPULayers) {
-		return fmt.Errorf("非法 GPULayers %q：仅允许 auto/all/0 或正整数", config.GPULayers)
+		return fmt.Errorf(tr("非法 GPULayers %q：仅允许 auto/all/0 或正整数", "invalid GPULayers %q: only auto/all/0 or a positive integer"), config.GPULayers)
 	}
 	if !validCacheTypeValue(config.CacheTypeK) {
-		return fmt.Errorf("非法 CacheTypeK %q：仅允许 f32/f16/bf16/q8_0/q4_0/q4_1/iq4_nl/q5_0/q5_1", config.CacheTypeK)
+		return fmt.Errorf(tr("非法 CacheTypeK %q：仅允许 f32/f16/bf16/q8_0/q4_0/q4_1/iq4_nl/q5_0/q5_1", "invalid CacheTypeK %q: only f32/f16/bf16/q8_0/q4_0/q4_1/iq4_nl/q5_0/q5_1"), config.CacheTypeK)
 	}
 	if !validCacheTypeValue(config.CacheTypeV) {
-		return fmt.Errorf("非法 CacheTypeV %q：仅允许 f32/f16/bf16/q8_0/q4_0/q4_1/iq4_nl/q5_0/q5_1", config.CacheTypeV)
+		return fmt.Errorf(tr("非法 CacheTypeV %q：仅允许 f32/f16/bf16/q8_0/q4_0/q4_1/iq4_nl/q5_0/q5_1", "invalid CacheTypeV %q: only f32/f16/bf16/q8_0/q4_0/q4_1/iq4_nl/q5_0/q5_1"), config.CacheTypeV)
 	}
 	// b10342 新参数校验：LoadMode/SplitMode/RopeScaling 走白名单，
 	// TensorSplit 走 INI 注入防御（含换行/首尾空白即拒绝）。
 	if !validLoadModeValue(config.LoadMode) {
-		return fmt.Errorf("非法 LoadMode %q：仅允许 none/mmap/mlock/mmap+mlock/dio", config.LoadMode)
+		return fmt.Errorf(tr("非法 LoadMode %q：仅允许 none/mmap/mlock/mmap+mlock/dio", "invalid LoadMode %q: only none/mmap/mlock/mmap+mlock/dio"), config.LoadMode)
 	}
 	if !validSplitModeValue(config.SplitMode) {
-		return fmt.Errorf("非法 SplitMode %q：仅允许 none/layer/row/tensor", config.SplitMode)
+		return fmt.Errorf(tr("非法 SplitMode %q：仅允许 none/layer/row/tensor", "invalid SplitMode %q: only none/layer/row/tensor"), config.SplitMode)
 	}
 	if !validRopeScalingValue(config.RopeScaling) {
-		return fmt.Errorf("非法 RopeScaling %q：仅允许 none/linear/yarn", config.RopeScaling)
+		return fmt.Errorf(tr("非法 RopeScaling %q：仅允许 none/linear/yarn", "invalid RopeScaling %q: only none/linear/yarn"), config.RopeScaling)
 	}
 	if !validIniValue(config.TensorSplit) {
-		return fmt.Errorf("非法 TensorSplit %q：不能包含换行或首尾空白", config.TensorSplit)
+		return fmt.Errorf(tr("非法 TensorSplit %q：不能包含换行或首尾空白", "invalid TensorSplit %q: must not contain newlines or leading/trailing whitespace"), config.TensorSplit)
 	}
 	// mmproj 显式路径覆盖：非空时必须通过 INI 注入校验（含换行/首尾空白即拒绝）；
 	// 不要求文件存在（模型可能移动）。空值表示保持自动检测。
 	if !validIniValue(config.MMProj) {
-		return fmt.Errorf("非法 MMProj %q：不能包含换行或首尾空白", config.MMProj)
+		return fmt.Errorf(tr("非法 MMProj %q：不能包含换行或首尾空白", "invalid MMProj %q: must not contain newlines or leading/trailing whitespace"), config.MMProj)
 	}
 	// spec-type 白名单：仅允许空或 draft-mtp。
 	if !validSpecTypeValue(config.SpecType) {
-		return fmt.Errorf("非法 SpecType %q：仅允许 draft-mtp", config.SpecType)
+		return fmt.Errorf(tr("非法 SpecType %q：仅允许 draft-mtp", "invalid SpecType %q: only draft-mtp"), config.SpecType)
 	}
 	if config.SpecDraftNMax < 0 {
-		return fmt.Errorf("非法 SpecDraftNMax %d：不能为负数", config.SpecDraftNMax)
+		return fmt.Errorf(tr("非法 SpecDraftNMax %d：不能为负数", "invalid SpecDraftNMax %d: must not be negative"), config.SpecDraftNMax)
 	}
 	if config.MainGPU < 0 {
-		return fmt.Errorf("非法 MainGPU %d：不能为负数", config.MainGPU)
+		return fmt.Errorf(tr("非法 MainGPU %d：不能为负数", "invalid MainGPU %d: must not be negative"), config.MainGPU)
 	}
 	if config.NCpuMoe < 0 {
-		return fmt.Errorf("非法 NCpuMoe %d：不能为负数", config.NCpuMoe)
+		return fmt.Errorf(tr("非法 NCpuMoe %d：不能为负数", "invalid NCpuMoe %d: must not be negative"), config.NCpuMoe)
 	}
 	if config.RopeScale < 0 {
-		return fmt.Errorf("非法 RopeScale %g：不能为负数", config.RopeScale)
+		return fmt.Errorf(tr("非法 RopeScale %g：不能为负数", "invalid RopeScale %g: must not be negative"), config.RopeScale)
 	}
 
 	modelConfigsMu.Lock()
@@ -341,16 +363,16 @@ func (a *App) SaveServerConfig(cfg ServerConfig) error {
 	switch cfg.Host {
 	case "127.0.0.1", "localhost", "::1":
 	default:
-		return fmt.Errorf("非法 Host %q：仅允许环回地址，避免将推理服务暴露到局域网", cfg.Host)
+		return fmt.Errorf(tr("非法 Host %q：仅允许环回地址，避免将推理服务暴露到局域网", "invalid Host %q: only loopback addresses are allowed to avoid exposing the inference service to the LAN"), cfg.Host)
 	}
 	if cfg.Port < 1024 || cfg.Port > 65535 {
-		return fmt.Errorf("非法 Port %d：端口范围应为 1024-65535", cfg.Port)
+		return fmt.Errorf(tr("非法 Port %d：端口范围应为 1024-65535", "invalid Port %d: port must be in range 1024-65535"), cfg.Port)
 	}
 	if cfg.MaxModels < 1 {
-		return fmt.Errorf("非法 MaxModels %d：至少为 1", cfg.MaxModels)
+		return fmt.Errorf(tr("非法 MaxModels %d：至少为 1", "invalid MaxModels %d: must be at least 1"), cfg.MaxModels)
 	}
 	if cfg.CacheRAM < 0 {
-		return fmt.Errorf("非法 CacheRAM %d：不能为负数", cfg.CacheRAM)
+		return fmt.Errorf(tr("非法 CacheRAM %d：不能为负数", "invalid CacheRAM %d: must not be negative"), cfg.CacheRAM)
 	}
 
 	serverConfigMu.Lock()
@@ -443,7 +465,7 @@ func (a *App) BrowseLlamaCppDir() (string, error) {
 		return "", nil
 	}
 	dir, err := wailsRuntime.OpenDirectoryDialog(a.ctx, wailsRuntime.OpenDialogOptions{
-		Title: "选择 llama.cpp 目录",
+		Title: tr("选择 llama.cpp 目录", "Select llama.cpp Directory"),
 	})
 	if err != nil || dir == "" {
 		return "", err
@@ -472,13 +494,13 @@ func (a *App) CheckForUpdate() (*UpdateCheckResult, error) {
 // 版本号由调用方传入（来自 CheckForUpdate 结果），用于目标文件命名。
 func (a *App) StartUpdateDownload(version string) error {
 	if compareVersions(version, currentVersion) <= 0 {
-		return fmt.Errorf("没有可更新的版本: %s", version)
+		return fmt.Errorf(tr("没有可更新的版本: %s", "no update available for version %s"), version)
 	}
 	updateDownloadMu.Lock()
 	inProgress := updateDownloadState.Status == "downloading"
 	updateDownloadMu.Unlock()
 	if inProgress {
-		return fmt.Errorf("更新下载已在进行中")
+		return fmt.Errorf(tr("更新下载已在进行中", "update download already in progress"))
 	}
 	go downloadUpdateRelease(version)
 	return nil

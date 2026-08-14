@@ -4,6 +4,7 @@ import {
   startUpdateDownload as startUpdateDownloadBackend,
   getUpdateDownloadStatus,
 } from '../wails'
+import { t } from './i18n'
 
 // 自动检查节流：距上次检查不足 48 小时不再自动检查（本地时间）。
 // 手动检查不受此限制。
@@ -68,7 +69,7 @@ export async function checkForUpdate(): Promise<void> {
     updateState.showModal = result.hasUpdate
   } catch {
     writeCheckTime()
-    updateState.error = '检查更新失败，请确认网络后重试'
+    updateState.error = t('update.checkFailed')
   } finally {
     updateState.checking = false
   }
@@ -90,7 +91,7 @@ export function startUpdateDownload(): void {
   startUpdateDownloadBackend(version).catch(() => {
     if (updateState.download) {
       updateState.download.status = 'error'
-      updateState.download.error = '下载启动失败'
+      updateState.download.error = t('update.startFailed')
     }
     stopPolling()
   })

@@ -50,6 +50,9 @@ func saveConfigState(t *testing.T) (origModels map[string]ModelConfig, origServe
 	modelsDirMu.Lock()
 	origModelsDir = customModelsDir
 	modelsDirMu.Unlock()
+	languageMu.Lock()
+	origLanguage := currentLanguage
+	languageMu.Unlock()
 	t.Cleanup(func() {
 		modelConfigsMu.Lock()
 		cachedModelConfigs = origModels
@@ -66,6 +69,9 @@ func saveConfigState(t *testing.T) (origModels map[string]ModelConfig, origServe
 		modelsDirMu.Lock()
 		customModelsDir = origModelsDir
 		modelsDirMu.Unlock()
+		languageMu.Lock()
+		currentLanguage = origLanguage
+		languageMu.Unlock()
 	})
 	return
 }
@@ -99,6 +105,9 @@ func TestSaveLoadConfigRoundTrip(t *testing.T) {
 	modelsDirMu.Lock()
 	customModelsDir = modelsDirPath
 	modelsDirMu.Unlock()
+	languageMu.Lock()
+	currentLanguage = "en"
+	languageMu.Unlock()
 	saveConfig()
 
 	if _, err := os.Stat(configFile); err != nil {
@@ -121,6 +130,9 @@ func TestSaveLoadConfigRoundTrip(t *testing.T) {
 	modelsDirMu.Lock()
 	customModelsDir = ""
 	modelsDirMu.Unlock()
+	languageMu.Lock()
+	currentLanguage = ""
+	languageMu.Unlock()
 
 	loadConfig()
 
@@ -151,6 +163,11 @@ func TestSaveLoadConfigRoundTrip(t *testing.T) {
 		t.Errorf("自定义模型目录读回错误: %q, want %q", customModelsDir, modelsDirPath)
 	}
 	modelsDirMu.Unlock()
+	languageMu.Lock()
+	if currentLanguage != "en" {
+		t.Errorf("语言偏好读回错误: %q, want %q", currentLanguage, "en")
+	}
+	languageMu.Unlock()
 }
 
 // TestLoadConfigDefaults 验证缺失/部分配置时用默认值兜底，不因旧数据崩溃。
@@ -180,6 +197,40 @@ func TestLoadConfigDefaults(t *testing.T) {
 		t.Error("无模型配置时不应为 nil map")
 	}
 	modelConfigsMu.Unlock()
+	languageMu.Lock()
+	if currentLanguage != "auto" {
+		t.Errorf("旧配置无 language 字段时应兜底 auto, 实际 %q", currentLanguage)
+	}
+	languageMu.Unlock()
+}
+
+// TestLoadConfigLanguageFallback 验证语言偏好白名单兜底：缺失字段与非法值均
+// 回退 auto，仅 zh/en/auto 合法取值被保留（与 downloadSource 同策略）。
+func TestLoadConfigLanguageFallback(t *testing.T) {
+	withTempCwd(t)
+	saveConfigState(t)
+
+	// 缺失 language 字段 → auto（已由 TestLoadConfigDefaults 覆盖，这里补充非法值）
+	if err := os.WriteFile(configFile, []byte(`{"language":"fr"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	loadConfig()
+	languageMu.Lock()
+	if currentLanguage != "auto" {
+		t.Errorf("非法语言 fr 应兜底 auto, 实际 %q", currentLanguage)
+	}
+	languageMu.Unlock()
+
+	// 合法取值保留
+	if err := os.WriteFile(configFile, []byte(`{"language":"zh"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	loadConfig()
+	languageMu.Lock()
+	if currentLanguage != "zh" {
+		t.Errorf("合法语言 zh 应保持不变, 实际 %q", currentLanguage)
+	}
+	languageMu.Unlock()
 }
 
 // TestLoadConfigMissingFile 验证配置文件不存在时静默返回（首次启动场景）。

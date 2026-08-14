@@ -8,7 +8,8 @@ export class LimitedQueue {
   private readonly max: number
 
   constructor(max: number) {
-    if (!(max >= 1)) throw new Error(`LimitedQueue max 必须 >= 1，got ${max}`)
+    // 内部编程错误，固定英文常量（用户不可见，仅开发期捕获非法入参）。
+    if (!(max >= 1)) throw new Error(`LimitedQueue max must be >= 1, got ${max}`)
     this.max = max
   }
 

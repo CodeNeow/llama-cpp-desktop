@@ -1160,30 +1160,30 @@ var renameFile = os.Rename
 func copyFile(src, dst string) error {
 	srcF, err := os.Open(src)
 	if err != nil {
-		return fmt.Errorf("打开源文件失败: %w", err)
+		return fmt.Errorf(tr("打开源文件失败: %w", "failed to open source file: %w"), err)
 	}
 	defer srcF.Close()
 
 	fi, err := srcF.Stat()
 	if err != nil {
-		return fmt.Errorf("读取源文件信息失败: %w", err)
+		return fmt.Errorf(tr("读取源文件信息失败: %w", "failed to read source file info: %w"), err)
 	}
 
 	dstF, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, fi.Mode())
 	if err != nil {
-		return fmt.Errorf("创建目标文件失败: %w", err)
+		return fmt.Errorf(tr("创建目标文件失败: %w", "failed to create destination file: %w"), err)
 	}
 	_, copyErr := io.Copy(dstF, srcF)
 	closeErr := dstF.Close()
 	if copyErr != nil {
-		return fmt.Errorf("复制文件内容失败: %w", copyErr)
+		return fmt.Errorf(tr("复制文件内容失败: %w", "failed to copy file contents: %w"), copyErr)
 	}
 	if closeErr != nil {
-		return fmt.Errorf("关闭目标文件失败: %w", closeErr)
+		return fmt.Errorf(tr("关闭目标文件失败: %w", "failed to close destination file: %w"), closeErr)
 	}
 	// 显式 chmod 保证目标权限与源完全一致（不受 umask 影响）
 	if err := os.Chmod(dst, fi.Mode()); err != nil {
-		return fmt.Errorf("设置目标文件权限失败: %w", err)
+		return fmt.Errorf(tr("设置目标文件权限失败: %w", "failed to set destination file permissions: %w"), err)
 	}
 	return nil
 }
@@ -1204,7 +1204,7 @@ func moveFile(src, dst string) error {
 			return copyErr
 		}
 		if removeErr := os.Remove(src); removeErr != nil {
-			return fmt.Errorf("删除源文件失败: %w", removeErr)
+			return fmt.Errorf(tr("删除源文件失败: %w", "failed to remove source file: %w"), removeErr)
 		}
 		return nil
 	}
@@ -1236,14 +1236,14 @@ func downloadLlamaCpp() {
 
 	release, err := fetchLatestRelease()
 	if err != nil {
-		setDownloadError("获取发布信息失败: " + err.Error())
+		setDownloadError(tr("获取发布信息失败: ", "Failed to fetch release info: ") + err.Error())
 		return
 	}
 
 	// Step 2: Find best asset（主程序资产；cudart 运行库为附加资产）
 	mainAsset := pickBestAsset(release.Assets)
 	if mainAsset == nil {
-		setDownloadError("未找到适用于当前平台的 llama.cpp 构建")
+		setDownloadError(tr("未找到适用于当前平台的 llama.cpp 构建", "No llama.cpp build found for the current platform"))
 		return
 	}
 
@@ -1275,7 +1275,7 @@ func downloadLlamaCpp() {
 	// 目标目录：自定义 llama.cpp 目录优先，否则默认 llama-cpp/；解压前建一次
 	targetDir := llamaCppDownloadDir()
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
-		setDownloadError("创建目录失败: " + err.Error())
+		setDownloadError(tr("创建目录失败: ", "Failed to create directory: ") + err.Error())
 		return
 	}
 
@@ -1300,7 +1300,7 @@ func downloadLlamaCpp() {
 				downloadMu.Unlock()
 				log.Println("⏹️ llama.cpp download stopped by user")
 			} else {
-				setDownloadError("下载失败: " + err.Error())
+				setDownloadError(tr("下载失败: ", "Download failed: ") + err.Error())
 			}
 			return
 		}
@@ -1329,11 +1329,11 @@ func downloadLlamaCpp() {
 			extractErr = extractTarGz(tmpPath, targetDir)
 		default:
 			// 与原有单资产逻辑一致：不支持格式直接报错，不带"解压失败"前缀
-			setDownloadError("不支持的文件格式: " + asset.Name)
+			setDownloadError(tr("不支持的文件格式: ", "Unsupported file format: ") + asset.Name)
 			return
 		}
 		if extractErr != nil {
-			setDownloadError("解压失败: " + extractErr.Error())
+			setDownloadError(tr("解压失败: ", "Extraction failed: ") + extractErr.Error())
 			return
 		}
 
@@ -1363,7 +1363,7 @@ func downloadLlamaCpp() {
 func downloadWithResume(ctx context.Context, url string, totalSize int64, baseDownloaded int64) (string, error) {
 	tmpFile, err := os.CreateTemp("", "llamacpp-download-*"+filepath.Ext(url[strings.LastIndex(url, "."):]))
 	if err != nil {
-		return "", fmt.Errorf("创建临时文件失败: %w", err)
+		return "", fmt.Errorf(tr("创建临时文件失败: %w", "failed to create temporary file: %w"), err)
 	}
 	tmpPath := tmpFile.Name()
 
@@ -1738,7 +1738,7 @@ func extractZip(src, dest string) error {
 
 		// 提前按声明大小拦截超大文件，避免先写出再发现超限
 		if f.UncompressedSize64 > uint64(maxExtractFileSize) {
-			return fmt.Errorf("文件超出解压大小上限: %s", path)
+			return fmt.Errorf(tr("文件超出解压大小上限: %s", "file exceeds the extraction size limit: %s"), path)
 		}
 
 		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
@@ -1766,11 +1766,11 @@ func extractZip(src, dest string) error {
 			return copyErr
 		}
 		if n > maxExtractFileSize {
-			return fmt.Errorf("文件超出解压大小上限: %s", path)
+			return fmt.Errorf(tr("文件超出解压大小上限: %s", "file exceeds the extraction size limit: %s"), path)
 		}
 		totalBytes += n
 		if totalBytes > maxExtractTotalSize {
-			return fmt.Errorf("解压总大小超出上限: %d 字节", totalBytes)
+			return fmt.Errorf(tr("解压总大小超出上限: %d 字节", "total extraction size exceeds the limit: %d bytes"), totalBytes)
 		}
 	}
 	return nil
@@ -1814,7 +1814,7 @@ func extractTarGz(src, dest string) error {
 		case tar.TypeReg:
 			// 提前按声明的条目大小拦截超大文件（#2）
 			if header.Size > maxExtractFileSize {
-				return fmt.Errorf("文件超出解压大小上限: %s", path)
+				return fmt.Errorf(tr("文件超出解压大小上限: %s", "file exceeds the extraction size limit: %s"), path)
 			}
 			if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 				return err
@@ -1829,16 +1829,16 @@ func extractTarGz(src, dest string) error {
 				return copyErr
 			}
 			if n > maxExtractFileSize {
-				return fmt.Errorf("文件超出解压大小上限: %s", path)
+				return fmt.Errorf(tr("文件超出解压大小上限: %s", "file exceeds the extraction size limit: %s"), path)
 			}
 			totalBytes += n
 			if totalBytes > maxExtractTotalSize {
-				return fmt.Errorf("解压总大小超出上限: %d 字节", totalBytes)
+				return fmt.Errorf(tr("解压总大小超出上限: %d 字节", "total extraction size exceeds the limit: %d bytes"), totalBytes)
 			}
 		default:
 			// 符号链接/硬链接/设备文件等未知类型显式拒绝，避免静默跳过
 			// 产生不完整解压或潜在安全问题（#6）
-			return fmt.Errorf("不支持的 tar 条目类型 %d: %s", header.Typeflag, header.Name)
+			return fmt.Errorf(tr("不支持的 tar 条目类型 %d: %s", "unsupported tar entry type %d: %s"), header.Typeflag, header.Name)
 		}
 	}
 	return nil
@@ -1984,12 +1984,12 @@ func downloadUpdateRelease(version string) {
 
 	release, err := fetchLatestReleaseAt(updateRepoAPI)
 	if err != nil {
-		setUpdateDownloadError("获取发布信息失败: " + err.Error())
+		setUpdateDownloadError(tr("获取发布信息失败: ", "Failed to fetch release info: ") + err.Error())
 		return
 	}
 	asset := pickUpdateAsset(release.Assets)
 	if asset == nil {
-		setUpdateDownloadError("未找到适用于当前平台的主程序")
+		setUpdateDownloadError(tr("未找到适用于当前平台的主程序", "No main executable found for the current platform"))
 		return
 	}
 
@@ -2000,7 +2000,7 @@ func downloadUpdateRelease(version string) {
 	// Step 2: 下载到可执行文件同目录，命名 llama-gui-v<tag>.exe
 	exePath, err := updateExePath()
 	if err != nil {
-		setUpdateDownloadError("无法定位可执行文件路径: " + err.Error())
+		setUpdateDownloadError(tr("无法定位可执行文件路径: ", "Unable to locate the executable path: ") + err.Error())
 		return
 	}
 	dir := filepath.Dir(exePath)
@@ -2015,7 +2015,7 @@ func downloadUpdateRelease(version string) {
 			updateDownloadMu.Unlock()
 			log.Println("[INFO] update download stopped by user")
 		} else {
-			setUpdateDownloadError("下载失败: " + err.Error())
+			setUpdateDownloadError(tr("下载失败: ", "Download failed: ") + err.Error())
 		}
 		return
 	}
@@ -2024,7 +2024,7 @@ func downloadUpdateRelease(version string) {
 	// Step 3: 移动到目标路径（跨设备时 moveFile 回退为复制，保留源权限；
 	// 非跨设备失败且目标已存在时先删旧文件再重试）
 	if err := moveFile(tmpPath, destPath); err != nil {
-		setUpdateDownloadError("保存文件失败: " + err.Error())
+		setUpdateDownloadError(tr("保存文件失败: ", "Failed to save file: ") + err.Error())
 		return
 	}
 
@@ -2051,7 +2051,7 @@ func setUpdateDownloadError(msg string) {
 func downloadUpdateWithResume(ctx context.Context, url string, totalSize int64) (string, error) {
 	tmpFile, err := os.CreateTemp("", "llama-gui-update-*.exe")
 	if err != nil {
-		return "", fmt.Errorf("创建临时文件失败: %w", err)
+		return "", fmt.Errorf(tr("创建临时文件失败: %w", "failed to create temporary file: %w"), err)
 	}
 	tmpPath := tmpFile.Name()
 
@@ -2252,7 +2252,7 @@ func validSpecTypeValue(s string) bool {
 func generateModelsPreset() (string, error) {
 	models := scanModels()
 	if len(models) == 0 {
-		return "", fmt.Errorf("LLM-Models 目录中没有模型")
+		return "", fmt.Errorf(tr("LLM-Models 目录中没有模型", "no models found in the LLM-Models directory"))
 	}
 	modelConfigsMu.Lock()
 	cfgs := cachedModelConfigs
@@ -2265,7 +2265,7 @@ func generateModelsPreset() (string, error) {
 // matching config entry only emit the model path (plus auto-detected options).
 func generateModelsPresetFrom(models []ModelInfo, cfgs map[string]ModelConfig) (string, error) {
 	if len(models) == 0 {
-		return "", fmt.Errorf("LLM-Models 目录中没有模型")
+		return "", fmt.Errorf(tr("LLM-Models 目录中没有模型", "no models found in the LLM-Models directory"))
 	}
 
 	var buf bytes.Buffer
@@ -2312,7 +2312,7 @@ func generateModelsPresetFrom(models []ModelInfo, cfgs map[string]ModelConfig) (
 			}
 			if cfg.GPULayers != "" && cfg.GPULayers != "auto" {
 				if !validIniValue(cfg.GPULayers) {
-					return "", fmt.Errorf("非法 GPULayers 值 %q：不能包含换行或首尾空白", cfg.GPULayers)
+					return "", fmt.Errorf(tr("非法 GPULayers 值 %q：不能包含换行或首尾空白", "invalid GPULayers value %q: must not contain newlines or leading/trailing whitespace"), cfg.GPULayers)
 				}
 				buf.WriteString(fmt.Sprintf("gpu-layers = %s\n", cfg.GPULayers))
 			}
@@ -2321,13 +2321,13 @@ func generateModelsPresetFrom(models []ModelInfo, cfgs map[string]ModelConfig) (
 			}
 			if cfg.CacheTypeK != "" {
 				if !validIniValue(cfg.CacheTypeK) {
-					return "", fmt.Errorf("非法 CacheTypeK 值 %q：不能包含换行或首尾空白", cfg.CacheTypeK)
+					return "", fmt.Errorf(tr("非法 CacheTypeK 值 %q：不能包含换行或首尾空白", "invalid CacheTypeK value %q: must not contain newlines or leading/trailing whitespace"), cfg.CacheTypeK)
 				}
 				buf.WriteString(fmt.Sprintf("cache-type-k = %s\n", cfg.CacheTypeK))
 			}
 			if cfg.CacheTypeV != "" {
 				if !validIniValue(cfg.CacheTypeV) {
-					return "", fmt.Errorf("非法 CacheTypeV 值 %q：不能包含换行或首尾空白", cfg.CacheTypeV)
+					return "", fmt.Errorf(tr("非法 CacheTypeV 值 %q：不能包含换行或首尾空白", "invalid CacheTypeV value %q: must not contain newlines or leading/trailing whitespace"), cfg.CacheTypeV)
 				}
 				buf.WriteString(fmt.Sprintf("cache-type-v = %s\n", cfg.CacheTypeV))
 			}
@@ -2336,7 +2336,7 @@ func generateModelsPresetFrom(models []ModelInfo, cfgs map[string]ModelConfig) (
 			// 仅由 loadConfig 迁移为 LoadMode，不再直接写入预设。
 			if cfg.LoadMode != "" && cfg.LoadMode != "mmap" {
 				if !validIniValue(cfg.LoadMode) {
-					return "", fmt.Errorf("非法 LoadMode 值 %q：不能包含换行或首尾空白", cfg.LoadMode)
+					return "", fmt.Errorf(tr("非法 LoadMode 值 %q：不能包含换行或首尾空白", "invalid LoadMode value %q: must not contain newlines or leading/trailing whitespace"), cfg.LoadMode)
 				}
 				buf.WriteString(fmt.Sprintf("load-mode = %s\n", cfg.LoadMode))
 			}
@@ -2348,13 +2348,13 @@ func generateModelsPresetFrom(models []ModelInfo, cfgs map[string]ModelConfig) (
 			}
 			if cfg.SplitMode != "" && cfg.SplitMode != "layer" {
 				if !validIniValue(cfg.SplitMode) {
-					return "", fmt.Errorf("非法 SplitMode 值 %q：不能包含换行或首尾空白", cfg.SplitMode)
+					return "", fmt.Errorf(tr("非法 SplitMode 值 %q：不能包含换行或首尾空白", "invalid SplitMode value %q: must not contain newlines or leading/trailing whitespace"), cfg.SplitMode)
 				}
 				buf.WriteString(fmt.Sprintf("split-mode = %s\n", cfg.SplitMode))
 			}
 			if cfg.TensorSplit != "" {
 				if !validIniValue(cfg.TensorSplit) {
-					return "", fmt.Errorf("非法 TensorSplit 值 %q：不能包含换行或首尾空白", cfg.TensorSplit)
+					return "", fmt.Errorf(tr("非法 TensorSplit 值 %q：不能包含换行或首尾空白", "invalid TensorSplit value %q: must not contain newlines or leading/trailing whitespace"), cfg.TensorSplit)
 				}
 				buf.WriteString(fmt.Sprintf("tensor-split = %s\n", cfg.TensorSplit))
 			}
@@ -2363,7 +2363,7 @@ func generateModelsPresetFrom(models []ModelInfo, cfgs map[string]ModelConfig) (
 			}
 			if cfg.RopeScaling != "" && cfg.RopeScaling != "none" {
 				if !validIniValue(cfg.RopeScaling) {
-					return "", fmt.Errorf("非法 RopeScaling 值 %q：不能包含换行或首尾空白", cfg.RopeScaling)
+					return "", fmt.Errorf(tr("非法 RopeScaling 值 %q：不能包含换行或首尾空白", "invalid RopeScaling value %q: must not contain newlines or leading/trailing whitespace"), cfg.RopeScaling)
 				}
 				buf.WriteString(fmt.Sprintf("rope-scaling = %s\n", cfg.RopeScaling))
 			}
@@ -2374,7 +2374,7 @@ func generateModelsPresetFrom(models []ModelInfo, cfgs map[string]ModelConfig) (
 			// 不要求文件存在（模型可能移动，llama-server 启动时自行报错）。
 			if cfg.MMProj != "" {
 				if !validIniValue(cfg.MMProj) {
-					return "", fmt.Errorf("非法 MMProj 值 %q：不能包含换行或首尾空白", cfg.MMProj)
+					return "", fmt.Errorf(tr("非法 MMProj 值 %q：不能包含换行或首尾空白", "invalid MMProj value %q: must not contain newlines or leading/trailing whitespace"), cfg.MMProj)
 				}
 				buf.WriteString(fmt.Sprintf("mmproj = %s\n", filepath.ToSlash(cfg.MMProj)))
 				explicitMMProj = true
@@ -2384,7 +2384,7 @@ func generateModelsPresetFrom(models []ModelInfo, cfgs map[string]ModelConfig) (
 			}
 			if cfg.SpecType != "" {
 				if !validSpecTypeValue(cfg.SpecType) {
-					return "", fmt.Errorf("非法 SpecType 值 %q：仅允许 draft-mtp", cfg.SpecType)
+					return "", fmt.Errorf(tr("非法 SpecType 值 %q：仅允许 draft-mtp", "invalid SpecType value %q: only draft-mtp"), cfg.SpecType)
 				}
 				buf.WriteString(fmt.Sprintf("spec-type = %s\n", cfg.SpecType))
 			}
@@ -2446,6 +2446,7 @@ type appConfig struct {
 	ModelConfigs   map[string]ModelConfig `json:"modelConfigs"`
 	ServerConfig   ServerConfig           `json:"serverConfig"`
 	DownloadSource string                 `json:"downloadSource"`
+	Language       string                 `json:"language"` // 语言偏好: zh / en / auto（空或非法值兜底 auto）
 	DownloadTasks  []PersistedDlTask      `json:"downloadTasks,omitempty"`
 }
 
@@ -2576,6 +2577,15 @@ func loadConfig() {
 	downloadSource = cfg.DownloadSource
 	downloadSourceMu.Unlock()
 
+	// 语言偏好：空值或不在 zh/en/auto 白名单时兜底 auto（旧配置无此字段或
+	// 数据损坏时不报错）。与 downloadSource 同策略：非法值一律规整回默认。
+	if cfg.Language != "zh" && cfg.Language != "en" && cfg.Language != "auto" {
+		cfg.Language = "auto"
+	}
+	languageMu.Lock()
+	currentLanguage = cfg.Language
+	languageMu.Unlock()
+
 	// 恢复下载任务队列（进程重启后无活跃 goroutine，任何任务都不自动启动下载）：
 	// Source 兜底 hf；Status 白名单外与 downloading 一律规整为 paused（downloading
 	// 状态的 goroutine 已随进程退出消亡，前端可对任务继续/重试）；URL 按
@@ -2673,6 +2683,10 @@ func saveConfig() {
 	dlsrc := downloadSource
 	downloadSourceMu.Unlock()
 
+	languageMu.Lock()
+	lang := currentLanguage
+	languageMu.Unlock()
+
 	// 锁序铁律：saveConfig 内 dlTasksMu 必须是最后获取的锁。任何调用点都不得
 	// 在持有 dlTasksMu 时调用 saveConfig——调用方须先锁内取副本、解锁、再
 	// save（如 CancelDownloadTask 在 defer Unlock 前不调 saveConfig）。否则会
@@ -2703,6 +2717,7 @@ func saveConfig() {
 		ModelConfigs:   mcfgs,
 		ServerConfig:   scfg,
 		DownloadSource: dlsrc,
+		Language:       lang,
 		DownloadTasks:  persistedTasks,
 	}
 	data, err := json.MarshalIndent(cfg, "", "  ")
@@ -2730,7 +2745,7 @@ func buildModelDownloadURL(source, modelID, fileName string) (string, error) {
 	case sourceModelScope:
 		return buildModelScopeDownloadURL(modelscopeLegacyBase, modelID, fileName), nil
 	default:
-		return "", fmt.Errorf("未知下载源 %q", source)
+		return "", fmt.Errorf(tr("未知下载源 %q", "unknown download source %q"), source)
 	}
 }
 
@@ -2790,7 +2805,7 @@ func searchHFMirrorAt(baseURL, q, filter string) ([]HFSearchResult, error) {
 	}
 
 	if failed == len(sorts) {
-		return nil, fmt.Errorf("HF 搜索三路排序（downloads/likes/lastModified）请求全部失败")
+		return nil, fmt.Errorf(tr("HF 搜索三路排序（downloads/likes/lastModified）请求全部失败", "all three HF search sort routes (downloads/likes/lastModified) failed"))
 	}
 	return results, nil
 }
@@ -2894,7 +2909,7 @@ func getModelDescriptionAt(baseURL, modelID string) (string, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("README 获取失败: HTTP %d", resp.StatusCode)
+		return "", fmt.Errorf(tr("README 获取失败: HTTP %d", "failed to fetch README: HTTP %d"), resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -3122,7 +3137,7 @@ func downloadTask(task *DlTask) {
 	if err := os.MkdirAll(task.DestDir, 0755); err != nil {
 		dlTasksMu.Lock()
 		task.Status = "error"
-		task.Error = "创建目录失败: " + err.Error()
+		task.Error = tr("创建目录失败: ", "Failed to create directory: ") + err.Error()
 		task.Speed = 0
 		dlTasksMu.Unlock()
 		persistTasksNow()
@@ -3228,7 +3243,7 @@ func downloadTask(task *DlTask) {
 			if err := os.Truncate(tmpPath, 0); err != nil {
 				dlTasksMu.Lock()
 				task.Status = "error"
-				task.Error = "重置 .part 文件失败: " + err.Error()
+				task.Error = tr("重置 .part 文件失败: ", "Failed to reset the .part file: ") + err.Error()
 				task.Speed = 0
 				dlTasksMu.Unlock()
 				persistTasksNow()
@@ -3359,7 +3374,7 @@ func downloadTask(task *DlTask) {
 				if err := moveFile(tmpPath, destPath); err != nil {
 					dlTasksMu.Lock()
 					task.Status = "error"
-					task.Error = "重命名失败: " + err.Error()
+					task.Error = tr("重命名失败: ", "Rename failed: ") + err.Error()
 					task.Speed = 0
 					dlTasksMu.Unlock()
 					persistTasksNow()

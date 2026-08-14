@@ -32,7 +32,7 @@ func startServerInternal() error {
 	// Generate models preset file
 	presetPath, err := generateModelsPreset()
 	if err != nil {
-		return fmt.Errorf("生成模型预设失败: %w", err)
+		return fmt.Errorf(tr("生成模型预设失败: %w", "failed to generate models preset: %w"), err)
 	}
 
 	// Build command

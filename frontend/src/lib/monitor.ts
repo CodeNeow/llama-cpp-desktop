@@ -4,6 +4,8 @@
  * GetMonitorStatus 的 JSON 契约一一对应。
  */
 
+import type { Locale } from './i18n'
+
 export interface MonitorStatus {
   cpuPercent: number
   memUsed: number
@@ -53,9 +55,20 @@ export function formatPromptTps(tps: number): string {
   return tps > 0 ? tps.toFixed(1) : '—'
 }
 
-/** 把秒数格式化为人类可读的中文运行时长，如 "45 秒"、"1 小时 23 分"。 */
-export function formatUptime(seconds: number): string {
+/**
+ * 把秒数格式化为运行时长：中文 "45 秒" / "1 小时 23 分"，英文
+ * "45s" / "1h 23m"（0 秒两语均显示 0）。locale 参数显式传入，保持纯函数、
+ * 便于按当前界面语言单测。
+ */
+export function formatUptime(seconds: number, locale: Locale): string {
   const s = Math.max(0, Math.floor(seconds))
+  if (locale === 'en') {
+    if (s < 60) return `${s}s`
+    if (s < 3600) return `${Math.floor(s / 60)}m`
+    const h = Math.floor(s / 3600)
+    const m = Math.floor((s % 3600) / 60)
+    return `${h}h ${m}m`
+  }
   if (s < 60) return `${s} 秒`
   if (s < 3600) return `${Math.floor(s / 60)} 分钟`
   const h = Math.floor(s / 3600)

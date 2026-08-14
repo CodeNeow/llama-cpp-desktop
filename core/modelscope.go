@@ -98,7 +98,7 @@ func searchModelScopeAt(openAPIBase, q string) ([]HFSearchResult, error) {
 		return nil, err
 	}
 	if !raw.Success {
-		return nil, fmt.Errorf("ModelScope 搜索失败: success=false")
+		return nil, fmt.Errorf(tr("ModelScope 搜索失败: success=false", "ModelScope search failed: success=false"))
 	}
 
 	results := make([]HFSearchResult, 0, len(raw.Data.Models))
@@ -168,7 +168,7 @@ func listModelScopeFilesAt(legacyBase, modelID string) ([]HFFileOut, error) {
 		return nil, err
 	}
 	if raw.Code != 200 {
-		return nil, fmt.Errorf("ModelScope 文件列表失败: Code=%d", raw.Code)
+		return nil, fmt.Errorf(tr("ModelScope 文件列表失败: Code=%d", "ModelScope file list failed: Code=%d"), raw.Code)
 	}
 
 	files := make([]HFFileOut, 0, len(raw.Data.Files))
@@ -237,7 +237,7 @@ func getModelScopeDescriptionAt(legacyBase, modelID string) (string, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("README 获取失败: HTTP %d", resp.StatusCode)
+		return "", fmt.Errorf(tr("README 获取失败: HTTP %d", "failed to fetch README: HTTP %d"), resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(resp.Body)

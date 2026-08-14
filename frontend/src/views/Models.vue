@@ -2,22 +2,22 @@
   <div class="page">
     <div class="page-header">
       <div class="page-header-text">
-        <h1 class="page-title">模型</h1>
+        <h1 class="page-title">{{ t('models.title') }}</h1>
         <p class="page-subtitle">
-          <template v-if="models.length">{{ models.length }} 个模型</template>
-          <template v-else>将 GGUF 模型文件放入模型目录</template>
+          <template v-if="models.length">{{ t('models.count', { n: models.length }) }}</template>
+          <template v-else>{{ t('models.hint') }}</template>
         </p>
       </div>
-      <button class="refresh-btn" :disabled="loading" title="重新扫描模型目录" @click="fetchModels(true)">刷新</button>
+      <button class="refresh-btn" :disabled="loading" :title="t('models.refreshTitle')" @click="fetchModels(true)">{{ t('models.refresh') }}</button>
     </div>
 
     <!-- 模型目录 -->
     <div class="dir-bar">
       <div class="dir-info">
-        <span class="dir-label">模型目录</span>
-        <span class="dir-value">{{ modelsDir || '未设置' }}</span>
+        <span class="dir-label">{{ t('models.dir') }}</span>
+        <span class="dir-value">{{ modelsDir || t('models.dirNotSet') }}</span>
       </div>
-      <button class="dir-btn" title="选择模型目录" @click="chooseModelsDir">选择文件夹</button>
+      <button class="dir-btn" :title="t('models.chooseDirTitle')" @click="chooseModelsDir">{{ t('models.chooseDir') }}</button>
     </div>
 
     <!-- Loading skeleton -->
@@ -36,9 +36,9 @@
           <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
         </svg>
       </div>
-      <h2>无法获取模型列表</h2>
+      <h2>{{ t('models.errorTitle') }}</h2>
       <p>{{ error }}</p>
-      <button class="retry-btn" @click="fetchModels()">重试</button>
+      <button class="retry-btn" @click="fetchModels()">{{ t('home.retry') }}</button>
     </div>
 
     <!-- Empty state -->
@@ -50,8 +50,8 @@
           <line x1="12" y1="22.08" x2="12" y2="12"/>
         </svg>
       </div>
-      <h2>暂无模型</h2>
-      <p>将 .gguf 模型文件放入模型目录：<code>{{ modelsDir || '未设置' }}</code> 中</p>
+      <h2>{{ t('models.emptyTitle') }}</h2>
+      <p>{{ t('models.emptyHint', { dir: modelsDir || t('models.dirNotSet') }) }}</p>
     </div>
 
     <!-- Model list -->
@@ -65,8 +65,8 @@
         <div class="model-info">
           <div class="model-header">
             <h3 class="model-name">{{ model.name }}</h3>
-            <span v-if="model.hasMmproj" class="mmproj-badge" title="支持多模态 (mmproj)">👁️ 多模态</span>
-            <button class="model-settings-btn" title="设置" @click.stop="openSettings(model)">
+            <span v-if="model.hasMmproj" class="mmproj-badge" :title="t('models.multimodalTitle')">👁️ {{ t('models.multimodal') }}</span>
+            <button class="model-settings-btn" :title="t('models.settings')" @click.stop="openSettings(model)">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
               </svg>
@@ -101,6 +101,7 @@ import { ref, onMounted } from 'vue'
 import ModelSettings from '../components/ModelSettings.vue'
 import type { ModelConfig } from '../components/ModelSettings.vue'
 import { getModels, getModelConfig, saveModelConfig, refreshModels, getConfig, browseModelsDir } from '../wails'
+import { t } from '../lib/i18n'
 
 interface ModelInfo {
   author: string
@@ -174,7 +175,7 @@ async function saveSettings(config: ModelConfig) {
       saveSuccess.value = false
     }, 800)
   } catch (e: any) {
-    saveError.value = '保存失败: ' + (e.message || '未知错误')
+    saveError.value = t('models.saveFailed', { msg: e.message || t('models.unknownError') })
   } finally {
     saving.value = false
   }
@@ -187,7 +188,7 @@ async function fetchModels(force = false) {
     // force=true 时强制重扫 LLM-Models（refreshModels），否则走缓存（getModels）（#18）
     models.value = (force ? await refreshModels() : await getModels()) as ModelInfo[]
   } catch (e) {
-    error.value = `无法连接后端服务：${e instanceof Error ? e.message : String(e)}`
+    error.value = t('models.backendError', { msg: e instanceof Error ? e.message : String(e) })
   } finally {
     loading.value = false
   }

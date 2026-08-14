@@ -2,9 +2,9 @@
   <div v-if="visible" class="modal-overlay" @click.self="close">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="update-title">
       <div class="modal-header">
-        <h2 id="update-title">发现新版本</h2>
+        <h2 id="update-title">{{ t('updateModal.title') }}</h2>
         <span class="modal-version">{{ version }}</span>
-        <button ref="closeBtn" class="modal-close" aria-label="关闭" @click="close">✕</button>
+        <button ref="closeBtn" class="modal-close" :aria-label="t('updateModal.close')" @click="close">✕</button>
       </div>
 
       <div class="modal-body">
@@ -16,7 +16,7 @@
                 <div class="progress-fill" :style="{ width: download.progress + '%' }"></div>
               </div>
               <div class="progress-info">
-                <span>正在下载 {{ download.version }} ...</span>
+                <span>{{ t('updateModal.downloading', { version: download.version }) }}</span>
                 <span>{{ download.progress }}%</span>
               </div>
             </template>
@@ -25,29 +25,29 @@
               <div class="done-msg">
                 <span class="ok-icon">✓</span>
                 <div>
-                  <p class="done-title">下载完成</p>
-                  <p class="done-detail">新版本已保存到：</p>
+                  <p class="done-title">{{ t('updateModal.doneTitle') }}</p>
+                  <p class="done-detail">{{ t('updateModal.doneDetail') }}</p>
                   <code class="done-path">{{ download.filePath }}</code>
-                  <p class="done-tip">请关闭应用后，用新文件替换原程序即可完成更新。</p>
+                  <p class="done-tip">{{ t('updateModal.doneTip') }}</p>
                 </div>
               </div>
             </template>
 
             <template v-else-if="download.status === 'error'">
-              <p class="err-msg">下载失败：{{ download.error }}</p>
+              <p class="err-msg">{{ t('updateModal.downloadFailed', { msg: download.error }) }}</p>
             </template>
           </div>
         </template>
 
         <!-- 待确认 -->
         <template v-else>
-          <p class="new-version-tip">应用有新版本可用，是否现在下载？</p>
+          <p class="new-version-tip">{{ t('updateModal.newVersionTip') }}</p>
           <div class="meta">
-            <span class="meta-item">新版本：{{ version }}</span>
-            <span v-if="published" class="meta-item">发布时间：{{ formatDate(published) }}</span>
+            <span class="meta-item">{{ t('updateModal.newVersion', { version }) }}</span>
+            <span v-if="published" class="meta-item">{{ t('updateModal.published', { date: formatDate(published) }) }}</span>
           </div>
           <div v-if="notes" class="release-notes">
-            <h3 class="notes-title">更新内容</h3>
+            <h3 class="notes-title">{{ t('updateModal.notesTitle') }}</h3>
             <pre class="notes-body">{{ notes }}</pre>
           </div>
         </template>
@@ -56,13 +56,13 @@
       <div class="modal-footer">
         <span v-if="download && download.status === 'error'" class="footer-msg footer-err">{{ download.error }}</span>
         <template v-if="!(download && (download.status === 'downloading' || download.status === 'done'))">
-          <button class="btn-cancel" :disabled="downloading" @click="close">取消</button>
+          <button class="btn-cancel" :disabled="downloading" @click="close">{{ t('updateModal.cancel') }}</button>
           <button class="btn-save" :disabled="downloading" @click="downloadNow">
-            {{ downloading ? '下载中...' : '下载' }}
+            {{ downloading ? t('updateModal.downloadingBtn') : t('updateModal.download') }}
           </button>
         </template>
         <template v-else-if="download && download.status === 'done'">
-          <button class="btn-save" @click="close">知道了</button>
+          <button class="btn-save" @click="close">{{ t('updateModal.gotIt') }}</button>
         </template>
       </div>
     </div>
@@ -72,6 +72,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { updateState, startUpdateDownload } from '../lib/update'
+import { locale, t } from '../lib/i18n'
 
 const props = defineProps<{ visible: boolean }>()
 const emit = defineEmits<{ close: [] }>()
@@ -91,9 +92,8 @@ watch(() => props.visible, (v) => {
 function formatDate(iso: string): string {
   const d = new Date(iso)
   if (isNaN(d.getTime())) return iso
-  return d.toLocaleDateString('zh-CN')
+  return d.toLocaleDateString(locale.value === 'en' ? 'en-US' : 'zh-CN')
 }
-
 function downloadNow() {
   startUpdateDownload()
 }
