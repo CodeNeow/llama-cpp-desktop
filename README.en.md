@@ -242,7 +242,18 @@ cd frontend && npm run build    # build the frontend only
 
 ## Release
 
-CI (`.github/workflows/ci.yml`) automatically builds and publishes Windows artifacts (installer `llama-desktop-setup-vX.Y.Z-amd64.exe` + portable `llama-desktop-portable-vX.Y.Z-amd64.exe`, where `vX.Y.Z` is the tag version) in these scenarios:
+CI (`.github/workflows/ci.yml`) automatically builds and publishes artifacts for each platform in these scenarios:
+
+- **Windows**: installer `llama-desktop-setup-vX.Y.Z-amd64.exe` + portable `llama-desktop-portable-vX.Y.Z-amd64.exe`;
+- **Linux (.deb)**: `llama-desktop-setup-vX.Y.Z-ubuntu20.04-amd64.deb`, `llama-desktop-setup-vX.Y.Z-ubuntu22.04-amd64.deb`, `llama-desktop-setup-vX.Y.Z-ubuntu24.04-amd64.deb`.
+
+`vX.Y.Z` is the tag version. To install the .deb on Linux:
+
+```bash
+sudo apt install ./llama-desktop-setup-v1.0.0-ubuntu22.04-amd64.deb
+```
+
+(`apt` automatically resolves and installs the `libgtk-3-0` / `libgtk-3-0t64` and the matching WebKit runtime dependencies.)
 
 - **Stable release**: pushing a `v*` tag (e.g. `v1.0.0`) automatically creates a full release with change notes;
 - **Preview release**: manually running CI from the GitHub Actions page (`workflow_dispatch`) creates a draft release.

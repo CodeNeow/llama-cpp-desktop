@@ -64,8 +64,6 @@ jobs:
 
   build-windows:
     runs-on: windows-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -126,19 +124,161 @@ jobs:
           path: |
             build/bin/llama-desktop-portable-*.exe
             build/bin/llama-desktop-setup-*.exe
+
+  build-linux:
+    # 构建 Ubuntu 20.04 / 22.04 / 24.04 的 .deb 安装包。
+    # 注意：GitHub 托管的 ubuntu-20.04 runner 已退役，三个发行版统一在各自
+    # 的 ubuntu 容器中构建，保证二进制与 glibc / 依赖版本一致；同时 20.04 仓库
+    # 只有 libwebkit2gtk-4.0-dev（构建时需追加 webkit2_40 tag），
+    # 22.04 / 24.04 使用 libwebkit2gtk-4.1-dev（Wails 默认）。
+    runs-on: ubuntu-latest
+    needs: frontend
+    strategy:
+      matrix:
+        include:
+          - os: "20.04"
+            container: ubuntu:20.04
+            webkit-dev: libwebkit2gtk-4.0-dev
+            webkit-runtime: libwebkit2gtk-4.0-37
+            build-tags: "desktop,production,webkit2_40"
+          - os: "22.04"
+            container: ubuntu:22.04
+            webkit-dev: libwebkit2gtk-4.1-dev
+            webkit-runtime: libwebkit2gtk-4.1-0
+            build-tags: "desktop,production,webkit2_41"
+          - os: "24.04"
+            container: ubuntu:24.04
+            webkit-dev: libwebkit2gtk-4.1-dev
+            webkit-runtime: libwebkit2gtk-4.1-0
+            build-tags: "desktop,production,webkit2_41"
+    container: ${{ matrix.container }}
+    steps:
+      - name: Bootstrap Node 20 in container
+        # 容器镜像不预装 node，而 actions/*（checkout / setup-go / artifact）都需要
+        # node 运行时；因此第一步必须是纯 run 的 Node bootstrap（NodeSource node 20），
+        # 之后才能使用各 actions。20.04 容器是 GitHub 托管 runner 退役后的替代方案。
+        run: |
+          apt-get update
+          apt-get install -y ca-certificates curl gnupg
+          curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+          apt-get install -y nodejs
+          node --version
+
+      - uses: actions/checkout@v4
+
+      - name: Download frontend build
+        # 复用 frontend job 的 frontend/dist（go:embed 编译依赖），Linux 构建不跑 npm
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+
+      - name: Install GTK and WebKit development packages
+        # Wails v2 Linux 依赖：build-essential / pkg-config / GTK3 开发包 + WebKit 开发包
+        # （webkit-dev 由 matrix 提供，20.04 为 4.0 系列，22.04 / 24.04 为 4.1 系列）
+        run: |
+          apt-get update
+          apt-get install -y build-essential pkg-config libgtk-3-dev ${{ matrix.webkit-dev }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Sync version file from tag
+        # 与 windows job 同款逻辑：发布版本以 git tag 为唯一来源，推送 v* tag 时
+        # 写入 core/VERSION（编译时 embed）；非 tag 构建使用仓库中的默认值
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: echo "$GITHUB_REF_NAME" > core/VERSION
+
+      - name: Build Linux app
+        # 直接 go build（go:embed 嵌入 frontend/dist），不用 wails CLI / npm；
+        # 20.04 需追加 webkit2_40 匹配 libwebkit2gtk-4.0-dev，
+        # 22.04 / 24.04 需追加 webkit2_41 匹配 libwebkit2gtk-4.1-dev
+        # （wails 的 #cgo 默认指向 webkit2gtk-4.0，4.1 必须显式 webkit2_41 tag）
+        run: go build -tags "${{ matrix.build-tags }}" -trimpath -o build/bin/llama-desktop .
+
+      - name: Package .deb
+        run: |
+          # 版本号来源与 windows job 一致：tag 构建用 tag（如 v0.1.6）；
+          # 非 tag 构建回退 core/VERSION。deb 的 Version 字段不能带 v 前缀。
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VER="$GITHUB_REF_NAME"
+          else
+            VER="$(cat core/VERSION)"
+          fi
+          DEBVER="${VER#v}"
+
+          # 组装 pkg/ 目录布局：DEBIAN/control + 二进制 + desktop 入口
+          mkdir -p pkg/DEBIAN pkg/usr/bin pkg/usr/share/applications
+
+          # Depends 用 alternatives 兼容 24.04 t64 过渡期 gtk3 更名
+          # （libgtk-3-0 -> libgtk-3-0t64）；WebKit 运行库按发行版 matrix 提供
+          cat > pkg/DEBIAN/control <<EOF
+          Package: llama-desktop
+          Version: ${DEBVER}
+          Architecture: amd64
+          Maintainer: CodeNeow
+          Description: Local LLM desktop manager powered by llama.cpp
+          Depends: libgtk-3-0 | libgtk-3-0t64, ${{ matrix.webkit-runtime }}
+          EOF
+
+          cp build/bin/llama-desktop pkg/usr/bin/llama-desktop
+
+          cat > pkg/usr/share/applications/llama-desktop.desktop <<EOF
+          [Desktop Entry]
+          Name=Llama Desktop
+          Exec=llama-desktop
+          Type=Application
+          Categories=Utility;
+          EOF
+
+          # 仓库存在 build/appicon.png 时附带应用图标并在 desktop 项声明 Icon；
+          # 不存在则省略（见下方条件判断）
+          if [[ -f build/appicon.png ]]; then
+            mkdir -p pkg/usr/share/icons/hicolor/256x256/apps
+            cp build/appicon.png pkg/usr/share/icons/hicolor/256x256/apps/llama-desktop.png
+            echo "Icon=llama-desktop" >> pkg/usr/share/applications/llama-desktop.desktop
+          fi
+
+          dpkg-deb --build --root-owner-group pkg
+          mv pkg.deb "build/bin/llama-desktop-setup-${VER}-ubuntu${{ matrix.os }}-amd64.deb"
+          ls -la build/bin/
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: llama-desktop-ubuntu-${{ matrix.os }}
+          path: build/bin/llama-desktop-setup-*.deb
+
+  release:
+    # 集中发布，避免 build-windows / build-linux 多 job 竞争创建同一 Release。
+    # tag 推送发布正式 Release，workflow_dispatch 发布草稿预览。
+    runs-on: ubuntu-latest
+    needs: [build-windows, build-linux]
+    permissions:
+      contents: write
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Download all build artifacts
+        # 用 pattern 排除 frontend-dist，只拉取发布产物并合并到同一目录：
+        # windows 2 个 exe + linux 3 个 deb 共 5 个文件
+        uses: actions/download-artifact@v4
+        with:
+          pattern: llama-desktop-*
+          path: artifacts
+          merge-multiple: true
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: bash
         run: |
           set -euo pipefail
-          # 产物名已由「Rename artifacts with version」步骤带上版本号，
-          # 这里用 glob 展开两个重命名后的文件（版本号动态，不写死文件名）
+          # 校验下载产物数量必须为 5（windows 2 个 exe + linux 3 个 deb），
+          # 缺失即失败，避免发布不完整的 Release
           shopt -s nullglob
-          files=(build/bin/llama-desktop-setup-*-amd64.exe build/bin/llama-desktop-portable-*-amd64.exe)
+          files=(artifacts/*)
           shopt -u nullglob
-          [[ ${#files[@]} -eq 2 ]] || { echo "Expected 2 artifacts, found ${#files[@]}"; exit 1; }
+          [[ ${#files[@]} -eq 5 ]] || { echo "Expected 5 artifacts, found ${#files[@]}"; exit 1; }
           for f in "${files[@]}"; do
             [[ -f "$f" ]] || { echo "Missing artifact: $f"; exit 1; }
           done
