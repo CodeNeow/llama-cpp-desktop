@@ -211,7 +211,8 @@ onMounted(() => {
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 36px;
+  /* 用 padding 而非 margin：页头背景覆盖该间距，内容滚过时不留缝 */
+  padding-bottom: 36px;
 }
 
 .page-header-text {
