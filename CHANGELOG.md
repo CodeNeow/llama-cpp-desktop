@@ -2,6 +2,23 @@
 
 更新日志的**权威来源**（见 `AGENTS.md`「版本发布」）：发版时先在此新增版本条目（含日期与逐提交核心改动），`git tag` 注解消息与 GitHub Release 正文均从该条目复制，保持一致。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本。
 
+## [v0.2.1] - 2026-08-15
+
+v0.2.1: 侧边栏收起（默认收起、偏好持久化）与配置迁移、测试竞态修复（v0.2.0 以来 6 个提交，按提交逐一说明核心改动）：
+
+1. `127244a` test(downloads): 修复 TestPauseResumeDownloadTask 与下载 goroutine 的状态竞态
+   - 核心：改用本地 404 服务入队（不再打外网）并以 waitTaskTerminal 等 goroutine 退出后再断言 Pause/Resume 状态机；根因是 downloadTask 开篇无条件写 Status=downloading，与测试手动伪造的状态在 CI 满载 runner 上偶发交错（v0.2.0 tag 首次运行即触发）；生产路径无此交错，产品代码未改动
+2. `ab7f0a3` fix(config): 旧配置迁移改为读旧写新，避免 wails dev 监视器竞态崩溃
+   - 核心：migrateLegacyConfig 从 os.Rename 改为 ReadFile + WriteFile 复制（0644），旧配置 llama-gui-config.json 保留原处不删除；起因是 wails dev 下应用启动改名项目根目录文件触发 Wails CLI 文件监视器 GetFileAttributesEx 竞态，wails dev 崩退出并遗留孤儿 dev 进程；测试断言随行为反转（旧文件保留且内容字节级一致）
+3. `c3f53fc` feat(frontend): 侧边栏支持收起为图标栏并持久化状态
+   - 核心：Sidebar 底部新增 « / » 切换按钮，240px ↔ 64px 图标栏宽度过渡（0.2s 缓动），收起态隐藏文字、图标居中、title 提示；appConfig 新增 sidebarCollapsed 字段与 SetSidebarCollapsed 绑定，store 双轨持久化（localStorage 首帧兜底 + 后端配置，主题同款模式）；浏览器 GUI 实测发现并修复收起态 footer 状态点与切换按钮重叠；后端往返测试 + 前端 store 6 用例
+4. `ed34039` style(frontend): 侧边栏收起态隐藏状态区，footer 仅保留切换按钮
+   - 核心：收起态状态点与「系统就绪」文字整体隐藏，footer 仅剩 » 展开按钮居中；删除状态点已无意义的条件 title 绑定，简化为单子项居中布局
+5. `2800e5f` feat(config): 侧边栏默认收起，保存的展开偏好仍优先
+   - 核心：后端 loadConfig 预置 SidebarCollapsed=true（镜像 trayEnabled 的「预置默认值再 Unmarshal」模式，区分旧配置缺字段与显式 false）；前端 readStoredSidebarCollapsed 改 !== '0'、loadConfig 改 !== false，首帧 / 配置加载 / 持久化往返三处口径一致为默认收起，用户显式展开的偏好仍优先
+6. `9bf8f12` docs(readme): 更新界面截图与过时描述（侧边栏收起/真实搜索/设置 6 分页）
+   - 核心：界面预览按新顺序重排并新增「侧边栏收起」小节；重拍 home / downloads / api / monitor 四图，模型设置改为 6 张分 tab 截图并删除被取代的单图（下载页为真实搜索 qwen 结果，API / 监控为仿真数据截图）；中英 README 同步修正技术栈 Wails v2.14 / Go 1.25、环境要求、store 职责、配置字段清单（补 language / trayEnabled / sidebarCollapsed）
+
 ## [v0.2.0] - 2026-08-15
 
 v0.2.0: 项目更名为 llama-desktop（仓库 llama-cpp-desktop）与 Wails v2.14.0 升级（v0.1.8 以来 3 个提交，按提交逐一说明核心改动）：
