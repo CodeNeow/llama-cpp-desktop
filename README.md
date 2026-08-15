@@ -10,17 +10,23 @@ Llama Desktop 是一个基于 **Wails v2**（Go + WebView2）构建的本地大�
 
 ## 界面预览
 
+### 侧边栏收起
+
+侧边栏可收起为 64px 纯图标栏（点击底部 « / » 按钮切换，悬停图标显示文字提示），默认收起，偏好持久化到配置。
+
+![侧边栏收起](docs/screenshots/sidebar-collapsed-light.png)
+
 ### 主页 — 系统状态概览
 
 自动检测 CPU / 内存 / NVIDIA 显卡 / CUDA 环境，展示 llama.cpp 安装状态；未安装时可在应用内一键下载，也可手动指定自定义目录。页尾提供「实时负载与推理速度前往 监控页 →」入口。
 
 ![主页](docs/screenshots/home-light.png)
 
-### 监控 — 实时负载与推理速度
+### 下载 — 双源模型搜索
 
-推理服务区块展示服务状态徽章与运行时长，提示词处理速度与生成速度两个指标卡片并排展示，并配有生成速度折线图（每 1 秒刷新）；下方为 CPU / 内存 / GPU 实时负载。提示词处理速度在预填充期间实时刷新、请求结束时更新为最终值，生成速度为实时解码速度。
+通过 **HF Mirror（hf-mirror.com）或 ModelScope（魔搭）** 搜索并下载模型（默认 HF 镜像，可在设置页切换）。搜索结果展开文件列表（按大小排序、识别量化标签），支持多文件批量下载；下载任务收在「下载」按钮弹窗中（按钮角标显示活跃任务数），支持暂停 / 继续 / 取消、断点续传、实时下载速度显示，任务队列持久化，重启后自动恢复。
 
-![监控](docs/screenshots/monitor-light.png)
+![模型下载](docs/screenshots/downloads-light.png)
 
 ### 模型 — GGUF 模型管理
 
@@ -32,7 +38,29 @@ Llama Desktop 是一个基于 **Wails v2**（Go + WebView2）构建的本地大�
 
 为每个模型独立配置推理参数，Tabs 布局（基础 / 推理 / 内存/加载 / 多 GPU / 长上下文 / 高级）6 个标签页：CPU 线程、GPU 层数、上下文大小、Batch / μBatch、MoE CPU 层数、KV 缓存 K/V 类型、加载方式（mlock / mmap）、模型切分方式、每卡比例、主 GPU、RoPE 外推方式与倍数、视觉投影文件（mmproj）、投机解码（MTP）与额外预测 token 数等，保存后自动写入 llama-server 预设。
 
-![模型设置](docs/screenshots/models-settings-light.png)
+**基础**：CPU 线程、GPU 层数、上下文大小、Batch / μBatch
+
+![模型设置 · 基础](docs/screenshots/models-settings-base-light.png)
+
+**推理**：Flash Attention、cpu-moe、MoE CPU 层数
+
+![模型设置 · 推理](docs/screenshots/models-settings-infer-light.png)
+
+**内存/加载**：KV 缓存 K/V 类型、加载方式（mmap / mlock / dio）
+
+![模型设置 · 内存/加载](docs/screenshots/models-settings-memory-light.png)
+
+**多 GPU**：模型切分方式、每卡比例、主 GPU
+
+![模型设置 · 多 GPU](docs/screenshots/models-settings-gpu-light.png)
+
+**长上下文**：RoPE 外推方式与倍数
+
+![模型设置 · 长上下文](docs/screenshots/models-settings-context-light.png)
+
+**高级**：视觉投影文件（mmproj）、Reasoning、投机解码（MTP）与额外预测 token 数
+
+![模型设置 · 高级](docs/screenshots/models-settings-advanced-light.png)
 
 ### API — llama-server 路由器模式
 
@@ -40,11 +68,11 @@ Llama Desktop 是一个基于 **Wails v2**（Go + WebView2）构建的本地大�
 
 ![API 服务](docs/screenshots/api-light.png)
 
-### 下载 — 双源模型搜索
+### 监控 — 实时负载与推理速度
 
-通过 **HF Mirror（hf-mirror.com）或 ModelScope（魔搭）** 搜索并下载模型（默认 HF 镜像，可在设置页切换）。搜索结果展开文件列表（按大小排序、识别量化标签），支持多文件批量下载；下载任务收在「下载」按钮弹窗中（按钮角标显示活跃任务数），支持暂停 / 继续 / 取消、断点续传、实时下载速度显示，任务队列持久化，重启后自动恢复。
+推理服务区块展示服务状态徽章与运行时长，提示词处理速度与生成速度两个指标卡片并排展示，并配有生成速度折线图（每 1 秒刷新）；下方为 CPU / 内存 / GPU 实时负载。提示词处理速度在预填充期间实时刷新、请求结束时更新为最终值，生成速度为实时解码速度。
 
-![模型下载](docs/screenshots/downloads-light.png)
+![监控](docs/screenshots/monitor-light.png)
 
 ### 设置 — 主题与下载源
 
@@ -69,13 +97,13 @@ Llama Desktop 是一个基于 **Wails v2**（Go + WebView2）构建的本地大�
 7. **OpenAI 兼容 API**：服务启动后可直接对接任意 OpenAI 兼容客户端（ChatGPT-Next-Web、LobeChat、Open WebUI 等）。
 8. **实时监控**：推理服务状态与运行时长、提示词处理速度与生成速度双指标卡片、生成速度折线图，以及 CPU / 内存 / GPU 实时负载，每 1 秒刷新。
 9. **应用自更新**：设置页「检查更新」检测新版本，弹窗下载更新包，手动替换程序文件即可完成升级。
-10. **主题系统**：深色 / 浅色主题，基于 CSS 变量，偏好持久化到本地配置。
+10. **主题与界面偏好**：深色 / 浅色主题基于 CSS 变量，偏好持久化到本地配置；侧边栏可收起为 64px 纯图标栏（默认收起），偏好同样持久化。
 
 ## 技术栈
 
 | 层 | 技术 |
 | --- | --- |
-| 桌面框架 | [Wails v2](https://wails.io)（Go 1.22 + WebView2） |
+| 桌面框架 | [Wails v2.14](https://wails.io)（Go 1.25 + WebView2） |
 | 后端 | Go（标准库为主，零第三方业务依赖） |
 | 前端 | Vue 3 + TypeScript + Vite 5 + vue-router（无第三方 UI 库，手写 CSS 变量主题） |
 | 推理引擎 | [llama.cpp](https://github.com/ggml-org/llama.cpp)（llama-server，路由器模式） |
@@ -95,7 +123,7 @@ graph LR
 
 ### 环境要求
 
-- [Go](https://go.dev/dl/) 1.22+
+- [Go](https://go.dev/dl/) 1.25+
 - [Node.js](https://nodejs.org/) 18+（构建前端）
 - [Wails CLI](https://wails.io/docs/gettingstarted/installation)：
 
@@ -166,7 +194,7 @@ llama-cpp-desktop/
     ├── src/
     │   ├── App.vue            # 布局（侧边栏 + 自定义标题栏）
     │   ├── wails.ts           # Wails 后端桥接层（window.go.core.App）
-    │   ├── store.ts           # 全局状态（主题）
+    │   ├── store.ts           # 全局状态（主题 / 语言 / 托盘 / 侧边栏等偏好）
     │   ├── router/            # 路由（hash 模式，主页 / 下载 / 模型 / API / 监控 / 设置）
     │   ├── views/             # 页面：Home / Downloads / Models / Api / Monitor / Settings
     │   ├── components/        # Sidebar、ModelSettings、UpdateModal
@@ -181,6 +209,9 @@ llama-cpp-desktop/
 运行时配置持久化在项目根目录的 `llama-desktop-config.json`，包含：
 
 - `theme`：主题（`dark` / `light`）
+- `language`：界面语言（`zh` / `en` / `auto`）
+- `trayEnabled`：系统托盘开关（默认开启）
+- `sidebarCollapsed`：侧边栏收起状态（默认收起）
 - `llamaCppDir`：自定义 llama.cpp 目录
 - `modelDir`：模型目录（默认 `LLM-Models`）
 - `modelConfigs`：逐模型的推理参数

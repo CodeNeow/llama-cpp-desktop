@@ -10,17 +10,23 @@ Llama Desktop is a local LLM desktop management tool built on **Wails v2** (Go +
 
 ## Screenshots
 
+### Collapsible Sidebar
+
+The sidebar can be collapsed to a 64px icon rail (toggle it with the « / » button at the bottom; hovering an icon shows its label as a tooltip). It is collapsed by default, and the preference is persisted to the configuration.
+
+![Sidebar collapsed](docs/screenshots/sidebar-collapsed-light.png)
+
 ### Home — System Overview
 
 Automatically detects CPU / memory / NVIDIA GPU / CUDA environment and shows the llama.cpp installation status; if not installed, you can download it in one click, or point the app to a custom directory. A footer hint links to the Monitor page for real-time load and inference speed.
 
 ![Home](docs/screenshots/home-light.png)
 
-### Monitor — Real-time Load & Inference Speed
+### Downloads — Dual-Source Model Search
 
-The inference service section shows a service status badge and uptime, with two side-by-side metric cards for prompt-processing speed and generation speed, plus a line chart of generation speed (refreshed every 1 second). Below are live CPU / memory / GPU load. Prompt-processing speed updates in real time during prefilling and settles on its final value when the request ends; generation speed reflects live decoding throughput.
+Search and download models via **HF Mirror (hf-mirror.com) or ModelScope (魔搭)** (HF Mirror is the default; switch in Settings). Search results expand into file lists (sorted by size, with quantization tags detected) and support multi-file batch downloads. Download tasks live in a popup behind the "Download" button (the button badge shows the number of active tasks), with pause / resume / cancel, resumable transfers, live speed display, and a persisted queue that auto-recovers after a restart.
 
-![Monitor](docs/screenshots/monitor-light.png)
+![Model downloads](docs/screenshots/downloads-light.png)
 
 ### Models — GGUF Model Management
 
@@ -32,7 +38,29 @@ Scans GGUF files under the `LLM-Models` directory, automatically parsing archite
 
 Configure inference parameters per model in a tabbed dialog (Basic / Inference / Memory & Loading / Multi-GPU / Long Context / Advanced, 6 tabs): CPU threads, GPU layers, context size, Batch / μBatch, MoE CPU layers, KV cache K/V types, loading mode (mlock / mmap), model splitting mode, per-GPU ratio, main GPU, RoPE extrapolation mode and scale, vision projection file (mmproj), speculative decoding (MTP) with extra prediction tokens, and more. Saving writes the settings into a llama-server preset.
 
-![Model settings](docs/screenshots/models-settings-light.png)
+**Basic**: CPU threads, GPU layers, context size, Batch / μBatch
+
+![Model settings · Basic](docs/screenshots/models-settings-base-light.png)
+
+**Inference**: Flash Attention, cpu-moe, MoE CPU layers
+
+![Model settings · Inference](docs/screenshots/models-settings-infer-light.png)
+
+**Memory & Loading**: KV cache K/V types, loading mode (mmap / mlock / dio)
+
+![Model settings · Memory & Loading](docs/screenshots/models-settings-memory-light.png)
+
+**Multi-GPU**: model splitting mode, per-GPU ratio, main GPU
+
+![Model settings · Multi-GPU](docs/screenshots/models-settings-gpu-light.png)
+
+**Long Context**: RoPE extrapolation mode and scale
+
+![Model settings · Long Context](docs/screenshots/models-settings-context-light.png)
+
+**Advanced**: vision projection file (mmproj), reasoning, speculative decoding (MTP) and extra prediction tokens
+
+![Model settings · Advanced](docs/screenshots/models-settings-advanced-light.png)
 
 ### API — llama-server Router Mode
 
@@ -40,11 +68,11 @@ Start / stop llama-server (router mode) with one click, configuring Host / Port,
 
 ![API service](docs/screenshots/api-light.png)
 
-### Downloads — Dual-Source Model Search
+### Monitor — Real-time Load & Inference Speed
 
-Search and download models via **HF Mirror (hf-mirror.com) or ModelScope (魔搭)** (HF Mirror is the default; switch in Settings). Search results expand into file lists (sorted by size, with quantization tags detected) and support multi-file batch downloads. Download tasks live in a popup behind the "Download" button (the button badge shows the number of active tasks), with pause / resume / cancel, resumable transfers, live speed display, and a persisted queue that auto-recovers after a restart.
+The inference service section shows a service status badge and uptime, with two side-by-side metric cards for prompt-processing speed and generation speed, plus a line chart of generation speed (refreshed every 1 second). Below are live CPU / memory / GPU load. Prompt-processing speed updates in real time during prefilling and settles on its final value when the request ends; generation speed reflects live decoding throughput.
 
-![Model downloads](docs/screenshots/downloads-light.png)
+![Monitor](docs/screenshots/monitor-light.png)
 
 ### Settings — Theme & Download Source
 
@@ -69,13 +97,13 @@ The app also ships a dark appearance for late-night use.
 7. **OpenAI-compatible API**: Once the service is up, any OpenAI-compatible client can connect directly (ChatGPT-Next-Web, LobeChat, Open WebUI, etc.).
 8. **Real-time monitoring**: Inference service status and uptime, side-by-side prompt-processing / generation speed cards, a generation speed line chart, plus live CPU / memory / GPU load — refreshed every 1 second.
 9. **Self-update**: "Check for Updates" in Settings detects new versions, downloads the update package in a dialog, and you complete the upgrade by manually replacing the program files.
-10. **Theme system**: Dark / light themes based on CSS variables, with the preference persisted locally.
+10. **Theme & UI preferences**: Dark / light themes based on CSS variables, with the preference persisted locally; the sidebar can be collapsed to a 64px icon rail (collapsed by default), with the preference persisted as well.
 
 ## Tech Stack
 
 | Layer | Technology |
 | --- | --- |
-| Desktop framework | [Wails v2](https://wails.io) (Go 1.22 + WebView2) |
+| Desktop framework | [Wails v2.14](https://wails.io) (Go 1.25 + WebView2) |
 | Backend | Go (stdlib-focused, zero third-party business dependencies) |
 | Frontend | Vue 3 + TypeScript + Vite 5 + vue-router (no third-party UI libraries, hand-written CSS-variable themes) |
 | Inference engine | [llama.cpp](https://github.com/ggml-org/llama.cpp) (llama-server, router mode) |
@@ -95,7 +123,7 @@ graph LR
 
 ### Prerequisites
 
-- [Go](https://go.dev/dl/) 1.22+
+- [Go](https://go.dev/dl/) 1.25+
 - [Node.js](https://nodejs.org/) 18+ (for building the frontend)
 - [Wails CLI](https://wails.io/docs/gettingstarted/installation):
 
@@ -166,7 +194,7 @@ llama-cpp-desktop/
     ├── src/
     │   ├── App.vue            # Layout (sidebar + custom title bar)
     │   ├── wails.ts           # Wails backend bridge (window.go.core.App)
-    │   ├── store.ts           # Global state (theme)
+    │   ├── store.ts           # Global state (theme / language / tray / sidebar, etc. preferences)
     │   ├── router/            # Routes (hash mode: Home / Downloads / Models / API / Monitor / Settings)
     │   ├── views/             # Pages: Home / Downloads / Models / Api / Monitor / Settings
     │   ├── components/        # Sidebar, ModelSettings, UpdateModal
@@ -181,6 +209,9 @@ llama-cpp-desktop/
 Runtime configuration is persisted to `llama-desktop-config.json` at the project root and includes:
 
 - `theme`: theme (`dark` / `light`)
+- `language`: UI language (`zh` / `en` / `auto`)
+- `trayEnabled`: system tray switch (on by default)
+- `sidebarCollapsed`: sidebar collapsed state (collapsed by default)
 - `llamaCppDir`: custom llama.cpp directory
 - `modelDir`: model directory (defaults to `LLM-Models`)
 - `modelConfigs`: per-model inference parameters
