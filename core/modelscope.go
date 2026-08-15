@@ -81,7 +81,7 @@ func searchModelScopeAt(openAPIBase, q string) ([]HFSearchResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "llama-gui")
+	req.Header.Set("User-Agent", "llama-desktop")
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
@@ -142,7 +142,7 @@ func listModelScopeFilesAt(legacyBase, modelID string) ([]HFFileOut, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "llama-gui")
+	req.Header.Set("User-Agent", "llama-desktop")
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
@@ -228,7 +228,7 @@ func getModelScopeDescriptionAt(legacyBase, modelID string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("User-Agent", "llama-gui")
+	req.Header.Set("User-Agent", "llama-desktop")
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)

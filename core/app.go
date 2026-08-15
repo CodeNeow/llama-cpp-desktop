@@ -39,7 +39,7 @@ func (a *App) Startup(ctx context.Context) {
 		wailsRuntime.WindowSetBackgroundColour(ctx, 15, 15, 20, 255)
 	}
 
-	log.Println("[INFO] Llama GUI started")
+	log.Println("[INFO] Llama Desktop started")
 }
 
 // Shutdown is called by Wails on application exit; it persists the download
@@ -86,7 +86,7 @@ func (a *App) Shutdown(ctx context.Context) {
 	}
 	dlTasksMu.Unlock()
 
-	log.Println("[INFO] Llama GUI stopped")
+	log.Println("[INFO] Llama Desktop stopped")
 }
 
 // ─── Config ─────────────────────────────────────────────────────

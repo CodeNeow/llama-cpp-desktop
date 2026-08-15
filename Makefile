@@ -1,4 +1,4 @@
-# Llama GUI 组合验证门（POSIX）
+# Llama Desktop 组合验证门（POSIX）
 # 用法：make check           # 全量（后端 + 前端）
 #       make check-backend  # 仅后端
 #       make check-frontend # 仅前端

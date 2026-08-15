@@ -50,13 +50,18 @@ describe('lib/update', () => {
   })
 
   it('shouldAutoCheck：距上次检查不足 48 小时返回 false', () => {
-    localStorage.setItem('llama-gui-last-update-check', String(Date.now() - 60 * 60 * 1000))
+    localStorage.setItem('llama-desktop-last-update-check', String(Date.now() - 60 * 60 * 1000))
     expect(shouldAutoCheck()).toBe(false)
   })
 
   it('shouldAutoCheck：距上次检查超过 48 小时返回 true', () => {
-    localStorage.setItem('llama-gui-last-update-check', String(Date.now() - CHECK_INTERVAL_MS - 1000))
+    localStorage.setItem('llama-desktop-last-update-check', String(Date.now() - CHECK_INTERVAL_MS - 1000))
     expect(shouldAutoCheck()).toBe(true)
+  })
+
+  it('shouldAutoCheck：新键缺失时回退旧键（llama-gui 更名迁移），老安装节流不重置', () => {
+    localStorage.setItem('llama-gui-last-update-check', String(Date.now() - 60 * 60 * 1000))
+    expect(shouldAutoCheck()).toBe(false)
   })
 
   it('checkForUpdate 发现新版本时写入检查时间并弹出更新窗口', async () => {
@@ -74,7 +79,7 @@ describe('lib/update', () => {
     expect(updateState.showModal).toBe(true)
     expect(updateState.checking).toBe(false)
     // 检查完成后刷新最近检查时间，避免下次启动重复自动检查
-    expect(localStorage.getItem('llama-gui-last-update-check')).not.toBeNull()
+    expect(localStorage.getItem('llama-desktop-last-update-check')).not.toBeNull()
   })
 
   it('checkForUpdate 无新版本时不弹窗但记录检查时间', async () => {
@@ -83,7 +88,7 @@ describe('lib/update', () => {
     await checkForUpdate()
 
     expect(updateState.showModal).toBe(false)
-    expect(localStorage.getItem('llama-gui-last-update-check')).not.toBeNull()
+    expect(localStorage.getItem('llama-desktop-last-update-check')).not.toBeNull()
   })
 
   it('checkForUpdate 失败时静默置错误，不弹窗', async () => {
@@ -102,7 +107,7 @@ describe('lib/update', () => {
     mockStartUpdateDownload.mockResolvedValue(undefined)
     mockGetStatus.mockResolvedValue({
       status: 'done', progress: 100, total: 100, downloaded: 100,
-      version: 'v0.2.0', filePath: 'C:/app/llama-gui-portable-v0.2.0.exe', error: '', kind: 'portable',
+      version: 'v0.2.0', filePath: 'C:/app/llama-desktop-portable-v0.2.0.exe', error: '', kind: 'portable',
     })
 
     await checkForUpdate()
@@ -113,7 +118,7 @@ describe('lib/update', () => {
 
     await vi.advanceTimersByTimeAsync(1100) // 触发一次轮询
     expect(updateState.download?.status).toBe('done')
-    expect(updateState.download?.filePath).toContain('llama-gui-portable-v0.2.0.exe')
+    expect(updateState.download?.filePath).toContain('llama-desktop-portable-v0.2.0.exe')
 
     // 完成后轮询应停止（再推进时间不应重复拉取）
     const callsAfterDone = mockGetStatus.mock.calls.length

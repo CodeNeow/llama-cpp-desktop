@@ -9,7 +9,9 @@ import { t } from './i18n'
 // 自动检查节流：距上次检查不足 48 小时不再自动检查（本地时间）。
 // 手动检查不受此限制。
 export const CHECK_INTERVAL_MS = 48 * 60 * 60 * 1000
-const CHECK_KEY = 'llama-gui-last-update-check'
+const CHECK_KEY = 'llama-desktop-last-update-check'
+// llama-gui → llama-desktop 更名前的旧键：仅作读取回退，保留老安装的节流时间戳
+const LEGACY_CHECK_KEY = 'llama-gui-last-update-check'
 
 export interface UpdateResult {
   hasUpdate: boolean
@@ -41,7 +43,8 @@ let downloadTimer: ReturnType<typeof setInterval> | null = null
 
 /** 距上次检查是否已超过 48 小时（或从未检查过）。 */
 export function shouldAutoCheck(now = Date.now()): boolean {
-  const last = Number(localStorage.getItem(CHECK_KEY) || 0)
+  // 新键缺失时回退旧键（更名迁移），避免老安装重置节流窗口重复弹检查
+  const last = Number(localStorage.getItem(CHECK_KEY) || localStorage.getItem(LEGACY_CHECK_KEY) || 0)
   if (!last) return true
   return now - last > CHECK_INTERVAL_MS
 }

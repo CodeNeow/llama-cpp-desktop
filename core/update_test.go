@@ -63,11 +63,11 @@ func TestPickUpdateAsset(t *testing.T) {
 		t.Errorf("setup 应挑中 llama-gui-amd64-installer.exe, 实际 %v", got)
 	}
 	// setup：新命名 setup 命中（名字里没有 installer 也能命中）
-	if got := pickUpdateAsset([]GitHubAsset{{Name: "llama-gui-setup-v0.2.0-amd64.exe"}}, installKindSetup); got == nil || got.Name != "llama-gui-setup-v0.2.0-amd64.exe" {
-		t.Errorf("setup 应挑中 llama-gui-setup-v0.2.0-amd64.exe, 实际 %v", got)
+	if got := pickUpdateAsset([]GitHubAsset{{Name: "llama-desktop-setup-v0.2.0-amd64.exe"}}, installKindSetup); got == nil || got.Name != "llama-desktop-setup-v0.2.0-amd64.exe" {
+		t.Errorf("setup 应挑中 llama-desktop-setup-v0.2.0-amd64.exe, 实际 %v", got)
 	}
 	// setup：只有 portable 资产时返回 nil（不能误选便携版）
-	if got := pickUpdateAsset([]GitHubAsset{{Name: "llama-gui-portable-v0.2.0-amd64.exe"}}, installKindSetup); got != nil {
+	if got := pickUpdateAsset([]GitHubAsset{{Name: "llama-desktop-portable-v0.2.0-amd64.exe"}}, installKindSetup); got != nil {
 		t.Errorf("setup 只有 portable 资产应返回 nil, 实际 %v", got)
 	}
 
@@ -80,11 +80,11 @@ func TestPickUpdateAsset(t *testing.T) {
 		t.Errorf("portable 应挑中 llama-gui.exe, 实际 %v", got)
 	}
 	// portable：新命名 portable 命中
-	if got := pickUpdateAsset([]GitHubAsset{{Name: "llama-gui-portable-v0.2.0-amd64.exe"}}, installKindPortable); got == nil || got.Name != "llama-gui-portable-v0.2.0-amd64.exe" {
-		t.Errorf("portable 应挑中 llama-gui-portable-v0.2.0-amd64.exe, 实际 %v", got)
+	if got := pickUpdateAsset([]GitHubAsset{{Name: "llama-desktop-portable-v0.2.0-amd64.exe"}}, installKindPortable); got == nil || got.Name != "llama-desktop-portable-v0.2.0-amd64.exe" {
+		t.Errorf("portable 应挑中 llama-desktop-portable-v0.2.0-amd64.exe, 实际 %v", got)
 	}
 	// portable：只有 setup/installer 资产时返回 nil（不能误选安装器）
-	if got := pickUpdateAsset([]GitHubAsset{{Name: "llama-gui-setup-v0.2.0-amd64.exe"}, {Name: "llama-gui-amd64-installer.exe"}}, installKindPortable); got != nil {
+	if got := pickUpdateAsset([]GitHubAsset{{Name: "llama-desktop-setup-v0.2.0-amd64.exe"}, {Name: "llama-gui-amd64-installer.exe"}}, installKindPortable); got != nil {
 		t.Errorf("portable 只有安装器资产应返回 nil, 实际 %v", got)
 	}
 
@@ -107,7 +107,7 @@ func TestDetectInstallKind(t *testing.T) {
 	dir := t.TempDir()
 	// 不含 uninstall.exe → portable（绿色便携版）
 	updateExePath = func() (string, error) {
-		return filepath.Join(dir, "llama-gui.exe"), nil
+		return filepath.Join(dir, "llama-desktop.exe"), nil
 	}
 	if got := detectInstallKind(); got != installKindPortable {
 		t.Errorf("无 uninstall.exe 应判定 %q, 实际 %q", installKindPortable, got)
@@ -184,14 +184,14 @@ func TestStartUpdateDownloadRejectsNotNewer(t *testing.T) {
 
 // TestDownloadUpdateRelease 验证便携版更新下载完整流程：从注入的 release API
 // 拉取信息 → 按 portable 类型挑便携版 exe 下载到可执行文件同目录 → 状态置 done
-// 且文件存在，文件名带版本号与类型前缀（llama-gui-portable-v<tag>.exe）。
+// 且文件存在，文件名带版本号与类型前缀（llama-desktop-portable-v<tag>.exe）。
 func TestDownloadUpdateRelease(t *testing.T) {
 	withTempCwd(t)
 	saveUpdateState(t)
 	// 下载落盘目录用临时目录模拟「可执行文件同目录」（无 uninstall.exe → portable）
 	exeDir := t.TempDir()
 	updateExePath = func() (string, error) {
-		return filepath.Join(exeDir, "llama-gui.exe"), nil
+		return filepath.Join(exeDir, "llama-desktop.exe"), nil
 	}
 
 	payload := []byte("MZ fake exe payload")
@@ -217,7 +217,7 @@ func TestDownloadUpdateRelease(t *testing.T) {
 	if ds.Status != "done" {
 		t.Fatalf("下载完成状态 = %q, want done（错误: %s）", ds.Status, ds.Error)
 	}
-	wantPath := filepath.Join(exeDir, "llama-gui-portable-v0.2.0.exe")
+	wantPath := filepath.Join(exeDir, "llama-desktop-portable-v0.2.0.exe")
 	if ds.FilePath != wantPath {
 		t.Errorf("保存路径 = %q, want %q", ds.FilePath, wantPath)
 	}
@@ -235,7 +235,7 @@ func TestDownloadUpdateRelease(t *testing.T) {
 
 // TestDownloadUpdateReleaseSetup 验证 setup 安装版更新下载：可执行文件同目录
 // 含 uninstall.exe（NSIS 安装版）时按 setup 类型挑安装器资产，下载命名
-// llama-gui-setup-v<tag>.exe，状态置 done 且 kind=setup。
+// llama-desktop-setup-v<tag>.exe，状态置 done 且 kind=setup。
 func TestDownloadUpdateReleaseSetup(t *testing.T) {
 	withTempCwd(t)
 	saveUpdateState(t)
@@ -246,19 +246,19 @@ func TestDownloadUpdateReleaseSetup(t *testing.T) {
 		t.Fatal(err)
 	}
 	updateExePath = func() (string, error) {
-		return filepath.Join(exeDir, "llama-gui.exe"), nil
+		return filepath.Join(exeDir, "llama-desktop.exe"), nil
 	}
 
 	payload := []byte("MZ fake setup payload")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/dl/llama-gui-setup-v0.2.0-amd64.exe" {
+		if r.URL.Path == "/dl/llama-desktop-setup-v0.2.0-amd64.exe" {
 			w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
 			w.Write(payload)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		dlURL := "http://" + r.Host + "/dl/llama-gui-setup-v0.2.0-amd64.exe"
-		w.Write([]byte(`{"tag_name":"v0.2.0","name":"Release","assets":[{"name":"llama-gui-setup-v0.2.0-amd64.exe","size":` + strconv.Itoa(len(payload)) + `,"browser_download_url":"` + dlURL + `"},{"name":"llama-gui-portable-v0.2.0-amd64.exe","size":10,"browser_download_url":"https://x/p.exe"}]}`))
+		dlURL := "http://" + r.Host + "/dl/llama-desktop-setup-v0.2.0-amd64.exe"
+		w.Write([]byte(`{"tag_name":"v0.2.0","name":"Release","assets":[{"name":"llama-desktop-setup-v0.2.0-amd64.exe","size":` + strconv.Itoa(len(payload)) + `,"browser_download_url":"` + dlURL + `"},{"name":"llama-desktop-portable-v0.2.0-amd64.exe","size":10,"browser_download_url":"https://x/p.exe"}]}`))
 	}))
 	defer srv.Close()
 	updateRepoAPI = srv.URL
@@ -272,7 +272,7 @@ func TestDownloadUpdateReleaseSetup(t *testing.T) {
 	if ds.Status != "done" {
 		t.Fatalf("下载完成状态 = %q, want done（错误: %s）", ds.Status, ds.Error)
 	}
-	wantPath := filepath.Join(exeDir, "llama-gui-setup-v0.2.0.exe")
+	wantPath := filepath.Join(exeDir, "llama-desktop-setup-v0.2.0.exe")
 	if ds.FilePath != wantPath {
 		t.Errorf("保存路径 = %q, want %q", ds.FilePath, wantPath)
 	}
@@ -298,7 +298,7 @@ func TestDownloadUpdateReleaseCrossDeviceFallback(t *testing.T) {
 	// 下载落盘目录用临时目录模拟「可执行文件同目录」（与源临时文件不同设备）
 	exeDir := t.TempDir()
 	updateExePath = func() (string, error) {
-		return filepath.Join(exeDir, "llama-gui.exe"), nil
+		return filepath.Join(exeDir, "llama-desktop.exe"), nil
 	}
 
 	payload := []byte("MZ fake exe payload cross device")
@@ -325,7 +325,7 @@ func TestDownloadUpdateReleaseCrossDeviceFallback(t *testing.T) {
 	defer func() { renameFile = origRename }()
 
 	// 目标路径已存在旧版本文件，验证跨设备回退不会先删旧文件导致丢失
-	wantPath := filepath.Join(exeDir, "llama-gui-portable-v0.2.0.exe")
+	wantPath := filepath.Join(exeDir, "llama-desktop-portable-v0.2.0.exe")
 	if err := os.WriteFile(wantPath, []byte("old version"), 0644); err != nil {
 		t.Fatal(err)
 	}

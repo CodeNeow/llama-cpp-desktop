@@ -1,12 +1,12 @@
-# Llama GUI
+# Llama Desktop
 
-![CI](https://github.com/CodeNeow/llama-cpp-gui/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/CodeNeow/llama-cpp-desktop/actions/workflows/ci.yml/badge.svg)
 
 [中文](README.md)
 
 _✨ Run llama.cpp locally on your desktop with one click — OpenAI-compatible API out of the box ✨_
 
-Llama GUI is a local LLM desktop management tool built on **Wails v2** (Go + WebView2). It brings the entire [llama.cpp](https://github.com/ggml-org/llama.cpp) pipeline — **download → model management → parameter configuration → service startup → API calls → real-time monitoring** — into a single window, so you never have to touch the command line.
+Llama Desktop is a local LLM desktop management tool built on **Wails v2** (Go + WebView2). It brings the entire [llama.cpp](https://github.com/ggml-org/llama.cpp) pipeline — **download → model management → parameter configuration → service startup → API calls → real-time monitoring** — into a single window, so you never have to touch the command line.
 
 ## Screenshots
 
@@ -117,7 +117,7 @@ wails dev
 wails build
 ```
 
-The artifacts are output to `build/bin/` (`llama-gui.exe` on Windows).
+The artifacts are output to `build/bin/` (`llama-desktop.exe` on Windows).
 
 ## Usage Guide
 
@@ -149,7 +149,7 @@ The artifacts are output to `build/bin/` (`llama-gui.exe` on Windows).
 ## Project Structure
 
 ```
-llama-cpp-gui/
+llama-cpp-desktop/
 ├── main.go            # Wails entry (window config, asset embedding, core.App binding)
 ├── core/              # Go backend logic package
 │   ├── app.go         # Wails binding methods (config, system info, models, service, downloads, monitor, update)
@@ -160,7 +160,7 @@ llama-cpp-gui/
 │   ├── hidewindow_windows.go   # Hides child-process console windows (Windows)
 │   └── *_test.go      # Backend unit tests (config / GGUF / model scanning / presets / downloads / service / monitor, etc.)
 ├── wails.json         # Wails project config
-├── llama-gui-config.json   # Runtime-persisted config (theme / directories / model params / service config / download source / tasks)
+├── llama-desktop-config.json   # Runtime-persisted config (theme / directories / model params / service config / download source / tasks)
 ├── LLM-Models/        # Model directory (put .gguf files here)
 └── frontend/
     ├── src/
@@ -178,7 +178,7 @@ llama-cpp-gui/
 
 ## Configuration
 
-Runtime configuration is persisted to `llama-gui-config.json` at the project root and includes:
+Runtime configuration is persisted to `llama-desktop-config.json` at the project root and includes:
 
 - `theme`: theme (`dark` / `light`)
 - `llamaCppDir`: custom llama.cpp directory
@@ -220,7 +220,7 @@ cd frontend && npm run build    # build the frontend only
 
 ## Release
 
-CI (`.github/workflows/ci.yml`) automatically builds and publishes Windows artifacts (installer `llama-gui-setup-vX.Y.Z-amd64.exe` + portable `llama-gui-portable-vX.Y.Z-amd64.exe`, where `vX.Y.Z` is the tag version) in these scenarios:
+CI (`.github/workflows/ci.yml`) automatically builds and publishes Windows artifacts (installer `llama-desktop-setup-vX.Y.Z-amd64.exe` + portable `llama-desktop-portable-vX.Y.Z-amd64.exe`, where `vX.Y.Z` is the tag version) in these scenarios:
 
 - **Stable release**: pushing a `v*` tag (e.g. `v1.0.0`) automatically creates a full release with change notes;
 - **Preview release**: manually running CI from the GitHub Actions page (`workflow_dispatch`) creates a draft release.

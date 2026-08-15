@@ -1,4 +1,4 @@
-# Llama GUI 组合验证门（Windows PowerShell）
+# Llama Desktop 组合验证门（Windows PowerShell）
 # 用法：.\scripts\check.ps1                 # 全量（后端 + 前端）
 #       .\scripts\check.ps1 -Scope backend # 仅后端
 #       .\scripts\check.ps1 -Scope frontend# 仅前端

@@ -13,7 +13,7 @@
           <path d="M10 20 L16 8 L22 20" stroke="white" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" />
           <circle cx="16" cy="22" r="2" fill="white" />
         </svg>
-        <span class="logo-text">Llama GUI</span>
+        <span class="logo-text">Llama Desktop</span>
       </div>
 
     </div>

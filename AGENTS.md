@@ -1,8 +1,8 @@
-# Llama GUI 开发规范
+# Llama Desktop 开发规范
 
 ## 项目概览
 
-Llama GUI 是一个本地大模型桌面管理工具：基于 **Wails v2**（Go 1.25 后端 + WebView2 前端），前端为 **Vue 3 + TypeScript + Vite 5**（无第三方 UI 库，手写 CSS 变量主题），推理引擎为 **llama.cpp**（llama-server 路由器模式）。
+Llama Desktop 是一个本地大模型桌面管理工具：基于 **Wails v2**（Go 1.25 后端 + WebView2 前端），前端为 **Vue 3 + TypeScript + Vite 5**（无第三方 UI 库，手写 CSS 变量主题），推理引擎为 **llama.cpp**（llama-server 路由器模式）。
 
 核心链路：`LLM-Models/` 目录扫描 GGUF → 逐模型推理参数配置 → 生成 llama-server 模型预设（INI）→ 启动 OpenAI 兼容服务（默认 `127.0.0.1:8080`）。
 
@@ -12,7 +12,7 @@ Llama GUI 是一个本地大模型桌面管理工具：基于 **Wails v2**（Go 
 
 ```bash
 wails dev                 # 开发模式：Go 后端 + Vite 前端（:5173）热重载
-wails build               # 生产构建，产物 build/bin/llama-gui.exe（build/ 已 gitignore）
+wails build               # 生产构建，产物 build/bin/llama-desktop.exe（build/ 已 gitignore）
 cd frontend && npm run build   # 仅构建前端（vue-tsc 类型检查 + vite build）
 cd frontend && npm run dev     # 仅起 Vite（无 Wails 运行时，后端调用会失败，见下文）
 ```
@@ -129,7 +129,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check.ps1  # 组�
 
 - 修复 bug 时改动仅限故障点及其配套文件，不混入无关重构。
 - 改动跨前后端（如新增绑定方法）时，`app.go`、`wails.ts` 与前端调用方必须一次提交到位，避免中间态。
-- 涉及下载状态机、服务启停、配置文件结构（`llama-gui-config.json`）的改动，需同时检查旧数据兼容（`loadConfig` 的默认值兜底逻辑）。
+- 涉及下载状态机、服务启停、配置文件结构（`llama-desktop-config.json`）的改动，需同时检查旧数据兼容（`loadConfig` 的默认值兜底逻辑）。
 - 新行为必须带聚焦测试；修改或删除既有测试需说明原因，不得为通过验证门而删除断言。
 
 ## 提交前测试分级
@@ -177,20 +177,20 @@ Remaining gaps:
 ## 仓库卫生
 
 - 提交前 `git status --short` 只包含本次任务有意改动的文件；`git diff --check` 无错误。
-- 不得提交：`node_modules/`、`frontend/dist/`、`build/`（含编译产物 exe）、`LLM-Models/` 下的模型文件、`llama-cpp/`、`llama-gui-config.json`（本地配置，可能含本机路径）、`*.log`、`.zcode/plans/`。
+- 不得提交：`node_modules/`、`frontend/dist/`、`build/`（含编译产物 exe）、`LLM-Models/` 下的模型文件、`llama-cpp/`、`llama-desktop-config.json`（本地配置，可能含本机路径）、`*.log`、`.zcode/plans/`。
 - 截图等文档资源提交到 `docs/` 目录（如 `docs/screenshots/`）。
 - 新增忽略类型时同步更新 `.gitignore`。
 
 ## Issue 跟踪
 
-Issue 位于 `https://github.com/CodeNeow/llama-cpp-gui/issues`。任何非平凡的缺陷或计划内工作都建议创建 issue，使进度可见；保持列表高信噪比。本章节是「多角色协作与工作流」中 Issues 发现者角色提交远程 issue 时的执行规范，也适用于任何需要创建 issue 的场合。
+Issue 位于 `https://github.com/CodeNeow/llama-cpp-desktop/issues`。任何非平凡的缺陷或计划内工作都建议创建 issue，使进度可见；保持列表高信噪比。本章节是「多角色协作与工作流」中 Issues 发现者角色提交远程 issue 时的执行规范，也适用于任何需要创建 issue 的场合。
 
 ### 创建
 
 - 网页创建的 issue 使用 `.github/ISSUE_TEMPLATE/` 下的表单模板：日常 bug 用 `bug-report.yml`，审计或代码评审的结构化发现用 `audit-finding.yml`（含 `file:line` 证据与验收标准）。
 - 批量发现（如完整审计）：创建一个置顶的 Tracker 总览 issue，在优先级表格中链接每个子 issue；为每个 P0/P1 发现单独建子 issue；P2/P3 可合并为汇总 issue。
 - 敏感安全漏洞（凭据泄漏、注入、越权等）不要开公开 issue。通过 GitHub Security Advisories（`Security > Report a vulnerability`）私密上报。修复落地后可再开非敏感跟踪 issue。
-- issue 正文绝不能包含密钥与本机绝对路径（`llama-gui-config.json` 中可能含本机路径）。提交前对 token、密钥、DSN、路径脱敏，即便在日志或截图中也是如此。
+- issue 正文绝不能包含密钥与本机绝对路径（`llama-desktop-config.json` 中可能含本机路径）。提交前对 token、密钥、DSN、路径脱敏，即便在日志或截图中也是如此。
 
 ### 标题与 Label
 

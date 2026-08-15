@@ -2,8 +2,18 @@ import { reactive } from 'vue'
 import { getConfig, setTheme as setThemeBackend, setDownloadSource as setDownloadSourceBackend, setLanguage as setLanguageBackend, setTrayEnabled as setTrayEnabledBackend, getServerConfig, saveServerConfig as saveServerConfigBackend } from './wails'
 import { setLocale } from './lib/i18n'
 
+// 主题 localStorage 键：llama-gui → llama-desktop 更名后旧键仅作读取回退
+// （老安装的主题偏好无损接续），写入一律走新键，不删除旧键。
+const THEME_KEY = 'llama-desktop-theme'
+const LEGACY_THEME_KEY = 'llama-gui-theme'
+
+/** 读取持久化主题：新键优先，缺失时回退更名前旧键，均无则 light。 */
+export function readStoredTheme(): string {
+  return localStorage.getItem(THEME_KEY) || localStorage.getItem(LEGACY_THEME_KEY) || 'light'
+}
+
 export const appConfig = reactive({
-  theme: localStorage.getItem('llama-gui-theme') || 'light',
+  theme: readStoredTheme(),
   llamaCppDir: '',
   modelsDir: '',
   downloadSource: 'hf',
@@ -28,7 +38,7 @@ export async function loadConfig() {
     // 后端缺省/未返回 trayEnabled 时保持默认 true（与后端 loadConfig 兜底一致）
     appConfig.trayEnabled = config.trayEnabled !== false
     setLocale(appConfig.resolvedLanguage)
-    localStorage.setItem('llama-gui-theme', appConfig.theme)
+    localStorage.setItem(THEME_KEY, appConfig.theme)
     document.documentElement.setAttribute('data-theme', appConfig.theme)
   } catch {} finally {
     appConfig.loaded = true
@@ -38,7 +48,7 @@ export async function loadConfig() {
 export async function setTheme(theme: string) {
   appConfig.theme = theme
   document.documentElement.setAttribute('data-theme', theme)
-  localStorage.setItem('llama-gui-theme', theme)
+  localStorage.setItem(THEME_KEY, theme)
   try {
     await setThemeBackend(theme)
   } catch {}

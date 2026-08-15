@@ -1,4 +1,4 @@
-module llama-gui
+module llama-desktop
 
 go 1.25.0
 

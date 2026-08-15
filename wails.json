@@ -1,6 +1,6 @@
 {
-  "name": "llama-gui",
-  "outputfilename": "llama-gui",
+  "name": "llama-desktop",
+  "outputfilename": "llama-desktop",
   "frontend:install": "npm install",
   "frontend:build": "npm run build",
   "frontend:dev:watcher": "npm run dev",

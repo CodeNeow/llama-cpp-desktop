@@ -1,12 +1,12 @@
-# Llama GUI
+# Llama Desktop
 
-![CI](https://github.com/CodeNeow/llama-cpp-gui/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/CodeNeow/llama-cpp-desktop/actions/workflows/ci.yml/badge.svg)
 
 [English](README.en.md)
 
 _✨ 在本地桌面一键运行 llama.cpp，OpenAI 兼容 API 开箱即用 ✨_
 
-Llama GUI 是一个基于 **Wails v2**（Go + WebView2）构建的本地大模型桌面管理工具。它帮你把 [llama.cpp](https://github.com/ggml-org/llama.cpp) 的完整链路（**下载 → 模型管理 → 参数配置 → 服务启动 → API 调用 → 实时监控**）收敛到一个窗口里，无需手动敲命令行。
+Llama Desktop 是一个基于 **Wails v2**（Go + WebView2）构建的本地大模型桌面管理工具。它帮你把 [llama.cpp](https://github.com/ggml-org/llama.cpp) 的完整链路（**下载 → 模型管理 → 参数配置 → 服务启动 → API 调用 → 实时监控**）收敛到一个窗口里，无需手动敲命令行。
 
 ## 界面预览
 
@@ -117,7 +117,7 @@ wails dev
 wails build
 ```
 
-产物输出到 `build/bin/`（Windows 下为 `llama-gui.exe`）。
+产物输出到 `build/bin/`（Windows 下为 `llama-desktop.exe`）。
 
 ## 使用指南
 
@@ -149,7 +149,7 @@ wails build
 ## 项目结构
 
 ```
-llama-cpp-gui/
+llama-cpp-desktop/
 ├── main.go            # Wails 应用入口（窗口配置、资源嵌入、绑定 core.App）
 ├── core/              # Go 后端逻辑包
 │   ├── app.go         # Wails 绑定方法（配置、系统信息、模型、服务、下载、监控、更新）
@@ -160,7 +160,7 @@ llama-cpp-gui/
 │   ├── hidewindow_windows.go   # 隐藏子进程控制台窗口（Windows 实现）
 │   └── *_test.go      # 后端单测（config / GGUF / 模型扫描 / 预设生成 / 下载 / 服务 / 监控等）
 ├── wails.json         # Wails 项目配置
-├── llama-gui-config.json   # 运行时持久化配置（主题 / 目录 / 模型参数 / 服务配置 / 下载源 / 下载任务）
+├── llama-desktop-config.json   # 运行时持久化配置（主题 / 目录 / 模型参数 / 服务配置 / 下载源 / 下载任务）
 ├── LLM-Models/        # 模型目录（放入 .gguf 文件）
 └── frontend/
     ├── src/
@@ -178,7 +178,7 @@ llama-cpp-gui/
 
 ## 配置
 
-运行时配置持久化在项目根目录的 `llama-gui-config.json`，包含：
+运行时配置持久化在项目根目录的 `llama-desktop-config.json`，包含：
 
 - `theme`：主题（`dark` / `light`）
 - `llamaCppDir`：自定义 llama.cpp 目录
@@ -220,7 +220,7 @@ cd frontend && npm run build    # 仅构建前端
 
 ## 发布 Release
 
-CI（`.github/workflows/ci.yml`）在以下场景自动构建并发布 Windows 产物（安装器 `llama-gui-setup-vX.Y.Z-amd64.exe` + 便携版 `llama-gui-portable-vX.Y.Z-amd64.exe`，`vX.Y.Z` 为对应 tag 版本号）：
+CI（`.github/workflows/ci.yml`）在以下场景自动构建并发布 Windows 产物（安装器 `llama-desktop-setup-vX.Y.Z-amd64.exe` + 便携版 `llama-desktop-portable-vX.Y.Z-amd64.exe`，`vX.Y.Z` 为对应 tag 版本号）：
 
 - **正式版**：推送 `v*` 格式 tag（如 `v1.0.0`），自动创建带变更说明的正式 Release；
 - **预览版**：在 GitHub Actions 页手动运行 CI（`workflow_dispatch`），创建草稿 Release。

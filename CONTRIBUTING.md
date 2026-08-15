@@ -1,6 +1,6 @@
 # 贡献指南
 
-感谢你参与 Llama GUI 的开发！本指南覆盖环境准备、提交规范、验证门与 Issue / PR 流程。完整的开发规范见 [AGENTS.md](./AGENTS.md)。
+感谢你参与 Llama Desktop 的开发！本指南覆盖环境准备、提交规范、验证门与 Issue / PR 流程。完整的开发规范见 [AGENTS.md](./AGENTS.md)。
 
 ## 1. 环境准备
 
@@ -104,7 +104,7 @@ gh auth login   # 首次需登录
 
 ### 4.5 Issue 内容脱敏
 
-issue 正文绝不能包含 token、密钥、本机绝对路径（如 `llama-gui-config.json` 中的路径），提交前先脱敏。
+issue 正文绝不能包含 token、密钥、本机绝对路径（如 `llama-desktop-config.json` 中的路径），提交前先脱敏。
 
 ## 5. Pull Request 流程
 
@@ -118,5 +118,5 @@ issue 正文绝不能包含 token、密钥、本机绝对路径（如 `llama-gui
 - 修复 bug 时改动仅限故障点及其配套文件，不混入无关重构。
 - 新增 / 修改后端绑定方法时，必须同步更新 `frontend/src/wails.ts` 与调用方。
 - 新行为必须带聚焦测试（Go `*_test.go` / vitest）；不得通过删除失败测试或跳过验证门获得绿色结果。
-- 不得提交生成产物与本地配置：`node_modules/`、`frontend/dist/`、`build/`、`LLM-Models/` 下的模型文件、`llama-gui-config.json`、`*.log`。
+- 不得提交生成产物与本地配置：`node_modules/`、`frontend/dist/`、`build/`、`LLM-Models/` 下的模型文件、`llama-desktop-config.json`、`*.log`。
 - 用户可见文案使用中文，与现有页面风格保持一致。

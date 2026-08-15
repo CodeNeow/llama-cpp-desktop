@@ -4,7 +4,7 @@ import (
 	"context"
 	"embed"
 
-	"llama-gui/core"
+	"llama-desktop/core"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -25,7 +25,7 @@ func main() {
 	core.TrayIcon = trayIcon
 
 	err := wails.Run(&options.App{
-		Title:     "Llama GUI",
+		Title:     "Llama Desktop",
 		Width:     1200,
 		Height:    800,
 		MinWidth:  900,

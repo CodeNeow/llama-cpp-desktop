@@ -5,6 +5,7 @@ release/
 build/bin/
 build/windows/installer/*
 !build/windows/installer/project.nsi
+/llama-desktop.exe
 /llama-gui.exe
 .vite/
 *.log
@@ -12,6 +13,7 @@ build/windows/installer/*
 Thumbs.db
 LLM-Models/
 llama-cpp/
+llama-desktop-config.json
 llama-gui-config.json
 .codegraph
 .zcode/plans/

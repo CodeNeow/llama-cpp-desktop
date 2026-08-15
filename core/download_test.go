@@ -130,8 +130,8 @@ func TestBuildDownloadRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if req.Header.Get("User-Agent") != "llama-gui" {
-		t.Errorf("User-Agent = %q, want llama-gui", req.Header.Get("User-Agent"))
+	if req.Header.Get("User-Agent") != "llama-desktop" {
+		t.Errorf("User-Agent = %q, want llama-desktop", req.Header.Get("User-Agent"))
 	}
 	if req.Header.Get("Range") != "" {
 		t.Errorf("无偏移时不应有 Range 头: %q", req.Header.Get("Range"))

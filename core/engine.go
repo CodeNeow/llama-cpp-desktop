@@ -1148,7 +1148,12 @@ func llamaCppDownloadDir() string {
 }
 
 // configFile 是配置持久化路径，声明为 var 以便测试通过 chdir 覆盖。
-var configFile = "llama-gui-config.json"
+var configFile = "llama-desktop-config.json"
+
+// legacyConfigFile 是 llama-gui → llama-desktop 更名前的配置文件名。仅作
+// 一次性迁移来源（见 migrateLegacyConfig）：新文件不存在而旧文件存在时整体
+// 改名复用，老用户的主题 / 目录 / 模型参数 / 下载队列无损保留。
+var legacyConfigFile = "llama-gui-config.json"
 
 // renameFile 为测试注入点（与 configFile 同风格），用于模拟下载完成后
 // 重命名临时文件失败的分支（#10）。
@@ -1396,7 +1401,7 @@ func downloadWithResume(ctx context.Context, url string, totalSize int64, baseDo
 			tmpFile.Close()
 			return tmpPath, err
 		}
-		req.Header.Set("User-Agent", "llama-gui")
+		req.Header.Set("User-Agent", "llama-desktop")
 		if offset > 0 {
 			req.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
 		}
@@ -1530,7 +1535,7 @@ func fetchLatestReleaseAt(apiURL string) (*GitHubRelease, error) {
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "llama-gui")
+	req.Header.Set("User-Agent", "llama-desktop")
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
@@ -1866,7 +1871,7 @@ var currentVersion = strings.TrimSpace(string(versionFile))
 // updateRepoAPI 指向本仓库的 latest release API。URL 由 CheckForUpdateAt
 // 接收以支持测试注入本地 httptest 服务器。声明为 var 以便测试通过替换
 // 包级变量模拟网络（与 configFile / renameFile 同风格）。
-var updateRepoAPI = "https://api.github.com/repos/CodeNeow/llama-cpp-gui/releases/latest"
+var updateRepoAPI = "https://api.github.com/repos/CodeNeow/llama-cpp-desktop/releases/latest"
 
 // compareVersions 比较两个形如 v1.2.3 的版本号（忽略前导 v / V）。
 // 返回 -1 表示 a < b，0 相等，1 表示 a > b；无法解析的分段按 0 处理。
@@ -1967,13 +1972,15 @@ func detectInstallKind() string {
 	return installKindPortable
 }
 
-// pickUpdateAsset 按安装类型挑选更新下载使用的资产，兼容新旧两种命名：
-//   - 新命名：setup 安装器 llama-gui-setup-vX.Y.Z-amd64.exe、便携版
-//     llama-gui-portable-vX.Y.Z-amd64.exe；
-//   - 旧命名（v0.1.6）：安装器 llama-gui-amd64-installer.exe、便携版 llama-gui.exe。
+// pickUpdateAsset 按安装类型挑选更新下载使用的资产，按关键词匹配（与产物
+// 前缀无关），兼容三代命名：
+//   - 现命名：setup 安装器 llama-desktop-setup-vX.Y.Z-amd64.exe、便携版
+//     llama-desktop-portable-vX.Y.Z-amd64.exe；
+//   - 旧命名（v0.1.7 起）：llama-gui-setup- / llama-gui-portable- 前缀；
+//   - 最旧命名（v0.1.6）：安装器 llama-gui-amd64-installer.exe、便携版 llama-gui.exe。
 //
 // setup 返回第一个安装器资产（名字含 installer 或 setup）；
-// portable 返回第一个含 portable 或非安装器的 exe 资产（旧命名 llama-gui.exe
+// portable 返回第一个含 portable 或非安装器的 exe 资产（最旧命名 llama-gui.exe
 // 不含 portable/installer/setup，命中「非安装器」分支）。
 func pickUpdateAsset(assets []GitHubAsset, kind string) *GitHubAsset {
 	for i := range assets {
@@ -2044,7 +2051,7 @@ func downloadUpdateRelease(version string) {
 	updateDownloadMu.Unlock()
 
 	// Step 2: 下载到可执行文件同目录，命名按安装类型区分：
-	// setup → llama-gui-setup-v<tag>.exe；portable → llama-gui-portable-v<tag>.exe
+	// setup → llama-desktop-setup-v<tag>.exe；portable → llama-desktop-portable-v<tag>.exe
 	exePath, err := updateExePath()
 	if err != nil {
 		setUpdateDownloadError(tr("无法定位可执行文件路径: ", "Unable to locate the executable path: ") + err.Error())
@@ -2053,9 +2060,9 @@ func downloadUpdateRelease(version string) {
 	dir := filepath.Dir(exePath)
 	var fileName string
 	if kind == installKindSetup {
-		fileName = "llama-gui-setup-" + release.TagName + ".exe"
+		fileName = "llama-desktop-setup-" + release.TagName + ".exe"
 	} else {
-		fileName = "llama-gui-portable-" + release.TagName + ".exe"
+		fileName = "llama-desktop-portable-" + release.TagName + ".exe"
 	}
 	destPath := filepath.Join(dir, fileName)
 
@@ -2102,7 +2109,7 @@ func setUpdateDownloadError(msg string) {
 // 与 downloadWithResume 不同：更新 exe 体量小、不支持暂停/断点续传，
 // 仅响应 context 取消（应用退出/停止下载）。
 func downloadUpdateWithResume(ctx context.Context, url string, totalSize int64) (string, error) {
-	tmpFile, err := os.CreateTemp("", "llama-gui-update-*.exe")
+	tmpFile, err := os.CreateTemp("", "llama-desktop-update-*.exe")
 	if err != nil {
 		return "", fmt.Errorf(tr("创建临时文件失败: %w", "failed to create temporary file: %w"), err)
 	}
@@ -2113,7 +2120,7 @@ func downloadUpdateWithResume(ctx context.Context, url string, totalSize int64) 
 		tmpFile.Close()
 		return tmpPath, err
 	}
-	req.Header.Set("User-Agent", "llama-gui")
+	req.Header.Set("User-Agent", "llama-desktop")
 
 	client := &http.Client{Timeout: 30 * time.Minute}
 	resp, err := client.Do(req)
@@ -2504,7 +2511,7 @@ type appConfig struct {
 	DownloadTasks  []PersistedDlTask      `json:"downloadTasks,omitempty"`
 }
 
-// PersistedDlTask 是下载任务队列的持久化形态（写入 llama-gui-config.json）。
+// PersistedDlTask 是下载任务队列的持久化形态（写入 llama-desktop-config.json）。
 // 与 DlTask 的区别：URL / ctx / cancel / resumeCh 这类运行时状态不持久化，
 // URL 在 loadConfig 恢复时按 Source + buildModelDownloadURL 重建。
 type PersistedDlTask struct {
@@ -2572,7 +2579,25 @@ type ModelConfig struct {
 	NoMMap        bool    `json:"noMmap,omitempty"` // 已废弃,仅为读取旧配置迁移
 }
 
+// migrateLegacyConfig 把 llama-gui 时代的旧配置文件升级到新文件名：仅当
+// 新文件不存在且旧文件存在时执行一次 os.Rename（同目录原子改名，内容零
+// 解析损耗）。失败只记警告并走 loadConfig 的默认配置兜底，不阻断启动。
+func migrateLegacyConfig() {
+	if _, err := os.Stat(configFile); err == nil {
+		return
+	}
+	if _, err := os.Stat(legacyConfigFile); err != nil {
+		return
+	}
+	if err := renameFile(legacyConfigFile, configFile); err != nil {
+		log.Printf("[WARN] Failed to migrate legacy config %s: %v", legacyConfigFile, err)
+		return
+	}
+	log.Printf("[OK] Migrated legacy config %s -> %s", legacyConfigFile, configFile)
+}
+
 func loadConfig() {
+	migrateLegacyConfig()
 	data, err := os.ReadFile(configFile)
 	if err != nil {
 		return // file doesn't exist yet, that's ok
@@ -2926,7 +2951,7 @@ func searchHFMirrorSortAt(baseURL, q, sort string) ([]HFSearchResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "llama-gui")
+	req.Header.Set("User-Agent", "llama-desktop")
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
@@ -2994,7 +3019,7 @@ func getModelDescription(modelID string) (string, error) {
 
 // getModelDescriptionAt fetches the README of a model on an HF-compatible base
 // and extracts its natural-language description:
-//   - GET {base}/{modelID}/raw/main/README.md（User-Agent llama-gui，30s 超时）
+//   - GET {base}/{modelID}/raw/main/README.md（User-Agent llama-desktop，30s 超时）
 //   - 非 200 返回错误；YAML front-matter（首行为 --- 的块）会被跳过
 //   - 按空行分段，取第一个「非空且不以 # 开头」的段落，trim 后截断 200 rune
 //   - README 存在但没有描述段落时返回空串与 nil 错误（静默）
@@ -3005,7 +3030,7 @@ func getModelDescriptionAt(baseURL, modelID string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("User-Agent", "llama-gui")
+	req.Header.Set("User-Agent", "llama-desktop")
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
@@ -3094,7 +3119,7 @@ func getHFModelFilesAt(baseURL, modelID string) ([]HFFileOut, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "llama-gui")
+	req.Header.Set("User-Agent", "llama-desktop")
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
@@ -3143,7 +3168,7 @@ func getHFModelMaxGGUFSizeAt(baseURL, modelID string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	req.Header.Set("User-Agent", "llama-gui")
+	req.Header.Set("User-Agent", "llama-desktop")
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
@@ -3517,13 +3542,13 @@ func downloadTask(task *DlTask) {
 }
 
 // buildDownloadRequest creates a GET request for a download URL with the
-// llama-gui User-Agent, adding a Range header when resuming from an offset.
+// llama-desktop User-Agent, adding a Range header when resuming from an offset.
 func buildDownloadRequest(downloadURL string, offset int64) (*http.Request, error) {
 	req, err := http.NewRequest("GET", downloadURL, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "llama-gui")
+	req.Header.Set("User-Agent", "llama-desktop")
 	if offset > 0 {
 		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
 	}

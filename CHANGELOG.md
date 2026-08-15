@@ -65,6 +65,6 @@ v0.1.6: 实时推理监控、ModelScope 下载源与多项修复（v0.1.5 以来
 11. `1699907` fix(server): 兼容新版 llama.cpp 日志格式，预填充期间实时刷新提示词处理速度
     - 核心：适配新版 llama.cpp 日志格式变化，预填充期间提示词处理速度实时刷新
 
-[v0.1.8]: https://github.com/CodeNeow/llama-cpp-gui/compare/v0.1.7...v0.1.8
-[v0.1.7]: https://github.com/CodeNeow/llama-cpp-gui/compare/v0.1.6...v0.1.7
-[v0.1.6]: https://github.com/CodeNeow/llama-cpp-gui/compare/v0.1.5...v0.1.6
+[v0.1.8]: https://github.com/CodeNeow/llama-cpp-desktop/compare/v0.1.7...v0.1.8
+[v0.1.7]: https://github.com/CodeNeow/llama-cpp-desktop/compare/v0.1.6...v0.1.7
+[v0.1.6]: https://github.com/CodeNeow/llama-cpp-desktop/compare/v0.1.5...v0.1.6

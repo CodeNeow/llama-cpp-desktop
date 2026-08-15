@@ -1,7 +1,7 @@
 {
-  "name": "llama-gui",
+  "name": "llama-desktop",
   "version": "1.0.0",
-  "description": "Llama GUI - Desktop application with Vue 3 + Wails + Go",
+  "description": "Llama Desktop - Desktop application with Vue 3 + Wails + Go",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Llama GUI 应用图标源文件（512×512）
+  Llama Desktop 应用图标源文件（512×512）
   品牌元素与 frontend/src/components/Sidebar.vue 的 logo 一致：
   紫色对角渐变圆角方块 + 白色 llama 脸线条。
   重新生成构建资源：

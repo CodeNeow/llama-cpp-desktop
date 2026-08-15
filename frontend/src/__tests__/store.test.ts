@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { appConfig, loadConfig, setTheme, setDownloadSource, setLanguage, setServerAccessMode, setTrayEnabled } from '../store'
+import { appConfig, loadConfig, setTheme, setDownloadSource, setLanguage, setServerAccessMode, setTrayEnabled, readStoredTheme } from '../store'
 import { getConfig, setTheme as setThemeBackend, setDownloadSource as setDownloadSourceBackend, setLanguage as setLanguageBackend, setTrayEnabled as setTrayEnabledBackend, getServerConfig, saveServerConfig as saveServerConfigBackend } from '../wails'
 import { locale } from '../lib/i18n'
 
@@ -49,7 +49,7 @@ describe('store', () => {
     expect(appConfig.downloadSource).toBe('modelscope')
     expect(appConfig.trayEnabled).toBe(false)
     expect(appConfig.loaded).toBe(true)
-    expect(localStorage.getItem('llama-gui-theme')).toBe('light')
+    expect(localStorage.getItem('llama-desktop-theme')).toBe('light')
     expect(document.documentElement.getAttribute('data-theme')).toBe('light')
   })
 
@@ -115,7 +115,7 @@ describe('store', () => {
     await setTheme('light')
 
     expect(appConfig.theme).toBe('light')
-    expect(localStorage.getItem('llama-gui-theme')).toBe('light')
+    expect(localStorage.getItem('llama-desktop-theme')).toBe('light')
     expect(document.documentElement.getAttribute('data-theme')).toBe('light')
   })
 
@@ -124,6 +124,28 @@ describe('store', () => {
 
     await expect(setTheme('light')).resolves.toBeUndefined()
     expect(appConfig.theme).toBe('light')
+  })
+
+  it('readStoredTheme 新键缺失时回退旧键（llama-gui 更名迁移），双键均无时 light', () => {
+    expect(readStoredTheme()).toBe('light')
+
+    // 老安装只有旧键：主题偏好应无损接续
+    localStorage.setItem('llama-gui-theme', 'dark')
+    expect(readStoredTheme()).toBe('dark')
+
+    // 新键优先于旧键
+    localStorage.setItem('llama-desktop-theme', 'light')
+    expect(readStoredTheme()).toBe('light')
+  })
+
+  it('setTheme 只写新键，不触碰旧键（旧键留给未升级实例回退）', async () => {
+    mockSetTheme.mockResolvedValue(undefined)
+    localStorage.setItem('llama-gui-theme', 'dark')
+
+    await setTheme('dark')
+
+    expect(localStorage.getItem('llama-desktop-theme')).toBe('dark')
+    expect(localStorage.getItem('llama-gui-theme')).toBe('dark')
   })
 
   it('setDownloadSource 成功后更新本地状态并调用后端', async () => {

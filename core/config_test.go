@@ -350,6 +350,48 @@ func TestLoadConfigMissingFile(t *testing.T) {
 	loadConfig() // 不应 panic
 }
 
+// TestLoadConfigMigratesLegacyFile 验证 llama-gui → llama-desktop 更名后的
+// 配置文件迁移：新文件不存在而旧文件存在时，loadConfig 先把旧文件整体改名
+// 为新文件再加载（老用户主题等配置无损），旧文件不残留；新文件已存在时
+// 不再迁移，避免旧文件覆盖新配置。
+func TestLoadConfigMigratesLegacyFile(t *testing.T) {
+	withTempCwd(t)
+	saveConfigState(t)
+
+	if err := os.WriteFile(legacyConfigFile, []byte(`{"theme":"dark"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	loadConfig()
+
+	configMu.Lock()
+	theme := currentTheme
+	configMu.Unlock()
+	if theme != "dark" {
+		t.Errorf("迁移后应加载旧配置 theme=dark, 实际 %q", theme)
+	}
+	if _, err := os.Stat(configFile); err != nil {
+		t.Fatalf("迁移后应存在新配置文件: %v", err)
+	}
+	if _, err := os.Stat(legacyConfigFile); !os.IsNotExist(err) {
+		t.Error("迁移后旧配置文件不应残留")
+	}
+
+	// 新文件已存在时优先加载新文件，旧文件保持原样不参与迁移
+	if err := os.WriteFile(configFile, []byte(`{"theme":"light"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacyConfigFile, []byte(`{"theme":"dark"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	loadConfig()
+	configMu.Lock()
+	theme = currentTheme
+	configMu.Unlock()
+	if theme != "light" {
+		t.Errorf("新文件存在时应加载新配置 theme=light, 实际 %q", theme)
+	}
+}
+
 // TestLoadConfigMigratesMLockNoMMap 验证旧格式配置中的 mlock/noMmap 字段
 // 在 loadConfig 时迁移为 load-mode（b10342 起 mlock/no-mmap DEPRECATED），
 // 兼容字段随即清零，避免旧布尔值被写入新格式配置。

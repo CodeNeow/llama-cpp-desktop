@@ -61,7 +61,7 @@ body:
     id: logs
     attributes:
       label: 截图 / 日志
-      description: 如有界面截图、API 页服务日志、错误提示，请贴出。注意**先脱敏**（`llama-gui-config.json` 可能含本机路径）。
+      description: 如有界面截图、API 页服务日志、错误提示，请贴出。注意**先脱敏**（`llama-desktop-config.json` 可能含本机路径）。
     validations:
       required: false
 

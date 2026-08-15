@@ -39,7 +39,7 @@ func trayMenuLabels() (show, quit string) {
 }
 
 // InitTray 在独立 goroutine 中启动系统托盘（Windows 专用）：设置托盘图标
-// 与 tooltip（"Llama GUI"），菜单为「显示主窗口」与「退出」两项（中间加
+// 与 tooltip（"Llama Desktop"），菜单为「显示主窗口」与「退出」两项（中间加
 // 分隔线）。菜单点击回调使用传入的 ctx 调用 Wails runtime 操作窗口：
 // 显示主窗口时同时恢复最小化状态，退出时真正结束应用（runtime.Quit 会
 // 触发 Wails OnShutdown → app.Shutdown 完成清理）。ctx 来源与 core/app.go
@@ -60,7 +60,7 @@ func InitTray(ctx context.Context, icon []byte) {
 	go func() {
 		systray.Run(func() {
 			systray.SetIcon(icon)
-			systray.SetTooltip("Llama GUI")
+			systray.SetTooltip("Llama Desktop")
 
 			showLabel, quitLabel := trayMenuLabels()
 			showItem := systray.AddMenuItem(showLabel, showLabel)
