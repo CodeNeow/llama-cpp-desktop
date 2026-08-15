@@ -235,6 +235,8 @@ func TestCancelDownloadTaskUnknownID(t *testing.T) {
 // 仅 paused 可恢复。
 func TestPauseResumeDownloadTask(t *testing.T) {
 	saveConfigState(t)
+	restoreSource := withModelScope404Server(t)
+	defer restoreSource()
 	dlTasksMu.Lock()
 	dlTasks = nil
 	dlTaskCounter = 0
@@ -249,6 +251,17 @@ func TestPauseResumeDownloadTask(t *testing.T) {
 	if err := startHFDownload("author/model", []string{"a.gguf"}); err != nil {
 		t.Fatal(err)
 	}
+	dlTasksMu.Lock()
+	id := dlTasks[0].ID
+	dlTasksMu.Unlock()
+	// 必须等下载 goroutine 退出（本地 404 服务快速失败到 error 终态）再手动
+	// 改写状态：downloadTask 开篇会无条件把状态翻为 downloading（engine.go
+	// downloadTask 首段），goroutine 存活期间置 downloading 后暂停，其首段
+	// 写入可能落在 Pause 之后把 paused 覆盖回 downloading——CI 满载 runner
+	// 上曾据此偶发失败。生产路径无此交错（downloading 只能由 goroutine 自己
+	// 置位，Pause 对 queued 不生效），属测试伪造状态引出的竞态。
+	waitTaskTerminal(t, id, 5*time.Second)
+
 	dlTasksMu.Lock()
 	task := dlTasks[0]
 	task.Status = "downloading"
