@@ -351,14 +351,17 @@ func TestLoadConfigMissingFile(t *testing.T) {
 }
 
 // TestLoadConfigMigratesLegacyFile 验证 llama-gui → llama-desktop 更名后的
-// 配置文件迁移：新文件不存在而旧文件存在时，loadConfig 先把旧文件整体改名
-// 为新文件再加载（老用户主题等配置无损），旧文件不残留；新文件已存在时
-// 不再迁移，避免旧文件覆盖新配置。
+// 配置文件迁移：新文件不存在而旧文件存在时，loadConfig 把旧文件内容复制到
+// 新文件再加载（老用户主题等配置无损）。迁移只读旧写新、不删除或改名源文件，
+// 旧文件保留原处且内容不变——wails dev 的文件监视器监视项目根目录，启动期
+// 删除/改名根目录文件会触发 Wails CLI GetFileAttributesEx 竞态崩溃退出；
+// 新文件已存在时不再迁移，避免旧文件覆盖新配置。
 func TestLoadConfigMigratesLegacyFile(t *testing.T) {
 	withTempCwd(t)
 	saveConfigState(t)
 
-	if err := os.WriteFile(legacyConfigFile, []byte(`{"theme":"dark"}`), 0644); err != nil {
+	legacyData := []byte(`{"theme":"dark"}`)
+	if err := os.WriteFile(legacyConfigFile, legacyData, 0644); err != nil {
 		t.Fatal(err)
 	}
 	loadConfig()
@@ -369,11 +372,21 @@ func TestLoadConfigMigratesLegacyFile(t *testing.T) {
 	if theme != "dark" {
 		t.Errorf("迁移后应加载旧配置 theme=dark, 实际 %q", theme)
 	}
-	if _, err := os.Stat(configFile); err != nil {
+	newData, err := os.ReadFile(configFile)
+	if err != nil {
 		t.Fatalf("迁移后应存在新配置文件: %v", err)
 	}
-	if _, err := os.Stat(legacyConfigFile); !os.IsNotExist(err) {
-		t.Error("迁移后旧配置文件不应残留")
+	if string(newData) != string(legacyData) {
+		t.Errorf("新配置文件内容应与旧文件字节级一致, 实际 %q", newData)
+	}
+	// 行为反转点：旧文件保留在原处且内容不变（保留旧文件避免 wails dev
+	// 文件监视器竞态），迁移不再删除或改名源文件。
+	keptData, err := os.ReadFile(legacyConfigFile)
+	if err != nil {
+		t.Fatalf("迁移后旧文件应保留在原处: %v", err)
+	}
+	if string(keptData) != string(legacyData) {
+		t.Errorf("旧文件内容应保持不变, 实际 %q", keptData)
 	}
 
 	// 新文件已存在时优先加载新文件，旧文件保持原样不参与迁移

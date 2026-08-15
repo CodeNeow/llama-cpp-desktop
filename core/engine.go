@@ -2579,9 +2579,14 @@ type ModelConfig struct {
 	NoMMap        bool    `json:"noMmap,omitempty"` // 已废弃,仅为读取旧配置迁移
 }
 
-// migrateLegacyConfig 把 llama-gui 时代的旧配置文件升级到新文件名：仅当
-// 新文件不存在且旧文件存在时执行一次 os.Rename（同目录原子改名，内容零
-// 解析损耗）。失败只记警告并走 loadConfig 的默认配置兜底，不阻断启动。
+// migrateLegacyConfig 把 llama-gui 时代的旧配置文件内容复制到新文件名：
+// 仅当新文件不存在且旧文件存在时，读出旧文件内容后写入新文件（0644 与
+// saveConfig 写入惯例一致），不做任何删除或改名。旧文件保留原处、内容不变。
+// 之所以用复制而非改名：wails dev 的文件监视器监视项目根目录，启动期删除/
+// 改名根目录文件会触发 Wails CLI 的 GetFileAttributesEx 竞态导致崩溃退出；
+// 复制不删源文件，且新文件存在即短路、旧文件残留无副作用——仅当用户删掉
+// 新文件后迁移才会再次触发。失败只记警告并走 loadConfig 的默认配置兜底，
+// 不阻断启动。
 func migrateLegacyConfig() {
 	if _, err := os.Stat(configFile); err == nil {
 		return
@@ -2589,7 +2594,12 @@ func migrateLegacyConfig() {
 	if _, err := os.Stat(legacyConfigFile); err != nil {
 		return
 	}
-	if err := renameFile(legacyConfigFile, configFile); err != nil {
+	data, err := os.ReadFile(legacyConfigFile)
+	if err != nil {
+		log.Printf("[WARN] Failed to migrate legacy config %s: %v", legacyConfigFile, err)
+		return
+	}
+	if err := os.WriteFile(configFile, data, 0644); err != nil {
 		log.Printf("[WARN] Failed to migrate legacy config %s: %v", legacyConfigFile, err)
 		return
 	}
