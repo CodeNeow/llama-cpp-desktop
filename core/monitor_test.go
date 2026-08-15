@@ -1,6 +1,7 @@
 package core
 
 import (
+	"path/filepath"
 	"reflect"
 	"testing"
 )
@@ -367,5 +368,34 @@ func TestParseMemLinux(t *testing.T) {
 	if total2 != 16000000*1024 || avail2 != 1000000*1024 {
 		t.Errorf("MemAvailable 缺失应回退 MemFree: got (%d, %d), want (%d, %d)",
 			total2, avail2, 16000000*1024, 1000000*1024)
+	}
+}
+
+// ─── diskUsageForPath ─────────────────────────────────────────────
+
+// TestDiskUsageForPath 验证磁盘采样契约（跨平台可跑）：对临时目录所在卷采样，
+// 断言 Path 非空、Total > 0、Used <= Total。目标卷根的构造（Windows 卷名补
+// 分隔符 / 非 Windows 卷根 "/"）不在本测试断言，只验证各平台分支共同满足的
+// 数值不变量。
+func TestDiskUsageForPath(t *testing.T) {
+	dir := t.TempDir()
+	root := filepath.VolumeName(dir)
+	if root == "" {
+		root = string(filepath.Separator)
+	} else {
+		root += string(filepath.Separator)
+	}
+	d, err := diskUsageForPath(root)
+	if err != nil {
+		t.Fatalf("diskUsageForPath(%q) 采样失败: %v", root, err)
+	}
+	if d.Path == "" {
+		t.Error("磁盘采样 Path 不得为空")
+	}
+	if d.Total == 0 {
+		t.Error("磁盘采样 Total 必须 > 0")
+	}
+	if d.Used > d.Total {
+		t.Errorf("磁盘采样 Used=%d 不得大于 Total=%d", d.Used, d.Total)
 	}
 }

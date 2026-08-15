@@ -1,14 +1,14 @@
 export namespace core {
-	
+
 	export class CPUInfo {
 	    model: string;
 	    cores: number;
 	    logicalCpus: number;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new CPUInfo(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.model = source["model"];
@@ -20,16 +20,32 @@ export namespace core {
 	    available: boolean;
 	    driverVersion: string;
 	    toolkitVersion: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new CUDAInfo(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.available = source["available"];
 	        this.driverVersion = source["driverVersion"];
 	        this.toolkitVersion = source["toolkitVersion"];
+	    }
+	}
+	export class DiskUsage {
+	    path: string;
+	    used: number;
+	    total: number;
+
+	    static createFrom(source: any = {}) {
+	        return new DiskUsage(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.used = source["used"];
+	        this.total = source["total"];
 	    }
 	}
 	export class DlTask {
@@ -45,11 +61,11 @@ export namespace core {
 	    sizeHuman: string;
 	    speed: number;
 	    error: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new DlTask(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -75,11 +91,11 @@ export namespace core {
 	    fileName: string;
 	    version: string;
 	    error: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new DownloadState(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.status = source["status"];
@@ -97,11 +113,11 @@ export namespace core {
 	    memoryMb: number;
 	    driverVersion: string;
 	    cudaCores: number;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new GPUInfo(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
@@ -113,11 +129,11 @@ export namespace core {
 	export class HFFile {
 	    rfilename: string;
 	    size: number;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new HFFile(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.rfilename = source["rfilename"];
@@ -127,11 +143,11 @@ export namespace core {
 	export class HFFileOut {
 	    filename: string;
 	    size: number;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new HFFileOut(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.filename = source["filename"];
@@ -147,11 +163,11 @@ export namespace core {
 	    pipelineTag: string;
 	    tags: string[];
 	    siblings: HFFile[];
-	
+
 	    static createFrom(source: any = {}) {
 	        return new HFSearchResult(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -163,7 +179,7 @@ export namespace core {
 	        this.tags = source["tags"];
 	        this.siblings = this.convertValues(source["siblings"], HFFile);
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -186,11 +202,11 @@ export namespace core {
 	    installed: boolean;
 	    path: string;
 	    version: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new LlamaCppInfo(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.installed = source["installed"];
@@ -201,11 +217,11 @@ export namespace core {
 	export class MemoryInfo {
 	    totalGb: number;
 	    freeGb: number;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new MemoryInfo(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.totalGb = source["totalGb"];
@@ -235,11 +251,11 @@ export namespace core {
 	    specDraftNMax: number;
 	    mlock?: boolean;
 	    noMmap?: boolean;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new ModelConfig(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.threads = source["threads"];
@@ -275,11 +291,11 @@ export namespace core {
 	    architecture: string;
 	    quantization: string;
 	    hasMmproj: boolean;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new ModelInfo(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.author = source["author"];
@@ -298,11 +314,11 @@ export namespace core {
 	    utilPercent: number;
 	    memUsed: number;
 	    memTotal: number;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new MonitorGPU(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.index = source["index"];
@@ -321,11 +337,12 @@ export namespace core {
 	    promptTps: number;
 	    decodeTps: number;
 	    uptimeSeconds: number;
-	
+	    disk?: DiskUsage;
+
 	    static createFrom(source: any = {}) {
 	        return new MonitorStatus(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.cpuPercent = source["cpuPercent"];
@@ -336,8 +353,9 @@ export namespace core {
 	        this.promptTps = source["promptTps"];
 	        this.decodeTps = source["decodeTps"];
 	        this.uptimeSeconds = source["uptimeSeconds"];
+	        this.disk = this.convertValues(source["disk"], DiskUsage);
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -362,11 +380,11 @@ export namespace core {
 	    port: number;
 	    maxModels: number;
 	    cacheRam: number;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new ServerConfig(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.accessMode = source["accessMode"];
@@ -384,11 +402,11 @@ export namespace core {
 	    gpu: GPUInfo[];
 	    cuda: CUDAInfo;
 	    llamaCpp: LlamaCppInfo;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new SystemInfo(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.os = source["os"];
@@ -399,7 +417,7 @@ export namespace core {
 	        this.cuda = this.convertValues(source["cuda"], CUDAInfo);
 	        this.llamaCpp = this.convertValues(source["llamaCpp"], LlamaCppInfo);
 	    }
-	
+
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -423,11 +441,11 @@ export namespace core {
 	    version: string;
 	    notes: string;
 	    published: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new UpdateCheckResult(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.hasUpdate = source["hasUpdate"];
@@ -445,11 +463,11 @@ export namespace core {
 	    filePath: string;
 	    error: string;
 	    kind: string;
-	
+
 	    static createFrom(source: any = {}) {
 	        return new UpdateDownloadState(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.status = source["status"];

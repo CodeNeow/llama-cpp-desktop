@@ -114,6 +114,12 @@ const messages: Record<Locale, Record<string, string>> = {
     'api.emptyHint': '将 .gguf 文件放入模型目录即可自动识别',
     'api.saveFailed': '配置保存失败: {msg}',
     'api.toggleFailed': '启动/停止服务失败: {msg}',
+    'api.restart': '重启',
+    'api.logTitle': '服务日志',
+    'api.logClear': '清空',
+    'api.logEmpty': '暂无日志',
+    'api.sysMonitor': '系统监控',
+    'api.tokenSpeed': 'Token 速度',
 
     // ─── 下载页（Downloads.vue） ───
     'downloads.title': '下载',
@@ -168,6 +174,9 @@ const messages: Record<Locale, Record<string, string>> = {
     'monitor.gpu': 'GPU',
     'monitor.gpuMem': '显存 {used} / {total}',
     'monitor.noGpu': '未检测到 NVIDIA GPU',
+    'monitor.disk': '磁盘 ({path})',
+    'monitor.diskUsed': '已用 {n}',
+    'monitor.diskTotal': '总计 {n}',
 
     // ─── 设置页（Settings.vue） ───
     'settings.title': '设置',
@@ -418,6 +427,12 @@ const messages: Record<Locale, Record<string, string>> = {
     'api.emptyHint': 'Put .gguf files into the models directory to auto-detect',
     'api.saveFailed': 'Failed to save config: {msg}',
     'api.toggleFailed': 'Failed to start/stop server: {msg}',
+    'api.restart': 'Restart',
+    'api.logTitle': 'Server Log',
+    'api.logClear': 'Clear',
+    'api.logEmpty': 'No logs yet',
+    'api.sysMonitor': 'System Monitor',
+    'api.tokenSpeed': 'Token Speed',
 
     // ─── Downloads (Downloads.vue) ───
     'downloads.title': 'Downloads',
@@ -472,6 +487,9 @@ const messages: Record<Locale, Record<string, string>> = {
     'monitor.gpu': 'GPU',
     'monitor.gpuMem': 'VRAM {used} / {total}',
     'monitor.noGpu': 'No NVIDIA GPU detected',
+    'monitor.disk': 'Disk ({path})',
+    'monitor.diskUsed': 'Used {n}',
+    'monitor.diskTotal': 'Total {n}',
 
     // ─── Settings (Settings.vue) ───
     'settings.title': 'Settings',

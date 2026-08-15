@@ -64,7 +64,7 @@ Configure inference parameters per model in a tabbed dialog (Basic / Inference /
 
 ### API — Server Control & Real-time Monitoring
 
-Start / stop llama-server (router mode) with one click, configuring Host / Port, the maximum number of concurrently loaded models (`--models-max`), and prompt cache (`--cache-ram`). A built-in live service log and the count of available models are shown. Embedding models are automatically flagged with `embeddings = true` and mmproj files are auto-associated. Real-time monitoring is embedded on this page: a service status badge and uptime, side-by-side prompt-processing / generation speed cards with a generation speed line chart (refreshed every 1 second), and live CPU / memory / GPU load; the inference monitoring area shows a placeholder until the service starts.
+The top toolbar offers one-click **Start / Stop / Restart** for llama-server (router mode; buttons enable and disable automatically with the service state). The main area is split into two columns: on the left, a dark **server log console** (live scrolling, clearable); on the right, a **real-time monitoring panel** (refreshed every 1 second) with system monitoring (CPU / memory / disk — the disk card shows the volume holding the models directory), GPU (utilization and VRAM), and token speed (prompt-processing / generation speeds with a 60-second line chart; a placeholder is shown while the service is stopped). Below the main area sit the server configuration (Host / Port, `--models-max`, `--cache-ram`) and the available models list; embedding models are automatically flagged with `embeddings = true` and mmproj files are auto-associated.
 
 ![API service](docs/screenshots/api-light.png)
 

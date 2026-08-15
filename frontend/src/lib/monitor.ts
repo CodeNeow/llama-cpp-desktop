@@ -1,7 +1,7 @@
 /**
- * 监控数据纯函数工具：供 Monitor.vue 维护折线图历史、计算 SVG polyline
- * 坐标与格式化运行时长。全部为纯函数，便于单测；MonitorStatus 接口与后端
- * GetMonitorStatus 的 JSON 契约一一对应。
+ * 监控数据纯函数工具：供 Api.vue 维护生成速度折线图历史、计算 SVG polyline
+ * 坐标与格式化运行时长（原独立 Monitor.vue 页已并入 Api.vue）。全部为纯函数，
+ * 便于单测；MonitorStatus 接口与后端 GetMonitorStatus 的 JSON 契约一一对应。
  */
 
 import type { Locale } from './i18n'
@@ -17,6 +17,8 @@ export interface MonitorStatus {
   /** 生成速度 tokens/s（实时解码 decode）：生成期间由 tg_3s 日志行每约 3 秒刷新，请求结束时以 eval time 行兜底 */
   decodeTps: number
   uptimeSeconds: number
+  /** 模型目录所在卷的磁盘用量；采样失败/不可用时为 null，前端隐藏磁盘行 */
+  disk?: { path: string; used: number; total: number } | null
 }
 
 /** 追加一个采样值到历史数组；超出 cap 时丢弃最旧值，返回新数组（不修改入参）。 */

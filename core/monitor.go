@@ -1,6 +1,8 @@
 package core
 
 import (
+	"os"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -26,6 +28,17 @@ type MonitorStatus struct {
 	PromptTPS     float64      `json:"promptTps"`
 	DecodeTPS     float64      `json:"decodeTps"`
 	UptimeSeconds int64        `json:"uptimeSeconds"`
+	// Disk 为模型目录所在卷的磁盘用量；采样失败时为 nil（前端隐藏磁盘行），
+	// 不阻断其他采样指标。
+	Disk *DiskUsage `json:"disk"`
+}
+
+// DiskUsage 是单个磁盘卷的用量：Path 为卷根路径（Windows 如 "C:\"、
+// 非 Windows 如 "/"），Used = Total - Free。
+type DiskUsage struct {
+	Path  string `json:"path"`
+	Used  uint64 `json:"used"`
+	Total uint64 `json:"total"`
 }
 
 // MonitorGPU 是单个 GPU 的监控数据（nvidia-smi 采样）。
@@ -207,9 +220,44 @@ func sampleMonitor() {
 		st.MemTotal, st.MemUsed = sampleMemDarwin()
 	}
 	st.GPUs = sampleGPUs()
+	st.Disk = sampleDiskUsage()
 	monitorMu.Lock()
 	monitorStatus = st
 	monitorMu.Unlock()
+}
+
+// ─── 磁盘采样 ─────────────────────────────────────────────────────
+
+// sampleDiskUsage 采样模型目录所在卷的磁盘用量：目标盘取生效模型目录
+// （effectiveModelsDir，modelsDirMu 保护读取）绝对化后的卷根；非 Windows 平台
+// 无卷名概念（filepath.VolumeName 为空）时取当前工作目录所在卷根。Used =
+// Total - Free 在各平台分支（diskUsageForPath）内计算。采样失败返回 nil，
+// 不阻断其他采样指标。
+func sampleDiskUsage() *DiskUsage {
+	dir := effectiveModelsDir()
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		abs = dir
+	}
+	root := filepath.VolumeName(abs)
+	if root == "" {
+		wd, err := os.Getwd()
+		if err != nil {
+			return nil
+		}
+		root = filepath.VolumeName(wd)
+		if root == "" {
+			root = string(filepath.Separator)
+		}
+	} else {
+		// Windows 卷名形如 "C:"，补分隔符得到 "C:\" 才是指向该卷根目录。
+		root += string(filepath.Separator)
+	}
+	d, err := diskUsageForPath(root)
+	if err != nil {
+		return nil
+	}
+	return d
 }
 
 // ─── CPU 采样 ─────────────────────────────────────────────────────

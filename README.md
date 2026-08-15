@@ -64,7 +64,7 @@ Llama Desktop 是一个基于 **Wails v2**（Go + WebView2）构建的本地大�
 
 ### API — 服务启停与实时监控
 
-一键启动 / 停止 llama-server（路由器模式），配置 Host / Port、最大并发模型数（`--models-max`）、Prompt 缓存（`--cache-ram`）；内置实时服务日志，并显示可用模型数。嵌入模型自动标记 `embeddings = true`，mmproj 自动关联。本页内嵌实时监控：推理服务状态徽章与运行时长、提示词处理速度与生成速度双指标卡与生成速度折线图（每 1 秒刷新），以及 CPU / 内存 / GPU 实时负载；服务停止时推理监控区显示占位提示。
+顶部操作栏一键**启动 / 停止 / 重启** llama-server（路由器模式，按钮按服务状态自动启用）；主体左右两栏——左侧为深色**服务日志控制台**（实时滚动、可清空），右侧为**实时监控面板**（每 1 秒刷新）：系统监控（CPU / 内存 / 磁盘，磁盘显示模型目录所在盘）、GPU（利用率与显存）、Token 速度（提示词处理 / 生成速度与近 60 秒折线图，服务停止时显示占位）。下方保留服务器配置（Host / Port、最大并发模型数 `--models-max`、Prompt 缓存 `--cache-ram`）与可用模型列表；嵌入模型自动标记 `embeddings = true`，mmproj 自动关联。
 
 ![API 服务](docs/screenshots/api-light.png)
 
@@ -86,7 +86,7 @@ Llama Desktop 是一个基于 **Wails v2**（Go + WebView2）构建的本地大�
 2. **llama.cpp 一键安装**：从 GitHub Releases 自动获取最新版并下载解压，支持断点续传、暂停 / 恢复 / 停止；也可手动指定自定义 llama.cpp 目录。
 3. **模型自动扫描**：读取 `LLM-Models` 目录下所有 `.gguf` 文件，解析模型架构（Qwen2 / Llama / DeepSeek 等）与量化等级，识别多模态（mmproj）与嵌入模型。
 4. **逐模型参数配置**：Tabs 布局（基础 / 推理 / 内存/加载 / 多 GPU / 长上下文 / 高级）6 个标签页，覆盖 CPU 线程、GPU 层数、上下文大小、Batch / μBatch、MoE CPU 层数、KV 缓存 K/V 类型、mlock / mmap 加载方式、模型切分与每卡比例、主 GPU、RoPE 外推、视觉投影文件（mmproj）、投机解码（MTP）等，按模型持久化保存并自动写入 llama-server 预设。
-5. **llama-server 路由器模式**：一键启动 / 停止服务，多模型并发管理（`--models-max`）、Prompt 缓存（`--cache-ram`）；自动生成模型预设（INI），嵌入模型自动标记 `embeddings = true`，mmproj 自动关联；API 页内嵌实时监控——推理服务状态与运行时长、提示词处理速度与生成速度双指标卡片与折线图、CPU / 内存 / GPU 实时负载，每 1 秒刷新。
+5. **llama-server 路由器模式**：一键启动 / 停止 / 重启服务，多模型并发管理（`--models-max`）、Prompt 缓存（`--cache-ram`）；自动生成模型预设（INI），嵌入模型自动标记 `embeddings = true`，mmproj 自动关联；API 页左日志右监控布局内嵌实时监控——服务日志控制台、提示词处理速度与生成速度双指标卡与折线图、CPU / 内存 / 磁盘（模型目录所在盘）/ GPU 实时负载，每 1 秒刷新。
 6. **双源模型下载**：从 HF 镜像（hf-mirror.com）或 ModelScope（魔搭）搜索模型仓库，展开文件列表（按大小排序、自动识别量化标签），多文件批量下载；下载任务支持暂停 / 继续 / 取消与断点续传，队列持久化，重启后自动恢复。
 7. **OpenAI 兼容 API**：服务启动后可直接对接任意 OpenAI 兼容客户端（ChatGPT-Next-Web、LobeChat、Open WebUI 等）。
 8. **应用自更新**：设置页「检查更新」检测新版本，弹窗下载更新包，手动替换程序文件即可完成升级。

@@ -5,28 +5,176 @@
       <p class="page-subtitle">{{ t('api.subtitle') }}</p>
     </div>
 
-    <!-- Server status -->
-    <section class="status-card">
-      <div class="status-row">
-        <div class="status-indicator">
-          <span class="status-dot" :class="serverRunning ? 'running' : 'stopped'"></span>
-          <span class="status-text">{{ serverRunning ? t('api.running') : t('api.stopped') }}</span>
-          <span v-if="serverRunning" class="status-url">http://{{ cfg.host }}:{{ cfg.port }}</span>
-        </div>
-        <button
-          class="server-btn"
-          :class="serverRunning ? 'btn-stop' : 'btn-start'"
-          @click="toggleServer"
-        >
-          {{ serverRunning ? t('api.stopServer') : t('api.startServer') }}
+    <!-- 顶部操作栏：状态灯 + 状态文字 + URL + 按钮组 -->
+    <section class="status-card toolbar">
+      <div class="status-indicator">
+        <span class="status-dot" :class="serverRunning ? 'running' : 'stopped'"></span>
+        <span class="status-text">{{ serverRunning ? t('api.running') : t('api.stopped') }}</span>
+        <span v-if="serverRunning" class="status-url">http://{{ cfg.host }}:{{ cfg.port }}</span>
+        <span v-if="serverRunning && status.uptimeSeconds > 0" class="toolbar-uptime">
+          <span class="uptime-value">{{ formatUptime(status.uptimeSeconds, locale) }}</span>
+          <span class="uptime-label">{{ t('monitor.uptimeLabel') }}</span>
+        </span>
+      </div>
+      <div class="btn-group">
+        <button class="server-btn btn-start" :disabled="serverRunning || busy" @click="doStart">
+          {{ t('api.startServer') }}
+        </button>
+        <button class="server-btn btn-stop" :disabled="!serverRunning || busy" @click="doStop">
+          {{ t('api.stopServer') }}
+        </button>
+        <button class="server-btn btn-restart" :disabled="!serverRunning || busy" @click="doRestart">
+          {{ t('api.restart') }}
         </button>
       </div>
-
-      <!-- Server log -->
-      <div v-if="serverLog.length" class="server-log" ref="logEl">
-        <div v-for="(line, i) in serverLog" :key="i" class="log-line">{{ line }}</div>
-      </div>
     </section>
+
+    <!-- 主区两栏：左日志控制台 + 右监控卡片 -->
+    <div class="monitor-grid">
+      <!-- 左栏：服务日志控制台（深浅主题下均呈深色控制台观感） -->
+      <section class="log-panel">
+        <div class="panel-header">
+          <span class="panel-title">{{ t('api.logTitle') }}</span>
+          <button v-if="serverLog.length" class="log-clear-btn" @click="clearLog">{{ t('api.logClear') }}</button>
+        </div>
+        <div v-if="serverLog.length" class="console-log" ref="logEl">
+          <div v-for="(line, i) in serverLog" :key="i" class="console-line">{{ line }}</div>
+        </div>
+        <div v-else class="console-empty">{{ t('api.logEmpty') }}</div>
+      </section>
+
+      <!-- 右栏：三张卡片自上而下 -->
+      <div class="monitor-side">
+        <!-- a. 系统监控：CPU / 内存 / 磁盘 -->
+        <section class="info-section monitor-card">
+          <h2 class="section-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/>
+            </svg>
+            {{ t('api.sysMonitor') }}
+          </h2>
+
+          <div class="metric-block">
+            <div class="metric-head">
+              <span class="metric-name">{{ t('monitor.cpu') }}</span>
+            </div>
+            <div class="usage-bar-wrapper">
+              <div class="usage-bar">
+                <div class="usage-fill" :style="{ width: cpuPercent + '%' }"></div>
+              </div>
+              <span class="usage-text">{{ cpuPercent }}%</span>
+            </div>
+          </div>
+
+          <div class="metric-block">
+            <div class="metric-head">
+              <span class="metric-name">{{ t('monitor.memory') }}</span>
+            </div>
+            <div class="usage-bar-wrapper">
+              <div class="usage-bar">
+                <div class="usage-fill" :style="{ width: memPercent + '%' }"></div>
+              </div>
+              <span class="usage-text">{{ memPercent }}%</span>
+            </div>
+            <div class="metric-sub">
+              <span>{{ t('monitor.memUsed', { n: memText(status.memUsed) }) }}</span>
+              <span class="metric-divider">/</span>
+              <span>{{ t('monitor.memTotal', { n: memText(status.memTotal) }) }}</span>
+            </div>
+          </div>
+
+          <div v-if="status.disk" class="metric-block">
+            <div class="metric-head">
+              <span class="metric-name">{{ t('monitor.disk', { path: diskPath }) }}</span>
+            </div>
+            <div class="usage-bar-wrapper">
+              <div class="usage-bar">
+                <div class="usage-fill" :style="{ width: diskPercent + '%' }"></div>
+              </div>
+              <span class="usage-text">{{ diskPercent }}%</span>
+            </div>
+            <div class="metric-sub">
+              <span>{{ t('monitor.diskUsed', { n: memText(status.disk.used) }) }}</span>
+              <span class="metric-divider">/</span>
+              <span>{{ t('monitor.diskTotal', { n: memText(status.disk.total) }) }}</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- b. GPU 监控 -->
+        <section class="info-section monitor-card">
+          <h2 class="section-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+            </svg>
+            GPU
+          </h2>
+          <div v-if="status.gpus.length > 0">
+            <div v-for="gpu in status.gpus" :key="gpu.index" class="gpu-row">
+              <div class="gpu-head">
+                <span class="gpu-name">{{ gpu.name }}</span>
+                <span class="gpu-util">{{ gpu.utilPercent }}%</span>
+              </div>
+              <div class="usage-bar-wrapper">
+                <div class="usage-bar">
+                  <div class="usage-fill" :style="{ width: gpu.utilPercent + '%' }"></div>
+                </div>
+                <span class="usage-text">{{ gpu.utilPercent }}%</span>
+              </div>
+              <div class="gpu-mem">{{ t('monitor.gpuMem', { used: memText(gpu.memUsed), total: memText(gpu.memTotal) }) }}</div>
+            </div>
+          </div>
+          <div v-else class="info-empty">{{ t('monitor.noGpu') }}</div>
+        </section>
+
+        <!-- c. Token 速度：提示词处理 + 生成速度数值 + 矮折线图 -->
+        <section class="info-section monitor-card">
+          <div class="token-card-head">
+            <h2 class="section-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>
+              </svg>
+              {{ t('api.tokenSpeed') }}
+            </h2>
+            <div v-if="status.serverRunning" class="token-uptime">
+              <span class="uptime-value">{{ formatUptime(status.uptimeSeconds, locale) }}</span>
+              <span class="uptime-label">{{ t('monitor.uptimeLabel') }}</span>
+            </div>
+          </div>
+          <div v-if="!status.serverRunning" class="tps-placeholder">{{ t('monitor.uptimePlaceholder') }}</div>
+          <template v-else>
+            <div class="tps-cards">
+              <div class="tps-card">
+                <span class="tps-card-name">{{ t('monitor.promptSpeed') }}</span>
+                <span class="tps-card-sub">{{ t('monitor.promptSub') }}</span>
+                <div class="tps-card-value">
+                  <span class="tps-value">{{ promptTpsText }}</span>
+                  <span class="tps-label">tokens/s</span>
+                </div>
+              </div>
+              <div class="tps-card">
+                <span class="tps-card-name">{{ t('monitor.decodeSpeed') }}</span>
+                <span class="tps-card-sub">{{ t('monitor.decodeSub') }}</span>
+                <div class="tps-card-value">
+                  <span class="tps-value">{{ decodeTpsText }}</span>
+                  <span class="tps-label">tokens/s</span>
+                </div>
+              </div>
+            </div>
+            <div class="tps-chart">
+              <svg :viewBox="`0 0 ${chartWidth} ${chartHeight}`" preserveAspectRatio="none">
+                <line class="tps-axis" x1="0" :y1="chartHeight - 2" :x2="chartWidth" :y2="chartHeight - 2" />
+                <polyline :points="decodePoints" />
+              </svg>
+              <div class="tps-chart-meta">
+                <span class="tps-chart-label">{{ t('monitor.chartLabel', { n: decodeHistory.length }) }}</span>
+              </div>
+            </div>
+            <p class="tps-footnote">{{ t('monitor.footnote') }}</p>
+          </template>
+        </section>
+      </div>
+    </div>
 
     <!-- Config -->
     <section class="cfg-section">
@@ -58,119 +206,6 @@
         {{ t('api.emptyHint') }}
       </div>
     </section>
-
-    <!-- 推理服务：提示词处理 + 生成速度（原 Monitor.vue 监控区块） -->
-    <section class="info-section">
-      <h2 class="section-title">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>
-        </svg>
-        {{ t('monitor.inference') }}
-      </h2>
-      <div class="server-head">
-        <span class="status-badge" :class="status.serverRunning ? 'available' : 'unavailable'">
-          {{ status.serverRunning ? t('monitor.running') : t('monitor.notStarted') }}
-        </span>
-        <div v-if="status.serverRunning" class="uptime-block">
-          <span class="uptime-value">{{ formatUptime(status.uptimeSeconds, locale) }}</span>
-          <span class="uptime-label">{{ t('monitor.uptimeLabel') }}</span>
-        </div>
-      </div>
-      <div v-if="!status.serverRunning" class="tps-placeholder">{{ t('monitor.uptimePlaceholder') }}</div>
-      <template v-else>
-        <div class="tps-cards">
-          <div class="tps-card">
-            <span class="tps-card-name">{{ t('monitor.promptSpeed') }}</span>
-            <span class="tps-card-sub">{{ t('monitor.promptSub') }}</span>
-            <div class="tps-card-value">
-              <span class="tps-value">{{ promptTpsText }}</span>
-              <span class="tps-label">tokens/s</span>
-            </div>
-          </div>
-          <div class="tps-card">
-            <span class="tps-card-name">{{ t('monitor.decodeSpeed') }}</span>
-            <span class="tps-card-sub">{{ t('monitor.decodeSub') }}</span>
-            <div class="tps-card-value">
-              <span class="tps-value">{{ decodeTpsText }}</span>
-              <span class="tps-label">tokens/s</span>
-            </div>
-          </div>
-        </div>
-        <div class="tps-chart">
-          <svg :viewBox="`0 0 ${chartWidth} ${chartHeight}`" preserveAspectRatio="none">
-            <line class="tps-axis" x1="0" :y1="chartHeight - 2" :x2="chartWidth" :y2="chartHeight - 2" />
-            <polyline :points="decodePoints" />
-          </svg>
-          <div class="tps-chart-meta">
-            <span class="tps-chart-label">{{ t('monitor.chartLabel', { n: decodeHistory.length }) }}</span>
-          </div>
-        </div>
-        <p class="tps-footnote">{{ t('monitor.footnote') }}</p>
-      </template>
-    </section>
-
-    <!-- CPU -->
-    <section class="info-section">
-      <h2 class="section-title">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/>
-        </svg>
-        {{ t('monitor.cpu') }}
-      </h2>
-      <div class="usage-bar-wrapper">
-        <div class="usage-bar">
-          <div class="usage-fill" :style="{ width: cpuPercent + '%' }"></div>
-        </div>
-        <span class="usage-text">{{ cpuPercent }}%</span>
-      </div>
-    </section>
-
-    <!-- Memory -->
-    <section class="info-section">
-      <h2 class="section-title">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="10" x2="6" y2="14"/><line x1="10" y1="10" x2="10" y2="14"/><line x1="14" y1="10" x2="14" y2="14"/><line x1="18" y1="10" x2="18" y2="14"/>
-        </svg>
-        {{ t('monitor.memory') }}
-      </h2>
-      <div class="usage-bar-wrapper">
-        <div class="usage-bar">
-          <div class="usage-fill" :style="{ width: memPercent + '%' }"></div>
-        </div>
-        <span class="usage-text">{{ memPercent }}%</span>
-      </div>
-      <div class="metric-sub">
-        <span>{{ t('monitor.memUsed', { n: memText(status.memUsed) }) }}</span>
-        <span class="metric-divider">/</span>
-        <span>{{ t('monitor.memTotal', { n: memText(status.memTotal) }) }}</span>
-      </div>
-    </section>
-
-    <!-- GPU -->
-    <section class="info-section">
-      <h2 class="section-title">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
-        </svg>
-        GPU
-      </h2>
-      <div v-if="status.gpus.length > 0">
-        <div v-for="gpu in status.gpus" :key="gpu.index" class="gpu-row">
-          <div class="gpu-head">
-            <span class="gpu-name">{{ gpu.name }}</span>
-            <span class="gpu-util">{{ gpu.utilPercent }}%</span>
-          </div>
-          <div class="usage-bar-wrapper">
-            <div class="usage-bar">
-              <div class="usage-fill" :style="{ width: gpu.utilPercent + '%' }"></div>
-            </div>
-            <span class="usage-text">{{ gpu.utilPercent }}%</span>
-          </div>
-          <div class="gpu-mem">{{ t('monitor.gpuMem', { used: memText(gpu.memUsed), total: memText(gpu.memTotal) }) }}</div>
-        </div>
-      </div>
-      <div v-else class="info-empty">{{ t('monitor.noGpu') }}</div>
-    </section>
   </div>
 </template>
 
@@ -184,6 +219,8 @@ import { locale, t } from '../lib/i18n'
 const serverRunning = ref(false)
 const serverLog = ref<string[]>([])
 const logEl = ref<HTMLElement | null>(null)
+// 启停/重启执行期间禁用全部按钮，防止连点
+const busy = ref(false)
 
 const cfg = reactive({
   host: '127.0.0.1',
@@ -206,6 +243,7 @@ const status = ref<MonitorStatus>({
   promptTps: 0,
   decodeTps: 0,
   uptimeSeconds: 0,
+  disk: null,
 })
 
 // 生成速度折线图历史：1s 轮询追加，保留最近 60 个采样（appendHistory 默认 cap=60）
@@ -222,13 +260,21 @@ const memPercent = computed(() => {
   return Math.round((status.value.memUsed / status.value.memTotal) * 100)
 })
 
+const diskPath = computed(() => status.value.disk?.path ?? '')
+
+const diskPercent = computed(() => {
+  const d = status.value.disk
+  if (!d || d.total <= 0) return 0
+  return Math.round((d.used / d.total) * 100)
+})
+
 const promptTpsText = computed(() => formatPromptTps(status.value.promptTps))
 
 const decodeTpsText = computed(() => status.value.decodeTps.toFixed(1))
 
 const decodePoints = computed(() => chartPoints(decodeHistory.value, chartWidth, chartHeight))
 
-// 显存/内存可能为 0（如数据未到），formatBytes(0) 返回空串，此处兜底为 "0 B"
+// 显存/内存/磁盘可能为 0（如数据未到），formatBytes(0) 返回空串，此处兜底为 "0 B"
 function memText(bytes: number): string {
   return formatBytes(bytes) || '0 B'
 }
@@ -320,19 +366,53 @@ async function checkServerStatus() {
   } catch {}
 }
 
-async function toggleServer() {
+// 按钮三态由 serverRunning + busy 驱动：启动（stopped 可用）、停止/重启（running 可用）；
+// 执行期间 busy=true 全禁用防连点。状态统一由 checkServerStatus 延迟刷新真实值，不做乐观翻转（#14）
+async function doStart() {
+  if (busy.value || serverRunning.value) return
+  busy.value = true
   try {
-    if (serverRunning.value) {
-      await stopServer()
-    } else {
-      await refreshModels() // 启动前强制重扫模型，确保预设基于最新模型列表（#18）
-      await startServer()
-    }
+    await refreshModels() // 启动前强制重扫模型，确保预设基于最新模型列表（#18）
+    await startServer()
   } catch (e) {
     serverLog.value.push(t('api.toggleFailed', { msg: e instanceof Error ? e.message : String(e) }))
+  } finally {
+    busy.value = false
+    setTimeout(checkServerStatus, 500)
   }
-  // 状态统一由 checkServerStatus 延迟刷新真实值，不做乐观翻转（#14）
-  setTimeout(checkServerStatus, 500)
+}
+
+async function doStop() {
+  if (busy.value || !serverRunning.value) return
+  busy.value = true
+  try {
+    await stopServer()
+  } catch (e) {
+    serverLog.value.push(t('api.toggleFailed', { msg: e instanceof Error ? e.message : String(e) }))
+  } finally {
+    busy.value = false
+    setTimeout(checkServerStatus, 500)
+  }
+}
+
+// 重启 = 顺序 stop → start（执行期间 busy 防连点）
+async function doRestart() {
+  if (busy.value || !serverRunning.value) return
+  busy.value = true
+  try {
+    await stopServer()
+    await startServer()
+  } catch (e) {
+    serverLog.value.push(t('api.toggleFailed', { msg: e instanceof Error ? e.message : String(e) }))
+  } finally {
+    busy.value = false
+    setTimeout(checkServerStatus, 500)
+  }
+}
+
+// 清空日志：仅清空前端展示数组，后端环形缓冲保留（checkServerStatus 会重新带回后端日志）
+function clearLog() {
+  serverLog.value = []
 }
 </script>
 
@@ -360,20 +440,17 @@ async function toggleServer() {
   margin: 0;
 }
 
-/* ─── Status card ─── */
-.status-card {
-  padding: 20px 24px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  margin-bottom: 20px;
-}
-
-.status-row {
+/* ─── 顶部操作栏 ─── */
+.toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  gap: 16px;
+  padding: 16px 24px;
+  margin-bottom: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
 }
 
 .status-indicator {
@@ -419,6 +496,19 @@ async function toggleServer() {
   border-radius: 4px;
 }
 
+/* 运行时长并入顶部状态栏（原「推理服务」区块取消后信息不丢失） */
+.toolbar-uptime {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-left: 4px;
+}
+
+.btn-group {
+  display: flex;
+  gap: 10px;
+}
+
 .server-btn {
   padding: 10px 24px;
   border: none;
@@ -430,36 +520,128 @@ async function toggleServer() {
   color: #fff;
 }
 
-.btn-start { background: #22c55e; }
-.btn-start:hover { opacity: 0.85; }
-.btn-stop { background: #ef4444; }
-.btn-stop:hover { opacity: 0.85; }
+/* 禁用态沿用 cfg-input 的弱化惯例 */
+.server-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 
-/* ─── Log ─── */
-.server-log {
-  max-height: 160px;
+.btn-start { background: #22c55e; }
+.btn-start:hover:not(:disabled) { opacity: 0.85; }
+.btn-stop { background: #ef4444; }
+.btn-stop:hover:not(:disabled) { opacity: 0.85; }
+.btn-restart { background: var(--accent); }
+.btn-restart:hover:not(:disabled) { opacity: 0.85; }
+
+/* ─── 主区两栏：左日志控制台 + 右监控卡片 ─── */
+.monitor-grid {
+  display: grid;
+  grid-template-columns: 6fr 4fr;
+  gap: 16px;
+  /* 两栏等高；高度随窗口缩放收缩（min(440px, 55vh)） */
+  height: min(440px, 55vh);
+  margin-bottom: 20px;
+}
+
+/* ─── 左栏：日志面板 ─── */
+.log-panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 18px 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.panel-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.log-clear-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.log-clear-btn:hover {
+  color: var(--accent-light);
+  background: var(--active-bg);
+}
+
+/* 深色控制台：深浅主题下均为固定深色底（终端观感），浅色主题下亦然 */
+.console-log {
+  flex: 1;
   overflow-y: auto;
-  background: rgba(0,0,0,0.2);
+  background: #0b0b10;
   border-radius: 8px;
   padding: 10px 14px;
   font-family: var(--font-mono);
   font-size: 11px;
 }
 
-.log-line {
-  color: rgba(255,255,255,0.5);
+.console-line {
+  color: rgba(255,255,255,0.55);
   padding: 1px 0;
   white-space: pre-wrap;
   word-break: break-all;
 }
 
-/* ─── Config ─── */
+.console-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0b0b10;
+  border-radius: 8px;
+  color: rgba(255,255,255,0.35);
+  font-size: 12px;
+}
+
+/* ─── 右栏：监控卡片 ─── */
+.monitor-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.monitor-card {
+  margin-bottom: 0;
+  flex-shrink: 0;
+  padding: 16px 20px;
+}
+
+/* 系统监控内的指标块间距 */
+.metric-block {
+  margin-bottom: 14px;
+}
+
+.metric-block:last-child {
+  margin-bottom: 0;
+}
+
+/* ─── 配置 ─── */
 .cfg-section {
   margin-bottom: 20px;
 }
 
-/* 两文件合并后的统一 section-title：flex 布局兼容监控区块的图标标题，
-   纯文本标题（配置/模型）作为单一 flex 子项渲染外观不变；margin 取中间值 */
+/* 统一 section-title：flex 布局兼容监控区块的图标标题，纯文本标题作为单一 flex 子项渲染外观不变 */
 .section-title {
   display: flex;
   align-items: center;
@@ -523,7 +705,7 @@ async function toggleServer() {
 
 .cfg-num { width: 100%; }
 
-/* ─── Models ─── */
+/* ─── 模型 ─── */
 .models-section {
   margin-bottom: 20px;
 }
@@ -553,8 +735,6 @@ async function toggleServer() {
 
 /* ─── Info section card ─── */
 .info-section {
-  margin-bottom: 20px;
-  padding: 24px 28px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -647,60 +827,36 @@ async function toggleServer() {
   color: var(--text-dim);
 }
 
-/* ─── Status badge ─── */
-.status-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 2px 12px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.status-badge.available {
-  background: rgba(34, 197, 94, 0.12);
-  color: #22c55e;
-  border: 1px solid rgba(34, 197, 94, 0.2);
-}
-
-.status-badge.unavailable {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.15);
-}
-
-/* ─── Server head ─── */
-.server-head {
+/* ─── Token 卡头部（含运行时长小字） ─── */
+.token-card-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 32px;
-  margin-bottom: 18px;
+  gap: 16px;
+  margin-bottom: 14px;
 }
 
-.uptime-block {
+.token-card-head .section-title {
+  margin: 0;
+}
+
+.token-uptime {
   display: flex;
   flex-direction: column;
-}
-
-.tps-value {
-  font-size: 32px;
-  font-weight: 700;
-  color: var(--accent-light);
-  line-height: 1.1;
-}
-
-.tps-label,
-.uptime-label {
-  font-size: 11px;
-  color: var(--text-dim);
+  align-items: flex-end;
+  flex-shrink: 0;
 }
 
 .uptime-value {
   font-size: 14px;
   font-weight: 600;
   color: var(--text-secondary);
+}
+
+.uptime-label,
+.tps-label {
+  font-size: 11px;
+  color: var(--text-dim);
 }
 
 .tps-placeholder {
@@ -720,7 +876,7 @@ async function toggleServer() {
 .tps-card {
   display: flex;
   flex-direction: column;
-  padding: 20px;
+  padding: 16px;
   background: var(--surface);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-md);
@@ -741,7 +897,14 @@ async function toggleServer() {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  margin-top: 12px;
+  margin-top: 10px;
+}
+
+.tps-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--accent-light);
+  line-height: 1.1;
 }
 
 .tps-footnote {
@@ -752,13 +915,13 @@ async function toggleServer() {
 
 /* ─── TPS chart ─── */
 .tps-chart {
-  margin-top: 18px;
+  margin-top: 16px;
 }
 
 .tps-chart svg {
   display: block;
   width: 100%;
-  height: 120px;
+  height: 90px;
 }
 
 .tps-chart polyline {
