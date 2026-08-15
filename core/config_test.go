@@ -280,8 +280,8 @@ func TestSetTrayEnabledPersists(t *testing.T) {
 // TestConfigSidebarCollapsedRoundtrip 验证侧边栏收起偏好持久化往返无损：
 // 配置文件显式写 "sidebarCollapsed": true → loadConfig 读入 → saveConfig 写回
 // 后该字段仍在（load→save 链路不丢字段）；再写 false 场景断言保持 false。
-// bool 零值 false 即展开，旧配置缺该字段时无需显式兜底（与 trayEnabled 的
-// 预置 true 不同）。
+// 与 trayEnabled 相同：loadConfig 预置默认 true（侧边栏默认收起），区分「旧
+// 配置缺字段」（兜底收起）与「显式设为 false」（保持展开）。
 func TestConfigSidebarCollapsedRoundtrip(t *testing.T) {
 	withTempCwd(t)
 	saveConfigState(t)
@@ -321,17 +321,17 @@ func TestConfigSidebarCollapsedRoundtrip(t *testing.T) {
 	}
 	configMu.Unlock()
 
-	// 缺字段的旧配置：bool 零值兜底为 false（展开），无需预置默认值
+	// 缺字段的旧配置：loadConfig 预置默认 true（收起），与 trayEnabled 同模式
 	if err := os.WriteFile(configFile, []byte(`{"theme":"light"}`), 0644); err != nil {
 		t.Fatal(err)
 	}
 	configMu.Lock()
-	currentSidebarCollapsed = true // 先置非默认值，验证缺字段时兜底回展开
+	currentSidebarCollapsed = false // 先置非默认值，验证缺字段时兜底回收起
 	configMu.Unlock()
 	loadConfig()
 	configMu.Lock()
-	if currentSidebarCollapsed != false {
-		t.Errorf("旧配置缺 sidebarCollapsed 字段应兜底 false（展开）, 实际 %v", currentSidebarCollapsed)
+	if currentSidebarCollapsed != true {
+		t.Errorf("旧配置缺 sidebarCollapsed 字段应兜底 true（收起）, 实际 %v", currentSidebarCollapsed)
 	}
 	configMu.Unlock()
 }

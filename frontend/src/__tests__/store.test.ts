@@ -37,8 +37,8 @@ describe('store', () => {
     appConfig.resolvedLanguage = 'zh'
     appConfig.trayEnabled = true
     // 重置侧边栏收起状态，避免用例间污染（readStoredSidebarCollapsed 在模块
-    // 加载时已执行一次，此处显式重置以保证每个用例从展开态开始）
-    appConfig.sidebarCollapsed = false
+    // 加载时已执行一次，此处显式重置到默认收起态，每个用例从收起开始）
+    appConfig.sidebarCollapsed = true
     appConfig.loaded = false
     locale.value = 'zh'
   })
@@ -249,18 +249,19 @@ describe('store', () => {
     expect(localStorage.getItem('llama-desktop-sidebar-collapsed')).toBe('1')
   })
 
-  it('loadConfig 后端未返回 sidebarCollapsed（旧配置）时兜底为展开', async () => {
-    // 模拟旧后端/缺字段响应：sidebarCollapsed 不存在时 store 应兜底 false（展开）
+  it('loadConfig 后端未返回 sidebarCollapsed（旧配置）时兜底为收起', async () => {
+    // 模拟旧后端/缺字段响应：sidebarCollapsed 不存在时 store 应兜底 true（收起，
+    // 与后端 loadConfig 预置默认值一致）
     mockGetConfig.mockResolvedValue({ theme: 'dark', llamaCppDir: '', modelsDir: '', downloadSource: '', language: 'auto', resolvedLanguage: 'zh', trayEnabled: true } as any)
 
     await loadConfig()
 
-    expect(appConfig.sidebarCollapsed).toBe(false)
-    expect(localStorage.getItem('llama-desktop-sidebar-collapsed')).toBe('0')
+    expect(appConfig.sidebarCollapsed).toBe(true)
+    expect(localStorage.getItem('llama-desktop-sidebar-collapsed')).toBe('1')
   })
 
-  it('loadConfig 后端返回 sidebarCollapsed: false 时保持展开', async () => {
-    appConfig.sidebarCollapsed = true // 先置非默认值，验证 false 覆盖为展开
+  it('loadConfig 后端返回 sidebarCollapsed: false 时保持展开（显式偏好优先）', async () => {
+    appConfig.sidebarCollapsed = true // 先置默认收起，验证显式 false（展开偏好）覆盖
     mockGetConfig.mockResolvedValue({ theme: 'dark', llamaCppDir: '', modelsDir: '', downloadSource: '', language: 'auto', resolvedLanguage: 'zh', trayEnabled: true, sidebarCollapsed: false })
 
     await loadConfig()
@@ -287,8 +288,8 @@ describe('store', () => {
     expect(localStorage.getItem('llama-desktop-sidebar-collapsed')).toBe('1')
   })
 
-  it('readStoredSidebarCollapsed: localStorage "1" 为收起，空/其他为展开', () => {
-    expect(readStoredSidebarCollapsed()).toBe(false)
+  it('readStoredSidebarCollapsed: 无键默认收起，\'1\' 收起，\'0\' 显式展开', () => {
+    expect(readStoredSidebarCollapsed()).toBe(true)
 
     localStorage.setItem('llama-desktop-sidebar-collapsed', '1')
     expect(readStoredSidebarCollapsed()).toBe(true)

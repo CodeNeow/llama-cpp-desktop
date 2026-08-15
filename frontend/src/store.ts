@@ -7,7 +7,7 @@ import { setLocale } from './lib/i18n'
 const THEME_KEY = 'llama-desktop-theme'
 const LEGACY_THEME_KEY = 'llama-gui-theme'
 
-// 侧边栏收起状态 localStorage 键：'1' 收起、'0'/缺省 展开。
+// 侧边栏收起状态 localStorage 键：'0' 显式展开、'1'/缺省 收起。
 // 主题/托盘偏好双轨模式一致：UI 先读 localStorage 首帧即正确，后端 config 仅
 // 作持久化来源（loadConfig 覆盖并同步写回 localStorage）。
 const SIDEBAR_KEY = 'llama-desktop-sidebar-collapsed'
@@ -17,9 +17,10 @@ export function readStoredTheme(): string {
   return localStorage.getItem(THEME_KEY) || localStorage.getItem(LEGACY_THEME_KEY) || 'light'
 }
 
-/** 读取持久化侧边栏收起状态：'1' 为收起，其余（含缺省）一律展开。 */
+/** 读取持久化侧边栏收起状态：'0' 为显式展开，其余（'1'/键缺失）一律收起。
+ * 首次运行（键缺失）默认收起，避免首帧按展开宽度渲染后再收缩的布局跳动。 */
 export function readStoredSidebarCollapsed(): boolean {
-  return localStorage.getItem(SIDEBAR_KEY) === '1'
+  return localStorage.getItem(SIDEBAR_KEY) !== '0'
 }
 
 export const appConfig = reactive({
@@ -33,8 +34,9 @@ export const appConfig = reactive({
   // Windows 系统托盘开关：默认 true（与后端 loadConfig 兜底一致）；仅在
   // loadConfig 拉取到后端持久化值后覆盖。
   trayEnabled: true,
-  // 侧边栏收起状态：启动首帧从 localStorage 读取（'1' 收起），避免异步
-  // loadConfig 返回前侧边栏按展开宽度渲染后再收缩造成布局跳动。
+  // 侧边栏收起状态：启动首帧从 localStorage 读取（'0' 展开、其余收起），
+  // 避免异步 loadConfig 返回前侧边栏按错误宽度渲染造成布局跳动；键缺失时
+  // 默认收起（与后端预置 true 兜底一致）。
   sidebarCollapsed: readStoredSidebarCollapsed(),
   loaded: false,
 })
@@ -50,9 +52,10 @@ export async function loadConfig() {
     appConfig.resolvedLanguage = config.resolvedLanguage === 'en' ? 'en' : 'zh'
     // 后端缺省/未返回 trayEnabled 时保持默认 true（与后端 loadConfig 兜底一致）
     appConfig.trayEnabled = config.trayEnabled !== false
-    // 后端缺字段/旧配置 → undefined → false（展开）；成功后同步写回
+    // 后端缺字段/旧后端未返回 → undefined → 默认收起（与后端 loadConfig 预置
+    // true 兜底一致）；显式 false（用户展开偏好）才为 false；成功后同步写回
     // localStorage，保证「后端持久化值」与「本机 UI 缓存」双轨一致。
-    appConfig.sidebarCollapsed = config.sidebarCollapsed === true
+    appConfig.sidebarCollapsed = config.sidebarCollapsed !== false
     setLocale(appConfig.resolvedLanguage)
     localStorage.setItem(THEME_KEY, appConfig.theme)
     localStorage.setItem(SIDEBAR_KEY, appConfig.sidebarCollapsed ? '1' : '0')

@@ -2508,7 +2508,7 @@ type appConfig struct {
 	DownloadSource   string                 `json:"downloadSource"`
 	Language         string                 `json:"language"`         // 语言偏好: zh / en / auto（空或非法值兜底 auto）
 	TrayEnabled      bool                   `json:"trayEnabled"`      // Windows 系统托盘开关，默认 true
-	SidebarCollapsed bool                   `json:"sidebarCollapsed"` // 侧边栏收起状态，默认 false（展开）
+	SidebarCollapsed bool                   `json:"sidebarCollapsed"` // 侧边栏收起状态，默认 true（收起）
 	DownloadTasks    []PersistedDlTask      `json:"downloadTasks,omitempty"`
 }
 
@@ -2615,9 +2615,11 @@ func loadConfig() {
 	}
 	var cfg appConfig
 	// 预置默认值后再 Unmarshal：Go 零值 false 无法区分「旧配置缺字段」与
-	// 「显式设为 false」，trayEnabled 缺省时必须兜底 true（历史配置升级后
-	// 托盘默认开启，与 4aacac2 无条件启托盘的行为一致）。
+	// 「显式设为 false」。trayEnabled 缺省时必须兜底 true（历史配置升级后
+	// 托盘默认开启，与 4aacac2 无条件启托盘的行为一致）；sidebarCollapsed
+	// 缺省时兜底 true（侧边栏默认收起，无保存偏好即收起）。
 	cfg.TrayEnabled = true
+	cfg.SidebarCollapsed = true
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		log.Printf("[WARN] Failed to parse config file: %v", err)
 		return
@@ -2710,8 +2712,8 @@ func loadConfig() {
 	trayEnabled = cfg.TrayEnabled
 	configMu.Unlock()
 
-	// 侧边栏收起状态：bool 零值 false 即展开，旧配置缺字段时自动回退展开，
-	// 无需像 trayEnabled 那样预置默认值（默认展开与前端 UI 语义一致）。
+	// 侧边栏收起状态：缺字段时保持预置默认 true（收起，见上方 appConfig
+	// 预置）；仅显式 false（用户展开偏好）才为 false，与 trayEnabled 同模式。
 	configMu.Lock()
 	currentSidebarCollapsed = cfg.SidebarCollapsed
 	configMu.Unlock()
@@ -2790,10 +2792,11 @@ var configMu sync.Mutex
 // loadConfig 兜底 true（见 loadConfig 的 appConfig{TrayEnabled: true} 预置）。
 var trayEnabled = true
 
-// currentSidebarCollapsed 表示侧边栏是否处于收起状态（纯图标栏），默认 false
-// （展开）；受 configMu 保护，持久化到配置文件的 sidebarCollapsed 字段。bool
-// 零值 false 即默认展开，旧配置缺该字段时 loadConfig 无需显式兜底。
-var currentSidebarCollapsed bool
+// currentSidebarCollapsed 表示侧边栏是否处于收起状态（纯图标栏），默认 true
+// （收起）；受 configMu 保护，持久化到配置文件的 sidebarCollapsed 字段。旧配置
+// 缺该字段时 loadConfig 预置默认 true（见 loadConfig 的 appConfig 预置），与
+// trayEnabled 的兜底模式一致。
+var currentSidebarCollapsed = true
 
 // TrayEnabled 返回当前托盘启用偏好（并发安全，configMu 保护）。供 main.go 的
 // OnStartup 按持久化配置决定是否启动托盘。

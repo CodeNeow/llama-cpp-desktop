@@ -122,7 +122,7 @@ func (a *App) GetConfig() map[string]interface{} {
 		"language":         lang,                // 语言原始偏好: zh / en / auto
 		"resolvedLanguage": effectiveLanguage(), // 生效语言: zh / en（auto 按系统检测结果）
 		"trayEnabled":      tray,                // Windows 系统托盘开关
-		"sidebarCollapsed": sidebarCollapsed,    // 侧边栏收起状态（默认 false=展开）
+		"sidebarCollapsed": sidebarCollapsed,    // 侧边栏收起状态（默认 true=收起）
 	}
 }
 
