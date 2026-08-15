@@ -537,6 +537,9 @@ function clearLog() {
 .monitor-grid {
   display: grid;
   grid-template-columns: 6fr 4fr;
+  /* 行高严格等于容器高度：启动日志行数不受限，必须由 minmax(0, 1fr) 与子项 min-height: 0
+     锁死容器高度，超出的日志在控制台内部滚动，避免撑开布局顶走下方配置区块 */
+  grid-template-rows: minmax(0, 1fr);
   gap: 16px;
   /* 两栏等高；高度随窗口缩放收缩（min(440px, 55vh)） */
   height: min(440px, 55vh);
@@ -546,6 +549,8 @@ function clearLog() {
 /* ─── 左栏：日志面板 ─── */
 .log-panel {
   height: 100%;
+  /* 解除 grid 子项默认 min-height:auto，内容超高时允许收缩，交由内部滚动 */
+  min-height: 0;
   display: flex;
   flex-direction: column;
   padding: 18px 20px;
@@ -586,6 +591,8 @@ function clearLog() {
 /* 深色控制台：深浅主题下均为固定深色底（终端观感），浅色主题下亦然 */
 .console-log {
   flex: 1;
+  /* 解除 flex 子项默认 min-height:auto，日志行数再多也收缩在面板内滚动 */
+  min-height: 0;
   overflow-y: auto;
   background: #0b0b10;
   border-radius: 8px;
@@ -618,6 +625,8 @@ function clearLog() {
   flex-direction: column;
   gap: 12px;
   height: 100%;
+  /* 解除 grid 子项默认 min-height:auto，右栏高度锁定，卡片超高时由自身 overflow-y 滚动 */
+  min-height: 0;
   overflow-y: auto;
 }
 
