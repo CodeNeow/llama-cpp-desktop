@@ -21,6 +21,8 @@ const messages: Record<Locale, Record<string, string>> = {
     'nav.monitor': '监控',
     'nav.settings': '设置',
     'nav.ready': '系统就绪',
+    'nav.collapse': '收起侧边栏',
+    'nav.expand': '展开侧边栏',
 
     // ─── 标题栏（App.vue） ───
     'title.minimize': '最小化',
@@ -324,6 +326,8 @@ const messages: Record<Locale, Record<string, string>> = {
     'nav.monitor': 'Monitor',
     'nav.settings': 'Settings',
     'nav.ready': 'System Ready',
+    'nav.collapse': 'Collapse Sidebar',
+    'nav.expand': 'Expand Sidebar',
 
     // ─── Title bar (App.vue) ───
     'title.minimize': 'Minimize',

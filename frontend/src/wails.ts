@@ -17,12 +17,17 @@ function app(): any {
 
 // ─── Config ─────────────────────────────────────────────────────
 
-export async function getConfig(): Promise<{ theme: string; llamaCppDir: string; modelsDir: string; downloadSource: string; language: string; resolvedLanguage: 'zh' | 'en'; trayEnabled: boolean }> {
+export async function getConfig(): Promise<{ theme: string; llamaCppDir: string; modelsDir: string; downloadSource: string; language: string; resolvedLanguage: 'zh' | 'en'; trayEnabled: boolean; sidebarCollapsed?: boolean }> {
   return app().GetConfig()
 }
 
 export async function setTheme(theme: string): Promise<void> {
   return app().SetTheme(theme)
+}
+
+// 设置侧边栏收起/展开偏好（纯 UI 状态，无窗口背景等副作用）
+export async function setSidebarCollapsed(collapsed: boolean): Promise<void> {
+  return app().SetSidebarCollapsed(collapsed)
 }
 
 // 设置 Windows 系统托盘开关（仅 Windows 渲染设置项；非 Windows 平台后端仅

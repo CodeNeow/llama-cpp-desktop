@@ -2500,15 +2500,16 @@ func sanitizeAlias(name string) string {
 // ─── Config persistence ─────────────────────────────────────────
 
 type appConfig struct {
-	LlamaCppDir    string                 `json:"llamaCppDir"`
-	ModelDir       string                 `json:"modelDir"`
-	Theme          string                 `json:"theme"`
-	ModelConfigs   map[string]ModelConfig `json:"modelConfigs"`
-	ServerConfig   ServerConfig           `json:"serverConfig"`
-	DownloadSource string                 `json:"downloadSource"`
-	Language       string                 `json:"language"`    // 语言偏好: zh / en / auto（空或非法值兜底 auto）
-	TrayEnabled    bool                   `json:"trayEnabled"` // Windows 系统托盘开关，默认 true
-	DownloadTasks  []PersistedDlTask      `json:"downloadTasks,omitempty"`
+	LlamaCppDir      string                 `json:"llamaCppDir"`
+	ModelDir         string                 `json:"modelDir"`
+	Theme            string                 `json:"theme"`
+	ModelConfigs     map[string]ModelConfig `json:"modelConfigs"`
+	ServerConfig     ServerConfig           `json:"serverConfig"`
+	DownloadSource   string                 `json:"downloadSource"`
+	Language         string                 `json:"language"`         // 语言偏好: zh / en / auto（空或非法值兜底 auto）
+	TrayEnabled      bool                   `json:"trayEnabled"`      // Windows 系统托盘开关，默认 true
+	SidebarCollapsed bool                   `json:"sidebarCollapsed"` // 侧边栏收起状态，默认 false（展开）
+	DownloadTasks    []PersistedDlTask      `json:"downloadTasks,omitempty"`
 }
 
 // PersistedDlTask 是下载任务队列的持久化形态（写入 llama-desktop-config.json）。
@@ -2709,6 +2710,12 @@ func loadConfig() {
 	trayEnabled = cfg.TrayEnabled
 	configMu.Unlock()
 
+	// 侧边栏收起状态：bool 零值 false 即展开，旧配置缺字段时自动回退展开，
+	// 无需像 trayEnabled 那样预置默认值（默认展开与前端 UI 语义一致）。
+	configMu.Lock()
+	currentSidebarCollapsed = cfg.SidebarCollapsed
+	configMu.Unlock()
+
 	// 恢复下载任务队列（进程重启后无活跃 goroutine，任何任务都不自动启动下载）：
 	// Source 兜底 hf；Status 白名单外与 downloading 一律规整为 paused（downloading
 	// 状态的 goroutine 已随进程退出消亡，前端可对任务继续/重试）；URL 按
@@ -2783,6 +2790,11 @@ var configMu sync.Mutex
 // loadConfig 兜底 true（见 loadConfig 的 appConfig{TrayEnabled: true} 预置）。
 var trayEnabled = true
 
+// currentSidebarCollapsed 表示侧边栏是否处于收起状态（纯图标栏），默认 false
+// （展开）；受 configMu 保护，持久化到配置文件的 sidebarCollapsed 字段。bool
+// 零值 false 即默认展开，旧配置缺该字段时 loadConfig 无需显式兜底。
+var currentSidebarCollapsed bool
+
 // TrayEnabled 返回当前托盘启用偏好（并发安全，configMu 保护）。供 main.go 的
 // OnStartup 按持久化配置决定是否启动托盘。
 func TrayEnabled() bool {
@@ -2827,6 +2839,10 @@ func saveConfig() {
 	tray := trayEnabled
 	configMu.Unlock()
 
+	configMu.Lock()
+	sidebarCollapsed := currentSidebarCollapsed
+	configMu.Unlock()
+
 	// 锁序铁律：saveConfig 内 dlTasksMu 必须是最后获取的锁。任何调用点都不得
 	// 在持有 dlTasksMu 时调用 saveConfig——调用方须先锁内取副本、解锁、再
 	// save（如 CancelDownloadTask 在 defer Unlock 前不调 saveConfig）。否则会
@@ -2851,15 +2867,16 @@ func saveConfig() {
 	dlTasksMu.Unlock()
 
 	cfg := appConfig{
-		LlamaCppDir:    dir,
-		ModelDir:       modelDir,
-		Theme:          theme,
-		ModelConfigs:   mcfgs,
-		ServerConfig:   scfg,
-		DownloadSource: dlsrc,
-		Language:       lang,
-		TrayEnabled:    tray,
-		DownloadTasks:  persistedTasks,
+		LlamaCppDir:      dir,
+		ModelDir:         modelDir,
+		Theme:            theme,
+		ModelConfigs:     mcfgs,
+		ServerConfig:     scfg,
+		DownloadSource:   dlsrc,
+		Language:         lang,
+		TrayEnabled:      tray,
+		SidebarCollapsed: sidebarCollapsed,
+		DownloadTasks:    persistedTasks,
 	}
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {

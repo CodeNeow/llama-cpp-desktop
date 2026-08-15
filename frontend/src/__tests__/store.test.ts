@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { appConfig, loadConfig, setTheme, setDownloadSource, setLanguage, setServerAccessMode, setTrayEnabled, readStoredTheme } from '../store'
-import { getConfig, setTheme as setThemeBackend, setDownloadSource as setDownloadSourceBackend, setLanguage as setLanguageBackend, setTrayEnabled as setTrayEnabledBackend, getServerConfig, saveServerConfig as saveServerConfigBackend } from '../wails'
+import { appConfig, loadConfig, setTheme, setDownloadSource, setLanguage, setServerAccessMode, setTrayEnabled, setSidebarCollapsed, readStoredTheme, readStoredSidebarCollapsed } from '../store'
+import { getConfig, setTheme as setThemeBackend, setDownloadSource as setDownloadSourceBackend, setLanguage as setLanguageBackend, setTrayEnabled as setTrayEnabledBackend, setSidebarCollapsed as setSidebarCollapsedBackend, getServerConfig, saveServerConfig as saveServerConfigBackend } from '../wails'
 import { locale } from '../lib/i18n'
 
 // mock Wails 桥接层：window.go 仅由 Wails 运行时注入，单测环境不可用
@@ -10,6 +10,7 @@ vi.mock('../wails', () => ({
   setDownloadSource: vi.fn(),
   setLanguage: vi.fn(),
   setTrayEnabled: vi.fn(),
+  setSidebarCollapsed: vi.fn(),
   getServerConfig: vi.fn(),
   saveServerConfig: vi.fn(),
 }))
@@ -19,6 +20,7 @@ const mockSetTheme = vi.mocked(setThemeBackend)
 const mockSetDownloadSource = vi.mocked(setDownloadSourceBackend)
 const mockSetLanguage = vi.mocked(setLanguageBackend)
 const mockSetTrayEnabled = vi.mocked(setTrayEnabledBackend)
+const mockSetSidebarCollapsed = vi.mocked(setSidebarCollapsedBackend)
 const mockGetServerConfig = vi.mocked(getServerConfig)
 const mockSaveServerConfig = vi.mocked(saveServerConfigBackend)
 
@@ -34,6 +36,9 @@ describe('store', () => {
     appConfig.language = 'auto'
     appConfig.resolvedLanguage = 'zh'
     appConfig.trayEnabled = true
+    // 重置侧边栏收起状态，避免用例间污染（readStoredSidebarCollapsed 在模块
+    // 加载时已执行一次，此处显式重置以保证每个用例从展开态开始）
+    appConfig.sidebarCollapsed = false
     appConfig.loaded = false
     locale.value = 'zh'
   })
@@ -233,5 +238,63 @@ describe('store', () => {
 
     await expect(setServerAccessMode('lan')).rejects.toThrow('backend unavailable')
     expect(appConfig.serverAccessMode).toBe('local')
+  })
+
+  it('loadConfig 后端返回 sidebarCollapsed: true 时状态收起并写 localStorage', async () => {
+    mockGetConfig.mockResolvedValue({ theme: 'dark', llamaCppDir: '', modelsDir: '', downloadSource: '', language: 'auto', resolvedLanguage: 'zh', trayEnabled: true, sidebarCollapsed: true })
+
+    await loadConfig()
+
+    expect(appConfig.sidebarCollapsed).toBe(true)
+    expect(localStorage.getItem('llama-desktop-sidebar-collapsed')).toBe('1')
+  })
+
+  it('loadConfig 后端未返回 sidebarCollapsed（旧配置）时兜底为展开', async () => {
+    // 模拟旧后端/缺字段响应：sidebarCollapsed 不存在时 store 应兜底 false（展开）
+    mockGetConfig.mockResolvedValue({ theme: 'dark', llamaCppDir: '', modelsDir: '', downloadSource: '', language: 'auto', resolvedLanguage: 'zh', trayEnabled: true } as any)
+
+    await loadConfig()
+
+    expect(appConfig.sidebarCollapsed).toBe(false)
+    expect(localStorage.getItem('llama-desktop-sidebar-collapsed')).toBe('0')
+  })
+
+  it('loadConfig 后端返回 sidebarCollapsed: false 时保持展开', async () => {
+    appConfig.sidebarCollapsed = true // 先置非默认值，验证 false 覆盖为展开
+    mockGetConfig.mockResolvedValue({ theme: 'dark', llamaCppDir: '', modelsDir: '', downloadSource: '', language: 'auto', resolvedLanguage: 'zh', trayEnabled: true, sidebarCollapsed: false })
+
+    await loadConfig()
+
+    expect(appConfig.sidebarCollapsed).toBe(false)
+    expect(localStorage.getItem('llama-desktop-sidebar-collapsed')).toBe('0')
+  })
+
+  it('setSidebarCollapsed 成功后更新状态、写 localStorage 并调用后端', async () => {
+    mockSetSidebarCollapsed.mockResolvedValue(undefined)
+
+    await setSidebarCollapsed(true)
+
+    expect(mockSetSidebarCollapsed).toHaveBeenCalledWith(true)
+    expect(appConfig.sidebarCollapsed).toBe(true)
+    expect(localStorage.getItem('llama-desktop-sidebar-collapsed')).toBe('1')
+  })
+
+  it('setSidebarCollapsed 后端失败时吞错不回滚（纯 UI 偏好，失败仅影响下次启动恢复值）', async () => {
+    mockSetSidebarCollapsed.mockRejectedValue(new Error('backend unavailable'))
+
+    await expect(setSidebarCollapsed(true)).resolves.toBeUndefined()
+    expect(appConfig.sidebarCollapsed).toBe(true)
+    expect(localStorage.getItem('llama-desktop-sidebar-collapsed')).toBe('1')
+  })
+
+  it('readStoredSidebarCollapsed: localStorage "1" 为收起，空/其他为展开', () => {
+    expect(readStoredSidebarCollapsed()).toBe(false)
+
+    localStorage.setItem('llama-desktop-sidebar-collapsed', '1')
+    expect(readStoredSidebarCollapsed()).toBe(true)
+
+    // 显式写入 '0' 展开（与 setSidebarCollapsed 写回格式一致）
+    localStorage.setItem('llama-desktop-sidebar-collapsed', '0')
+    expect(readStoredSidebarCollapsed()).toBe(false)
   })
 })

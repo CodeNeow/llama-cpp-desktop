@@ -150,6 +150,10 @@ export function SetModelsDir(arg1) {
   return window['go']['core']['App']['SetModelsDir'](arg1);
 }
 
+export function SetSidebarCollapsed(arg1) {
+  return window['go']['core']['App']['SetSidebarCollapsed'](arg1);
+}
+
 export function SetTheme(arg1) {
   return window['go']['core']['App']['SetTheme'](arg1);
 }

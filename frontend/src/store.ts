@@ -1,5 +1,5 @@
 import { reactive } from 'vue'
-import { getConfig, setTheme as setThemeBackend, setDownloadSource as setDownloadSourceBackend, setLanguage as setLanguageBackend, setTrayEnabled as setTrayEnabledBackend, getServerConfig, saveServerConfig as saveServerConfigBackend } from './wails'
+import { getConfig, setTheme as setThemeBackend, setSidebarCollapsed as setSidebarCollapsedBackend, setDownloadSource as setDownloadSourceBackend, setLanguage as setLanguageBackend, setTrayEnabled as setTrayEnabledBackend, getServerConfig, saveServerConfig as saveServerConfigBackend } from './wails'
 import { setLocale } from './lib/i18n'
 
 // 主题 localStorage 键：llama-gui → llama-desktop 更名后旧键仅作读取回退
@@ -7,9 +7,19 @@ import { setLocale } from './lib/i18n'
 const THEME_KEY = 'llama-desktop-theme'
 const LEGACY_THEME_KEY = 'llama-gui-theme'
 
+// 侧边栏收起状态 localStorage 键：'1' 收起、'0'/缺省 展开。
+// 主题/托盘偏好双轨模式一致：UI 先读 localStorage 首帧即正确，后端 config 仅
+// 作持久化来源（loadConfig 覆盖并同步写回 localStorage）。
+const SIDEBAR_KEY = 'llama-desktop-sidebar-collapsed'
+
 /** 读取持久化主题：新键优先，缺失时回退更名前旧键，均无则 light。 */
 export function readStoredTheme(): string {
   return localStorage.getItem(THEME_KEY) || localStorage.getItem(LEGACY_THEME_KEY) || 'light'
+}
+
+/** 读取持久化侧边栏收起状态：'1' 为收起，其余（含缺省）一律展开。 */
+export function readStoredSidebarCollapsed(): boolean {
+  return localStorage.getItem(SIDEBAR_KEY) === '1'
 }
 
 export const appConfig = reactive({
@@ -23,6 +33,9 @@ export const appConfig = reactive({
   // Windows 系统托盘开关：默认 true（与后端 loadConfig 兜底一致）；仅在
   // loadConfig 拉取到后端持久化值后覆盖。
   trayEnabled: true,
+  // 侧边栏收起状态：启动首帧从 localStorage 读取（'1' 收起），避免异步
+  // loadConfig 返回前侧边栏按展开宽度渲染后再收缩造成布局跳动。
+  sidebarCollapsed: readStoredSidebarCollapsed(),
   loaded: false,
 })
 
@@ -37,8 +50,12 @@ export async function loadConfig() {
     appConfig.resolvedLanguage = config.resolvedLanguage === 'en' ? 'en' : 'zh'
     // 后端缺省/未返回 trayEnabled 时保持默认 true（与后端 loadConfig 兜底一致）
     appConfig.trayEnabled = config.trayEnabled !== false
+    // 后端缺字段/旧配置 → undefined → false（展开）；成功后同步写回
+    // localStorage，保证「后端持久化值」与「本机 UI 缓存」双轨一致。
+    appConfig.sidebarCollapsed = config.sidebarCollapsed === true
     setLocale(appConfig.resolvedLanguage)
     localStorage.setItem(THEME_KEY, appConfig.theme)
+    localStorage.setItem(SIDEBAR_KEY, appConfig.sidebarCollapsed ? '1' : '0')
     document.documentElement.setAttribute('data-theme', appConfig.theme)
   } catch {} finally {
     appConfig.loaded = true
@@ -51,6 +68,18 @@ export async function setTheme(theme: string) {
   localStorage.setItem(THEME_KEY, theme)
   try {
     await setThemeBackend(theme)
+  } catch {}
+}
+
+/** 切换侧边栏收起/展开：先乐观更新本地状态并写 localStorage，后端调用失败
+ * 时吞错不回滚——纯 UI 偏好，切换视觉状态立即回滚会闪烁，失败仅影响下次
+ * 启动的恢复值（回滚模式见 setTrayEnabled，那里回滚不会造成视觉抖动）。
+ */
+export async function setSidebarCollapsed(collapsed: boolean) {
+  appConfig.sidebarCollapsed = collapsed
+  localStorage.setItem(SIDEBAR_KEY, collapsed ? '1' : '0')
+  try {
+    await setSidebarCollapsedBackend(collapsed)
   } catch {}
 }
 

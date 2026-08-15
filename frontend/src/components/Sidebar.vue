@@ -1,5 +1,5 @@
 <template>
-  <aside class="sidebar">
+  <aside class="sidebar" :class="{ collapsed: appConfig.sidebarCollapsed }">
     <div class="sidebar-header">
       <div class="logo">
         <svg viewBox="0 0 32 32" class="logo-icon">
@@ -25,6 +25,7 @@
         :to="item.path"
         class="nav-item"
         :class="{ active: isActive(item.path) }"
+        :title="appConfig.sidebarCollapsed ? item.label() : undefined"
       >
         <span class="nav-icon" v-html="item.icon"></span>
         <span class="nav-label">{{ item.label() }}</span>
@@ -33,8 +34,17 @@
     </nav>
 
     <div class="sidebar-footer">
-      <div class="status-dot"></div>
+      <div class="status-dot" :title="appConfig.sidebarCollapsed ? t('nav.ready') : undefined"></div>
       <span class="status-text">{{ t('nav.ready') }}</span>
+      <button
+        class="collapse-toggle"
+        :title="appConfig.sidebarCollapsed ? t('nav.expand') : t('nav.collapse')"
+        :aria-label="appConfig.sidebarCollapsed ? t('nav.expand') : t('nav.collapse')"
+        @click="setSidebarCollapsed(!appConfig.sidebarCollapsed)"
+      >
+        <svg v-if="appConfig.sidebarCollapsed" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg>
+        <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg>
+      </button>
     </div>
   </aside>
 </template>
@@ -42,6 +52,7 @@
 <script setup lang="ts">
 import { useRoute } from 'vue-router'
 import { t } from '../lib/i18n'
+import { appConfig, setSidebarCollapsed } from '../store'
 
 const route = useRoute()
 
@@ -96,6 +107,16 @@ function isActive(path: string): boolean {
   --wails-draggable: drag;
   user-select: none;
   backdrop-filter: blur(20px);
+  /* 展开 240px ↔ 收起 64px 之间的宽度过渡，曲线与 nav-item 的
+     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) 保持一致 */
+  transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 收起态：64px 纯图标栏；文字全部 display:none 隐藏（不引入 v-if，
+   避免与宽度过渡打架），图标经 justify-content:center 居中 */
+.sidebar.collapsed {
+  width: 64px;
+  min-width: 64px;
 }
 
 .sidebar-header {
@@ -124,6 +145,20 @@ function isActive(path: string): boolean {
   -webkit-text-fill-color: transparent;
   background-clip: text;
   letter-spacing: -0.3px;
+}
+
+/* 收起态 header：只显示 logo 图标，水平内边距收窄到 16px 使 32px 图标居中 */
+.sidebar.collapsed .sidebar-header {
+  padding: 28px 16px 20px;
+}
+
+.sidebar.collapsed .logo {
+  justify-content: center;
+  gap: 0;
+}
+
+.sidebar.collapsed .logo-text {
+  display: none;
 }
 
 .sidebar-nav {
@@ -180,6 +215,17 @@ function isActive(path: string): boolean {
   line-height: 1;
 }
 
+/* 收起态 nav：label 隐藏、图标居中；active-indicator 保持 left:0 */
+.sidebar.collapsed .nav-label {
+  display: none;
+}
+
+.sidebar.collapsed .nav-item {
+  justify-content: center;
+  gap: 0;
+  padding: 11px 0;
+}
+
 .active-indicator {
   position: absolute;
   left: 0;
@@ -198,6 +244,7 @@ function isActive(path: string): boolean {
   gap: 10px;
   border-top: 1px solid var(--border);
   --wails-draggable: no-drag;
+  position: relative;
 }
 
 .status-dot {
@@ -217,5 +264,50 @@ function isActive(path: string): boolean {
 .status-text {
   font-size: 12px;
   color: var(--text-dim);
+}
+
+/* 收起态 footer：只显示状态点（居中），status-text 隐藏；状态点与切换按钮
+   改为垂直堆叠（状态点在上、按钮在下，均居中）——64px 窄栏内若按钮仍固定在
+   右侧，会与居中状态点水平重叠，视觉上遮蔽 » 图标。按钮绝对定位在收起态
+   被解除，转为普通 flex 子项排在状态点下方，几何上不可能再重叠 */
+.sidebar.collapsed .sidebar-footer {
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px 8px;
+}
+
+.sidebar.collapsed .status-text {
+  display: none;
+}
+
+/* 收起态按钮脱离 absolute 定位，作为 footer 的 flex 子项垂直排列 */
+.sidebar.collapsed .collapse-toggle {
+  position: static;
+  transform: none;
+}
+
+.collapse-toggle {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.collapse-toggle:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
 }
 </style>

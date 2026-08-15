@@ -77,6 +77,8 @@ export function SetLanguage(arg1:string):Promise<string>;
 
 export function SetModelsDir(arg1:string):Promise<void>;
 
+export function SetSidebarCollapsed(arg1:boolean):Promise<void>;
+
 export function SetTheme(arg1:string):Promise<void>;
 
 export function SetTrayEnabled(arg1:boolean):Promise<void>;

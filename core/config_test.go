@@ -44,6 +44,7 @@ func saveConfigState(t *testing.T) (origModels map[string]ModelConfig, origServe
 	configMu.Lock()
 	origTheme = currentTheme
 	origTray := trayEnabled
+	origSidebarCollapsed := currentSidebarCollapsed
 	configMu.Unlock()
 	customLlamaCppMu.Lock()
 	origDir = customLlamaCppDir
@@ -64,6 +65,7 @@ func saveConfigState(t *testing.T) (origModels map[string]ModelConfig, origServe
 		configMu.Lock()
 		currentTheme = origTheme
 		trayEnabled = origTray
+		currentSidebarCollapsed = origSidebarCollapsed
 		configMu.Unlock()
 		customLlamaCppMu.Lock()
 		customLlamaCppDir = origDir
@@ -271,6 +273,65 @@ func TestSetTrayEnabledPersists(t *testing.T) {
 	configMu.Lock()
 	if trayEnabled != false {
 		t.Errorf("持久化往返后 trayEnabled = %v, want false（显式禁用必须恢复）", trayEnabled)
+	}
+	configMu.Unlock()
+}
+
+// TestConfigSidebarCollapsedRoundtrip 验证侧边栏收起偏好持久化往返无损：
+// 配置文件显式写 "sidebarCollapsed": true → loadConfig 读入 → saveConfig 写回
+// 后该字段仍在（load→save 链路不丢字段）；再写 false 场景断言保持 false。
+// bool 零值 false 即展开，旧配置缺该字段时无需显式兜底（与 trayEnabled 的
+// 预置 true 不同）。
+func TestConfigSidebarCollapsedRoundtrip(t *testing.T) {
+	withTempCwd(t)
+	saveConfigState(t)
+
+	// 写 "sidebarCollapsed": true 的配置
+	if err := os.WriteFile(configFile, []byte(`{"sidebarCollapsed":true}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	loadConfig()
+	configMu.Lock()
+	if currentSidebarCollapsed != true {
+		t.Errorf("loadConfig 后 currentSidebarCollapsed = %v, want true", currentSidebarCollapsed)
+	}
+	configMu.Unlock()
+
+	saveConfig()
+	data, err := os.ReadFile(configFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"sidebarCollapsed": true`) {
+		t.Errorf("saveConfig 后配置文件应保留 sidebarCollapsed: true, 实际内容: %s", data)
+	}
+
+	// false 场景：显式 false 持久化往返后保持 false（不因零值兜底被顶成 true）
+	if err := os.WriteFile(configFile, []byte(`{"sidebarCollapsed":false}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	loadConfig()
+	configMu.Lock()
+	currentSidebarCollapsed = true // 先置非默认值，验证 loadConfig 读回显式 false
+	configMu.Unlock()
+	loadConfig()
+	configMu.Lock()
+	if currentSidebarCollapsed != false {
+		t.Errorf("显式 false 持久化往返后 currentSidebarCollapsed = %v, want false", currentSidebarCollapsed)
+	}
+	configMu.Unlock()
+
+	// 缺字段的旧配置：bool 零值兜底为 false（展开），无需预置默认值
+	if err := os.WriteFile(configFile, []byte(`{"theme":"light"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	configMu.Lock()
+	currentSidebarCollapsed = true // 先置非默认值，验证缺字段时兜底回展开
+	configMu.Unlock()
+	loadConfig()
+	configMu.Lock()
+	if currentSidebarCollapsed != false {
+		t.Errorf("旧配置缺 sidebarCollapsed 字段应兜底 false（展开）, 实际 %v", currentSidebarCollapsed)
 	}
 	configMu.Unlock()
 }

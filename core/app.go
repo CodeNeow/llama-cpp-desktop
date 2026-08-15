@@ -103,6 +103,7 @@ func (a *App) GetConfig() map[string]interface{} {
 	configMu.Lock()
 	theme := currentTheme
 	tray := trayEnabled
+	sidebarCollapsed := currentSidebarCollapsed
 	configMu.Unlock()
 
 	downloadSourceMu.Lock()
@@ -121,6 +122,7 @@ func (a *App) GetConfig() map[string]interface{} {
 		"language":         lang,                // 语言原始偏好: zh / en / auto
 		"resolvedLanguage": effectiveLanguage(), // 生效语言: zh / en（auto 按系统检测结果）
 		"trayEnabled":      tray,                // Windows 系统托盘开关
+		"sidebarCollapsed": sidebarCollapsed,    // 侧边栏收起状态（默认 false=展开）
 	}
 }
 
@@ -172,6 +174,15 @@ func (a *App) SetTheme(theme string) {
 			wailsRuntime.WindowSetBackgroundColour(a.ctx, 15, 15, 20, 255)
 		}
 	}
+}
+
+// SetSidebarCollapsed 设置侧边栏收起/展开偏好：写入全局状态并持久化到配置文件，
+// 无窗口背景等副作用（纯 UI 偏好，镜像 SetTheme 的极简形态）。
+func (a *App) SetSidebarCollapsed(collapsed bool) {
+	configMu.Lock()
+	currentSidebarCollapsed = collapsed
+	configMu.Unlock()
+	saveConfig()
 }
 
 // SetTrayEnabled 设置 Windows 系统托盘开关：持久化偏好到配置文件；Windows 上
