@@ -152,6 +152,9 @@ jobs:
             webkit-runtime: libwebkit2gtk-4.1-0
             build-tags: "desktop,production,webkit2_41"
     container: ${{ matrix.container }}
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      TZ: Etc/UTC
     steps:
       - name: Bootstrap Node 20 in container
         # 容器镜像不预装 node，而 actions/*（checkout / setup-go / artifact）都需要
