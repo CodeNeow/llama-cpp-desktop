@@ -114,8 +114,11 @@ code, pre {
   font-family: var(--font-mono);
 }
 
-/* Page content centering */
+/* 流式布局：填满内容区，仅保留 48px 侧距（由各视图 .page 的 padding 提供）；
+   1280px 上限防止超宽窗口下内容行拉得过长 */
 .page {
+  width: 100%;
+  max-width: 1280px;
   margin-left: auto;
   margin-right: auto;
 }

@@ -420,8 +420,6 @@ function clearLog() {
 .page {
   /* 顶部内边距已由页头 padding-top 承接（见 global.css .page-header） */
   padding: 0 48px 60px;
-  /* 合并监控区块后放宽到 960px（原 Monitor.vue 宽度），容纳双指标卡与生成速度折线图 */
-  max-width: 960px;
 }
 
 .page-header {

@@ -330,7 +330,6 @@ async function manualCheck() {
 .page {
   /* 顶部内边距已由页头 padding-top 承接（见 global.css .page-header） */
   padding: 0 48px 60px;
-  max-width: 720px;
 }
 
 .page-header {
