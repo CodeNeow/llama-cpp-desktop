@@ -2,6 +2,27 @@
 
 更新日志的**权威来源**（见 `AGENTS.md`「版本发布」）：发版时先在此新增版本条目（含日期与逐提交核心改动），`git tag` 注解消息与 GitHub Release 正文均从该条目复制，保持一致。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本。
 
+## [v0.2.2] - 2026-08-16
+
+v0.2.2: Linux .deb 多发行版构建与前端布局优化（v0.2.1 以来 8 个提交，按提交逐一说明核心改动）：
+
+1. `aac5652` fix(build): 将 Ubuntu 20.04 的 wails build tag 从 webkit2_40 修正为 webkit2_36
+   - 核心：20.04 的 libwebkit2gtk-4.0-dev 版本为 2.38.6，缺少 WebKitGTK 2.40 才引入的 C API `webkit_uri_scheme_request_get_http_body`，build tag webkit2_40 会直接调用该 C API 导致 go build 失败；修正为 webkit2_36 后 wails 走 Go 层 `http.NoBody` 兜底，不再依赖该符号
+2. `ce56dda` fix(build): 修复 Ubuntu 20.04 构建卡死在 tzdata 交互提示
+   - 核心：build-linux job 顶层注入 DEBIAN_FRONTEND=noninteractive 与 TZ=Etc/UTC，关闭裸容器内 apt-get 首次装入 tzdata 时的 debconf 交互，避免无 TTY 的 runner 降级到 Readline 前端后阻塞等待「选择地理区域」导致 job 卡死超时
+3. `833b5e3` style(frontend): 页面改为流式布局减少两侧留白，截图同步重拍
+   - 核心：各页面主容器改为流式布局并收窄最大宽度，减少宽屏下的两侧留白；同步重拍 Home / Downloads / Models / Settings 四页截图反映新布局
+4. `c10312d` style(frontend): 页头零位移贴顶并去掉分隔横线
+   - 核心：页头取消额外上边距与底部分隔横线，内容区紧贴窗口顶部；同步调整各页面样式保持视觉一致
+5. `5ab14e7` style(frontend): 各页面标题区固定于内容区顶部，不随内容滚动
+   - 核心：各页面标题区改为 sticky 定位，固定在内容区顶部；长内容滚动时标题始终可见，与侧边栏收起/展开状态解耦
+6. `e386b9f` ci(build): 新增 Ubuntu 20.04/22.04/24.04 .deb 安装包构建与集中发布
+   - 核心：build-linux job 以 matrix 容器方式构建三个 Ubuntu 发行版的 .deb 包（20.04 用 libwebkit2gtk-4.0-dev + webkit2_36，22.04/24.04 用 libwebkit2gtk-4.1-dev + webkit2_41）；release job 集中下载 5 个产物（Windows 2 exe + Linux 3 deb）并创建 GitHub Release；非 tag 构建生成 draft preview release
+7. `ec692d7` fix(frontend): 修复服务日志瞬间增多时溢出顶开服务器配置区块
+   - 核心：API 页服务日志区在大量日志瞬间涌入时保持固定高度，不再撑开上方服务器配置区块；日志滚动容器保持独立滚动条
+8. `5fb096f` feat(frontend): API 页改版为顶部启停+左日志右监控面板布局，截图统一收起态
+   - 核心：API 页重新布局为顶部服务启停按钮 + 下方左右分栏（左日志、右监控面板），截图统一为侧边栏收起态，反映默认用户体验
+
 ## [v0.2.1] - 2026-08-15
 
 v0.2.1: 侧边栏收起（默认收起、偏好持久化）与配置迁移、测试竞态修复（v0.2.0 以来 6 个提交，按提交逐一说明核心改动）：
