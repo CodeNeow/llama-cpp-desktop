@@ -126,5 +126,6 @@ code, pre {
   top: 0;
   z-index: 20;
   background: var(--bg-primary);
-  border-bottom: 1px solid var(--border);
+  /* padding-top 承接页面顶距，页头零位移贴顶 */
+  padding-top: 36px;
 }
