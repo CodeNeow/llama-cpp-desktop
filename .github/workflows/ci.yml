@@ -129,8 +129,9 @@ jobs:
     # 构建 Ubuntu 20.04 / 22.04 / 24.04 的 .deb 安装包。
     # 注意：GitHub 托管的 ubuntu-20.04 runner 已退役，三个发行版统一在各自
     # 的 ubuntu 容器中构建，保证二进制与 glibc / 依赖版本一致；同时 20.04 仓库
-    # 只有 libwebkit2gtk-4.0-dev（构建时需追加 webkit2_40 tag），
-    # 22.04 / 24.04 使用 libwebkit2gtk-4.1-dev（Wails 默认）。
+    # 只有 libwebkit2gtk-4.0-dev 且版本为 2.38（< 2.40），构建时需追加
+    # webkit2_36 tag（wails 用 Go 层兜底 http body）；22.04 / 24.04 使用
+    # libwebkit2gtk-4.1-dev，需追加 webkit2_41 tag。
     runs-on: ubuntu-latest
     needs: frontend
     strategy:
@@ -140,7 +141,7 @@ jobs:
             container: ubuntu:20.04
             webkit-dev: libwebkit2gtk-4.0-dev
             webkit-runtime: libwebkit2gtk-4.0-37
-            build-tags: "desktop,production,webkit2_40"
+            build-tags: "desktop,production,webkit2_36"
           - os: "22.04"
             container: ubuntu:22.04
             webkit-dev: libwebkit2gtk-4.1-dev
@@ -196,7 +197,8 @@ jobs:
 
       - name: Build Linux app
         # 直接 go build（go:embed 嵌入 frontend/dist），不用 wails CLI / npm；
-        # 20.04 需追加 webkit2_40 匹配 libwebkit2gtk-4.0-dev，
+        # 20.04 需追加 webkit2_36（其 libwebkit2gtk-4.0-dev 为 2.38，< 2.40，
+        # 无 2.40 专有 C API，wails 用 Go 层 http.NoBody 兜底），
         # 22.04 / 24.04 需追加 webkit2_41 匹配 libwebkit2gtk-4.1-dev
         # （wails 的 #cgo 默认指向 webkit2gtk-4.0，4.1 必须显式 webkit2_41 tag）
         run: go build -tags "${{ matrix.build-tags }}" -trimpath -o build/bin/llama-desktop .
