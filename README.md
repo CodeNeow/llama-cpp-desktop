@@ -18,7 +18,7 @@ Llama Desktop 是一个基于 **Wails v2**（Go + WebView2）构建的本地大�
 
 ### 主页 — 系统状态概览
 
-自动检测 CPU / 内存 / NVIDIA 显卡 / CUDA 环境，展示 llama.cpp 安装状态；未安装时可在应用内一键下载，也可手动指定自定义目录。页尾提供「实时负载与推理速度前往 监控页 →」入口。
+自动检测 CPU / 内存 / NVIDIA 显卡 / CUDA 环境，展示 llama.cpp 安装状态；未安装时可在应用内一键下载，也可手动指定自定义目录。
 
 ![主页](docs/screenshots/home-light.png)
 
@@ -62,17 +62,11 @@ Llama Desktop 是一个基于 **Wails v2**（Go + WebView2）构建的本地大�
 
 ![模型设置 · 高级](docs/screenshots/models-settings-advanced-light.png)
 
-### API — llama-server 路由器模式
+### API — 服务启停与实时监控
 
-一键启动 / 停止 llama-server（路由器模式），配置 Host / Port、最大并发模型数（`--models-max`）、Prompt 缓存（`--cache-ram`）；内置实时服务日志，并显示可用模型数。嵌入模型自动标记 `embeddings = true`，mmproj 自动关联。
+一键启动 / 停止 llama-server（路由器模式），配置 Host / Port、最大并发模型数（`--models-max`）、Prompt 缓存（`--cache-ram`）；内置实时服务日志，并显示可用模型数。嵌入模型自动标记 `embeddings = true`，mmproj 自动关联。本页内嵌实时监控：推理服务状态徽章与运行时长、提示词处理速度与生成速度双指标卡与生成速度折线图（每 1 秒刷新），以及 CPU / 内存 / GPU 实时负载；服务停止时推理监控区显示占位提示。
 
 ![API 服务](docs/screenshots/api-light.png)
-
-### 监控 — 实时负载与推理速度
-
-推理服务区块展示服务状态徽章与运行时长，提示词处理速度与生成速度两个指标卡片并排展示，并配有生成速度折线图（每 1 秒刷新）；下方为 CPU / 内存 / GPU 实时负载。提示词处理速度在预填充期间实时刷新、请求结束时更新为最终值，生成速度为实时解码速度。
-
-![监控](docs/screenshots/monitor-light.png)
 
 ### 设置 — 主题与下载源
 
@@ -92,12 +86,11 @@ Llama Desktop 是一个基于 **Wails v2**（Go + WebView2）构建的本地大�
 2. **llama.cpp 一键安装**：从 GitHub Releases 自动获取最新版并下载解压，支持断点续传、暂停 / 恢复 / 停止；也可手动指定自定义 llama.cpp 目录。
 3. **模型自动扫描**：读取 `LLM-Models` 目录下所有 `.gguf` 文件，解析模型架构（Qwen2 / Llama / DeepSeek 等）与量化等级，识别多模态（mmproj）与嵌入模型。
 4. **逐模型参数配置**：Tabs 布局（基础 / 推理 / 内存/加载 / 多 GPU / 长上下文 / 高级）6 个标签页，覆盖 CPU 线程、GPU 层数、上下文大小、Batch / μBatch、MoE CPU 层数、KV 缓存 K/V 类型、mlock / mmap 加载方式、模型切分与每卡比例、主 GPU、RoPE 外推、视觉投影文件（mmproj）、投机解码（MTP）等，按模型持久化保存并自动写入 llama-server 预设。
-5. **llama-server 路由器模式**：一键启动 / 停止服务，多模型并发管理（`--models-max`）、Prompt 缓存（`--cache-ram`）；自动生成模型预设（INI），嵌入模型自动标记 `embeddings = true`，mmproj 自动关联。
+5. **llama-server 路由器模式**：一键启动 / 停止服务，多模型并发管理（`--models-max`）、Prompt 缓存（`--cache-ram`）；自动生成模型预设（INI），嵌入模型自动标记 `embeddings = true`，mmproj 自动关联；API 页内嵌实时监控——推理服务状态与运行时长、提示词处理速度与生成速度双指标卡片与折线图、CPU / 内存 / GPU 实时负载，每 1 秒刷新。
 6. **双源模型下载**：从 HF 镜像（hf-mirror.com）或 ModelScope（魔搭）搜索模型仓库，展开文件列表（按大小排序、自动识别量化标签），多文件批量下载；下载任务支持暂停 / 继续 / 取消与断点续传，队列持久化，重启后自动恢复。
 7. **OpenAI 兼容 API**：服务启动后可直接对接任意 OpenAI 兼容客户端（ChatGPT-Next-Web、LobeChat、Open WebUI 等）。
-8. **实时监控**：推理服务状态与运行时长、提示词处理速度与生成速度双指标卡片、生成速度折线图，以及 CPU / 内存 / GPU 实时负载，每 1 秒刷新。
-9. **应用自更新**：设置页「检查更新」检测新版本，弹窗下载更新包，手动替换程序文件即可完成升级。
-10. **主题与界面偏好**：深色 / 浅色主题基于 CSS 变量，偏好持久化到本地配置；侧边栏可收起为 64px 纯图标栏（默认收起），偏好同样持久化。
+8. **应用自更新**：设置页「检查更新」检测新版本，弹窗下载更新包，手动替换程序文件即可完成升级。
+9. **主题与界面偏好**：深色 / 浅色主题基于 CSS 变量，偏好持久化到本地配置；侧边栏可收起为 64px 纯图标栏（默认收起），偏好同样持久化。
 
 ## 技术栈
 
@@ -161,7 +154,7 @@ wails build
 
 3. **配置模型参数（可选）**：在「模型」页点击模型卡片右上角的齿轮，按需调整线程、GPU 层数、上下文大小、投机解码等。
 
-4. **启动服务**：进入「API」页，确认 Host / Port（默认 `127.0.0.1:8080`），点击「启动服务」。
+4. **启动服务**：进入「API」页，确认 Host / Port（默认 `127.0.0.1:8080`），点击「启动服务」。启动后可在本页下方监控区实时查看推理速度与系统负载（CPU / 内存 / GPU）。
 
 5. **接入客户端**：服务启动后即提供 OpenAI 兼容端点，任意客户端按如下方式配置：
 
@@ -171,8 +164,6 @@ wails build
    ```
 
    `model` 字段直接填 GGUF 文件名（如 `qwen2.5-7b-instruct-q4_k_m.gguf`），llama-server 会自动加载 / 卸载模型。
-
-6. **查看监控**：进入「监控」页查看推理服务状态、提示词处理 / 生成速度与 CPU / 内存 / GPU 实时负载。
 
 ## 项目结构
 
@@ -195,8 +186,8 @@ llama-cpp-desktop/
     │   ├── App.vue            # 布局（侧边栏 + 自定义标题栏）
     │   ├── wails.ts           # Wails 后端桥接层（window.go.core.App）
     │   ├── store.ts           # 全局状态（主题 / 语言 / 托盘 / 侧边栏等偏好）
-    │   ├── router/            # 路由（hash 模式，主页 / 下载 / 模型 / API / 监控 / 设置）
-    │   ├── views/             # 页面：Home / Downloads / Models / Api / Monitor / Settings
+    │   ├── router/            # 路由（hash 模式，主页 / 下载 / 模型 / API / 设置）
+    │   ├── views/             # 页面：Home / Downloads / Models / Api / Settings
     │   ├── components/        # Sidebar、ModelSettings、UpdateModal
     │   ├── lib/               # 纯函数工具（格式化、下载队列、监控采样、更新等）
     │   ├── __tests__/         # 前端单测（vitest）
@@ -235,7 +226,7 @@ llama-cpp-desktop/
 4. **下载模型很慢？**
    「下载」页默认走 hf-mirror.com 镜像源，国内网络通常可直接使用；若仍不理想，可在「设置」页切换下载源到 ModelScope（魔搭）再试。多文件可并行下载，暂停 / 取消灵活控制。
 
-5. **「监控」页速度显示 0？**
+5. **API 页监控区速度显示 0？**
    服务未启动或当前没有请求时，速度指标显示占位 / 0，属预期行为；服务启动并产生请求后即开始实时刷新。
 
 6. **如何使用嵌入模型（Embedding）？**

@@ -18,7 +18,6 @@ const messages: Record<Locale, Record<string, string>> = {
     'nav.downloads': '下载',
     'nav.models': '模型',
     'nav.api': 'API',
-    'nav.monitor': '监控',
     'nav.settings': '设置',
     'nav.ready': '系统就绪',
     'nav.collapse': '收起侧边栏',
@@ -100,7 +99,7 @@ const messages: Record<Locale, Record<string, string>> = {
 
     // ─── API 页（Api.vue） ───
     'api.title': 'API',
-    'api.subtitle': 'llama-server 路由器模式',
+    'api.subtitle': 'llama-server 服务启停与实时监控',
     'api.running': '运行中',
     'api.stopped': '已停止',
     'api.stopServer': '停止服务',
@@ -148,7 +147,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'downloads.sourceHf': 'HF 镜像',
     'downloads.sourceModelScope': 'ModelScope',
 
-    // ─── 监控页（Monitor.vue） ───
+    // ─── 监控（Api.vue 内嵌） ───
     'monitor.title': '监控',
     'monitor.subtitle': '推理服务与系统资源实时状态（每 1 秒刷新）',
     'monitor.inference': '推理服务',
@@ -323,7 +322,6 @@ const messages: Record<Locale, Record<string, string>> = {
     'nav.downloads': 'Downloads',
     'nav.models': 'Models',
     'nav.api': 'API',
-    'nav.monitor': 'Monitor',
     'nav.settings': 'Settings',
     'nav.ready': 'System Ready',
     'nav.collapse': 'Collapse Sidebar',
@@ -405,7 +403,7 @@ const messages: Record<Locale, Record<string, string>> = {
 
     // ─── API (Api.vue) ───
     'api.title': 'API',
-    'api.subtitle': 'llama-server router mode',
+    'api.subtitle': 'llama-server start/stop & real-time monitoring',
     'api.running': 'Running',
     'api.stopped': 'Stopped',
     'api.stopServer': 'Stop Server',
@@ -453,7 +451,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'downloads.sourceHf': 'HF Mirror',
     'downloads.sourceModelScope': 'ModelScope',
 
-    // ─── Monitor (Monitor.vue) ───
+    // ─── Monitor (embedded in Api.vue) ───
     'monitor.title': 'Monitor',
     'monitor.subtitle': 'Real-time inference & system resource status (refreshes every 1s)',
     'monitor.inference': 'Inference Service',

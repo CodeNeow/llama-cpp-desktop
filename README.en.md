@@ -18,7 +18,7 @@ The sidebar can be collapsed to a 64px icon rail (toggle it with the « / » but
 
 ### Home — System Overview
 
-Automatically detects CPU / memory / NVIDIA GPU / CUDA environment and shows the llama.cpp installation status; if not installed, you can download it in one click, or point the app to a custom directory. A footer hint links to the Monitor page for real-time load and inference speed.
+Automatically detects CPU / memory / NVIDIA GPU / CUDA environment and shows the llama.cpp installation status; if not installed, you can download it in one click, or point the app to a custom directory.
 
 ![Home](docs/screenshots/home-light.png)
 
@@ -62,17 +62,11 @@ Configure inference parameters per model in a tabbed dialog (Basic / Inference /
 
 ![Model settings · Advanced](docs/screenshots/models-settings-advanced-light.png)
 
-### API — llama-server Router Mode
+### API — Server Control & Real-time Monitoring
 
-Start / stop llama-server (router mode) with one click, configuring Host / Port, the maximum number of concurrently loaded models (`--models-max`), and prompt cache (`--cache-ram`). A built-in live service log and the count of available models are shown. Embedding models are automatically flagged with `embeddings = true` and mmproj files are auto-associated.
+Start / stop llama-server (router mode) with one click, configuring Host / Port, the maximum number of concurrently loaded models (`--models-max`), and prompt cache (`--cache-ram`). A built-in live service log and the count of available models are shown. Embedding models are automatically flagged with `embeddings = true` and mmproj files are auto-associated. Real-time monitoring is embedded on this page: a service status badge and uptime, side-by-side prompt-processing / generation speed cards with a generation speed line chart (refreshed every 1 second), and live CPU / memory / GPU load; the inference monitoring area shows a placeholder until the service starts.
 
 ![API service](docs/screenshots/api-light.png)
-
-### Monitor — Real-time Load & Inference Speed
-
-The inference service section shows a service status badge and uptime, with two side-by-side metric cards for prompt-processing speed and generation speed, plus a line chart of generation speed (refreshed every 1 second). Below are live CPU / memory / GPU load. Prompt-processing speed updates in real time during prefilling and settles on its final value when the request ends; generation speed reflects live decoding throughput.
-
-![Monitor](docs/screenshots/monitor-light.png)
 
 ### Settings — Theme & Download Source
 
@@ -92,12 +86,11 @@ The app also ships a dark appearance for late-night use.
 2. **One-click llama.cpp install**: Fetches the latest release from GitHub Releases, downloads and extracts it, with resumable transfers and pause / resume / stop; a custom llama.cpp directory can also be specified manually.
 3. **Automatic model scanning**: Reads all `.gguf` files under `LLM-Models`, parses model architecture (Qwen2 / Llama / DeepSeek, etc.) and quantization level, and recognizes multimodal (mmproj) and embedding models.
 4. **Per-model parameter configuration**: A tabbed dialog (Basic / Inference / Memory & Loading / Multi-GPU / Long Context / Advanced, 6 tabs) covering CPU threads, GPU layers, context size, Batch / μBatch, MoE CPU layers, KV cache K/V types, mlock / mmap loading, model splitting with per-GPU ratio, main GPU, RoPE extrapolation, vision projection file (mmproj), speculative decoding (MTP), etc., persisted per model and written into a llama-server preset.
-5. **llama-server router mode**: Start / stop the service with one click, manage multiple concurrently loaded models (`--models-max`) and prompt cache (`--cache-ram`); model presets (INI) are generated automatically, embedding models are flagged with `embeddings = true`, and mmproj files are auto-associated.
+5. **llama-server router mode**: Start / stop the service with one click, manage multiple concurrently loaded models (`--models-max`) and prompt cache (`--cache-ram`); model presets (INI) are generated automatically, embedding models are flagged with `embeddings = true`, and mmproj files are auto-associated. Real-time monitoring is embedded in the API page — inference service status and uptime, side-by-side prompt-processing / generation speed cards with a line chart, and live CPU / memory / GPU load, refreshed every 1 second.
 6. **Dual-source model downloads**: Search model repositories via HF Mirror (hf-mirror.com) or ModelScope (魔搭), expand file lists (sorted by size, quantization tags detected), and batch-download multiple files. Tasks support pause / resume / cancel and resumable transfers; the queue persists and recovers after a restart.
 7. **OpenAI-compatible API**: Once the service is up, any OpenAI-compatible client can connect directly (ChatGPT-Next-Web, LobeChat, Open WebUI, etc.).
-8. **Real-time monitoring**: Inference service status and uptime, side-by-side prompt-processing / generation speed cards, a generation speed line chart, plus live CPU / memory / GPU load — refreshed every 1 second.
-9. **Self-update**: "Check for Updates" in Settings detects new versions, downloads the update package in a dialog, and you complete the upgrade by manually replacing the program files.
-10. **Theme & UI preferences**: Dark / light themes based on CSS variables, with the preference persisted locally; the sidebar can be collapsed to a 64px icon rail (collapsed by default), with the preference persisted as well.
+8. **Self-update**: "Check for Updates" in Settings detects new versions, downloads the update package in a dialog, and you complete the upgrade by manually replacing the program files.
+9. **Theme & UI preferences**: Dark / light themes based on CSS variables, with the preference persisted locally; the sidebar can be collapsed to a 64px icon rail (collapsed by default), with the preference persisted as well.
 
 ## Tech Stack
 
@@ -161,7 +154,7 @@ The artifacts are output to `build/bin/` (`llama-desktop.exe` on Windows).
 
 3. **Configure model parameters (optional)**: On the Models page, click the gear icon on a model card to adjust threads, GPU layers, context size, speculative decoding, and more.
 
-4. **Start the service**: Go to the API page, confirm Host / Port (default `127.0.0.1:8080`), and click "Start Service".
+4. **Start the service**: Go to the API page, confirm Host / Port (default `127.0.0.1:8080`), and click "Start Service". Once running, you can watch inference speed and system load (CPU / memory / GPU) in the monitoring section at the bottom of the same page.
 
 5. **Connect a client**: Once the service is running, it exposes an OpenAI-compatible endpoint. Configure any client as follows:
 
@@ -171,8 +164,6 @@ The artifacts are output to `build/bin/` (`llama-desktop.exe` on Windows).
    ```
 
    Set the `model` field to the GGUF file name directly (e.g. `qwen2.5-7b-instruct-q4_k_m.gguf`); llama-server loads / unloads the model automatically.
-
-6. **Watch monitoring**: Open the Monitor page to see inference service status, prompt-processing / generation speed, and live CPU / memory / GPU load.
 
 ## Project Structure
 
@@ -195,8 +186,8 @@ llama-cpp-desktop/
     │   ├── App.vue            # Layout (sidebar + custom title bar)
     │   ├── wails.ts           # Wails backend bridge (window.go.core.App)
     │   ├── store.ts           # Global state (theme / language / tray / sidebar, etc. preferences)
-    │   ├── router/            # Routes (hash mode: Home / Downloads / Models / API / Monitor / Settings)
-    │   ├── views/             # Pages: Home / Downloads / Models / Api / Monitor / Settings
+    │   ├── router/            # Routes (hash mode: Home / Downloads / Models / API / Settings)
+    │   ├── views/             # Pages: Home / Downloads / Models / Api / Settings
     │   ├── components/        # Sidebar, ModelSettings, UpdateModal
     │   ├── lib/               # Pure-function utilities (formatting, download queue, monitoring, updates, etc.)
     │   ├── __tests__/         # Frontend unit tests (vitest)
@@ -235,7 +226,7 @@ Runtime configuration is persisted to `llama-desktop-config.json` at the project
 4. **Downloading models is slow?**
    The Downloads page uses the hf-mirror.com mirror by default, which usually works directly on mainland networks. If it is still unsatisfactory, switch the download source to ModelScope (魔搭) in Settings and try again. Multiple files can be downloaded in parallel, with flexible pause / cancel control.
 
-5. **The Monitor page shows a speed of 0?**
+5. **The API page monitoring area shows a speed of 0?**
    When the service is not running or there is no active request, the speed metrics show a placeholder / 0; this is expected. They start refreshing in real time once the service is running and requests are made.
 
 6. **How do I use embedding models?**

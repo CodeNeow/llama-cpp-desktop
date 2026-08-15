@@ -3,7 +3,6 @@ import Home from '../views/Home.vue'
 import Models from '../views/Models.vue'
 import Api from '../views/Api.vue'
 import Downloads from '../views/Downloads.vue'
-import Monitor from '../views/Monitor.vue'
 import Settings from '../views/Settings.vue'
 
 const routes = [
@@ -33,9 +32,8 @@ const routes = [
   },
   {
     path: '/monitor',
-    name: 'Monitor',
-    component: Monitor,
-    meta: { title: '监控', icon: 'chart' }
+    // 监控已并入 API 页：保留旧链接兼容，重定向到 /api
+    redirect: '/api'
   },
   {
     path: '/settings',
