@@ -2,6 +2,19 @@
 
 更新日志的**权威来源**（见 `AGENTS.md`「版本发布」）：发版时先在此新增版本条目（含日期与逐提交核心改动），`git tag` 注解消息与 GitHub Release 正文均从该条目复制，保持一致。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本。
 
+## [v0.2.0] - 2026-08-15
+
+v0.2.0: 项目更名为 llama-desktop（仓库 llama-cpp-desktop）与 Wails v2.14.0 升级（v0.1.8 以来 3 个提交，按提交逐一说明核心改动）：
+
+1. `2183371` refactor(backend): 单参错误构造改用 errors.New 消除 vet 非常量格式串告警
+   - 核心：core 包 6 处无格式化参数的 fmt.Errorf(tr(...)) 机械转换为 errors.New(tr(...))（app.go 2 处、engine.go 3 处、modelscope.go 1 处）；tr() 返回运行时翻译串属非常量格式串，Go 1.24+ vet 新检查会拒绝该写法；消息文本与翻译参数零变化，纯等价转换
+2. `dcc359b` chore(build): 升级 Wails v2.12.0 → v2.14.0（go directive 1.25.0）
+   - 核心：go directive 1.22.0 → 1.25.0（v2.14.0 依赖声明强制），golang.org/x/* 间接依赖与 Wails CLI 同步升级至 v2.14.0；动机为 v2.14.0 修复 WebView2 引导程序下载失败时 nil pointer 崩溃（应用直接退出而非显示安装错误对话框），本项目用到的 options/runtime/embed API 无破坏性变更
+3. `fff4eef` chore(build): 项目更名为 llama-desktop（仓库 llama-cpp-desktop，含旧配置无损迁移）
+   - 核心：go module 与 wails.json 更名 llama-desktop（exe 与 NSIS ProductName/快捷方式随之变化）；配置文件改名 llama-desktop-config.json，loadConfig 前置 migrateLegacyConfig，旧 llama-gui-config.json 整体迁移无损接续；主题与更新节流 localStorage 键写新读旧回退；HTTP User-Agent、应用内更新源与产物命名（llama-desktop-setup-/portable-vX.Y.Z-amd64.exe，llama-gui 三代旧命名资产仍兼容）、窗口标题/托盘 tooltip、CI 产物 glob 与全部文档统一新名称；GitHub 仓库同步重命名为 CodeNeow/llama-cpp-desktop，旧地址自动重定向
+
+> 注：v0.2.0 起随项目更名重置发布历史——v0.1.x 全部 tag 与 Release 已删除，v0.2.0 为新名下首个发布。历史条目的 compare 链接随之失效，仅作史实记录。
+
 ## [v0.1.8] - 2026-08-14
 
 v0.1.8: Windows 系统托盘与下载/界面修复（v0.1.7 以来 4 个提交，按提交逐一说明核心改动）：
@@ -65,6 +78,7 @@ v0.1.6: 实时推理监控、ModelScope 下载源与多项修复（v0.1.5 以来
 11. `1699907` fix(server): 兼容新版 llama.cpp 日志格式，预填充期间实时刷新提示词处理速度
     - 核心：适配新版 llama.cpp 日志格式变化，预填充期间提示词处理速度实时刷新
 
+[v0.2.0]: https://github.com/CodeNeow/llama-cpp-desktop/compare/b240d4e...v0.2.0
 [v0.1.8]: https://github.com/CodeNeow/llama-cpp-desktop/compare/v0.1.7...v0.1.8
 [v0.1.7]: https://github.com/CodeNeow/llama-cpp-desktop/compare/v0.1.6...v0.1.7
 [v0.1.6]: https://github.com/CodeNeow/llama-cpp-desktop/compare/v0.1.5...v0.1.6
