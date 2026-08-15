@@ -34,7 +34,7 @@
     </nav>
 
     <div class="sidebar-footer">
-      <div class="status-dot" :title="appConfig.sidebarCollapsed ? t('nav.ready') : undefined"></div>
+      <div class="status-dot"></div>
       <span class="status-text">{{ t('nav.ready') }}</span>
       <button
         class="collapse-toggle"
@@ -266,22 +266,20 @@ function isActive(path: string): boolean {
   color: var(--text-dim);
 }
 
-/* 收起态 footer：只显示状态点（居中），status-text 隐藏；状态点与切换按钮
-   改为垂直堆叠（状态点在上、按钮在下，均居中）——64px 窄栏内若按钮仍固定在
-   右侧，会与居中状态点水平重叠，视觉上遮蔽 » 图标。按钮绝对定位在收起态
-   被解除，转为普通 flex 子项排在状态点下方，几何上不可能再重叠 */
+/* 收起态 footer：整个状态区（状态点 + 「系统就绪」文字）隐藏，footer 仅剩
+   切换按钮作为唯一 flex 子项居中显示。按钮绝对定位在收起态被解除（position:
+   static），转为普通 flex 子项后由 justify-content:center 居中 */
 .sidebar.collapsed .sidebar-footer {
-  flex-direction: column;
   justify-content: center;
-  gap: 10px;
   padding: 12px 8px;
 }
 
+.sidebar.collapsed .status-dot,
 .sidebar.collapsed .status-text {
   display: none;
 }
 
-/* 收起态按钮脱离 absolute 定位，作为 footer 的 flex 子项垂直排列 */
+/* 收起态按钮脱离 absolute 定位，作为 footer 的 flex 子项居中 */
 .sidebar.collapsed .collapse-toggle {
   position: static;
   transform: none;
