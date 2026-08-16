@@ -7,7 +7,7 @@ describe('lib/i18n', () => {
   })
 
   it('t 取当前语言字典的值（zh）', () => {
-    expect(t('nav.home')).toBe('主页')
+    expect(t('nav.home')).toBe('系统信息')
     expect(t('settings.themeMode')).toBe('主题模式')
   })
 
@@ -22,7 +22,7 @@ describe('lib/i18n', () => {
 
   it('setLocale 切换语言后 t 返回对应语言', () => {
     setLocale('en')
-    expect(t('nav.home')).toBe('Home')
+    expect(t('nav.home')).toBe('System Info')
     expect(t('settings.themeMode')).toBe('Theme Mode')
     // 英文插值
     expect(t('home.cpu.coresValue', { n: 8 })).toBe('8 cores')

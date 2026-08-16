@@ -34,8 +34,8 @@
     </nav>
 
     <div class="sidebar-footer">
-      <div class="status-dot"></div>
-      <span class="status-text">{{ t('nav.ready') }}</span>
+      <div class="status-dot" :class="ready ? 'ok' : 'bad'"></div>
+      <span class="status-text">{{ ready ? t('nav.ready') : t('nav.notReady') }}</span>
       <button
         class="collapse-toggle"
         :title="appConfig.sidebarCollapsed ? t('nav.expand') : t('nav.collapse')"
@@ -51,10 +51,45 @@
 
 <script setup lang="ts">
 import { useRoute } from 'vue-router'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { t } from '../lib/i18n'
+import { isSystemReady } from '../lib/systemReady'
+import { getLlamaCpp, getModels } from '../wails'
 import { appConfig, setSidebarCollapsed } from '../store'
 
 const route = useRoute()
+
+// 系统就绪状态：llama.cpp 已安装且本地至少有一个模型
+const ready = ref(false)
+
+/** 刷新就绪状态：并行查询 llama.cpp 与模型列表，失败时静默降级为未就绪 */
+async function refreshReady(): Promise<void> {
+  let installed = false
+  let models: Awaited<ReturnType<typeof getModels>> = []
+
+  // 并行查询，互不阻塞；vite 单独运行时后端不可用，静默 catch
+  try {
+    const llamaInfo = await getLlamaCpp()
+    installed = !!llamaInfo?.installed
+  } catch {
+    // 后端不可用时保持默认 false
+  }
+
+  try {
+    models = await getModels()
+  } catch {
+    // 后端不可用时保持默认空数组
+  }
+
+  ready.value = isSystemReady(installed, models.length)
+}
+
+onMounted(() => {
+  refreshReady()
+  // 每 15 秒刷新一次：llama.cpp 下载完成或模型下载完成后至多 15 秒自动更新
+  const timer = setInterval(refreshReady, 15000)
+  onUnmounted(() => clearInterval(timer))
+})
 
 const navItems = [
   {
@@ -256,6 +291,20 @@ function isActive(path: string): boolean {
   animation: pulse 2s infinite;
 }
 
+/* 就绪：绿色呼吸 */
+.status-dot.ok {
+  background: #22c55e;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
+  animation: pulse 2s infinite;
+}
+
+/* 未就绪：灰色静止 */
+.status-dot.bad {
+  background: var(--text-dim);
+  box-shadow: none;
+  animation: none;
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
@@ -266,7 +315,7 @@ function isActive(path: string): boolean {
   color: var(--text-dim);
 }
 
-/* 收起态 footer：整个状态区（状态点 + 「系统就绪」文字）隐藏，footer 仅剩
+/* 收起态 footer：整个状态区（状态点 + 「系统就绪/未就绪」文字）隐藏，footer 仅剩
    切换按钮作为唯一 flex 子项居中显示。按钮绝对定位在收起态被解除（position:
    static），转为普通 flex 子项后由 justify-content:center 居中 */
 .sidebar.collapsed .sidebar-footer {

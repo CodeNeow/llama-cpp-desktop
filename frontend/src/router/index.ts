@@ -13,19 +13,19 @@ const routes = [
     path: '/',
     name: 'Home',
     component: Home,
-    meta: { title: '主页', icon: 'home' }
+    meta: { title: '系统信息', icon: 'home' }
   },
   {
     path: '/chat',
     name: 'Chat',
     component: Chat,
-    meta: { title: '聊天', icon: 'message-circle' }
+    meta: { title: '本地聊天', icon: 'message-circle' }
   },
   {
     path: '/downloads',
     name: 'Downloads',
     component: Downloads,
-    meta: { title: '下载', icon: 'download' }
+    meta: { title: '模型下载', icon: 'download' }
   },
   {
     // 下载页子页面：搜索结果 → 模型详情（文件列表 + 描述），不添加到侧边栏导航。
@@ -39,7 +39,7 @@ const routes = [
     path: '/models',
     name: 'Models',
     component: Models,
-    meta: { title: '模型', icon: 'cube' }
+    meta: { title: '模型管理', icon: 'cube' }
   },
   {
     // 模型设置子页面（独立路由页，非弹窗）：不添加到侧边栏导航。
@@ -53,7 +53,7 @@ const routes = [
     path: '/api',
     name: 'Api',
     component: Api,
-    meta: { title: 'API', icon: 'terminal' }
+    meta: { title: 'API 路由', icon: 'terminal' }
   },
   {
     path: '/monitor',
@@ -64,7 +64,7 @@ const routes = [
     path: '/settings',
     name: 'Settings',
     component: Settings,
-    meta: { title: '设置', icon: 'settings' }
+    meta: { title: '偏好设置', icon: 'settings' }
   }
 ]
 

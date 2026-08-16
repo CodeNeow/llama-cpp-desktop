@@ -14,13 +14,14 @@ export type Locale = 'zh' | 'en'
 const messages: Record<Locale, Record<string, string>> = {
   zh: {
     // ─── Sidebar 导航 ───
-    'nav.home': '主页',
-    'nav.chat': '聊天',
-    'nav.downloads': '下载',
-    'nav.models': '模型',
-    'nav.api': 'API',
-    'nav.settings': '设置',
+    'nav.home': '系统信息',
+    'nav.chat': '本地聊天',
+    'nav.downloads': '模型下载',
+    'nav.models': '模型管理',
+    'nav.api': 'API 路由',
+    'nav.settings': '偏好设置',
     'nav.ready': '系统就绪',
+    'nav.notReady': '系统未就绪',
     'nav.collapse': '收起侧边栏',
     'nav.expand': '展开侧边栏',
 
@@ -30,7 +31,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'title.close': '关闭到托盘',
 
     // ─── 主页（Home.vue） ───
-    'home.title': '主页',
+    'home.title': '系统信息',
     'home.subtitle': '系统状态概览',
     'home.errorTitle': '无法获取系统信息',
     'home.retry': '重试',
@@ -82,7 +83,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'home.dlError': '下载失败',
 
     // ─── 模型页（Models.vue） ───
-    'models.title': '模型',
+    'models.title': '模型管理',
     'models.count': '{n} 个模型',
     'models.hint': '将 GGUF 模型文件放入模型目录',
     'models.refresh': '刷新',
@@ -103,7 +104,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'models.backendError': '无法连接后端服务：{msg}',
 
     // ─── API 页（Api.vue） ───
-    'api.title': 'API',
+    'api.title': 'API 路由',
     'api.subtitle': 'llama-server 服务启停与实时监控',
     'api.running': '运行中',
     'api.stopped': '已停止',
@@ -127,7 +128,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'api.cfgLockedHint': '服务运行中，停止后可修改',
 
     // ─── 下载页（Downloads.vue） ───
-    'downloads.title': '下载',
+    'downloads.title': '模型下载',
     'downloads.subtitle': '从 {source} 搜索和下载模型',
     'downloads.searchPlaceholder': '搜索模型... (如 bge, all-MiniLM, gte)',
     'downloads.searching': '搜索中...',
@@ -166,7 +167,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'downloads.fileCount': '{n} 个文件',
 
     // ─── 聊天页（Chat.vue） ───
-    'chat.title': '聊天',
+    'chat.title': '本地聊天',
     'chat.subtitle': '与本地模型对话',
     'chat.model': '模型',
     'chat.clear': '清空对话',
@@ -215,7 +216,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'monitor.noGpu': '未检测到 NVIDIA GPU',
 
     // ─── 设置页（Settings.vue） ───
-    'settings.title': '设置',
+    'settings.title': '偏好设置',
     'settings.subtitle': '应用程序配置与偏好',
     'settings.uiStyle': 'UI 样式',
     'settings.themeMode': '主题模式',
@@ -385,13 +386,14 @@ const messages: Record<Locale, Record<string, string>> = {
 
   en: {
     // ─── Sidebar navigation ───
-    'nav.home': 'Home',
-    'nav.chat': 'Chat',
-    'nav.downloads': 'Downloads',
-    'nav.models': 'Models',
-    'nav.api': 'API',
-    'nav.settings': 'Settings',
+    'nav.home': 'System Info',
+    'nav.chat': 'Local Chat',
+    'nav.downloads': 'Model Downloads',
+    'nav.models': 'Model Manager',
+    'nav.api': 'API Router',
+    'nav.settings': 'Preferences',
     'nav.ready': 'System Ready',
+    'nav.notReady': 'Not ready',
     'nav.collapse': 'Collapse Sidebar',
     'nav.expand': 'Expand Sidebar',
 
@@ -401,7 +403,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'title.close': 'Close to tray',
 
     // ─── Home (Home.vue) ───
-    'home.title': 'Home',
+    'home.title': 'System Info',
     'home.subtitle': 'System status overview',
     'home.errorTitle': 'Unable to load system info',
     'home.retry': 'Retry',
@@ -453,7 +455,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'home.dlError': 'Download failed',
 
     // ─── Models (Models.vue) ───
-    'models.title': 'Models',
+    'models.title': 'Model Manager',
     'models.count': '{n} models',
     'models.hint': 'Put GGUF model files into the models directory',
     'models.refresh': 'Refresh',
@@ -474,7 +476,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'models.backendError': 'Unable to connect to backend: {msg}',
 
     // ─── API (Api.vue) ───
-    'api.title': 'API',
+    'api.title': 'API Router',
     'api.subtitle': 'llama-server start/stop & real-time monitoring',
     'api.running': 'Running',
     'api.stopped': 'Stopped',
@@ -498,7 +500,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'api.cfgLockedHint': 'Server is running. Stop it to modify.',
 
     // ─── Downloads (Downloads.vue) ───
-    'downloads.title': 'Downloads',
+    'downloads.title': 'Model Downloads',
     'downloads.subtitle': 'Search and download models from {source}',
     'downloads.searchPlaceholder': 'Search models... (e.g. bge, all-MiniLM, gte)',
     'downloads.searching': 'Searching...',
@@ -537,7 +539,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'downloads.fileCount': '{n} files',
 
     // ─── Chat page (Chat.vue) ───
-    'chat.title': 'Chat',
+    'chat.title': 'Local Chat',
     'chat.subtitle': 'Chat with local models',
     'chat.model': 'Model',
     'chat.clear': 'Clear chat',
@@ -586,7 +588,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'monitor.noGpu': 'No NVIDIA GPU detected',
 
     // ─── Settings (Settings.vue) ───
-    'settings.title': 'Settings',
+    'settings.title': 'Preferences',
     'settings.subtitle': 'Application configuration & preferences',
     'settings.uiStyle': 'UI Style',
     'settings.themeMode': 'Theme Mode',
