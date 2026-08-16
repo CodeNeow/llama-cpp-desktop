@@ -88,15 +88,12 @@ import { useRouter } from 'vue-router'
 import { getServerStatus, getServerConfig } from '../wails'
 import { fetchRouterModels, streamChatCompletion, buildChatBody } from '../lib/chat'
 import { t } from '../lib/i18n'
+import { messages, selectedModel, streaming, chatAbortController, persistChat } from '../lib/chatState'
 
 const router = useRouter()
 
 const serverRunning = ref(false)
 const routerModels = ref<{ id: string; status: string }[]>([])
-const selectedModel = ref('')
-const messages = ref<{ role: string; content: string }[]>([])
-const streaming = ref(false)
-let abortController: AbortController | null = null
 
 const messagesContainer = ref<HTMLDivElement | null>(null)
 const inputBox = ref<HTMLTextAreaElement | null>(null)
@@ -107,10 +104,13 @@ function goToApi() {
 
 function onModelChange(e: Event) {
   selectedModel.value = (e.target as HTMLSelectElement).value
+  persistChat()
 }
 
+/** 清空对话消息（保留当前选中模型偏好），并持久化。 */
 function clearChat() {
   messages.value = []
+  persistChat()
   inputBox.value?.focus()
   resetInputHeight()
 }
@@ -149,13 +149,14 @@ async function send() {
   if (!text || streaming.value) return
 
   messages.value.push({ role: 'user', content: text })
+  persistChat()
   input.value = ''
   resetInputHeight()
   appendAssistant('')
   streaming.value = true
   scrollToBottom()
 
-  abortController = new AbortController()
+  chatAbortController.current = new AbortController()
   try {
     await streamChatCompletion(
       (await getServerConfig()).port,
@@ -168,7 +169,7 @@ async function send() {
           scrollToBottom()
         }
       },
-      abortController.signal
+      chatAbortController.current.signal
     )
   } catch (e: any) {
     // 停止生成（AbortError）：保留已生成内容；若一停止就没生成任何内容，移除空气泡
@@ -185,13 +186,22 @@ async function send() {
     }
   } finally {
     streaming.value = false
-    abortController = null
+    chatAbortController.current = null
+    persistChat()
     scrollToBottom()
   }
 }
 
+/**
+ * 停止生成：调用方手动触发，组件卸载时**不 abort**——切页后流式继续写入
+ * 模块级状态，切回来即可看到完整回复（scrollToBottom 的容器判空已在下方
+ * scrollToBottom() 中处理，卸载后 ref 为 null 不会抛错）。
+ *
+ * chatAbortController 上移到模块级，保证切页重挂后新实例的 stop() 仍能
+ * 中断正在进行的流式请求。
+ */
 function stop() {
-  abortController?.abort()
+  chatAbortController.current?.abort()
 }
 
 function onInputKeydown(e: KeyboardEvent) {
