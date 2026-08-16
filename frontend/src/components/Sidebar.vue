@@ -142,11 +142,13 @@ function isActive(path: string): boolean {
   --wails-draggable: drag;
   user-select: none;
   backdrop-filter: blur(20px);
-  /* Expand 240px ↔ collapse 64px width transition, curve matches nav-item's transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) */
-  transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  /* Expand 200px ↔ collapse 64px; width and min-width must transition together —
+     an instant min-width jump would mask the expand animation */
+  transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Collapsed state: 64px icon-only bar; all text display:none (no v-if to avoid conflicting with width transition) */
+/* Collapsed state: 64px icon-only bar; text hides via max-width: 0 + opacity: 0
+   (animatable, prevents mid-transition wrap); icons center via padding, not justify-content */
 .sidebar.collapsed {
   width: 64px;
   min-width: 64px;
@@ -161,6 +163,7 @@ function isActive(path: string): boolean {
   display: flex;
   align-items: center;
   gap: 12px;
+  transition: gap 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .logo-icon {
@@ -178,20 +181,21 @@ function isActive(path: string): boolean {
   -webkit-text-fill-color: transparent;
   background-clip: text;
   letter-spacing: -0.3px;
+  white-space: nowrap;
+  overflow: hidden;
+  max-width: 140px;
+  opacity: 1;
+  transition: max-width 0.2s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
 }
 
-/* Collapsed header: only show logo icon; horizontal padding narrowed to 16px to center 32px icon */
-.sidebar.collapsed .sidebar-header {
-  padding: 28px 16px 20px;
-}
-
+/* Collapsed logo: gap animates to 0; the 32px icon stays at header padding-left 16px, exactly centered in the 64px rail */
 .sidebar.collapsed .logo {
-  justify-content: center;
   gap: 0;
 }
 
 .sidebar.collapsed .logo-text {
-  display: none;
+  max-width: 0;
+  opacity: 0;
 }
 
 .sidebar-nav {
@@ -246,17 +250,24 @@ function isActive(path: string): boolean {
 
 .nav-label {
   line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  max-width: 120px;
+  opacity: 1;
+  transition: max-width 0.2s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
 }
 
-/* Collapsed nav: label hidden, icon centered; active-indicator keeps left:0 */
+/* Collapsed nav: label shrinks to zero width; icon centered via horizontal padding
+   (item inner width is 40px after nav padding 12px, (40 - 20) / 2 = 10 centers the 20px icon;
+   active-indicator keeps left: 0) */
 .sidebar.collapsed .nav-label {
-  display: none;
+  max-width: 0;
+  opacity: 0;
 }
 
 .sidebar.collapsed .nav-item {
-  justify-content: center;
   gap: 0;
-  padding: 11px 0;
+  padding: 11px 10px;
 }
 
 .active-indicator {
@@ -278,6 +289,7 @@ function isActive(path: string): boolean {
   border-top: 1px solid var(--border);
   --wails-draggable: no-drag;
   position: relative;
+  transition: gap 0.2s cubic-bezier(0.4, 0, 0.2, 1), padding 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .status-dot {
@@ -287,6 +299,7 @@ function isActive(path: string): boolean {
   background: #22c55e;
   box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
   animation: pulse 2s infinite;
+  transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* Ready: green breathing */
@@ -311,19 +324,30 @@ function isActive(path: string): boolean {
 .status-text {
   font-size: 12px;
   color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  max-width: 100px;
+  opacity: 1;
+  transition: max-width 0.2s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
 }
 
-/* Collapsed footer: entire status area (dot + text) hidden, footer only has toggle button
-   as the single flex child centered. Button absolute positioning removed (position: static)
-   so it centers via justify-content */
+/* Collapsed footer: status area (dot + text) shrinks to zero width, leaving the toggle
+   as the only static flex child centered via justify-content. On expand the toggle returns
+   to absolute right: 12px, tracking the growing right edge smoothly */
 .sidebar.collapsed .sidebar-footer {
   justify-content: center;
+  gap: 0;
   padding: 12px 8px;
 }
 
-.sidebar.collapsed .status-dot,
+/* Zero-width dot renders nothing (height stays 8px); pulse animation untouched */
+.sidebar.collapsed .status-dot {
+  width: 0;
+}
+
 .sidebar.collapsed .status-text {
-  display: none;
+  max-width: 0;
+  opacity: 0;
 }
 
 /* Collapsed-state button leaves absolute positioning and centers as a flex child of the footer */
