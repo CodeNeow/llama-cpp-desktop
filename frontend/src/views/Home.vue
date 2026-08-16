@@ -7,7 +7,7 @@
 
     <!-- Loading skeleton -->
     <div v-if="loading" class="loading-grid">
-      <div v-for="i in 5" :key="i" class="skeleton-card">
+      <div v-for="i in 6" :key="i" class="skeleton-card">
         <div class="skeleton-line skeleton-title"></div>
         <div class="skeleton-line"></div>
         <div class="skeleton-line skeleton-short"></div>
@@ -28,222 +28,238 @@
 
     <!-- Data -->
     <template v-else>
-      <!-- CPU Card -->
-      <section class="info-section">
-        <h2 class="section-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/>
-          </svg>
-          {{ t('home.cpu') }}
-        </h2>
-        <div class="info-grid">
-          <div class="info-item">
-            <span class="info-label">{{ t('home.cpu.model') }}</span>
-            <span class="info-value">{{ info.cpu.model }}</span>
-          </div>
-          <div class="info-item">
-            <span class="info-label">{{ t('home.cpu.cores') }}</span>
-            <span class="info-value">{{ t('home.cpu.coresValue', { n: info.cpu.cores }) }}</span>
-          </div>
-          <div class="info-item">
-            <span class="info-label">{{ t('home.cpu.threads') }}</span>
-            <span class="info-value">{{ t('home.cpu.threadsValue', { n: info.cpu.logicalCpus }) }}</span>
-          </div>
-        </div>
-      </section>
-
-      <!-- Memory Card -->
-      <section class="info-section">
-        <h2 class="section-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="10" x2="6" y2="14"/><line x1="10" y1="10" x2="10" y2="14"/><line x1="14" y1="10" x2="14" y2="14"/><line x1="18" y1="10" x2="18" y2="14"/>
-          </svg>
-          {{ t('home.memory') }}
-        </h2>
-        <div class="info-grid">
-          <div class="info-item info-item-full">
-            <span class="info-label">{{ t('home.memory.total') }}</span>
-            <span class="info-value">{{ formatGB(info.memory.totalGb) }}</span>
-          </div>
-        </div>
-      </section>
-
-      <!-- GPU Card -->
-      <section class="info-section">
-        <h2 class="section-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
-          </svg>
-          {{ t('home.gpu') }}
-        </h2>
-        <div v-if="info.gpu && info.gpu.length > 0">
-          <div v-for="(gpu, i) in info.gpu" :key="i" class="info-grid gpu-grid">
+      <div class="cards-grid">
+        <!-- CPU Card -->
+        <section class="info-section">
+          <h2 class="section-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/>
+            </svg>
+            {{ t('home.cpu') }}
+          </h2>
+          <div class="info-grid">
             <div class="info-item info-item-full">
-              <span class="info-label">{{ t('home.gpu.model') }}</span>
-              <span class="info-value gpu-name">{{ gpu.name }}</span>
+              <span class="info-label">{{ t('home.cpu.model') }}</span>
+              <span class="info-value">{{ info.cpu.model }}</span>
             </div>
             <div class="info-item">
-              <span class="info-label">{{ t('home.gpu.memory') }}</span>
-              <span class="info-value">{{ formatMB(gpu.memoryMb) }}</span>
+              <span class="info-label">{{ t('home.cpu.cores') }}</span>
+              <span class="info-value">{{ t('home.cpu.coresValue', { n: info.cpu.cores }) }}</span>
             </div>
             <div class="info-item">
-              <span class="info-label">{{ t('home.gpu.driver') }}</span>
-              <span class="info-value">{{ gpu.driverVersion }}</span>
+              <span class="info-label">{{ t('home.cpu.threads') }}</span>
+              <span class="info-value">{{ t('home.cpu.threadsValue', { n: info.cpu.logicalCpus }) }}</span>
             </div>
           </div>
-        </div>
-        <div v-else class="info-empty">
-          <span>{{ t('home.gpu.none') }}</span>
-        </div>
-      </section>
+        </section>
 
-      <!-- CUDA Card -->
-      <section class="info-section">
-        <h2 class="section-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"/><line x1="12" y1="22" x2="12" y2="15.5"/><polyline points="22 8.5 12 15.5 2 8.5"/>
-          </svg>
-          {{ t('home.cuda') }}
-        </h2>
-        <div class="info-grid">
-          <div class="info-item">
-            <span class="info-label">{{ t('home.cuda.status') }}</span>
-            <span class="info-value">
-              <span class="status-badge" :class="info.cuda.available ? 'available' : 'unavailable'">
-                {{ info.cuda.available ? t('home.cuda.available') : t('home.cuda.unavailable') }}
+        <!-- Memory Card -->
+        <section class="info-section">
+          <h2 class="section-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="10" x2="6" y2="14"/><line x1="10" y1="10" x2="10" y2="14"/><line x1="14" y1="10" x2="14" y2="14"/><line x1="18" y1="10" x2="18" y2="14"/>
+            </svg>
+            {{ t('home.memory') }}
+          </h2>
+          <!-- 使用率进度条 -->
+          <div class="memory-usage">
+            <div class="memory-usage-header">
+              <span class="memory-usage-label">{{ t('home.memory.usageLabel', { used: formatGB(info.memory.totalGb - info.memory.freeGb), total: formatGB(info.memory.totalGb) }) }}</span>
+              <span class="memory-usage-pct">{{ t('home.memory.usagePercent', { pct: usagePercent(info.memory.totalGb - info.memory.freeGb, info.memory.totalGb) }) }}</span>
+            </div>
+            <div class="usage-bar">
+              <div class="usage-fill" :style="{ width: usagePercent(info.memory.totalGb - info.memory.freeGb, info.memory.totalGb) + '%' }"></div>
+            </div>
+          </div>
+          <div class="info-grid">
+            <div class="info-item">
+              <span class="info-label">{{ t('home.memory.total') }}</span>
+              <span class="info-value">{{ formatGB(info.memory.totalGb) }}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">{{ t('home.memory.available') }}</span>
+              <span class="info-value">{{ formatGB(info.memory.freeGb) }}</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- GPU Card -->
+        <section class="info-section">
+          <h2 class="section-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+            </svg>
+            {{ t('home.gpu') }}
+          </h2>
+          <div v-if="info.gpu && info.gpu.length > 0">
+            <div v-for="(gpu, i) in info.gpu" :key="i" class="info-grid gpu-grid">
+              <div class="info-item info-item-full">
+                <span class="info-label">{{ t('home.gpu.model') }}</span>
+                <span class="info-value gpu-name">{{ gpu.name }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{ t('home.gpu.memory') }}</span>
+                <span class="info-value">{{ formatMB(gpu.memoryMb) }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{ t('home.gpu.driver') }}</span>
+                <span class="info-value">{{ gpu.driverVersion }}</span>
+              </div>
+            </div>
+          </div>
+          <div v-else class="info-empty">
+            <span>{{ t('home.gpu.none') }}</span>
+          </div>
+        </section>
+
+        <!-- CUDA Card -->
+        <section class="info-section">
+          <h2 class="section-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"/><line x1="12" y1="22" x2="12" y2="15.5"/><polyline points="22 8.5 12 15.5 2 8.5"/>
+            </svg>
+            {{ t('home.cuda') }}
+          </h2>
+          <div class="info-grid">
+            <div class="info-item">
+              <span class="info-label">{{ t('home.cuda.status') }}</span>
+              <span class="info-value">
+                <span class="status-badge" :class="info.cuda.available ? 'available' : 'unavailable'">
+                  {{ info.cuda.available ? t('home.cuda.available') : t('home.cuda.unavailable') }}
+                </span>
               </span>
-            </span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">{{ t('home.cuda.driver') }}</span>
+              <span class="info-value">{{ info.cuda.driverVersion || 'N/A' }}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">{{ t('home.cuda.toolkit') }}</span>
+              <span class="info-value">{{ info.cuda.toolkitVersion || t('home.cuda.notInstalled') }}</span>
+            </div>
           </div>
-          <div class="info-item">
-            <span class="info-label">{{ t('home.cuda.driver') }}</span>
-            <span class="info-value">{{ info.cuda.driverVersion || 'N/A' }}</span>
-          </div>
-          <div class="info-item">
-            <span class="info-label">{{ t('home.cuda.toolkit') }}</span>
-            <span class="info-value">{{ info.cuda.toolkitVersion || t('home.cuda.notInstalled') }}</span>
-          </div>
-        </div>
-      </section>
+        </section>
 
-      <!-- llama.cpp Card -->
-      <section class="info-section">
-        <h2 class="section-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
-          </svg>
-          {{ t('home.llamacpp') }}
-        </h2>
-        <div class="info-grid">
-          <div class="info-item">
-            <span class="info-label">{{ t('home.llamacpp.status') }}</span>
-            <span class="info-value">
-              <span class="status-badge" :class="info.llamaCpp.installed ? 'available' : 'unavailable'">
-                {{ info.llamaCpp.installed ? t('home.llamacpp.installed') : t('home.llamacpp.notFound') }}
+        <!-- llama.cpp Card -->
+        <section class="info-section">
+          <h2 class="section-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+            </svg>
+            {{ t('home.llamacpp') }}
+          </h2>
+          <div class="info-grid">
+            <div class="info-item">
+              <span class="info-label">{{ t('home.llamacpp.status') }}</span>
+              <span class="info-value">
+                <span class="status-badge" :class="info.llamaCpp.installed ? 'available' : 'unavailable'">
+                  {{ info.llamaCpp.installed ? t('home.llamacpp.installed') : t('home.llamacpp.notFound') }}
+                </span>
               </span>
-            </span>
-          </div>
-          <div class="info-item info-item-full" v-if="info.llamaCpp.installed">
-            <span class="info-label">{{ t('home.llamacpp.path') }}</span>
-            <span class="info-value path-value">{{ info.llamaCpp.path }}</span>
-          </div>
-          <div class="info-item info-item-full" v-if="info.llamaCpp.version">
-            <span class="info-label">{{ t('home.llamacpp.version') }}</span>
-            <span class="info-value">{{ info.llamaCpp.version }}</span>
-          </div>
-        </div>
-
-        <!-- Download section：三个区块各自独立 v-if（互不绑定），显示条件统一
-             由 downloadVisibility 派生，避免 v-if/v-else-if 互斥把进度区吞掉 -->
-        <div v-if="!info.llamaCpp.installed && dlStatus.status !== 'done'" class="download-area">
-          <!-- Idle/error: show download + custom buttons -->
-          <div v-if="dlVisibility.showButtons" class="download-btns">
-            <button class="download-btn" @click="startDownload">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="7 10 12 15 17 10"/>
-                <line x1="12" y1="15" x2="12" y2="3"/>
-              </svg>
-              {{ t('home.downloadLlamaCpp') }}
-            </button>
-            <button class="custom-btn" @click="browseCustomDir">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-              </svg>
-              {{ t('home.custom') }}
-            </button>
-          </div>
-          <!-- Custom path info：独立 v-if，与进度区互不绑定 -->
-          <div v-if="customPath" class="custom-path-info">
-            <span class="custom-path-label">{{ t('home.customPath') }}</span>
-            <span class="custom-path-value">{{ customPath }}</span>
+            </div>
+            <div class="info-item info-item-full" v-if="info.llamaCpp.installed">
+              <span class="info-label">{{ t('home.llamacpp.path') }}</span>
+              <span class="info-value path-value">{{ info.llamaCpp.path }}</span>
+            </div>
+            <div class="info-item info-item-full" v-if="info.llamaCpp.version">
+              <span class="info-label">{{ t('home.llamacpp.version') }}</span>
+              <span class="info-value">{{ info.llamaCpp.version }}</span>
+            </div>
           </div>
 
-          <!-- Downloading / Paused / Extracting / Error：显示只依赖下载状态，
-               与是否设置自定义路径无关 -->
-          <div v-if="dlVisibility.showProgress" class="download-progress">
-            <div class="dl-info">
-              <span class="dl-label">{{ statusLabel[dlStatus.status] }}</span>
-              <span class="dl-percent" v-if="dlStatus.status === 'downloading' || dlStatus.status === 'paused'">{{ dlStatus.progress }}%</span>
-            </div>
-            <div class="dl-bar">
-              <div
-                class="dl-fill"
-                :class="{ indeterminate: dlStatus.status === 'fetching' || dlStatus.status === 'extracting', paused: dlStatus.status === 'paused' }"
-                :style="(dlStatus.status === 'downloading' || dlStatus.status === 'paused') ? { width: dlStatus.progress + '%' } : {}"
-              ></div>
-            </div>
-            <div class="dl-meta" v-if="dlStatus.fileName">
-              <span>{{ dlStatus.fileName }}</span>
-              <span v-if="dlStatus.total > 0">{{ formatSize(dlStatus.total) }}</span>
-            </div>
-
-            <!-- Action buttons -->
-            <div class="dl-actions" v-if="dlStatus.status === 'downloading' || dlStatus.status === 'paused' || dlStatus.status === 'fetching'">
-              <button v-if="dlStatus.status === 'downloading'" class="dl-btn pause-btn" @click="pauseDownload">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
-                {{ t('home.pause') }}
+          <!-- Download section：三个区块各自独立 v-if（互不绑定），显示条件统一
+               由 downloadVisibility 派生，避免 v-if/v-else-if 互斥把进度区吞掉 -->
+          <div v-if="!info.llamaCpp.installed && dlStatus.status !== 'done'" class="download-area">
+            <!-- Idle/error: show download + custom buttons -->
+            <div v-if="dlVisibility.showButtons" class="download-btns">
+              <button class="download-btn" @click="startDownload">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/>
+                  <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                {{ t('home.downloadLlamaCpp') }}
               </button>
-              <button v-if="dlStatus.status === 'paused'" class="dl-btn resume-btn" @click="resumeDownload">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                {{ t('home.resume') }}
-              </button>
-              <button class="dl-btn stop-btn" @click="stopDownload">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
-                {{ t('home.stop') }}
+              <button class="custom-btn" @click="browseCustomDir">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                </svg>
+                {{ t('home.custom') }}
               </button>
             </div>
-
-            <div class="dl-paused-hint" v-if="dlStatus.status === 'paused'">
-              {{ t('home.dlPausedHint') }}
+            <!-- Custom path info：独立 v-if，与进度区互不绑定 -->
+            <div v-if="customPath" class="custom-path-info">
+              <span class="custom-path-label">{{ t('home.customPath') }}</span>
+              <span class="custom-path-value">{{ customPath }}</span>
             </div>
 
-            <div class="dl-error" v-if="dlStatus.status === 'error'">
-              <span>{{ dlStatus.error }}</span>
-              <button class="retry-btn-sm" @click="startDownload">{{ t('home.retry') }}</button>
+            <!-- Downloading / Paused / Extracting / Error：显示只依赖下载状态，
+                  与是否设置自定义路径无关 -->
+            <div v-if="dlVisibility.showProgress" class="download-progress">
+              <div class="dl-info">
+                <span class="dl-label">{{ statusLabel[dlStatus.status] }}</span>
+                <span class="dl-percent" v-if="dlStatus.status === 'downloading' || dlStatus.status === 'paused'">{{ dlStatus.progress }}%</span>
+              </div>
+              <div class="dl-bar">
+                <div
+                  class="dl-fill"
+                  :class="{ indeterminate: dlStatus.status === 'fetching' || dlStatus.status === 'extracting', paused: dlStatus.status === 'paused' }"
+                  :style="(dlStatus.status === 'downloading' || dlStatus.status === 'paused') ? { width: dlStatus.progress + '%' } : {}"
+                ></div>
+              </div>
+              <div class="dl-meta" v-if="dlStatus.fileName">
+                <span>{{ dlStatus.fileName }}</span>
+                <span v-if="dlStatus.total > 0">{{ formatSize(dlStatus.total) }}</span>
+              </div>
+
+              <!-- Action buttons -->
+              <div class="dl-actions" v-if="dlStatus.status === 'downloading' || dlStatus.status === 'paused' || dlStatus.status === 'fetching'">
+                <button v-if="dlStatus.status === 'downloading'" class="dl-btn pause-btn" @click="pauseDownload">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                  {{ t('home.pause') }}
+                </button>
+                <button v-if="dlStatus.status === 'paused'" class="dl-btn resume-btn" @click="resumeDownload">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                  {{ t('home.resume') }}
+                </button>
+                <button class="dl-btn stop-btn" @click="stopDownload">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+                  {{ t('home.stop') }}
+                </button>
+              </div>
+
+              <div class="dl-paused-hint" v-if="dlStatus.status === 'paused'">
+                {{ t('home.dlPausedHint') }}
+              </div>
+
+              <div class="dl-error" v-if="dlStatus.status === 'error'">
+                <span>{{ dlStatus.error }}</span>
+                <button class="retry-btn-sm" @click="startDownload">{{ t('home.retry') }}</button>
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <!-- OS Info -->
-      <section class="info-section">
-        <h2 class="section-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
-          </svg>
-          {{ t('home.os') }}
-        </h2>
-        <div class="info-grid">
-          <div class="info-item">
-            <span class="info-label">{{ t('home.os.name') }}</span>
-            <span class="info-value">{{ osLabel }}</span>
+        <!-- OS Info -->
+        <section class="info-section">
+          <h2 class="section-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+            </svg>
+            {{ t('home.os') }}
+          </h2>
+          <div class="info-grid">
+            <div class="info-item">
+              <span class="info-label">{{ t('home.os.name') }}</span>
+              <span class="info-value">{{ osLabel }}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">{{ t('home.os.arch') }}</span>
+              <span class="info-value">{{ info.arch }}</span>
+            </div>
           </div>
-          <div class="info-item">
-            <span class="info-label">{{ t('home.os.arch') }}</span>
-            <span class="info-value">{{ info.arch }}</span>
-          </div>
-        </div>
-      </section>
+        </section>
+      </div>
     </template>
   </div>
 </template>
@@ -257,6 +273,7 @@ import {
 } from '../wails'
 import { downloadVisibility, initialDownloadAction } from '../lib/llamaDownload'
 import { t } from '../lib/i18n'
+import { usagePercent } from '../lib/format'
 
 interface SystemInfo {
   os: string
@@ -505,7 +522,7 @@ onUnmounted(() => {
 
 /* ─── Section ─── */
 .info-section {
-  margin-bottom: 20px;
+  margin-bottom: 0;
   padding: 24px 28px;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -535,7 +552,7 @@ onUnmounted(() => {
 /* ─── Info grid ─── */
 .info-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 14px;
 }
 
@@ -620,9 +637,9 @@ onUnmounted(() => {
 
 /* ─── Loading skeleton ─── */
 .loading-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
 }
 
 .skeleton-card {
@@ -652,6 +669,50 @@ onUnmounted(() => {
 @keyframes shimmer {
   0%, 100% { opacity: 0.4; }
   50% { opacity: 0.8; }
+}
+
+/* ─── Cards grid ─── */
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+/* ─── Memory usage bar ─── */
+.memory-usage {
+  margin-bottom: 16px;
+}
+
+.memory-usage-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.memory-usage-label {
+  color: var(--text-dim);
+}
+
+.memory-usage-pct {
+  font-weight: 700;
+  color: #a78bfa;
+  font-size: 13px;
+}
+
+.usage-bar {
+  height: 6px;
+  background: var(--overlay-8);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.usage-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #6366f1, #a78bfa);
+  transition: width 0.3s ease;
 }
 
 /* ─── Error ─── */

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatSpeed, formatBytes } from '../lib/format'
+import { formatSpeed, formatBytes, usagePercent } from '../lib/format'
 
 describe('formatSpeed', () => {
   it('<=0 返回空串', () => {
@@ -32,6 +32,37 @@ describe('formatSpeed', () => {
     expect(formatSpeed(1024 * 1024 * 1024)).toBe('1.0 GB/s')
   })
 })
+
+describe('usagePercent', () => {
+  // total<=0 或 used<0 时返回 0
+  it('total=0 返回 0', () => {
+    expect(usagePercent(10, 0)).toBe(0)
+    expect(usagePercent(0, 0)).toBe(0)
+  })
+
+  it('used<0 返回 0', () => {
+    expect(usagePercent(-1, 100)).toBe(0)
+  })
+
+  // 正常值保留一位小数
+  it('正常值保留一位小数', () => {
+    expect(usagePercent(14.2, 31.2)).toBeCloseTo(45.5, 1)
+    expect(usagePercent(0, 100)).toBe(0)
+    expect(usagePercent(100, 100)).toBe(100)
+  })
+
+  // used>total 截断为 100
+  it('used>total 截断为 100', () => {
+    expect(usagePercent(200, 100)).toBe(100)
+  })
+
+  // 一位小数舍入
+  it('一位小数四舍五入', () => {
+    expect(usagePercent(1, 3)).toBeCloseTo(33.3, 1)
+    expect(usagePercent(2, 3)).toBeCloseTo(66.7, 1)
+  })
+})
+
 
 describe('formatBytes', () => {
   it('<=0 返回空串', () => {
