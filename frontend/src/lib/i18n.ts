@@ -28,6 +28,7 @@ const messages: Record<Locale, Record<string, string>> = {
     // ─── 标题栏（App.vue） ───
     'title.minimize': '最小化',
     'title.maximize': '最大化',
+    'title.restore': '还原',
     'title.close': '关闭到托盘',
 
     // ─── 主页（Home.vue） ───
@@ -400,6 +401,7 @@ const messages: Record<Locale, Record<string, string>> = {
     // ─── Title bar (App.vue) ───
     'title.minimize': 'Minimize',
     'title.maximize': 'Maximize',
+    'title.restore': 'Restore',
     'title.close': 'Close to tray',
 
     // ─── Home (Home.vue) ───

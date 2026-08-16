@@ -132,8 +132,8 @@ function isActive(path: string): boolean {
 
 <style scoped>
 .sidebar {
-  width: 240px;
-  min-width: 240px;
+  width: 200px;
+  min-width: 200px;
   height: 100vh;
   background: var(--bg-secondary);
   border-right: 1px solid var(--border);
@@ -155,7 +155,7 @@ function isActive(path: string): boolean {
 }
 
 .sidebar-header {
-  padding: 28px 20px 20px;
+  padding: 28px 16px 20px;
   --wails-draggable: drag;
 }
 
@@ -173,7 +173,7 @@ function isActive(path: string): boolean {
 }
 
 .logo-text {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
   background: linear-gradient(135deg, #a78bfa 0%, #6366f1 100%);
   -webkit-background-clip: text;
