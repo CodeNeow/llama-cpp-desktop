@@ -22,7 +22,7 @@
         <!-- Windows / Linux / 未知：原生扁平按钮，宽 46×高 36px 填满标题栏 -->
         <div v-else class="window-controls native">
           <button class="native-btn" @click="minimize" :title="t('title.minimize')">
-            <svg width="10" height="10" viewBox="0 0 10 10"><line x1="1" y1="9" x2="9" y2="9" stroke="currentColor" stroke-width="1"/></svg>
+            <svg width="10" height="10" viewBox="0 0 10 10"><line x1="1" y1="5" x2="9" y2="5" stroke="currentColor" stroke-width="1"/></svg>
           </button>
           <button class="native-btn" @click="maximize" :title="isMax ? t('title.restore') : t('title.maximize')">
             <!-- 最大化：空心方框；还原：两个叠加方框（后框偏移 3,3 半透明 + 前框 0.5,0.5） -->

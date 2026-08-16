@@ -164,7 +164,7 @@ onMounted(() => {
 
 .page-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
   /* 用 padding 而非 margin：页头背景覆盖该间距，内容滚过时不留缝 */
