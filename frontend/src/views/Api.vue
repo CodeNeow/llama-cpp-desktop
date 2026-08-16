@@ -6,28 +6,63 @@
         <p class="page-subtitle">{{ t('api.subtitle') }}</p>
       </div>
 
-      <!-- 顶部操作栏：状态灯 + 状态文字 + URL + 按钮组 -->
+      <!-- 顶部操作栏：状态灯 + 状态文字 + URL + 按钮组 + 参数弹层 + 可用模型 -->
       <section class="status-card toolbar">
-      <div class="status-indicator">
-        <span class="status-dot" :class="serverRunning ? 'running' : 'stopped'"></span>
-        <span class="status-text">{{ serverRunning ? t('api.running') : t('api.stopped') }}</span>
-        <span v-if="serverRunning" class="status-url">http://{{ cfg.host }}:{{ cfg.port }}</span>
-        <span v-if="serverRunning && status.uptimeSeconds > 0" class="toolbar-uptime">
-          <span class="uptime-value">{{ formatUptime(status.uptimeSeconds, locale) }}</span>
-          <span class="uptime-label">{{ t('monitor.uptimeLabel') }}</span>
-        </span>
-      </div>
-      <div class="btn-group">
-        <button class="server-btn btn-start" :disabled="serverRunning || busy" @click="doStart">
-          {{ t('api.startServer') }}
-        </button>
-        <button class="server-btn btn-stop" :disabled="!serverRunning || busy" @click="doStop">
-          {{ t('api.stopServer') }}
-        </button>
-        <button class="server-btn btn-restart" :disabled="!serverRunning || busy" @click="doRestart">
-          {{ t('api.restart') }}
-        </button>
-      </div>
+        <div class="toolbar-row">
+          <div class="status-indicator">
+            <span class="status-dot" :class="serverRunning ? 'running' : 'stopped'"></span>
+            <span class="status-text">{{ serverRunning ? t('api.running') : t('api.stopped') }}</span>
+            <span v-if="serverRunning" class="status-url">http://{{ cfg.host }}:{{ cfg.port }}</span>
+            <span v-if="serverRunning && status.uptimeSeconds > 0" class="toolbar-uptime">
+              <span class="uptime-value">{{ formatUptime(status.uptimeSeconds, locale) }}</span>
+              <span class="uptime-label">{{ t('monitor.uptimeLabel') }}</span>
+            </span>
+          </div>
+          <div class="btn-group">
+            <button class="server-btn btn-start" :disabled="serverRunning || busy" @click="doStart">
+              {{ t('api.startServer') }}
+            </button>
+            <button class="server-btn btn-stop" :disabled="!serverRunning || busy" @click="doStop">
+              {{ t('api.stopServer') }}
+            </button>
+            <button class="server-btn btn-restart" :disabled="!serverRunning || busy" @click="doRestart">
+              {{ t('api.restart') }}
+            </button>
+            <button class="icon-btn" @click.stop="showCfg = !showCfg" :aria-expanded="showCfg" :title="t('api.settings')" type="button">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- 服务器参数弹层 -->
+        <div v-if="showCfg" class="cfg-popover" @click.stop>
+          <div class="cfg-popover-title">{{ t('api.settings') }}</div>
+          <div class="cfg-item">
+            <label>{{ t('api.cfgPort') }}</label>
+            <input v-model.number="cfg.port" type="number" min="1024" max="65535" step="1" class="cfg-input cfg-num" :disabled="serverRunning" />
+          </div>
+          <div class="cfg-item">
+            <label>{{ t('api.cfgMaxModels') }}</label>
+            <input v-model.number="cfg.maxModels" type="number" min="1" step="1" class="cfg-input cfg-num" :disabled="serverRunning" />
+          </div>
+          <div class="cfg-item">
+            <label>{{ t('api.cfgCacheRam') }}</label>
+            <input v-model.number="cfg.cacheRam" type="number" min="0" step="1" class="cfg-input cfg-num" :disabled="serverRunning" placeholder="8192" />
+          </div>
+          <div v-if="serverRunning" class="cfg-locked-hint">{{ t('api.cfgLockedHint') }}</div>
+        </div>
+
+        <!-- 可用模型（第二行） -->
+        <div class="toolbar-models">
+          <span class="toolbar-models-title">{{ t('api.modelsTitle', { n: modelCount }) }}</span>
+          <div class="model-tags">
+            <span v-for="m in availableModels" :key="m" class="model-tag">{{ m }}</span>
+          </div>
+          <div v-if="modelCount === 0" class="empty-hint">{{ t('api.emptyHint') }}</div>
+        </div>
       </section>
     </div>
 
@@ -177,37 +212,6 @@
         </section>
       </div>
     </div>
-
-    <!-- Config -->
-    <section class="cfg-section">
-      <h2 class="section-title">{{ t('api.cfgTitle') }}</h2>
-      <div class="cfg-grid">
-        <div class="cfg-item">
-          <label>{{ t('api.cfgPort') }}</label>
-          <input v-model.number="cfg.port" type="number" min="1024" max="65535" step="1" class="cfg-input cfg-num" :disabled="serverRunning" />
-        </div>
-        <div class="cfg-item">
-          <label>{{ t('api.cfgMaxModels') }}</label>
-          <input v-model.number="cfg.maxModels" type="number" min="1" step="1" class="cfg-input cfg-num" :disabled="serverRunning" />
-        </div>
-        <div class="cfg-item">
-          <label>{{ t('api.cfgCacheRam') }}</label>
-          <input v-model.number="cfg.cacheRam" type="number" min="0" step="1" class="cfg-input cfg-num" :disabled="serverRunning" placeholder="8192" />
-        </div>
-      </div>
-    </section>
-
-    <!-- Available models -->
-    <section class="models-section">
-      <h2 class="section-title">{{ t('api.modelsTitle', { n: modelCount }) }}</h2>
-      <p class="section-desc">{{ t('api.modelsDescPrefix') }} <code>model</code> {{ t('api.modelsDescSuffix') }}</p>
-      <div class="model-tags">
-        <span v-for="m in availableModels" :key="m" class="model-tag">{{ m }}</span>
-      </div>
-      <div v-if="modelCount === 0" class="empty-hint">
-        {{ t('api.emptyHint') }}
-      </div>
-    </section>
   </div>
 </template>
 
@@ -234,6 +238,9 @@ const cfg = reactive({
 
 const availableModels = ref<string[]>([])
 const modelCount = ref(0)
+
+/** 是否展开服务器参数面板 */
+const showCfg = ref(false)
 
 // ─── 监控（原 Monitor.vue 合并，1s 轮询）：推理指标与系统负载，与上方 getServerStatus 轻量轮询相互独立 ───
 const status = ref<MonitorStatus>({
@@ -328,9 +335,15 @@ watch(cfg, () => {
   }, 500)
 })
 
+/** 点击面板外部区域关闭参数面板 */
+function onDocClick() {
+  showCfg.value = false
+}
+
 onUnmounted(() => {
   if (saveTimer) clearTimeout(saveTimer)
   stopPolling()
+  document.removeEventListener('click', onDocClick)
 })
 
 onMounted(async () => {
@@ -358,6 +371,8 @@ onMounted(async () => {
 
   // Check server status
   checkServerStatus()
+
+  document.addEventListener('click', onDocClick)
 })
 
 async function checkServerStatus() {
@@ -446,14 +461,21 @@ function clearLog() {
 /* ─── 顶部操作栏 ─── */
 .toolbar {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  flex-direction: column;
+  gap: 0;
   padding: 16px 24px;
   margin-bottom: 20px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 14px;
+  position: relative; /* 参数弹层定位基准 */
+}
+
+.toolbar-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
 }
 
 .status-indicator {
@@ -535,6 +557,126 @@ function clearLog() {
 .btn-stop:hover:not(:disabled) { opacity: 0.85; }
 .btn-restart { background: var(--accent); }
 .btn-restart:hover:not(:disabled) { opacity: 0.85; }
+
+.icon-btn {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.icon-btn:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.icon-btn[aria-expanded='true'] {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+/* ─── 服务器参数弹层 ─── */
+.cfg-popover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 30;
+  width: 300px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  padding: 16px;
+}
+
+.cfg-popover-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 10px;
+}
+
+.cfg-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.cfg-item:last-of-type {
+  margin-bottom: 0;
+}
+
+.cfg-item label {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.cfg-input {
+  padding: 8px 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.cfg-input:focus { border-color: var(--accent); }
+.cfg-input:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.cfg-num { width: 100%; }
+
+.cfg-locked-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 10px;
+  text-align: center;
+}
+
+/* ─── 可用模型（工具栏第二行） ─── */
+.toolbar-models {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-light);
+}
+
+.toolbar-models-title {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-weight: 500;
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+
+.toolbar-models .model-tags {
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: 64px;
+  overflow-y: auto;
+}
+
+.toolbar-models .model-tag {
+  font-size: 11px;
+  padding: 2px 10px;
+}
+
+.toolbar-models .empty-hint {
+  font-size: 12px;
+}
 
 /* ─── 主区两栏：左日志控制台 + 右监控卡片 ─── */
 .monitor-grid {
@@ -648,80 +790,7 @@ function clearLog() {
   margin-bottom: 0;
 }
 
-/* ─── 配置 ─── */
-.cfg-section {
-  margin-bottom: 20px;
-}
-
-/* 统一 section-title：flex 布局兼容监控区块的图标标题，纯文本标题作为单一 flex 子项渲染外观不变 */
-.section-title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  margin: 0 0 14px;
-}
-
-.section-title svg {
-  color: var(--accent-light);
-  flex-shrink: 0;
-}
-
-.section-desc {
-  font-size: 12px;
-  color: var(--text-dim);
-  margin: 0 0 12px;
-}
-
-.section-desc code {
-  background: var(--active-bg);
-  padding: 1px 5px;
-  border-radius: 3px;
-  font-size: 11px;
-  color: var(--accent-light);
-}
-
-.cfg-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
-}
-
-.cfg-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.cfg-item label {
-  font-size: 12px;
-  color: var(--text-dim);
-  font-weight: 500;
-}
-
-.cfg-input {
-  padding: 8px 12px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--text-primary);
-  font-size: 13px;
-  outline: none;
-  transition: border-color 0.15s;
-}
-
-.cfg-input:focus { border-color: var(--accent); }
-.cfg-input:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.cfg-num { width: 100%; }
-
 /* ─── 模型 ─── */
-.models-section {
-  margin-bottom: 20px;
-}
-
 .model-tags {
   display: flex;
   flex-wrap: wrap;

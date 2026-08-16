@@ -114,8 +114,6 @@ const messages: Record<Locale, Record<string, string>> = {
     'api.cfgMaxModels': '最大并发模型',
     'api.cfgCacheRam': 'Prompt 缓存 (MiB)',
     'api.modelsTitle': '可用模型 ({n})',
-    'api.modelsDescPrefix': '通过 API 请求中的',
-    'api.modelsDescSuffix': '字段指定，llama-server 会自动加载/卸载',
     'api.emptyHint': '将 .gguf 文件放入模型目录即可自动识别',
     'api.saveFailed': '配置保存失败: {msg}',
     'api.toggleFailed': '启动/停止服务失败: {msg}',
@@ -125,6 +123,8 @@ const messages: Record<Locale, Record<string, string>> = {
     'api.logEmpty': '暂无日志',
     'api.sysMonitor': '系统监控',
     'api.tokenSpeed': 'Token 速度',
+    'api.settings': '参数设置',
+    'api.cfgLockedHint': '服务运行中，停止后可修改',
 
     // ─── 下载页（Downloads.vue） ───
     'downloads.title': '下载',
@@ -488,8 +488,6 @@ const messages: Record<Locale, Record<string, string>> = {
     'api.cfgMaxModels': 'Max Concurrent Models',
     'api.cfgCacheRam': 'Prompt Cache (MiB)',
     'api.modelsTitle': 'Available Models ({n})',
-    'api.modelsDescPrefix': 'Select via the',
-    'api.modelsDescSuffix': 'field in API requests; llama-server auto-loads/unloads',
     'api.emptyHint': 'Put .gguf files into the models directory to auto-detect',
     'api.saveFailed': 'Failed to save config: {msg}',
     'api.toggleFailed': 'Failed to start/stop server: {msg}',
@@ -499,6 +497,8 @@ const messages: Record<Locale, Record<string, string>> = {
     'api.logEmpty': 'No logs yet',
     'api.sysMonitor': 'System Monitor',
     'api.tokenSpeed': 'Token Speed',
+    'api.settings': 'Settings',
+    'api.cfgLockedHint': 'Server is running. Stop it to modify.',
 
     // ─── Downloads (Downloads.vue) ───
     'downloads.title': 'Downloads',
