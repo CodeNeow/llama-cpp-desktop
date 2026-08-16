@@ -58,7 +58,8 @@ func TestCompareVersions(t *testing.T) {
 // TestPickUpdateAsset verifies update asset selection by install type, compatible with
 // both old and new naming conventions: setup picks installers (installer / setup names),
 // portable picks portable builds (portable name or old names like llama-gui.exe that are
-// not installers).
+// not installers). Since portable builds are no longer published, a release may ship only
+// the setup installer; in that case portable falls back to the installer asset.
 func TestPickUpdateAsset(t *testing.T) {
 	// setup: old installer name matches
 	if got := pickUpdateAsset([]GitHubAsset{{Name: "llama-gui-amd64-installer.exe"}}, installKindSetup); got == nil || got.Name != "llama-gui-amd64-installer.exe" {
@@ -85,9 +86,16 @@ func TestPickUpdateAsset(t *testing.T) {
 	if got := pickUpdateAsset([]GitHubAsset{{Name: "llama-desktop-portable-v0.2.0-amd64.exe"}}, installKindPortable); got == nil || got.Name != "llama-desktop-portable-v0.2.0-amd64.exe" {
 		t.Errorf("portable should pick llama-desktop-portable-v0.2.0-amd64.exe, got %v", got)
 	}
-	// portable: only setup/installer assets → nil (must not pick installer by mistake)
-	if got := pickUpdateAsset([]GitHubAsset{{Name: "llama-desktop-setup-v0.2.0-amd64.exe"}, {Name: "llama-gui-amd64-installer.exe"}}, installKindPortable); got != nil {
-		t.Errorf("portable with only installer assets should return nil, got %v", got)
+	// portable: only a setup installer is published (portable builds retired) →
+	// fall back to the installer so existing portable installs keep updating
+	if got := pickUpdateAsset([]GitHubAsset{{Name: "llama-desktop-setup-v0.2.0-amd64.exe"}}, installKindPortable); got == nil || got.Name != "llama-desktop-setup-v0.2.0-amd64.exe" {
+		t.Errorf("portable with only a setup installer should fall back to it, got %v", got)
+	}
+	// portable: only installer assets (setup + old installer) → fall back to the first
+	// installer seen (replaces the old nil expectation: portable builds are no longer
+	// published, so portable installs must update via the setup installer)
+	if got := pickUpdateAsset([]GitHubAsset{{Name: "llama-desktop-setup-v0.2.0-amd64.exe"}, {Name: "llama-gui-amd64-installer.exe"}}, installKindPortable); got == nil || got.Name != "llama-desktop-setup-v0.2.0-amd64.exe" {
+		t.Errorf("portable with only installer assets should fall back to the first installer, got %v", got)
 	}
 
 	// empty asset list returns nil for both kinds
@@ -284,6 +292,60 @@ func TestDownloadUpdateReleaseSetup(t *testing.T) {
 	}
 	if ds.Kind != installKindSetup {
 		t.Errorf("download kind = %q, want %q", ds.Kind, installKindSetup)
+	}
+	fi, err := os.Stat(wantPath)
+	if err != nil {
+		t.Fatalf("target file does not exist: %v", err)
+	}
+	if fi.Size() != int64(len(payload)) {
+		t.Errorf("file size = %d, want %d", fi.Size(), len(payload))
+	}
+}
+
+// TestDownloadUpdateReleasePortableFallbackSetup verifies the portable-install fallback
+// end-to-end: a portable install (no uninstall.exe) updating from a release that ships
+// only the setup installer (portable builds retired) downloads that installer, and the
+// saved file is named after the actual asset type (llama-desktop-setup-v<tag>.exe), not
+// the local portable kind; the reported kind stays portable.
+func TestDownloadUpdateReleasePortableFallbackSetup(t *testing.T) {
+	withTempCwd(t)
+	saveUpdateState(t)
+	// no uninstall.exe in the exe directory → detected install kind is portable
+	exeDir := t.TempDir()
+	updateExePath = func() (string, error) {
+		return filepath.Join(exeDir, "llama-desktop.exe"), nil
+	}
+
+	payload := []byte("MZ fake setup payload for portable fallback")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/dl/llama-desktop-setup-v0.2.1-amd64.exe" {
+			w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
+			w.Write(payload)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		dlURL := "http://" + r.Host + "/dl/llama-desktop-setup-v0.2.1-amd64.exe"
+		w.Write([]byte(`{"tag_name":"v0.2.1","name":"Release","assets":[{"name":"llama-desktop-setup-v0.2.1-amd64.exe","size":` + strconv.Itoa(len(payload)) + `,"browser_download_url":"` + dlURL + `"}]}`))
+	}))
+	defer srv.Close()
+	updateRepoAPI = srv.URL
+
+	downloadUpdateRelease("v0.2.1")
+
+	updateDownloadMu.Lock()
+	ds := *updateDownloadState
+	updateDownloadMu.Unlock()
+
+	if ds.Status != "done" {
+		t.Fatalf("status = %q, want done (error: %s)", ds.Status, ds.Error)
+	}
+	// filename follows the asset type (setup), not the local portable kind
+	wantPath := filepath.Join(exeDir, "llama-desktop-setup-v0.2.1.exe")
+	if ds.FilePath != wantPath {
+		t.Errorf("save path = %q, want %q", ds.FilePath, wantPath)
+	}
+	if ds.Kind != installKindPortable {
+		t.Errorf("download kind = %q, want %q (local install kind unchanged)", ds.Kind, installKindPortable)
 	}
 	fi, err := os.Stat(wantPath)
 	if err != nil {

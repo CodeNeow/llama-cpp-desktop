@@ -2,7 +2,7 @@
 
 [简体中文](README_zh.md)
 
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Ubuntu-0078D6?logo=windows&logoColor=white)](https://github.com/CodeNeow/llama-cpp-desktop/releases)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20x64-0078D6?logo=windows&logoColor=white)](https://github.com/CodeNeow/llama-cpp-desktop/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![GitHub release](https://img.shields.io/github/v/release/CodeNeow/llama-cpp-desktop?logo=github&color=blue)](https://github.com/CodeNeow/llama-cpp-desktop/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/CodeNeow/llama-cpp-desktop/.github/workflows/ci.yml?branch=main&logo=githubactions&logoColor=white)](https://github.com/CodeNeow/llama-cpp-desktop/actions)
@@ -31,7 +31,7 @@ A user-friendly desktop GUI for [llama.cpp](https://github.com/ggml-org/llama.cp
 
 ### Prerequisites
 
-- Windows 10+ or Ubuntu 20.04+ (on Windows, WebView2 is installed automatically with the app)
+- Windows 10+ or Ubuntu 20.04+ (x64 / amd64 only — llama.cpp publishes no 32-bit Windows builds; on Windows, WebView2 is installed automatically with the app)
 - [Git](https://git-scm.com/), [Go](https://go.dev/dl/) 1.25+, [Node.js](https://nodejs.org/) 18+
 - Wails CLI v2.14+:
 

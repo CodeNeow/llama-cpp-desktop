@@ -2043,8 +2043,8 @@ func detectInstallKind() string {
 // pickUpdateAsset picks the update-download asset by install kind, matching
 // by keyword (independent of artifact prefix), compatible with three naming
 // generations:
-//   - Current naming: setup installer llama-desktop-setup-vX.Y.Z-amd64.exe,
-//     portable llama-desktop-portable-vX.Y.Z-amd64.exe;
+//   - Current naming: setup installer llama-desktop-setup-vX.Y.Z-amd64.exe
+//     (portable builds are no longer published);
 //   - Old naming (since v0.1.7): llama-gui-setup- / llama-gui-portable- prefixes;
 //   - Oldest naming (v0.1.6): installer llama-gui-amd64-installer.exe,
 //     portable llama-gui.exe.
@@ -2052,8 +2052,12 @@ func detectInstallKind() string {
 // setup returns the first installer asset (name contains installer or setup);
 // portable returns the first asset containing portable or any non-installer
 // exe (the oldest llama-gui.exe contains none of portable/installer/setup and
-// hits the "non-installer" branch).
+// hits the "non-installer" branch). Portable builds are no longer published:
+// existing portable installs update to the setup installer going forward, so
+// when no portable/non-installer exe matches, the portable branch falls back
+// to the first installer asset instead of failing.
 func pickUpdateAsset(assets []GitHubAsset, kind string) *GitHubAsset {
+	var firstInstaller *GitHubAsset
 	for i := range assets {
 		a := &assets[i]
 		name := strings.ToLower(a.Name)
@@ -2061,6 +2065,9 @@ func pickUpdateAsset(assets []GitHubAsset, kind string) *GitHubAsset {
 			continue
 		}
 		isInstaller := strings.Contains(name, "installer") || strings.Contains(name, "setup")
+		if isInstaller && firstInstaller == nil {
+			firstInstaller = a
+		}
 		switch kind {
 		case installKindSetup:
 			if isInstaller {
@@ -2072,13 +2079,22 @@ func pickUpdateAsset(assets []GitHubAsset, kind string) *GitHubAsset {
 			}
 		}
 	}
+	if kind != installKindSetup {
+		// Portable builds are no longer published: releases ship only the
+		// setup installer, so existing portable installs fall back to it.
+		return firstInstaller
+	}
 	return nil
 }
 
 // downloadUpdateRelease downloads the artifact matching the current install
 // kind to the executable's directory: a setup install downloads the installer,
 // a portable install downloads the portable exe (the running exe cannot be
-// replaced directly); when finished, the user is prompted to close the app and
+// replaced directly); when the release ships no portable exe (portable builds
+// are retired), a portable install falls back to the setup installer. The
+// saved file is named by the selected asset type (setup installer / portable
+// exe), not by the local install kind, so the fallback download keeps the
+// setup filename. When finished, the user is prompted to close the app and
 // complete the update per install kind.
 func downloadUpdateRelease(version string) {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -2094,7 +2110,8 @@ func downloadUpdateRelease(version string) {
 	}()
 
 	// Detect the install kind before the download starts: it decides which
-	// asset to pick and the download naming (setup installer / portable exe).
+	// asset to pick and the install kind reported to the frontend (the saved
+	// filename follows the selected asset type, see Step 2).
 	kind := detectInstallKind()
 
 	// Step 1: fetch the latest release info and pick the matching exe asset by install kind
@@ -2123,16 +2140,22 @@ func downloadUpdateRelease(version string) {
 	updateDownloadState.Total = asset.Size
 	updateDownloadMu.Unlock()
 
-	// Step 2: download into the executable's directory, named by install kind:
-	// setup → llama-desktop-setup-v<tag>.exe; portable → llama-desktop-portable-v<tag>.exe
+	// Step 2: download into the executable's directory, named by the selected
+	// asset type (not the local install kind): installer assets (name contains
+	// setup / installer) → llama-desktop-setup-v<tag>.exe, anything else →
+	// llama-desktop-portable-v<tag>.exe. Non-fallback paths pick by kind, so
+	// their filenames are unchanged; only the portable→installer fallback
+	// switches to the setup name, keeping the filename honest about content.
 	exePath, err := updateExePath()
 	if err != nil {
 		setUpdateDownloadError(tr("无法定位可执行文件路径: ", "Unable to locate the executable path: ") + err.Error())
 		return
 	}
 	dir := filepath.Dir(exePath)
+	assetName := strings.ToLower(asset.Name)
+	isInstallerAsset := strings.Contains(assetName, "setup") || strings.Contains(assetName, "installer")
 	var fileName string
-	if kind == installKindSetup {
+	if isInstallerAsset {
 		fileName = "llama-desktop-setup-" + release.TagName + ".exe"
 	} else {
 		fileName = "llama-desktop-portable-" + release.TagName + ".exe"

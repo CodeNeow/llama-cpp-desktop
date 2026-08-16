@@ -111,7 +111,6 @@ jobs:
           else
             VER="$(cat core/VERSION)"
           fi
-          mv build/bin/llama-desktop.exe "build/bin/llama-desktop-portable-${VER}-amd64.exe"
           mv build/bin/llama-desktop-amd64-installer.exe "build/bin/llama-desktop-setup-${VER}-amd64.exe"
           ls -la build/bin/
       - name: List build outputs
@@ -122,7 +121,6 @@ jobs:
         with:
           name: llama-desktop-windows
           path: |
-            build/bin/llama-desktop-portable-*.exe
             build/bin/llama-desktop-setup-*.exe
 
   build-linux:
@@ -265,7 +263,7 @@ jobs:
     steps:
       - name: Download all build artifacts
         # Exclude frontend-dist by pattern, only pull release artifacts and merge into one directory:
-        # windows 2 exe + linux 3 deb = 5 files total
+        # windows 1 exe + linux 3 deb = 4 files total
         uses: actions/download-artifact@v4
         with:
           pattern: llama-desktop-*
@@ -276,12 +274,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          # Validate artifact count must be 5 (windows 2 exe + linux 3 deb),
+          # Validate artifact count must be 4 (windows 1 exe + linux 3 deb),
           # fail if missing to avoid incomplete Release
           shopt -s nullglob
           files=(artifacts/*)
           shopt -u nullglob
-          [[ ${#files[@]} -eq 5 ]] || { echo "Expected 5 artifacts, found ${#files[@]}"; exit 1; }
+          [[ ${#files[@]} -eq 4 ]] || { echo "Expected 4 artifacts, found ${#files[@]}"; exit 1; }
           for f in "${files[@]}"; do
             [[ -f "$f" ]] || { echo "Missing artifact: $f"; exit 1; }
           done

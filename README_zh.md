@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Ubuntu-0078D6?logo=windows&logoColor=white)](https://github.com/CodeNeow/llama-cpp-desktop/releases)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20x64-0078D6?logo=windows&logoColor=white)](https://github.com/CodeNeow/llama-cpp-desktop/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![GitHub release](https://img.shields.io/github/v/release/CodeNeow/llama-cpp-desktop?logo=github&color=blue)](https://github.com/CodeNeow/llama-cpp-desktop/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/CodeNeow/llama-cpp-desktop/.github/workflows/ci.yml?branch=main&logo=githubactions&logoColor=white)](https://github.com/CodeNeow/llama-cpp-desktop/actions)
@@ -31,7 +31,7 @@
 
 ### 环境要求
 
-- Windows 10+ 或 Ubuntu 20.04+（Windows 下 WebView2 随应用自动安装）
+- Windows 10+ 或 Ubuntu 20.04+（仅 x64/amd64 —— llama.cpp 官方不发布 32 位 Windows 构建；Windows 下 WebView2 随应用自动安装）
 - [Git](https://git-scm.com/)、[Go](https://go.dev/dl/) 1.25+、[Node.js](https://nodejs.org/) 18+
 - Wails CLI v2.14+：
 
