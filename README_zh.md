@@ -2,6 +2,11 @@
 
 [English](README.md)
 
+[![Windows](https://img.shields.io/badge/Windows-10%2F11-00a98f?style=flat-square)](https://github.com/CodeNeow/llama-cpp-desktop/releases)
+[![License](https://img.shields.io/badge/license-MIT-00a98f?style=flat-square)](LICENSE)
+[![GitHub release](https://img.shields.io/github/v/release/CodeNeow/llama-cpp-desktop?style=flat-square&color=00a98f)](https://github.com/CodeNeow/llama-cpp-desktop/releases)
+[![CI/CD](https://img.shields.io/github/actions/workflow/status/CodeNeow/llama-cpp-desktop/.github/workflows/ci.yml?style=flat-square&color=00a98f)](https://github.com/CodeNeow/llama-cpp-desktop/actions)
+
 本地大模型桌面管理工具，基于 [llama.cpp](https://github.com/ggml-org/llama.cpp)：在一个窗口里完成 GGUF 模型的搜索、下载与参数配置，通过单一 OpenAI 兼容端点对外服务，并实时监控推理状态，全程无需命令行。桌面端基于 Wails v2（Go 后端 + Vue 3 前端，无第三方 UI 框架）。
 
 ## 功能亮点
@@ -57,6 +62,7 @@ wails dev
 - **本地聊天** — 流式聊天，支持图片附件与采样参数；需要 API 路由服务处于运行状态。
 - **模型下载** — 双源搜索（HF Mirror / ModelScope，可在偏好设置中切换默认源），文件级选择，持久化的可断点续传下载队列。
 - **模型管理** — 扫描模型目录下的 GGUF 文件（解析架构、量化等级，识别多模态 / 嵌入模型），每个模型可进入设置页（基础 / 推理 / 内存 / 多 GPU / 长上下文 / 高级六个标签页）。
+![模型设置](docs/screenshots/zh/model-settings.png)
 - **API 路由** — 启动 / 停止 / 重启 llama-server，查看日志与实时监控，配置 Host / Port / 访问范围 / 最大并发模型数 / Prompt 缓存，并查看当前内存中的模型。
 - **偏好设置** — 主题、界面语言（zh / en / auto）、下载源、Windows 托盘开关、检查更新。
 

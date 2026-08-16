@@ -2,6 +2,11 @@
 
 [简体中文](README_zh.md)
 
+[![Windows](https://img.shields.io/badge/Windows-10%2F11-00a98f?style=flat-square)](https://github.com/CodeNeow/llama-cpp-desktop/releases)
+[![License](https://img.shields.io/badge/license-MIT-00a98f?style=flat-square)](LICENSE)
+[![GitHub release](https://img.shields.io/github/v/release/CodeNeow/llama-cpp-desktop?style=flat-square&color=00a98f)](https://github.com/CodeNeow/llama-cpp-desktop/releases)
+[![CI/CD](https://img.shields.io/github/actions/workflow/status/CodeNeow/llama-cpp-desktop/.github/workflows/ci.yml?style=flat-square&color=00a98f)](https://github.com/CodeNeow/llama-cpp-desktop/actions)
+
 A local LLM desktop manager for [llama.cpp](https://github.com/ggml-org/llama.cpp): discover, download and configure GGUF models, serve them all behind one OpenAI-compatible endpoint, and monitor inference in real time — without touching a command line. Built with Wails v2 (Go backend + Vue 3 frontend, no third-party UI framework).
 
 ## Highlights
@@ -57,6 +62,7 @@ wails dev
 - **Local Chat** — streaming chat with image attachments and sampling parameters; requires the API router to be running.
 - **Model Downloads** — dual-source search (HF Mirror / ModelScope, switchable in Preferences) with file-level selection and a persistent, resumable download queue.
 - **Model Manager** — scans the models directory for GGUF files (architecture, quantization, multimodal / embedding detection) and links each model to its settings page (basic / inference / memory / multi-GPU / long-context / advanced tabs).
+![Model Settings](docs/screenshots/en/model-settings.png)
 - **API Router** — start / stop / restart llama-server, watch logs and live metrics, edit host / port / access mode / max concurrent models / prompt cache, and see which models are currently in memory.
 - **Preferences** — theme, UI language (zh / en / auto), download source, Windows tray toggle, and check for updates.
 
