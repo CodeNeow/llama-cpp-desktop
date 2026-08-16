@@ -729,3 +729,34 @@ func (a *App) RetryDownloadTask(id string) error {
 func (a *App) GetMonitorStatus() *MonitorStatus {
 	return GetMonitorStatus()
 }
+
+// ─── Router Models ──────────────────────────────────────────────────
+
+// GetLoadedModels 查询 llama-server 路由器中的已加载/加载中/休眠模型列表。
+// 服务未运行时返回 nil（前端 wails.ts 封装归一为空数组）；查询失败时记录
+// 警告日志并返回 nil（瞬态连接问题不报给前端，由轮询重试）。
+func (a *App) GetLoadedModels() []LoadedModel {
+	port := getServerPort()
+	if port == 0 {
+		return nil
+	}
+	models, err := fetchRouterModels(port)
+	if err != nil {
+		log.Println("[WARN] GetLoadedModels failed:", err)
+		return nil
+	}
+	return models
+}
+
+// UnloadModel 向 llama-server 发送模型卸载请求。服务未运行返回错误；
+// id 为空返回非法参数错误。
+func (a *App) UnloadModel(id string) error {
+	port := getServerPort()
+	if port == 0 {
+		return errors.New(tr("llama-server 未运行", "llama-server is not running"))
+	}
+	if id == "" {
+		return errors.New(tr("模型 id 不能为空", "model id cannot be empty"))
+	}
+	return unloadRouterModel(port, id)
+}

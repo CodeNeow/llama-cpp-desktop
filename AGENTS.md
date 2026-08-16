@@ -46,7 +46,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check.ps1  # 组�
 | `core/*_test.go` | 后端单测（`runCmd` 跨平台、`hideWindow` 平台分支、config 持久化、GGUF 解析、模型扫描、预设生成、下载/HF/ModelScope 网络测试、监控、更新等） |
 | `frontend/src/wails.ts` | 前端调用后端的唯一入口（`window.go.core.App.*` 桥接层） |
 | `frontend/src/views/` | 页面：`Home`（系统状态）、`Downloads`（HF Mirror / ModelScope 搜索与下载队列）、`Models`（模型列表+设置弹窗）、`Api`（服务启停与实时监控，原 `Monitor` 页已并入）、`Settings`（主题 / 下载源 / 检查更新） |
-| `frontend/src/components/` | `Sidebar`、`ModelSettings`（模型参数弹窗）、`UpdateModal`（更新下载弹窗） |
+| `frontend/src/components/` | `Sidebar`、`ModelSettings`（模型参数弹窗）、`UpdateModal`（更新下载弹窗）、`TaskDock`（全局右下角任务卡片：下载进度 + 内存模型卸载） |
 | `frontend/src/__tests__/` | 前端单测（vitest，覆盖 `store.ts` 配置加载与 `lib/` 纯函数：格式化、下载队列 / 任务状态、监控采样、更新等） |
 | `frontend/wailsjs/` | Wails 自动生成的绑定，**勿手改**，`wails build` 时自动重新生成 |
 

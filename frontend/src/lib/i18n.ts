@@ -326,6 +326,23 @@ const messages: Record<Locale, Record<string, string>> = {
     // ─── lib/update.ts ───
     'update.checkFailed': '检查更新失败，请确认网络后重试',
     'update.startFailed': '下载启动失败',
+
+    // ─── TaskDock (frontend/src/components/TaskDock.vue) ───
+    'dock.title': '任务与模型',
+    'dock.downloads': '下载任务',
+    'dock.modelsInMemory': '内存中的模型 ({n})',
+    'dock.unload': '卸载',
+    'dock.unloading': '卸载中…',
+    'dock.unloadFailed': '卸载失败：{msg}',
+    'dock.collapse': '收起',
+    'dock.expand': '展开',
+    'dock.modelType.chat': '聊天',
+    'dock.modelType.audio': '语音',
+    'dock.modelType.image': '图像',
+    'dock.modelType.video': '视频',
+    'dock.modelStatus.loaded': '已加载',
+    'dock.modelStatus.loading': '加载中',
+    'dock.modelStatus.sleeping': '休眠',
   },
 
   en: {
@@ -642,6 +659,23 @@ const messages: Record<Locale, Record<string, string>> = {
     // ─── lib/update.ts ───
     'update.checkFailed': 'Update check failed, check your network and retry',
     'update.startFailed': 'Failed to start download',
+
+    // ─── TaskDock (frontend/src/components/TaskDock.vue) ───
+    'dock.title': 'Tasks & Models',
+    'dock.downloads': 'Downloads',
+    'dock.modelsInMemory': 'Models in Memory ({n})',
+    'dock.unload': 'Unload',
+    'dock.unloading': 'Unloading…',
+    'dock.unloadFailed': 'Unload failed: {msg}',
+    'dock.collapse': 'Collapse',
+    'dock.expand': 'Expand',
+    'dock.modelType.chat': 'Chat',
+    'dock.modelType.audio': 'Audio',
+    'dock.modelType.image': 'Image',
+    'dock.modelType.video': 'Video',
+    'dock.modelStatus.loaded': 'Loaded',
+    'dock.modelStatus.loading': 'Loading',
+    'dock.modelStatus.sleeping': 'Sleeping',
   },
 }
 

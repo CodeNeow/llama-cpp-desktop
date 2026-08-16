@@ -237,3 +237,19 @@ export async function getDownloadSource(): Promise<string> {
 export async function setDownloadSource(source: string): Promise<void> {
   return app().SetDownloadSource(source)
 }
+
+// ─── Router Models（TaskDock 内存模型列表 + 卸载） ─────────────────
+
+// LoadedModel 对应后端 core.LoadedModel：id / type（chat|audio|image|video）/ status（loaded|loading|sleeping）
+export interface LoadedModel { id: string; type: string; status: string }
+
+// getLoadedModels 查询 llama-server 路由器当前加载/加载中/休眠的模型列表；
+// 服务未运行或查询失败返回空数组（前端轮询重试）。
+export async function getLoadedModels(): Promise<LoadedModel[]> {
+  return (await app().GetLoadedModels()) ?? []
+}
+
+// unloadModel 向 llama-server 发送模型卸载请求；失败时前端行内显示错误。
+export async function unloadModel(id: string): Promise<void> {
+  return app().UnloadModel(id)
+}

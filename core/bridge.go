@@ -67,6 +67,7 @@ func startServerInternal() error {
 	serverCmd = cmd
 	serverRunning = true
 	serverStartTime = time.Now()
+	serverPort = cfg.Port
 	serverMu.Unlock()
 
 	go func(cmd *exec.Cmd) {
@@ -74,6 +75,7 @@ func startServerInternal() error {
 		serverMu.Lock()
 		serverRunning = false
 		serverStartTime = time.Time{}
+		serverPort = 0
 		// 仅当全局仍指向本命令时清理，避免覆盖新启动的实例
 		if serverCmd == cmd {
 			serverCmd = nil

@@ -2196,6 +2196,11 @@ var serverMu sync.Mutex
 // GetMonitorStatus 计算运行时长；进程退出（cmd.Wait goroutine）置零。
 var serverStartTime time.Time
 
+// serverPort 记录 llama-server 成功启动时使用的端口（serverMu 保护），
+// 0 表示未运行。路由器 API 查询用此值而非当前配置，避免运行中修改配置
+// 导致查询到错误的地址。
+var serverPort int
+
 // serverLogWriter 把子进程 stdout/stderr 的写入按行重组后再进入环形日志，避免
 // 日志条目被任意分片拦腰截断。此前 Write 把每次 stderr 写入的任意分片直接当作
 // 一条日志（addServerLog(strings.TrimSpace(string(p)))）：llama-server 输出按小块

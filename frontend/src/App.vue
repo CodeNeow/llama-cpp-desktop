@@ -26,6 +26,7 @@
       </div>
     </main>
     <UpdateModal :visible="updateState.showModal" @close="closeUpdateModal" />
+    <TaskDock />
   </div>
 </template>
 
@@ -33,6 +34,7 @@
 import { onMounted } from 'vue'
 import Sidebar from './components/Sidebar.vue'
 import UpdateModal from './components/UpdateModal.vue'
+import TaskDock from './components/TaskDock.vue'
 import { updateState, checkForUpdate, shouldAutoCheck, closeUpdateModal } from './lib/update'
 import { t } from './lib/i18n'
 import { appConfig } from './store'
