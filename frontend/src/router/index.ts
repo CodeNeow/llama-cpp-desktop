@@ -5,6 +5,7 @@ import Models from '../views/Models.vue'
 import Api from '../views/Api.vue'
 import Downloads from '../views/Downloads.vue'
 import Settings from '../views/Settings.vue'
+import ModelSettings from '../views/ModelSettings.vue'
 import ModelDetail from '../views/ModelDetail.vue'
 
 const routes = [
@@ -39,6 +40,14 @@ const routes = [
     name: 'Models',
     component: Models,
     meta: { title: '模型', icon: 'cube' }
+  },
+  {
+    // 模型设置子页面（独立路由页，非弹窗）：不添加到侧边栏导航。
+    // modelName 可能含特殊字符，用 encodeURIComponent 编码，此处自动解码。
+    path: '/models/settings/:modelName',
+    name: 'ModelSettings',
+    component: ModelSettings,
+    meta: { title: '模型设置' }
   },
   {
     path: '/api',

@@ -4,6 +4,8 @@ import { ref } from 'vue'
 export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
+  /** 本消息附带图片 data URL 数组（内存中使用，持久化时剥离，避免 localStorage 膨胀） */
+  images?: string[]
 }
 
 /** localStorage 消息持久化键（对齐 store.ts 的 llama-desktop- 前缀惯例） */
@@ -92,7 +94,9 @@ loadChatHistory()
  */
 export function persistChat(): void {
   try {
-    localStorage.setItem(MESSAGES_KEY, JSON.stringify(capMessages(messages.value)))
+    // 持久化时剥离 images（base64 体积大，防 localStorage 膨胀）；重启后图片不保留，仅保留文本
+    const toStore = capMessages(messages.value).map(({ images: _images, ...rest }) => rest)
+    localStorage.setItem(MESSAGES_KEY, JSON.stringify(toStore))
   } catch {
     // localStorage 写入失败静默处理，不影响聊天功能
   }

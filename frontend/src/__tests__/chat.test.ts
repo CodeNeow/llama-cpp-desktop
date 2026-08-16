@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseSSEChunks, buildChatBody } from '../lib/chat'
+import { parseSSEChunks, buildChatBody, buildMessageContent } from '../lib/chat'
 
 describe('parseSSEChunks', () => {
   // 完整单行 JSON
@@ -99,5 +99,28 @@ describe('buildChatBody', () => {
       ],
       stream: true,
     })
+  })
+})
+
+describe('buildMessageContent', () => {
+  it('无图片时返回纯文本字符串', () => {
+    expect(buildMessageContent('hello')).toBe('hello')
+    expect(buildMessageContent('')).toBe('')
+  })
+
+  it('有图片时返回数组且顺序为 text 在前图片在后', () => {
+    const result = buildMessageContent('describe this', ['data:image/png;base64,abc', 'data:image/png;base64,def'])
+    expect(result).toEqual([
+      { type: 'text', text: 'describe this' },
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,abc' } },
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,def' } },
+    ])
+  })
+
+  it('text 为空且有图片时不含 text part', () => {
+    const result = buildMessageContent('', ['data:image/png;base64,abc'])
+    expect(result).toEqual([
+      { type: 'image_url', image_url: { url: 'data:image/png;base64,abc' } },
+    ])
   })
 })

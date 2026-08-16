@@ -49,6 +49,10 @@
         >
           <div class="message-bubble">
             <span class="message-role">{{ msg.role === 'user' ? t('chat.you') : t('chat.assistant') }}</span>
+            <!-- 图片（用户消息附带） -->
+            <div v-if="msg.images && msg.images.length" class="message-images">
+              <img v-for="(img, i) in msg.images" :key="i" :src="img" class="message-image" alt="" />
+            </div>
             <p class="message-content">{{ msg.content }}</p>
             <span v-if="idx === messages.length - 1 && streaming" class="streaming-cursor" />
           </div>
@@ -58,26 +62,49 @@
 
     <!-- 输入区 -->
     <div v-if="serverRunning && routerModels.length > 0" class="input-area">
-      <textarea
-        ref="inputBox"
-        class="chat-input"
-        rows="1"
-        :placeholder="t('chat.inputPlaceholder')"
-        :disabled="!selectedModel || streaming"
-        @keydown="onInputKeydown"
-        @input="onInputResize"
-      ></textarea>
-      <button
-        v-if="!streaming"
-        class="send-btn"
-        :disabled="!selectedModel"
-        @click="send"
-      >
-        {{ t('chat.send') }}
-      </button>
-      <button v-else class="send-btn stop-btn" @click="stop">
-        {{ t('chat.stop') }}
-      </button>
+      <!-- 待发送附件预览条 -->
+      <div v-if="pendingImages.length" class="pending-bar">
+        <div class="pending-item" v-for="(img, i) in pendingImages" :key="i">
+          <img :src="img" class="pending-thumb" alt="" />
+          <button class="pending-remove" @click="removePendingImage(i)" :title="t('chat.removeImage')">✕</button>
+        </div>
+      </div>
+      <div class="input-row">
+        <button class="attach-btn" @click="triggerAttach" :title="t('chat.attach')" type="button">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+          </svg>
+        </button>
+        <input
+          ref="fileInput"
+          type="file"
+          accept="image/*"
+          multiple
+          class="file-input-hidden"
+          @change="onFileSelected"
+        />
+        <textarea
+          ref="inputBox"
+          class="chat-input"
+          rows="1"
+          :placeholder="t('chat.inputPlaceholder')"
+          :disabled="!selectedModel || streaming"
+          @keydown="onInputKeydown"
+          @input="onInputResize"
+          @paste="onInputPaste"
+        ></textarea>
+        <button
+          v-if="!streaming"
+          class="send-btn"
+          :disabled="!selectedModel"
+          @click="send"
+        >
+          {{ t('chat.send') }}
+        </button>
+        <button v-else class="send-btn stop-btn" @click="stop">
+          {{ t('chat.stop') }}
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -87,8 +114,8 @@ import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { getServerStatus, getServerConfig } from '../wails'
 import { fetchRouterModels, streamChatCompletion, buildChatBody } from '../lib/chat'
+import { messages, selectedModel, streaming, chatAbortController, persistChat, type ChatMessage } from '../lib/chatState'
 import { t } from '../lib/i18n'
-import { messages, selectedModel, streaming, chatAbortController, persistChat } from '../lib/chatState'
 
 const router = useRouter()
 
@@ -97,6 +124,10 @@ const routerModels = ref<{ id: string; status: string }[]>([])
 
 const messagesContainer = ref<HTMLDivElement | null>(null)
 const inputBox = ref<HTMLTextAreaElement | null>(null)
+const fileInput = ref<HTMLInputElement | null>(null)
+
+/** 待发送图片预览（data URL），发送后清空 */
+const pendingImages = ref<string[]>([])
 
 function goToApi() {
   router.push('/api')
@@ -119,9 +150,7 @@ function clearChat() {
 function onInputResize() {
   const el = inputBox.value
   if (!el) return
-  // 先归零让 scrollHeight 反映真实内容高度
   el.style.height = 'auto'
-  // max-height 对应 6 行：line-height 1.5em × 6 + padding 上下各 10px = 20px
   const maxPx = 1.5 * parseFloat(getComputedStyle(document.documentElement).fontSize) * 6 + 20
   el.style.height = Math.min(el.scrollHeight, maxPx) + 'px'
 }
@@ -142,15 +171,75 @@ function appendAssistant(content: string) {
   messages.value.push({ role: 'assistant', content })
 }
 
+/** 读取文件为 data URL，仅支持图片类型；失败或非图片静默忽略 */
+async function readFileAsDataUrl(file: File): Promise<string | null> {
+  if (!file.type.startsWith('image/')) {
+    return null
+  }
+  return new Promise((resolve) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null)
+    reader.onerror = () => resolve(null)
+    reader.readAsDataURL(file)
+  })
+}
+
+function triggerAttach() {
+  fileInput.value?.click()
+}
+
+async function onFileSelected(e: Event) {
+  const input = e.target as HTMLInputElement
+  const files = input.files
+  if (!files) return
+  for (const file of Array.from(files)) {
+    const dataUrl = await readFileAsDataUrl(file)
+    if (dataUrl) {
+      pendingImages.value.push(dataUrl)
+    }
+  }
+  // 重置 input 以便重复选择同一文件
+  input.value = ''
+}
+
+/** 粘贴处理：从 clipboardData 中提取 image/* 文件 */
+async function onInputPaste(e: ClipboardEvent) {
+  const items = e.clipboardData?.items
+  if (!items) return
+  const imageFiles: File[] = []
+  for (const item of Array.from(items)) {
+    if (item.type.startsWith('image/')) {
+      const file = item.getAsFile()
+      if (file) imageFiles.push(file)
+    }
+  }
+  if (imageFiles.length === 0) return
+  for (const file of imageFiles) {
+    const dataUrl = await readFileAsDataUrl(file)
+    if (dataUrl) {
+      pendingImages.value.push(dataUrl)
+    }
+  }
+}
+
+function removePendingImage(index: number) {
+  pendingImages.value.splice(index, 1)
+}
+
 async function send() {
   const input = inputBox.value
   if (!input || !selectedModel.value) return
   const text = input.value.trim()
-  if (!text || streaming.value) return
+  if (text || pendingImages.value.length > 0) {
+    const imgs = pendingImages.value.length ? [...pendingImages.value] : undefined
+    messages.value.push({ role: 'user', content: text, images: imgs })
+  }
+  if (!text && pendingImages.value.length === 0) return
+  if (streaming.value) return
 
-  messages.value.push({ role: 'user', content: text })
   persistChat()
   input.value = ''
+  pendingImages.value = []
   resetInputHeight()
   appendAssistant('')
   streaming.value = true
@@ -161,7 +250,7 @@ async function send() {
     await streamChatCompletion(
       (await getServerConfig()).port,
       selectedModel.value,
-      messages.value.filter(m => m.role !== 'assistant' || m.content).map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+      messages.value.filter(m => m.role !== 'assistant' || m.content).map(m => ({ role: m.role as 'user' | 'assistant', content: m.content, images: m.images })),
       (delta) => {
         const last = messages.value[messages.value.length - 1]
         if (last && last.role === 'assistant') {
@@ -238,6 +327,22 @@ onMounted(async () => {
   /* 聊天页不随页面滚动：布局占满视口剩余高度，内部消息区独立滚动 */
 }
 
+.chat-page .page-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 4px;
+  letter-spacing: -0.5px;
+  line-height: 1.2;
+  word-break: break-all;
+}
+
+.chat-page .page-subtitle {
+  font-size: 14px;
+  color: var(--text-dim);
+  margin: 0;
+}
+
 .chat-toolbar {
   display: flex;
   align-items: center;
@@ -266,6 +371,7 @@ onMounted(async () => {
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
+  margin-left: auto;
 }
 
 .chat-clear-btn:hover:not(:disabled) {
@@ -368,6 +474,20 @@ onMounted(async () => {
   margin-bottom: 2px;
 }
 
+.message-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.message-image {
+  max-width: 100%;
+  border-radius: 8px;
+  max-height: 280px;
+  object-fit: contain;
+}
+
 .message-content {
   margin: 0;
 }
@@ -392,9 +512,79 @@ onMounted(async () => {
 /* ─── Input ─── */
 .input-area {
   display: flex;
+  flex-direction: column;
   gap: 10px;
   padding: 12px 0 24px;
   border-top: 1px solid var(--border);
+}
+
+.input-row {
+  display: flex;
+  gap: 10px;
+}
+
+.pending-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pending-item {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.pending-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.pending-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  border: none;
+  border-radius: 50%;
+  font-size: 10px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.attach-btn {
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.attach-btn:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.file-input-hidden {
+  display: none;
 }
 
 .chat-input {

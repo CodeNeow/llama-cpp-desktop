@@ -51,9 +51,41 @@ export function parseSSEChunks(buffer: string): { deltas: string[]; rest: string
 
 /**
  * 构造聊天补全请求体。
+ *
+ * messages 的每一项可选带 images 数组（data URL），有图片时走 OpenAI 兼容
+ * 多模态格式：content 变为 parts 数组，text 在前、图片在后，对齐 llama.cpp
+ * webui 的发送方式。
  */
-export function buildChatBody(model: string, messages: { role: string; content: string }[]): object {
-  return { model, messages, stream: true }
+export function buildChatBody(model: string, messages: { role: string; content: string; images?: string[] }[]): object {
+  return {
+    model,
+    messages: messages.map(m => ({
+      role: m.role,
+      content: buildMessageContent(m.content, m.images),
+    })),
+    stream: true,
+  }
+}
+
+/**
+ * 将文本与可选图片构造成 OpenAI 兼容的消息 content。
+ *
+ * - 无图片：返回纯文本字符串（保持对不支持多模态后端的兼容）。
+ * - 有图片：返回 parts 数组，text part 仅在文本非空时包含，图片各一个 image_url part，
+ *   顺序为 text 在前、图片在后，对齐 llama.cpp webui 的 image_url 多模态格式。
+ */
+export function buildMessageContent(text: string, images?: string[]): string | Array<{ type: string; text?: string; image_url?: { url: string } }> {
+  if (!images || images.length === 0) {
+    return text
+  }
+  const parts: Array<{ type: string; text?: string; image_url?: { url: string } }> = []
+  if (text) {
+    parts.push({ type: 'text', text })
+  }
+  for (const url of images) {
+    parts.push({ type: 'image_url', image_url: { url } })
+  }
+  return parts
 }
 
 /**

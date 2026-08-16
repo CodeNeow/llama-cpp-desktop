@@ -97,6 +97,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'models.multimodal': '多模态',
     'models.multimodalTitle': '支持多模态 (mmproj)',
     'models.settings': '设置',
+    'models.back': '返回',
     'models.saveFailed': '保存失败: {msg}',
     'models.unknownError': '未知错误',
     'models.backendError': '无法连接后端服务：{msg}',
@@ -169,6 +170,8 @@ const messages: Record<Locale, Record<string, string>> = {
     'chat.subtitle': '与本地模型对话',
     'chat.model': '模型',
     'chat.clear': '清空对话',
+    'chat.attach': '添加图片',
+    'chat.removeImage': '移除图片',
     'chat.serverOff': '服务未运行，请先在 API 页启动服务',
     'chat.goApi': '前往 API 页',
     'chat.noModels': '暂无可用模型',
@@ -244,6 +247,7 @@ const messages: Record<Locale, Record<string, string>> = {
     // ─── 模型设置弹窗（ModelSettings.vue） ───
     'modelSettings.title': '模型设置',
     'modelSettings.close': '关闭',
+    'modelSettings.subtitle': '推理参数配置',
     'modelSettings.tabsAria': '参数分类',
     'modelSettings.tabBase': '基础',
     'modelSettings.tabInfer': '推理',
@@ -328,6 +332,10 @@ const messages: Record<Locale, Record<string, string>> = {
     'modelSettings.cancel': '取消',
     'modelSettings.saving': '保存中...',
     'modelSettings.save': '保存设置',
+    'modelSettings.reset': '重置',
+    'modelSettings.loading': '加载中...',
+    'modelSettings.loadFailed': '加载失败',
+    'modelSettings.retry': '重试',
 
     // ─── 更新弹窗（UpdateModal.vue） ───
     'updateModal.title': '发现新版本',
@@ -454,6 +462,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'models.multimodal': 'Multimodal',
     'models.multimodalTitle': 'Supports multimodal (mmproj)',
     'models.settings': 'Settings',
+    'models.back': 'Back',
     'models.saveFailed': 'Save failed: {msg}',
     'models.unknownError': 'Unknown error',
     'models.backendError': 'Unable to connect to backend: {msg}',
@@ -526,6 +535,8 @@ const messages: Record<Locale, Record<string, string>> = {
     'chat.subtitle': 'Chat with local models',
     'chat.model': 'Model',
     'chat.clear': 'Clear chat',
+    'chat.attach': 'Attach image',
+    'chat.removeImage': 'Remove image',
     'chat.serverOff': 'Server is not running. Start it on the API page first',
     'chat.goApi': 'Open API page',
     'chat.noModels': 'No models available',
@@ -601,6 +612,7 @@ const messages: Record<Locale, Record<string, string>> = {
     // ─── Model settings dialog (ModelSettings.vue) ───
     'modelSettings.title': 'Model Settings',
     'modelSettings.close': 'Close',
+    'modelSettings.subtitle': 'Inference parameters',
     'modelSettings.tabsAria': 'Parameter categories',
     'modelSettings.tabBase': 'Basic',
     'modelSettings.tabInfer': 'Inference',
@@ -685,6 +697,10 @@ const messages: Record<Locale, Record<string, string>> = {
     'modelSettings.cancel': 'Cancel',
     'modelSettings.saving': 'Saving...',
     'modelSettings.save': 'Save Settings',
+    'modelSettings.reset': 'Reset',
+    'modelSettings.loading': 'Loading...',
+    'modelSettings.loadFailed': 'Load failed',
+    'modelSettings.retry': 'Retry',
 
     // ─── Update modal (UpdateModal.vue) ───
     'updateModal.title': 'New Version Found',
