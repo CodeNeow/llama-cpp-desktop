@@ -1,7 +1,45 @@
 import { describe, it, expect } from 'vitest'
 import { hasActiveTask, countActiveTasks, visibleTasks } from '../lib/taskStatus'
+import { MODEL_TASK_STATUSES } from '../lib/downloadStatus'
+import type { ModelTaskStatus } from '../lib/downloadStatus'
+
+// Tables keyed by ModelTaskStatus make an unlisted new backend status a compile error
+// (vue-tsc fails on the missing Record key), and iterating the canonical
+// MODEL_TASK_STATUSES list makes a wrongly-listed status a runtime test failure.
+
+// "Active" semantics shared by hasActiveTask/countActiveTasks (same predicate as
+// lib/taskStatus.ts): only downloading / paused / queued count; fetching / extracting
+// and the terminal done / error / cancelled do not (mirrors current behavior).
+const activeTable: Record<ModelTaskStatus, boolean> = {
+  queued: true,
+  fetching: false,
+  downloading: true,
+  paused: true,
+  extracting: false,
+  done: false,
+  error: false,
+  cancelled: false,
+}
+
+// visibleTasks semantics: every canonical status is shown except cancelled.
+const visibleTable: Record<ModelTaskStatus, boolean> = {
+  queued: true,
+  fetching: true,
+  downloading: true,
+  paused: true,
+  extracting: true,
+  done: true,
+  error: true,
+  cancelled: false,
+}
 
 describe('hasActiveTask', () => {
+  it('single-task arrays map per canonical status', () => {
+    for (const status of MODEL_TASK_STATUSES) {
+      expect(hasActiveTask([{ status }]), `status=${status}`).toBe(activeTable[status])
+    }
+  })
+
   it('all terminal tasks (done/error/cancelled any combination) return false', () => {
     expect(hasActiveTask([{ status: 'done' }, { status: 'error' }, { status: 'cancelled' }])).toBe(false)
     expect(hasActiveTask([{ status: 'done' }])).toBe(false)
@@ -24,6 +62,12 @@ describe('hasActiveTask', () => {
 })
 
 describe('countActiveTasks', () => {
+  it('single-task arrays count per canonical status', () => {
+    for (const status of MODEL_TASK_STATUSES) {
+      expect(countActiveTasks([{ status }]), `status=${status}`).toBe(activeTable[status] ? 1 : 0)
+    }
+  })
+
   it('empty array returns 0', () => {
     expect(countActiveTasks([])).toBe(0)
   })
@@ -56,6 +100,17 @@ describe('countActiveTasks', () => {
 })
 
 describe('visibleTasks', () => {
+  it('single-task arrays map per canonical status (all kept except cancelled)', () => {
+    for (const status of MODEL_TASK_STATUSES) {
+      const out = visibleTasks([{ status }])
+      if (visibleTable[status]) {
+        expect(out, `status=${status} should be kept`).toEqual([{ status }])
+      } else {
+        expect(out, `status=${status} should be filtered out`).toEqual([])
+      }
+    }
+  })
+
   it('filter out cancelled, keep other statuses', () => {
     const tasks = [
       { status: 'queued' },
