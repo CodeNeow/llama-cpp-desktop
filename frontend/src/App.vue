@@ -168,19 +168,17 @@ onMounted(() => {
   background: var(--scrollbar-thumb-hover);
 }
 
-/* Route transitions */
+/* Route transitions — 纯透明度过渡，避免位移动画引发合成层与布局渲染切换时的亚像素水平跳变（修复聊天页离线提示居中文字抖动） */
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition: opacity 0.2s ease;
 }
 
 .fade-enter-from {
   opacity: 0;
-  transform: translateY(8px);
 }
 
 .fade-leave-to {
   opacity: 0;
-  transform: translateY(-8px);
 }
 </style>
