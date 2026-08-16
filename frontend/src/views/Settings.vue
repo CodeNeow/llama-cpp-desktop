@@ -216,18 +216,15 @@
         </div>
       </div>
     </section>
-
-    <UpdateModal :visible="showUpdateModal" @close="closeUpdateModal" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { appConfig, setTheme, loadConfig, setDownloadSource as applyDownloadSource, setLanguage as applyLanguage, setServerAccessMode as applyServerAccessMode, setTrayEnabled as applyTrayEnabled } from '../store'
-import { updateState, checkForUpdate, closeUpdateModal } from '../lib/update'
+import { updateState, checkForUpdate } from '../lib/update'
 import { getAppVersion, getOS, getServerConfig } from '../wails'
 import { t } from '../lib/i18n'
-import UpdateModal from '../components/UpdateModal.vue'
 
 const currentTheme = computed({
   get: () => appConfig.theme,
@@ -308,7 +305,6 @@ const appVersion = ref('')
 const checking = computed(() => updateState.checking)
 const checkError = computed(() => updateState.error)
 const checkResult = computed(() => updateState.result)
-const showUpdateModal = computed(() => updateState.showModal)
 
 onMounted(async () => {
   if (!appConfig.loaded) await loadConfig()

@@ -362,6 +362,8 @@ const messages: Record<Locale, Record<string, string>> = {
     'updateModal.downloadingBtn': '下载中...',
     'updateModal.download': '下载',
     'updateModal.gotIt': '知道了',
+    'updateModal.cancelDownload': '取消下载',
+    'updateModal.hideDownload': '后台下载',
 
     // ─── lib/update.ts ───
     'update.checkFailed': '检查更新失败，请确认网络后重试',
@@ -376,6 +378,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'dock.unloadFailed': '卸载失败：{msg}',
     'dock.collapse': '收起',
     'dock.expand': '展开',
+    'dock.viewUpdate': '查看下载详情',
     'dock.modelType.chat': '聊天',
     'dock.modelType.audio': '语音',
     'dock.modelType.image': '图像',
@@ -735,6 +738,8 @@ const messages: Record<Locale, Record<string, string>> = {
     'updateModal.downloadingBtn': 'Downloading...',
     'updateModal.download': 'Download',
     'updateModal.gotIt': 'Got it',
+    'updateModal.cancelDownload': 'Cancel Download',
+    'updateModal.hideDownload': 'Download in background',
 
     // ─── lib/update.ts ───
     'update.checkFailed': 'Update check failed, check your network and retry',
@@ -749,6 +754,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'dock.unloadFailed': 'Unload failed: {msg}',
     'dock.collapse': 'Collapse',
     'dock.expand': 'Expand',
+    'dock.viewUpdate': 'View download details',
     'dock.modelType.chat': 'Chat',
     'dock.modelType.audio': 'Audio',
     'dock.modelType.image': 'Image',

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { activeLlamaCppDownload, activeModelTasks, shouldShowDock } from '../lib/dock'
+import { activeLlamaCppDownload, activeModelTasks, activeUpdateDownload, shouldShowDock } from '../lib/dock'
 
 describe('activeLlamaCppDownload', () => {
   it('idle/done returns false', () => {
@@ -36,20 +36,40 @@ describe('activeModelTasks', () => {
   })
 })
 
+describe('activeUpdateDownload', () => {
+  it('downloading/done/error return true (outcome stays visible after backgrounding)', () => {
+    expect(activeUpdateDownload('downloading')).toBe(true)
+    expect(activeUpdateDownload('done')).toBe(true)
+    expect(activeUpdateDownload('error')).toBe(true)
+  })
+
+  it('idle/empty/unknown return false', () => {
+    expect(activeUpdateDownload('idle')).toBe(false)
+    expect(activeUpdateDownload('')).toBe(false)
+    // statuses belonging to other download kinds must not leak in
+    expect(activeUpdateDownload('paused')).toBe(false)
+    expect(activeUpdateDownload('extracting')).toBe(false)
+  })
+})
+
 describe('shouldShowDock', () => {
   it('do not show when all zero', () => {
-    expect(shouldShowDock(false, 0, 0)).toBe(false)
+    expect(shouldShowDock(false, 0, 0, false)).toBe(false)
   })
 
   it('show when llamaActive is true', () => {
-    expect(shouldShowDock(true, 0, 0)).toBe(true)
+    expect(shouldShowDock(true, 0, 0, false)).toBe(true)
   })
 
   it('show when activeTaskCount > 0', () => {
-    expect(shouldShowDock(false, 1, 0)).toBe(true)
+    expect(shouldShowDock(false, 1, 0, false)).toBe(true)
   })
 
   it('show when loadedCount > 0', () => {
-    expect(shouldShowDock(false, 0, 1)).toBe(true)
+    expect(shouldShowDock(false, 0, 1, false)).toBe(true)
+  })
+
+  it('show when only updateActive is true', () => {
+    expect(shouldShowDock(false, 0, 0, true)).toBe(true)
   })
 })

@@ -8,18 +8,23 @@
       </div>
 
       <div class="modal-body">
-        <!-- Downloading -->
+        <!-- Download in progress / finished -->
         <template v-if="download && (download.status === 'downloading' || download.status === 'done' || download.status === 'error')">
           <div class="dl-status">
-            <template v-if="download.status === 'downloading'">
-              <div class="progress-bar">
-                <div class="progress-fill" :style="{ width: download.progress + '%' }"></div>
+            <!-- Downloading: centered glyph + thick gradient bar + percent + transferred size -->
+            <div v-if="download.status === 'downloading'" class="dl-downloading">
+              <div class="dl-glyph" aria-hidden="true">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
               </div>
-              <div class="progress-info">
-                <span>{{ t('updateModal.downloading', { version: download.version }) }}</span>
-                <span>{{ download.progress }}%</span>
+              <p class="dl-version">{{ t('updateModal.downloading', { version: download.version }) }}</p>
+              <div class="dl-progress-bar">
+                <div class="dl-progress-fill" :style="{ width: download.progress + '%' }"></div>
               </div>
-            </template>
+              <span class="dl-percent">{{ download.progress }}%</span>
+              <p v-if="download.total > 0" class="dl-size">{{ formatBytes(download.downloaded) }} / {{ formatBytes(download.total) }}</p>
+            </div>
 
             <template v-else-if="download.status === 'done'">
               <div class="done-msg">
@@ -44,8 +49,8 @@
         <template v-else>
           <p class="new-version-tip">{{ t('updateModal.newVersionTip') }}</p>
           <div class="meta">
-            <span class="meta-item">{{ t('updateModal.newVersion', { version }) }}</span>
-            <span v-if="published" class="meta-item">{{ t('updateModal.published', { date: formatDate(published) }) }}</span>
+            <span class="meta-chip">{{ t('updateModal.newVersion', { version }) }}</span>
+            <span v-if="published" class="meta-chip plain">{{ t('updateModal.published', { date: formatDate(published) }) }}</span>
           </div>
           <div v-if="notes" class="release-notes">
             <h3 class="notes-title">{{ t('updateModal.notesTitle') }}</h3>
@@ -56,14 +61,19 @@
 
       <div class="modal-footer">
         <span v-if="download && download.status === 'error'" class="footer-msg footer-err">{{ download.error }}</span>
-        <template v-if="!(download && (download.status === 'downloading' || download.status === 'done'))">
-          <button class="btn-cancel" :disabled="downloading" @click="close">{{ t('updateModal.cancel') }}</button>
-          <button class="btn-save" :disabled="downloading" @click="downloadNow">
-            {{ downloading ? t('updateModal.downloadingBtn') : t('updateModal.download') }}
-          </button>
+        <!-- Downloading: cancel the download, or hide the modal and continue in the background -->
+        <template v-if="downloading">
+          <button class="btn-cancel" @click="cancelUpdateDownload">{{ t('updateModal.cancelDownload') }}</button>
+          <button class="btn-save" @click="close">{{ t('updateModal.hideDownload') }}</button>
         </template>
+        <!-- Done: single acknowledge button -->
         <template v-else-if="download && download.status === 'done'">
           <button class="btn-save" @click="close">{{ t('updateModal.gotIt') }}</button>
+        </template>
+        <!-- Confirm view and error view share the close / start(retry) actions -->
+        <template v-else>
+          <button class="btn-cancel" @click="close">{{ t('updateModal.cancel') }}</button>
+          <button class="btn-save" @click="downloadNow">{{ t('updateModal.download') }}</button>
         </template>
       </div>
     </div>
@@ -72,8 +82,9 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { updateState, startUpdateDownload } from '../lib/update'
+import { updateState, startUpdateDownload, cancelUpdateDownload } from '../lib/update'
 import { locale, t } from '../lib/i18n'
+import { formatBytes } from '../lib/format'
 
 const props = defineProps<{ visible: boolean }>()
 const emit = defineEmits<{ close: [] }>()
@@ -182,13 +193,27 @@ function close() {
 
 .meta {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  flex-wrap: wrap;
+  gap: 8px;
   margin-bottom: 14px;
 }
 
-.meta-item {
-  font-size: 13px;
+/* Version / published chips: accent-tinted for the version, neutral for the date */
+.meta-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  background: rgba(99, 102, 241, 0.08);
+  color: var(--accent-light);
+}
+
+.meta-chip.plain {
+  border-color: var(--border);
+  background: var(--bg-primary);
   color: var(--text-muted);
 }
 
@@ -216,6 +241,8 @@ function close() {
   white-space: pre-wrap;
   word-break: break-word;
   font-family: inherit;
+  max-height: 40vh;
+  overflow-y: auto;
 }
 
 /* ─── Downloads area ─── */
@@ -226,26 +253,62 @@ function close() {
   justify-content: center;
 }
 
-.progress-bar {
+/* Downloading: centered vertical layout — gradient glyph, thick gradient bar,
+   prominent percent, transferred size. Colors reuse the app's indigo-violet accents. */
+.dl-downloading {
   width: 100%;
-  height: 8px;
-  background: var(--overlay-10);
-  border-radius: 4px;
-  overflow: hidden;
-  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
 }
 
-.progress-fill {
+.dl-glyph {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #6366f1, #a78bfa);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 16px rgba(99, 102, 241, 0.3);
+}
+
+.dl-version {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.dl-progress-bar {
+  width: 100%;
+  height: 10px;
+  background: var(--overlay-10);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.dl-progress-fill {
   height: 100%;
-  background: var(--accent);
-  border-radius: 4px;
+  background: linear-gradient(90deg, #6366f1, #a78bfa);
+  border-radius: 5px;
   transition: width 0.3s ease;
 }
 
-.progress-info {
-  display: flex;
-  justify-content: space-between;
-  font-size: 13px;
+.dl-percent {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.5px;
+  line-height: 1;
+}
+
+.dl-size {
+  margin: 0;
+  font-size: 12px;
   color: var(--text-muted);
 }
 

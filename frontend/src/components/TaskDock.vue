@@ -15,6 +15,27 @@
       <div v-if="hasDownloads" class="dock-section">
         <div class="dock-section-title">{{ t('dock.downloads') }}</div>
 
+        <!-- App self-update download; clicking the row reopens the update modal -->
+        <div
+          v-if="updateActive"
+          class="dock-task clickable"
+          :title="t('dock.viewUpdate')"
+          @click="openUpdateModal"
+        >
+          <div class="dock-task-header">
+            <span class="dock-task-name">llama-desktop {{ updateDownload?.version }}</span>
+            <span class="dock-task-status" :class="'status-' + updateDownload?.status">
+              {{ updateStatusLabel(updateDownload?.status || '') }}
+            </span>
+          </div>
+          <div v-if="updateDownload?.status === 'downloading'" class="dock-bar-wrap">
+            <div class="dock-bar">
+              <div class="dock-fill" :style="{ width: updateDownload.progress + '%' }"></div>
+            </div>
+            <span class="dock-percent">{{ updateDownload.progress }}%</span>
+          </div>
+        </div>
+
         <!-- Llama.cpp download -->
         <div v-if="llamaActive" class="dock-task">
           <div class="dock-task-header">
@@ -86,7 +107,8 @@ import {
   getLoadedModels,
   unloadModel
 } from '../wails'
-import { activeLlamaCppDownload, activeModelTasks, shouldShowDock } from '../lib/dock'
+import { activeLlamaCppDownload, activeModelTasks, activeUpdateDownload, shouldShowDock } from '../lib/dock'
+import { updateState } from '../lib/update'
 import { t } from '../lib/i18n'
 
 // ─── State ────────────────────────────────────────────────────────
@@ -128,15 +150,24 @@ const llamaActive = computed(() =>
   llamaStatus.value ? activeLlamaCppDownload(llamaStatus.value.status) : false
 )
 
+// App self-update download: shown first in the downloads section; the row stays
+// for done/error so the backgrounded outcome is visible until the modal is
+// reopened and closed (which clears the terminal state in lib/update).
+const updateDownload = computed(() => updateState.download)
+const updateActive = computed(() =>
+  updateDownload.value ? activeUpdateDownload(updateDownload.value.status) : false
+)
+
 const hasDownloads = computed(() => {
-  return llamaActive.value || activeTasks.value.length > 0
+  return llamaActive.value || activeTasks.value.length > 0 || updateActive.value
 })
 
 const visible = computed(() =>
   shouldShowDock(
     llamaActive.value,
     activeTasks.value.length,
-    loadedModels.value.length
+    loadedModels.value.length,
+    updateActive.value
   )
 )
 
@@ -225,6 +256,21 @@ function statusLabel(status: string): string {
 
 function isProgressStatus(status: string): boolean {
   return status === 'downloading' || status === 'paused'
+}
+
+// Update row labels: unlike llama.cpp rows, done/error outcomes stay visible here
+function updateStatusLabel(status: string): string {
+  const map: Record<string, string> = {
+    downloading: t('home.dlDownloading'),
+    done: t('downloads.statusDone'),
+    error: t('downloads.statusError')
+  }
+  return map[status] || status
+}
+
+// Clicking the update row reopens the modal (download/result state lives in lib/update)
+function openUpdateModal() {
+  updateState.showModal = true
 }
 
 function typeLabel(type: string): string {
@@ -344,6 +390,15 @@ onUnmounted(() => {
   border-top: 1px solid var(--border-light);
   margin-top: 4px;
   padding-top: 8px;
+}
+
+/* Clickable task row (app update): reopens the related modal */
+.dock-task.clickable {
+  cursor: pointer;
+}
+
+.dock-task.clickable:hover .dock-task-name {
+  color: var(--text-primary);
 }
 
 .dock-task-header {

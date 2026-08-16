@@ -3,13 +3,16 @@ import {
   updateState,
   checkForUpdate,
   startUpdateDownload,
+  cancelUpdateDownload,
   shouldAutoCheck,
   closeUpdateModal,
+  stopPolling,
   CHECK_INTERVAL_MS,
 } from '../lib/update'
 import {
   checkForUpdate as checkForUpdateBackend,
   startUpdateDownload as startUpdateDownloadBackend,
+  stopUpdateDownload as stopUpdateDownloadBackend,
   getUpdateDownloadStatus,
 } from '../wails'
 
@@ -17,11 +20,13 @@ import {
 vi.mock('../wails', () => ({
   checkForUpdate: vi.fn(),
   startUpdateDownload: vi.fn(),
+  stopUpdateDownload: vi.fn(),
   getUpdateDownloadStatus: vi.fn(),
 }))
 
 const mockCheckForUpdate = vi.mocked(checkForUpdateBackend)
 const mockStartUpdateDownload = vi.mocked(startUpdateDownloadBackend)
+const mockStopUpdateDownload = vi.mocked(stopUpdateDownloadBackend)
 const mockGetStatus = vi.mocked(getUpdateDownloadStatus)
 
 function resetState() {
@@ -41,7 +46,9 @@ describe('lib/update', () => {
   })
 
   afterEach(() => {
-    closeUpdateModal() // cleanup polling timer
+    // stopPolling instead of closeUpdateModal: closing no longer stops polling
+    // while a download is in progress (background download support)
+    stopPolling()
     vi.useRealTimers()
   })
 
@@ -126,9 +133,120 @@ describe('lib/update', () => {
     expect(mockGetStatus.mock.calls.length).toBe(callsAfterDone)
   })
 
-  it('closeUpdateModal closes modal and stops polling', () => {
+  it('closeUpdateModal hides the modal (no download in progress)', () => {
     updateState.showModal = true
     closeUpdateModal()
     expect(updateState.showModal).toBe(false)
+  })
+
+  it('closeUpdateModal while downloading keeps polling in the background', async () => {
+    vi.useFakeTimers()
+    mockCheckForUpdate.mockResolvedValue({ hasUpdate: true, version: 'v0.2.0', notes: '', published: '' })
+    mockStartUpdateDownload.mockResolvedValue(undefined)
+    mockGetStatus.mockResolvedValue({
+      status: 'downloading', progress: 40, total: 1000, downloaded: 400,
+      version: 'v0.2.0', filePath: '', error: '', kind: 'portable',
+    })
+
+    await checkForUpdate()
+    startUpdateDownload()
+    await vi.advanceTimersByTimeAsync(1100) // one poll
+    expect(updateState.download?.status).toBe('downloading')
+
+    closeUpdateModal()
+    expect(updateState.showModal).toBe(false)
+    // download state kept so the dock background row stays live
+    expect(updateState.download?.status).toBe('downloading')
+
+    // polling continues after close
+    const callsAfterClose = mockGetStatus.mock.calls.length
+    await vi.advanceTimersByTimeAsync(2100)
+    expect(mockGetStatus.mock.calls.length).toBeGreaterThan(callsAfterClose)
+  })
+
+  it('closeUpdateModal when done stops polling and clears the download state', async () => {
+    vi.useFakeTimers()
+    mockCheckForUpdate.mockResolvedValue({ hasUpdate: true, version: 'v0.2.0', notes: '', published: '' })
+    mockStartUpdateDownload.mockResolvedValue(undefined)
+    mockGetStatus.mockResolvedValue({
+      status: 'done', progress: 100, total: 100, downloaded: 100,
+      version: 'v0.2.0', filePath: 'C:/app/llama-desktop-portable-v0.2.0.exe', error: '', kind: 'portable',
+    })
+
+    await checkForUpdate()
+    startUpdateDownload()
+    await vi.advanceTimersByTimeAsync(1100) // one poll completes the download
+    expect(updateState.download?.status).toBe('done')
+
+    closeUpdateModal()
+    expect(updateState.showModal).toBe(false)
+    // terminal state cleared so the dock row does not linger
+    expect(updateState.download).toBeNull()
+
+    // polling stopped: no further status fetches
+    const callsAfterClose = mockGetStatus.mock.calls.length
+    await vi.advanceTimersByTimeAsync(2200)
+    expect(mockGetStatus.mock.calls.length).toBe(callsAfterClose)
+  })
+
+  it('closeUpdateModal when errored stops polling and clears the download state', async () => {
+    vi.useFakeTimers()
+    mockCheckForUpdate.mockResolvedValue({ hasUpdate: true, version: 'v0.2.0', notes: '', published: '' })
+    mockStartUpdateDownload.mockResolvedValue(undefined)
+    mockGetStatus.mockResolvedValue({
+      status: 'error', progress: 0, total: 0, downloaded: 0,
+      version: 'v0.2.0', filePath: '', error: 'network reset', kind: '',
+    })
+
+    await checkForUpdate()
+    startUpdateDownload()
+    await vi.advanceTimersByTimeAsync(1100) // one poll surfaces the error
+    expect(updateState.download?.status).toBe('error')
+
+    closeUpdateModal()
+    expect(updateState.download).toBeNull()
+
+    const callsAfterClose = mockGetStatus.mock.calls.length
+    await vi.advanceTimersByTimeAsync(2200)
+    expect(mockGetStatus.mock.calls.length).toBe(callsAfterClose)
+  })
+
+  it('cancelUpdateDownload stops the backend download and polling, clears state, keeps modal on confirm view', async () => {
+    vi.useFakeTimers()
+    mockCheckForUpdate.mockResolvedValue({ hasUpdate: true, version: 'v0.2.0', notes: '', published: '' })
+    mockStartUpdateDownload.mockResolvedValue(undefined)
+    mockGetStatus.mockResolvedValue({
+      status: 'downloading', progress: 60, total: 1000, downloaded: 600,
+      version: 'v0.2.0', filePath: '', error: '', kind: 'portable',
+    })
+    mockStopUpdateDownload.mockResolvedValue(undefined)
+
+    await checkForUpdate()
+    startUpdateDownload()
+    await vi.advanceTimersByTimeAsync(1100) // one poll
+
+    await cancelUpdateDownload()
+
+    expect(mockStopUpdateDownload).toHaveBeenCalledTimes(1)
+    expect(updateState.download).toBeNull()
+    // modal stays open with the result intact: user lands back on the confirm view
+    expect(updateState.showModal).toBe(true)
+    expect(updateState.result?.version).toBe('v0.2.0')
+
+    // polling stopped: no further status fetches
+    const callsAfterCancel = mockGetStatus.mock.calls.length
+    await vi.advanceTimersByTimeAsync(2200)
+    expect(mockGetStatus.mock.calls.length).toBe(callsAfterCancel)
+  })
+
+  it('cancelUpdateDownload swallows backend stop failures', async () => {
+    mockStopUpdateDownload.mockRejectedValue(new Error('backend busy'))
+    updateState.download = {
+      status: 'downloading', progress: 10, total: 1000, downloaded: 100,
+      version: 'v0.2.0', filePath: '', error: '', kind: 'portable',
+    }
+
+    await expect(cancelUpdateDownload()).resolves.toBeUndefined()
+    expect(updateState.download).toBeNull()
   })
 })

@@ -2,6 +2,7 @@ import { reactive } from 'vue'
 import {
   checkForUpdate as checkForUpdateBackend,
   startUpdateDownload as startUpdateDownloadBackend,
+  stopUpdateDownload as stopUpdateDownloadBackend,
   getUpdateDownloadStatus,
 } from '../wails'
 import { t } from './i18n'
@@ -126,7 +127,31 @@ export function stopPolling(): void {
   }
 }
 
+/**
+ * Close the update modal. While still downloading, polling keeps running so the
+ * background progress row (TaskDock) stays live. Otherwise polling stops and a
+ * terminal download state (done/error) is cleared so the dock row does not linger.
+ */
 export function closeUpdateModal(): void {
   updateState.showModal = false
+  if (updateState.download?.status === 'downloading') return
   stopPolling()
+  const st = updateState.download?.status
+  if (st === 'done' || st === 'error') updateState.download = null
+}
+
+/**
+ * User cancelled the download: stop the backend download and the polling, clear
+ * the download state, and keep the modal open so the user lands back on the
+ * confirm view (updateState.result is untouched). Backend failures are swallowed:
+ * the UI has already reset, so there is nothing meaningful left to surface.
+ */
+export async function cancelUpdateDownload(): Promise<void> {
+  stopPolling()
+  updateState.download = null
+  try {
+    await stopUpdateDownloadBackend()
+  } catch {
+    // backend already idle or unavailable: ignore
+  }
 }
