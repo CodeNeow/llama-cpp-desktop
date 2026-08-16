@@ -327,9 +327,9 @@ func makeZip(t *testing.T, files map[string]string) []byte {
 // only the first-matched cudart asset was selected, extraction artifacts only contained
 // the runtime library with no main program); downloadState.Total is the sum of both
 // asset sizes, FileName stops at the last downloaded asset name. Asset name version
-// is derived from the host toolkit (cudaVersionFromToolkit); hosts without nvcc take
-// the empty-version fallback branch; both environments deterministically trigger the
-// additional download. Non-Windows platforms do not attach the Windows-exclusive cudart
+// is fixed at 12.4 and the GPU probe is stubbed to a pre-Blackwell compute capability,
+// keeping asset selection deterministic regardless of host toolkit or GPU.
+// Non-Windows platforms do not attach the Windows-exclusive cudart
 // asset (matching logic is covered by unit tests), skipped.
 func TestDownloadLlamaCppDownloadsCudartOnWindows(t *testing.T) {
 	if runtime.GOOS != "windows" {
@@ -343,11 +343,8 @@ func TestDownloadLlamaCppDownloadsCudartOnWindows(t *testing.T) {
 	mainZip := makeZip(t, map[string]string{llamaServerBinName(): "stub"})
 	cudartZip := makeZip(t, map[string]string{"cublas64_12.dll": "stub"})
 
-	// version label follows the host toolkit (fixed 12.4 without a toolkit, taking the empty-version fallback branch)
-	ver := cudaVersionFromToolkit()
-	if ver == "" {
-		ver = "12.4"
-	}
+	// fixed version label keeps asset selection deterministic regardless of the host toolkit
+	ver := "12.4"
 	mainName := fmt.Sprintf("llama-b9999-bin-win-cuda-%s-x64.zip", ver)
 	cudartName := fmt.Sprintf("cudart-llama-bin-win-cuda-%s-x64.zip", ver)
 
@@ -377,6 +374,12 @@ func TestDownloadLlamaCppDownloadsCudartOnWindows(t *testing.T) {
 	origAPI := githubReleasesAPI
 	githubReleasesAPI = srv.URL + "/release"
 	defer func() { githubReleasesAPI = origAPI }()
+
+	// stub the GPU probe: a pre-Blackwell host (no CUDA floor) keeps asset selection
+	// deterministic — Blackwell hosts would floor-skip the 12.4 fixture asset
+	origCC := probeGPUComputeCap
+	probeGPUComputeCap = func() string { return "8.9" }
+	defer func() { probeGPUComputeCap = origCC }()
 
 	downloadLlamaCpp()
 

@@ -19,6 +19,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strconv"
@@ -377,6 +378,45 @@ func getGPUInfo() []GPUInfo {
 		})
 	}
 	return gpus
+}
+
+// probeGPUComputeCap is the injection point for the GPU compute-capability
+// probe (a package-level var in the same style as probeLlamaVersion): the
+// default implementation runs `nvidia-smi --query-gpu=compute_cap` and returns
+// raw stdout. Tests replace this variable instead of shelling out.
+var probeGPUComputeCap = func() string {
+	return runCmd("nvidia-smi", "--query-gpu=compute_cap", "--format=csv,noheader")
+}
+
+// gpuComputeCap parses the first value of the compute-capability probe output
+// (e.g. "12.0" for RTX 50 series); ok=false on empty output or parse failure.
+// Only the first value is used: on multi-GPU hosts the first enumerated GPU
+// decides the CUDA floor.
+func gpuComputeCap() (float64, bool) {
+	out := strings.TrimSpace(probeGPUComputeCap())
+	if out == "" {
+		return 0, false
+	}
+	first := out
+	if idx := strings.IndexAny(first, "\r\n"); idx >= 0 {
+		first = first[:idx]
+	}
+	cc, err := strconv.ParseFloat(strings.TrimSpace(first), 64)
+	if err != nil {
+		return 0, false
+	}
+	return cc, true
+}
+
+// cudaFloorForComputeCap returns the minimum CUDA runtime version the GPU can
+// actually run: Blackwell GPUs (compute capability >= 12.0, e.g. RTX 50 series)
+// need CUDA >= 12.8 or binaries fail with "no kernel image"; earlier (or
+// unknown) GPUs have no floor.
+func cudaFloorForComputeCap(cc float64) float64 {
+	if cc >= 12.0 {
+		return 12.8
+	}
+	return 0
 }
 
 // ─── CUDA ────────────────────────────────────────────────────────
@@ -1301,7 +1341,12 @@ func downloadLlamaCpp() {
 	// Windows-exclusive cudart asset attached.
 	assets := []*GitHubAsset{mainAsset}
 	if runtime.GOOS == "windows" && strings.Contains(strings.ToLower(mainAsset.Name), "cuda") {
-		if cudart := pickCudartAssetFor(release.Assets, cudaVersionFromToolkit()); cudart != nil {
+		// Pair the cudart runtime with the CUDA version and arch of the chosen
+		// main asset (both extracted from its name, not from the local nvcc
+		// toolkit): the runtime DLLs must match the build actually downloaded,
+		// which floor/tie-break selection may pick independently of toolkit.
+		cudartVer, _ := cudaVerTagOf(mainAsset.Name)
+		if cudart := pickCudartAssetFor(release.Assets, cudartVer, archKeyOf(runtime.GOARCH)); cudart != nil {
 			assets = append(assets, cudart)
 		}
 	}
@@ -1604,15 +1649,21 @@ func fetchLatestReleaseAt(apiURL string) (*GitHubRelease, error) {
 }
 
 // pickBestAsset picks the most suitable release asset for the current platform.
+// The CUDA floor is derived from the GPU compute capability (Blackwell needs
+// CUDA >= 12.8); a probe failure or pre-Blackwell GPU yields no floor.
 func pickBestAsset(assets []GitHubAsset) *GitHubAsset {
-	return pickBestAssetFor(assets, runtime.GOOS, runtime.GOARCH, len(getGPUInfo()) > 0, cudaVersionFromToolkit())
+	floor := 0.0
+	if cc, ok := gpuComputeCap(); ok {
+		floor = cudaFloorForComputeCap(cc)
+	}
+	return pickBestAssetFor(assets, runtime.GOOS, runtime.GOARCH, len(getGPUInfo()) > 0, cudaVersionFromToolkit(), floor)
 }
 
 // cudaVersionFromToolkit derives the "major.minor" version used in asset
 // naming (e.g. "12.4") from the local CUDA Toolkit version (nvcc output, e.g.
 // "12.4.131"); returns an empty string with no Toolkit or on parse failure.
-// Shared by pickBestAssetFor's exact-version bonus and pickCudartAssetFor's
-// runtime matching so both use the same version interpretation.
+// Used only by pickBestAssetFor's exact-version bonus; the cudart runtime
+// pairing derives its version from the chosen main asset name instead.
 func cudaVersionFromToolkit() string {
 	cudaInfo := getCUDAInfo()
 	if cudaInfo.ToolkitVersion == "" {
@@ -1625,32 +1676,148 @@ func cudaVersionFromToolkit() string {
 	return parts[0] + "." + parts[1]
 }
 
+// archKeyOf maps a GOARCH value to the arch tag used in llama.cpp release
+// asset names ("x64" / "arm64"); empty when unmapped. Shared by
+// pickBestAssetFor and the cudart pairing in downloadLlamaCpp.
+func archKeyOf(goarch string) string {
+	switch goarch {
+	case "amd64":
+		return "x64"
+	case "arm64":
+		return "arm64"
+	}
+	return ""
+}
+
+// cudaVerRe matches the CUDA version tag embedded in asset names, e.g. the
+// "12.4" in "llama-b*-bin-win-cuda-12.4-x64.zip".
+var cudaVerRe = regexp.MustCompile(`cuda-(\d+\.\d+)`)
+
+// cudaVerTagOf extracts the CUDA version tag from an asset name as a string
+// (e.g. "12.4"); ok=false when the name carries no cuda-<major.minor> tag.
+func cudaVerTagOf(name string) (string, bool) {
+	m := cudaVerRe.FindStringSubmatch(strings.ToLower(name))
+	if m == nil {
+		return "", false
+	}
+	return m[1], true
+}
+
+// cudaVerOf parses the asset's CUDA version tag as a float for ordering
+// comparisons (e.g. 12.4); ok=false when the tag is absent or unparseable.
+func cudaVerOf(name string) (float64, bool) {
+	tag, ok := cudaVerTagOf(name)
+	if !ok {
+		return 0, false
+	}
+	v, err := strconv.ParseFloat(tag, 64)
+	if err != nil {
+		return 0, false
+	}
+	return v, true
+}
+
 // pickBestAssetFor scores release assets for a given platform/arch and returns
 // the best match. hasCUDA and cudaVer allow preferring matching CUDA builds on
-// Windows. On Windows, cudart runtime assets are skipped (the main program and
-// runtime are downloaded separately; the runtime is matched by
-// pickCudartAssetFor). Returns nil when no asset matches the platform.
-func pickBestAssetFor(assets []GitHubAsset, platform, arch string, hasCUDA bool, cudaVer string) *GitHubAsset {
+// Windows; cudaFloor is the minimum CUDA version the GPU can run (Blackwell
+// compute capability >= 12.0 needs >= 12.8; 0 means no constraint) — cuda
+// assets below the floor are skipped entirely because the hardware cannot run
+// them. Returns nil when no asset matches the platform.
+//
+// Matching rules:
+//   - Platform: "win" for Windows, "macos" for macOS; Linux accepts both the
+//     "ubuntu" keyword (current upstream naming, e.g. llama-b*-bin-ubuntu-x64)
+//     and the legacy "linux" keyword, so a future rename back keeps working.
+//   - Arch: enforced for every platform via the arch tag in the asset name
+//     ("x64" / "arm64"); assets with no tag are accepted only on x64 hosts
+//     (historical implicit-x64 naming). This drops wrong-arch builds such as
+//     win-cpu-arm64 on x64 hosts, and ubuntu-s390x (no tag) / android-arm64
+//     (wrong tag) everywhere they do not belong.
+//   - Windows without an NVIDIA GPU: the "-cpu-" build gets a decisive bonus
+//     over rocm/sycl/openvino/cuda; legacy "avx2"-style names keep their bonus
+//     for releases predating the "-cpu-" naming.
+//   - Windows with an NVIDIA GPU: among cuda builds the toolkit exact match
+//     wins (+50); the version tie-break prefers the lowest available version
+//     (widest GPU compatibility — CUDA 13 dropped pre-Turing support), or the
+//     highest version >= floor when a floor is active (newest GPUs need the
+//     newest runtime).
+//   - Linux with an NVIDIA GPU: ubuntu-vulkan is the only GPU-accelerated
+//     Linux build (no ubuntu cuda variant exists) and wins decisively.
+//
+// On Windows, cudart runtime assets are skipped (the main program and runtime
+// are downloaded separately; the runtime is matched by pickCudartAssetFor).
+func pickBestAssetFor(assets []GitHubAsset, platform, arch string, hasCUDA bool, cudaVer string, cudaFloor float64) *GitHubAsset {
 	if len(assets) == 0 {
 		return nil
 	}
 
-	// Map GOOS/GOARCH to release naming conventions
+	// Map GOOS to release naming conventions
 	platformKey := ""
-	archKey := ""
 	switch platform {
 	case "windows":
 		platformKey = "win"
 	case "darwin":
 		platformKey = "macos"
 	case "linux":
-		platformKey = "linux"
+		platformKey = "ubuntu"
 	}
-	switch arch {
-	case "amd64":
-		archKey = "x64"
-	case "arm64":
-		archKey = "arm64"
+	archKey := archKeyOf(arch)
+
+	matchesPlatform := func(name string) bool {
+		if platformKey == "ubuntu" {
+			return strings.Contains(name, "ubuntu") || strings.Contains(name, "linux")
+		}
+		return strings.Contains(name, platformKey)
+	}
+
+	// Arch-tag rule: the asset must carry the host's arch tag, or no tag at
+	// all on x64 hosts (historical implicit-x64 naming).
+	matchesArch := func(name string) bool {
+		hasX64 := strings.Contains(name, "x64")
+		hasArm64 := strings.Contains(name, "arm64")
+		if hasArm64 && archKey != "arm64" {
+			return false
+		}
+		if hasX64 && archKey != "x64" {
+			return false
+		}
+		return hasX64 || hasArm64 || archKey == "x64"
+	}
+
+	isMainCandidate := func(name string) bool {
+		// Skip cudart runtime assets: since llama.cpp b10342, Windows CUDA
+		// builds are split into a main-program zip and a separate cudart
+		// runtime zip; both contain "win-cuda" and would score equally, and
+		// cudart is listed earlier in the release — without exclusion only the
+		// runtime would be picked and the main program lost (extraction
+		// artifacts would contain only runtime DLLs like cudart64_12.dll, no
+		// llama-server.exe). The runtime is matched separately by
+		// pickCudartAssetFor and downloaded alongside the main program.
+		return !strings.HasPrefix(name, "cudart") && matchesPlatform(name) && matchesArch(name)
+	}
+
+	// Precompute the preferred CUDA version among surviving windows cuda
+	// candidates: lowest when no floor is active (widest GPU compatibility),
+	// highest when a floor is active (newest GPUs need the newest runtime).
+	var targetCuda float64
+	var hasTargetCuda bool
+	if platformKey == "win" && hasCUDA {
+		for i := range assets {
+			name := strings.ToLower(assets[i].Name)
+			if !isMainCandidate(name) || !strings.Contains(name, "cuda") {
+				continue
+			}
+			v, ok := cudaVerOf(name)
+			if !ok || (cudaFloor > 0 && v < cudaFloor) {
+				continue
+			}
+			if !hasTargetCuda ||
+				(cudaFloor > 0 && v > targetCuda) ||
+				(cudaFloor <= 0 && v < targetCuda) {
+				targetCuda = v
+				hasTargetCuda = true
+			}
+		}
 	}
 
 	// Score each asset — higher is better
@@ -1663,43 +1830,26 @@ func pickBestAssetFor(assets []GitHubAsset, platform, arch string, hasCUDA bool,
 	for i := range assets {
 		a := &assets[i]
 		name := strings.ToLower(a.Name)
-
-		// Must match platform
-		if !strings.Contains(name, platformKey) {
+		if !isMainCandidate(name) {
 			continue
-		}
-
-		// Skip if wrong arch (but "x64" is sometimes implicit for win)
-		if platformKey == "win" {
-			// Skip cudart runtime assets: since llama.cpp b10342, Windows CUDA
-			// builds are split into a main-program zip
-			// (llama-b*-bin-win-cuda-*-x64.zip) and a separate cudart runtime
-			// zip; both score equally and cudart is listed earlier in the
-			// release, so without exclusion only the runtime would be picked
-			// and the main program lost (extraction artifacts would contain
-			// only runtime DLLs like cudart64_12.dll, no llama-server.exe).
-			// The runtime is matched separately by pickCudartAssetFor and
-			// downloaded alongside the main program.
-			if strings.HasPrefix(name, "cudart") {
-				continue
-			}
-			// CUDA builds on Windows: "llama-b*-bin-win-cuda-XX.X-x64.zip"
-			// Regular builds: "llama-b*-bin-win-avx2-x64.zip" etc.
-		} else {
-			if !strings.Contains(name, archKey) {
-				continue
-			}
 		}
 
 		score := 0
 
 		// Prefer CUDA builds on Windows when GPU is available
 		if platformKey == "win" && hasCUDA && strings.Contains(name, "cuda") {
+			v, hasVer := cudaVerOf(name)
+			if hasVer && cudaFloor > 0 && v < cudaFloor {
+				// Below the GPU's usable CUDA floor: hardware cannot run it
+				continue
+			}
 			score += 100
-
-			// Match CUDA version — prefer closest to installed toolkit
+			if hasVer && hasTargetCuda && v == targetCuda {
+				score += 30 // Preferred version (see targetCuda computation)
+			}
+			// Match CUDA version — prefer exact match to installed toolkit
 			if cudaVer != "" && strings.Contains(name, "cuda-"+cudaVer) {
-				score += 50 // Exact version match
+				score += 50
 			}
 		}
 
@@ -1713,17 +1863,33 @@ func pickBestAssetFor(assets []GitHubAsset, platform, arch string, hasCUDA bool,
 			score += 20
 		}
 
-		// Prefer builds without extra suffixes (generic/basic builds)
 		if platformKey == "win" && !strings.Contains(name, "cuda") {
-			// Basic win-x64 build
-			if !strings.Contains(name, "avx") && !strings.Contains(name, "vulkan") && !strings.Contains(name, "opencl") {
+			if strings.Contains(name, "-cpu-") {
+				// Decisive bonus: the plain CPU build beats rocm/sycl/openvino
+				score += 40
+			} else if !strings.Contains(name, "avx") && !strings.Contains(name, "vulkan") && !strings.Contains(name, "opencl") {
+				// Basic win-x64 build without extra suffixes (legacy naming)
 				score += 10
 			}
 		}
 
-		// Simple generic matches for macOS/Linux
+		// Generic non-win scoring: plain distro build outranks specialized
+		// variants (vulkan/sycl/openvino); kleidiai builds stay excluded; an
+		// explicit arch tag outranks untagged oddities (ubuntu-s390x carries
+		// no x64/arm64 tag).
 		if platformKey != "win" && !strings.Contains(name, "kleidiai") {
 			score += 10
+			if !strings.Contains(name, "vulkan") && !strings.Contains(name, "sycl") && !strings.Contains(name, "openvino") {
+				score += 10
+			}
+			if strings.Contains(name, "x64") || strings.Contains(name, "arm64") {
+				score += 5
+			}
+			// NVIDIA GPU present: ubuntu-vulkan is the only GPU-accelerated
+			// Linux build (no ubuntu cuda variant exists)
+			if hasCUDA && strings.Contains(name, "vulkan") {
+				score += 80
+			}
 		}
 
 		candidates = append(candidates, scored{asset: a, score: score})
@@ -1744,27 +1910,33 @@ func pickBestAssetFor(assets []GitHubAsset, platform, arch string, hasCUDA bool,
 	return best.asset
 }
 
-// pickCudartAssetFor returns the cudart runtime asset exactly matching the
-// given CUDA version (cudart-llama-bin-win-cuda-<cudaVer>-x64.zip,
-// case-insensitive), or nil when not found. With an empty cudaVer it skips
-// exact-version matching and falls back to any win cudart asset (best-effort:
-// covers hosts where GPU detection succeeded but nvcc is missing or toolkit
-// version parsing failed — a CUDA build was selected as the main program and
-// the runtime is still required to launch).
+// pickCudartAssetFor returns the cudart runtime asset pairing with the chosen
+// main CUDA asset. cudaVer and arch must be derived from the main asset name
+// (cudaVerTagOf / archKeyOf), not from the local nvcc toolkit: the runtime DLLs
+// must match the build actually downloaded, which floor/tie-break selection
+// may pick independently of the installed toolkit. It matches
+// cudart-llama-bin-win-cuda-<cudaVer>-<arch>.zip case-insensitively. With an
+// empty cudaVer it skips exact-version matching and falls back to the first
+// cudart asset with a matching arch (best-effort when the main asset carries
+// no parseable cuda version but still needs the runtime to launch).
 // This function does not check the platform: whether to attach the runtime is
 // decided by the caller (the Windows+CUDA check in downloadLlamaCpp), letting
 // tests construct cudart assets directly and assert matching across platforms.
-func pickCudartAssetFor(assets []GitHubAsset, cudaVer string) *GitHubAsset {
+func pickCudartAssetFor(assets []GitHubAsset, cudaVer, arch string) *GitHubAsset {
 	for i := range assets {
 		a := &assets[i]
 		lower := strings.ToLower(a.Name)
 		if !strings.HasPrefix(lower, "cudart-llama-bin-win-cuda-") {
 			continue
 		}
+		// The runtime arch tag must pair with the main asset (x64 / arm64)
+		if arch != "" && !strings.Contains(lower, arch) {
+			continue
+		}
 		if cudaVer == "" {
 			return a
 		}
-		if strings.EqualFold(a.Name, "cudart-llama-bin-win-cuda-"+cudaVer+"-x64.zip") {
+		if arch != "" && lower == "cudart-llama-bin-win-cuda-"+cudaVer+"-"+arch+".zip" {
 			return a
 		}
 	}
