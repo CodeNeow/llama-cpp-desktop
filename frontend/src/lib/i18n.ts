@@ -213,9 +213,6 @@ const messages: Record<Locale, Record<string, string>> = {
     'monitor.gpu': 'GPU',
     'monitor.gpuMem': '显存 {used} / {total}',
     'monitor.noGpu': '未检测到 NVIDIA GPU',
-    'monitor.disk': '磁盘 ({path})',
-    'monitor.diskUsed': '已用 {n}',
-    'monitor.diskTotal': '总计 {n}',
 
     // ─── 设置页（Settings.vue） ───
     'settings.title': '设置',
@@ -587,9 +584,6 @@ const messages: Record<Locale, Record<string, string>> = {
     'monitor.gpu': 'GPU',
     'monitor.gpuMem': 'VRAM {used} / {total}',
     'monitor.noGpu': 'No NVIDIA GPU detected',
-    'monitor.disk': 'Disk ({path})',
-    'monitor.diskUsed': 'Used {n}',
-    'monitor.diskTotal': 'Total {n}',
 
     // ─── Settings (Settings.vue) ───
     'settings.title': 'Settings',

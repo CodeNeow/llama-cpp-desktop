@@ -80,9 +80,9 @@
         <div v-else class="console-empty">{{ t('api.logEmpty') }}</div>
       </section>
 
-      <!-- 右栏：三张卡片自上而下 -->
+      <!-- 右栏：两张卡片自上而下 -->
       <div class="monitor-side">
-        <!-- a. 系统监控：CPU / 内存 / 磁盘 -->
+        <!-- a. 系统监控：CPU / 内存 / GPU -->
         <section class="info-section monitor-card">
           <h2 class="section-title">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -117,35 +117,14 @@
               <span>{{ t('monitor.memUsed', { n: memText(status.memUsed) }) }}</span>
               <span class="metric-divider">/</span>
               <span>{{ t('monitor.memTotal', { n: memText(status.memTotal) }) }}</span>
-            </div>
           </div>
+        </div>
 
-          <div v-if="status.disk" class="metric-block">
-            <div class="metric-head">
-              <span class="metric-name">{{ t('monitor.disk', { path: diskPath }) }}</span>
-            </div>
-            <div class="usage-bar-wrapper">
-              <div class="usage-bar">
-                <div class="usage-fill" :style="{ width: diskPercent + '%' }"></div>
-              </div>
-              <span class="usage-text">{{ diskPercent }}%</span>
-            </div>
-            <div class="metric-sub">
-              <span>{{ t('monitor.diskUsed', { n: memText(status.disk.used) }) }}</span>
-              <span class="metric-divider">/</span>
-              <span>{{ t('monitor.diskTotal', { n: memText(status.disk.total) }) }}</span>
-            </div>
+        <!-- GPU（原独立卡片，现并入系统监控） -->
+        <div class="metric-block">
+          <div class="metric-head">
+            <span class="metric-name">{{ t('monitor.gpu') }}</span>
           </div>
-        </section>
-
-        <!-- b. GPU 监控 -->
-        <section class="info-section monitor-card">
-          <h2 class="section-title">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
-            </svg>
-            GPU
-          </h2>
           <div v-if="status.gpus.length > 0">
             <div v-for="gpu in status.gpus" :key="gpu.index" class="gpu-row">
               <div class="gpu-head">
@@ -162,9 +141,10 @@
             </div>
           </div>
           <div v-else class="info-empty">{{ t('monitor.noGpu') }}</div>
-        </section>
+        </div>
+      </section>
 
-        <!-- c. Token 速度：提示词处理 + 生成速度数值 + 矮折线图 -->
+      <!-- c. Token 速度 -->
         <section class="info-section monitor-card">
           <div class="token-card-head">
             <h2 class="section-title">
@@ -252,7 +232,6 @@ const status = ref<MonitorStatus>({
   promptTps: 0,
   decodeTps: 0,
   uptimeSeconds: 0,
-  disk: null,
 })
 
 // 生成速度折线图历史：1s 轮询追加，保留最近 60 个采样（appendHistory 默认 cap=60）
@@ -269,21 +248,13 @@ const memPercent = computed(() => {
   return Math.round((status.value.memUsed / status.value.memTotal) * 100)
 })
 
-const diskPath = computed(() => status.value.disk?.path ?? '')
-
-const diskPercent = computed(() => {
-  const d = status.value.disk
-  if (!d || d.total <= 0) return 0
-  return Math.round((d.used / d.total) * 100)
-})
-
 const promptTpsText = computed(() => formatPromptTps(status.value.promptTps))
 
 const decodeTpsText = computed(() => status.value.decodeTps.toFixed(1))
 
 const decodePoints = computed(() => chartPoints(decodeHistory.value, chartWidth, chartHeight))
 
-// 显存/内存/磁盘可能为 0（如数据未到），formatBytes(0) 返回空串，此处兜底为 "0 B"
+// 显存/内存可能为 0（如数据未到），formatBytes(0) 返回空串，此处兜底为 "0 B"
 function memText(bytes: number): string {
   return formatBytes(bytes) || '0 B'
 }
