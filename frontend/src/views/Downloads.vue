@@ -41,22 +41,19 @@
           :title="t('downloads.viewDetail')"
         >
           <div class="result-main">
-            <div class="result-icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-              </svg>
-            </div>
             <div class="result-info">
               <h3 class="result-name">{{ r.modelId }}</h3>
               <div class="result-meta">
-                <span class="result-author">{{ r.author }}</span>
-                <span v-if="r.pipelineTag" class="result-tag">{{ r.pipelineTag }}</span>
-                <span class="result-downloads">⬇ {{ formatNum(r.downloads) }}</span>
-                <span v-if="(r.likes || 0) > 0" class="result-likes">♥ {{ formatNum(r.likes) }}</span>
-                <span v-if="modelSizes[r.modelId]" class="result-size">💾 {{ formatBytes(modelSizes[r.modelId]) }}</span>
+                <span v-if="r.author" class="result-meta-item">{{ r.author }}</span>
+                <span v-if="r.pipelineTag" class="result-meta-item">{{ r.pipelineTag }}</span>
+                <span v-if="modelSizes[r.modelId]" class="result-meta-item">{{ formatBytes(modelSizes[r.modelId]) }}</span>
               </div>
             </div>
-            <span class="result-arrow">›</span>
+            <span class="result-arrow">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </span>
           </div>
         </div>
       </div>
@@ -144,16 +141,8 @@ import { formatSpeed, formatBytes } from '../lib/format'
 import { LatestOnly } from '../lib/latestOnly'
 import { hasActiveTask, countActiveTasks, visibleTasks } from '../lib/taskStatus'
 import { LimitedQueue } from '../lib/limitedQueue'
+import { searchQuery, searched, searchResults, modelSizes, HFResult } from '../lib/downloadsState'
 import { t } from '../lib/i18n'
-
-interface HFResult {
-  modelId: string
-  author: string
-  downloads?: number
-  likes?: number
-  pipelineTag?: string
-  tags?: string[]
-}
 
 interface DlTask {
   id: string
@@ -171,15 +160,10 @@ interface DlTask {
 
 const router = useRouter()
 
-const searchQuery = ref('')
 const searching = ref(false)
-const searched = ref(false)
-const searchResults = ref<HFResult[]>([])
 // 当前下载源（"hf" | "modelscope"），挂载时从后端读取，切换由设置页完成
 const downloadSource = ref('')
 const sourceLabel = computed(() => downloadSource.value === 'modelscope' ? t('downloads.sourceModelScope') : t('downloads.sourceHf'))
-// 模型大小缓存：值为最大 GGUF 文件字节数，0 表示已尝试查询（无 GGUF 或失败）
-const modelSizes = reactive<Record<string, number>>({})
 // 搜索卡片大小批量请求的并发受限队列
 let sizeQueue = new LimitedQueue(4)
 
@@ -200,13 +184,6 @@ const statusMap = computed<Record<string, string>>(() => ({
   error: t('downloads.statusError'),
   cancelled: t('downloads.statusCancelled'),
 }))
-
-function formatNum(n: number | undefined): string {
-  const v = n || 0
-  if (v >= 1000000) return (v / 1000000).toFixed(1) + 'M'
-  if (v >= 1000) return (v / 1000).toFixed(1) + 'K'
-  return String(v)
-}
 
 function taskBarClass(status: string): string {
   if (status === 'paused') return 'paused'
@@ -440,10 +417,10 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
 .result-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 10px;
   cursor: pointer;
   transition: all 0.2s;
-  overflow: hidden;
+  padding: 12px 16px;
 }
 
 .result-card:hover {
@@ -453,20 +430,7 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
 .result-main {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 12px 16px;
-}
-
-.result-icon {
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(99, 102, 241, 0.1);
-  border-radius: 10px;
-  color: #a78bfa;
-  flex-shrink: 0;
+  gap: 12px;
 }
 
 .result-info {
@@ -475,44 +439,39 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
 }
 
 .result-name {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   margin: 0 0 4px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  word-break: break-all;
+  line-height: 1.35;
 }
 
 .result-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  align-items: center;
+  gap: 0;
   font-size: 12px;
   color: var(--text-dim);
 }
 
-.result-likes {
-  color: #f472b6;
-}
-
-.result-size {
-  color: #22c55e;
-}
-
-.result-tag {
-  background: rgba(99, 102, 241, 0.1);
-  color: #a78bfa;
-  padding: 1px 8px;
-  border-radius: 4px;
-  font-size: 11px;
+.result-meta-item + .result-meta-item::before {
+  content: '·';
+  margin: 0 6px;
 }
 
 .result-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--text-dim);
-  font-size: 18px;
   flex-shrink: 0;
-  line-height: 1;
+  transition: color 0.2s;
+}
+
+.result-card:hover .result-arrow {
+  color: var(--text-secondary);
 }
 
 /* ─── Tasks ─── */

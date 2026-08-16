@@ -15,6 +15,7 @@ const messages: Record<Locale, Record<string, string>> = {
   zh: {
     // ─── Sidebar 导航 ───
     'nav.home': '主页',
+    'nav.chat': '聊天',
     'nav.downloads': '下载',
     'nav.models': '模型',
     'nav.api': 'API',
@@ -162,6 +163,22 @@ const messages: Record<Locale, Record<string, string>> = {
     'downloads.selectedCount': '已选 {n} 个文件',
     'downloads.viewDetail': '查看详情',
     'downloads.fileCount': '{n} 个文件',
+
+    // ─── 聊天页（Chat.vue） ───
+    'chat.title': '聊天',
+    'chat.subtitle': '与本地模型对话',
+    'chat.model': '模型',
+    'chat.clear': '清空对话',
+    'chat.serverOff': '服务未运行，请先在 API 页启动服务',
+    'chat.goApi': '前往 API 页',
+    'chat.noModels': '暂无可用模型',
+    'chat.inputPlaceholder': '输入消息，Enter 发送，Shift+Enter 换行',
+    'chat.send': '发送',
+    'chat.stop': '停止',
+    'chat.error': '请求失败：{msg}',
+    'chat.emptyHint': '开始与模型对话吧',
+    'chat.you': '你',
+    'chat.assistant': '助手',
 
     // ─── 监控（Api.vue 内嵌） ───
     'monitor.title': '监控',
@@ -355,6 +372,7 @@ const messages: Record<Locale, Record<string, string>> = {
   en: {
     // ─── Sidebar navigation ───
     'nav.home': 'Home',
+    'nav.chat': 'Chat',
     'nav.downloads': 'Downloads',
     'nav.models': 'Models',
     'nav.api': 'API',
@@ -502,6 +520,22 @@ const messages: Record<Locale, Record<string, string>> = {
     'downloads.selectedCount': '{n} files selected',
     'downloads.viewDetail': 'View detail',
     'downloads.fileCount': '{n} files',
+
+    // ─── Chat page (Chat.vue) ───
+    'chat.title': 'Chat',
+    'chat.subtitle': 'Chat with local models',
+    'chat.model': 'Model',
+    'chat.clear': 'Clear chat',
+    'chat.serverOff': 'Server is not running. Start it on the API page first',
+    'chat.goApi': 'Open API page',
+    'chat.noModels': 'No models available',
+    'chat.inputPlaceholder': 'Type a message. Enter to send, Shift+Enter for newline',
+    'chat.send': 'Send',
+    'chat.stop': 'Stop',
+    'chat.error': 'Request failed: {msg}',
+    'chat.emptyHint': 'Start chatting with your model',
+    'chat.you': 'You',
+    'chat.assistant': 'Assistant',
 
     // ─── Monitor (embedded in Api.vue) ───
     'monitor.title': 'Monitor',

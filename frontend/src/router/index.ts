@@ -1,5 +1,6 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import Home from '../views/Home.vue'
+import Chat from '../views/Chat.vue'
 import Models from '../views/Models.vue'
 import Api from '../views/Api.vue'
 import Downloads from '../views/Downloads.vue'
@@ -12,6 +13,12 @@ const routes = [
     name: 'Home',
     component: Home,
     meta: { title: '主页', icon: 'home' }
+  },
+  {
+    path: '/chat',
+    name: 'Chat',
+    component: Chat,
+    meta: { title: '聊天', icon: 'message-circle' }
   },
   {
     path: '/downloads',

@@ -123,9 +123,11 @@ code, pre {
   margin-right: auto;
 }
 
-/* 页头本身样式：sticky 职责由外层 .sticky-top 承担 */
+/* 页头本身样式：sticky 职责由外层 .sticky-top 承担；
+   页头标题/副标题不允许鼠标选中 */
 .page-header {
   padding-top: 0;
+  user-select: none;
 }
 
 /* 页头（及需要随页头固定的操作区）的外层容器：滚动时整体贴内容区顶。
