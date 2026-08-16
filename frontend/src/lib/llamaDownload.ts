@@ -25,9 +25,11 @@ export function downloadVisibility(status: string): { showButtons: boolean; show
  * switches; on returning to the home page, onMounted must decide how to resume
  * from the backend's current download status:
  *
- * - 'poll': downloading / fetching / extracting — the download is still in
- *   progress, resume 500ms polling to keep progress updated (independent of
- *   install state; a download in flight cannot have finished installing).
+ * - 'poll': downloading / fetching / paused / extracting — the download is
+ *   still in flight (paused included; the backend goroutine keeps the state
+ *   and the user can resume), resume 500ms polling to keep progress updated
+ *   (independent of install state; a download in flight cannot have finished
+ *   installing).
  * - 'refresh': done but install not detected — the download finished while system
  *   info is stale; refresh the system info.
  * - 'showError': error — the download failed while away; previously this branch
@@ -42,7 +44,7 @@ export function downloadVisibility(status: string): { showButtons: boolean; show
 export type InitialDownloadAction = 'poll' | 'refresh' | 'showError' | 'none'
 
 export function initialDownloadAction(status: string, installed: boolean): InitialDownloadAction {
-  if (status === 'downloading' || status === 'fetching' || status === 'extracting') {
+  if (status === 'downloading' || status === 'fetching' || status === 'paused' || status === 'extracting') {
     return 'poll'
   }
   if (status === 'done' && !installed) {

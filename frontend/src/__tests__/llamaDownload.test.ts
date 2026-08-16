@@ -38,8 +38,12 @@ describe('downloadVisibility', () => {
 })
 
 describe('initialDownloadAction', () => {
-  it('downloading/fetching/extracting returns poll (resume polling during download), independent of installed param', () => {
-    for (const status of ['downloading', 'fetching', 'extracting']) {
+  // regression: previous poll branch missed 'paused'; pausing the download and switching pages,
+  // returning to home reset status to idle and the paused progress UI was lost, only the
+  // "Download llama.cpp" button remained; now 'paused' should also return poll so the home page
+  // restores the paused progress area with resume/stop buttons
+  it('downloading/fetching/paused/extracting returns poll (resume polling during download), independent of installed param', () => {
+    for (const status of ['downloading', 'fetching', 'paused', 'extracting']) {
       expect(initialDownloadAction(status, false), `status=${status} should poll when not installed`).toBe('poll')
       expect(initialDownloadAction(status, true), `status=${status} should poll when installed`).toBe('poll')
     }
