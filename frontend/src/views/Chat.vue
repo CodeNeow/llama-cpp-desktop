@@ -22,6 +22,50 @@
         >
           {{ t('chat.clear') }}
         </button>
+        <button
+          class="chat-settings-btn"
+          @click.stop="showParams = !showParams"
+          :aria-expanded="showParams"
+          :title="t('chat.settings')"
+          type="button"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
+
+        <!-- 聊天参数面板 -->
+        <div v-if="showParams" class="params-popover" @click.stop>
+          <div class="params-header">{{ t('chat.settings') }}</div>
+          <div class="params-row">
+            <label class="params-label" for="chat-temp">{{ t('chat.temperature') }}</label>
+            <input id="chat-temp" class="params-input" type="number" step="0.05" min="0" max="2" v-model.number="chatParams.temperature" />
+          </div>
+          <div class="params-row">
+            <label class="params-label" for="chat-topp">{{ t('chat.topP') }}</label>
+            <input id="chat-topp" class="params-input" type="number" step="0.05" min="0" max="1" v-model.number="chatParams.topP" />
+          </div>
+          <div class="params-row">
+            <label class="params-label" for="chat-topk">{{ t('chat.topK') }}</label>
+            <input id="chat-topk" class="params-input" type="number" step="1" min="0" v-model.number="chatParams.topK" />
+          </div>
+          <div class="params-row">
+            <label class="params-label" for="chat-rep">{{ t('chat.repeatPenalty') }}</label>
+            <input id="chat-rep" class="params-input" type="number" step="0.05" min="1" max="2" v-model.number="chatParams.repeatPenalty" />
+          </div>
+          <div class="params-row">
+            <label class="params-label" for="chat-maxtok">{{ t('chat.maxTokens') }}</label>
+            <input id="chat-maxtok" class="params-input" type="number" min="-1" v-model.number="chatParams.maxTokens" />
+          </div>
+          <div class="params-row params-row-full">
+            <label class="params-label" for="chat-sys">{{ t('chat.systemPrompt') }}</label>
+            <textarea id="chat-sys" class="params-textarea" rows="2" v-model="chatParams.systemPrompt" :placeholder="t('chat.systemPromptPh')"></textarea>
+          </div>
+          <div class="params-footer">
+            <button class="params-reset-btn" @click="resetParams">{{ t('chat.resetDefaults') }}</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -110,17 +154,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick, watch } from 'vue'
+import { ref, computed, onMounted, nextTick, watch, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getServerStatus, getServerConfig } from '../wails'
 import { fetchRouterModels, streamChatCompletion, buildChatBody } from '../lib/chat'
-import { messages, selectedModel, streaming, chatAbortController, persistChat, type ChatMessage } from '../lib/chatState'
+import { messages, selectedModel, streaming, chatAbortController, persistChat, chatParams, persistChatParams, type ChatMessage, type ChatParams } from '../lib/chatState'
 import { t } from '../lib/i18n'
 
 const router = useRouter()
 
 const serverRunning = ref(false)
 const routerModels = ref<{ id: string; status: string }[]>([])
+
+/** 是否展开聊天参数面板 */
+const showParams = ref(false)
 
 const messagesContainer = ref<HTMLDivElement | null>(null)
 const inputBox = ref<HTMLTextAreaElement | null>(null)
@@ -131,6 +178,11 @@ const pendingImages = ref<string[]>([])
 
 function goToApi() {
   router.push('/api')
+}
+
+/** 点击面板外部区域关闭参数面板 */
+function onDocClick() {
+  showParams.value = false
 }
 
 function onModelChange(e: Event) {
@@ -144,6 +196,19 @@ function clearChat() {
   persistChat()
   inputBox.value?.focus()
   resetInputHeight()
+}
+
+/** 恢复聊天参数默认值（当前进行中的请求不受影响，下次发送生效）。 */
+function resetParams() {
+  Object.assign(chatParams, {
+    temperature: 0.8,
+    topP: 0.95,
+    topK: 40,
+    repeatPenalty: 1.1,
+    maxTokens: -1,
+    systemPrompt: '',
+  })
+  persistChatParams()
 }
 
 /** 输入框自适应 1-6 行高度：由 @input 触发，发送/清空后重置。 */
@@ -258,7 +323,8 @@ async function send() {
           scrollToBottom()
         }
       },
-      chatAbortController.current.signal
+      chatAbortController.current.signal,
+      { ...chatParams }
     )
   } catch (e: any) {
     // 停止生成（AbortError）：保留已生成内容；若一停止就没生成任何内容，移除空气泡
@@ -315,6 +381,11 @@ onMounted(async () => {
       routerModels.value = []
     }
   }
+  document.addEventListener('click', onDocClick)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', onDocClick)
 })
 </script>
 
@@ -343,11 +414,17 @@ onMounted(async () => {
   margin: 0;
 }
 
+/* 与 Downloads 等页面对齐，统一顶部标题到底部内容的间距 */
+.chat-page .page-header {
+  padding-bottom: 28px;
+}
+
 .chat-toolbar {
   display: flex;
   align-items: center;
   gap: 10px;
   padding-bottom: 16px;
+  position: relative; /* 参数面板定位基准 */
 }
 
 .chat-model-select {
@@ -382,6 +459,130 @@ onMounted(async () => {
 .chat-clear-btn:disabled {
   opacity: 0.35;
   cursor: default;
+}
+
+.chat-settings-btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.chat-settings-btn:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.chat-settings-btn[aria-expanded='true'] {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+/* ─── Params Popover ─── */
+.params-popover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 30;
+  width: 320px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  padding: 16px;
+}
+
+.params-header {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 10px;
+}
+
+.params-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.params-row-full {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.params-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.params-input {
+  width: 110px;
+  padding: 6px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 13px;
+  outline: none;
+}
+
+.params-input:focus {
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+.params-textarea {
+  width: 100%;
+  padding: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  outline: none;
+  resize: vertical;
+}
+
+.params-textarea:focus {
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+.params-textarea::placeholder {
+  color: var(--text-dim);
+}
+
+.params-footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.params-reset-btn {
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.params-reset-btn:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
 }
 
 /* ─── Offline ─── */

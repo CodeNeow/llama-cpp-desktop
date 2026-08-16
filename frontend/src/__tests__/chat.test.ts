@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseSSEChunks, buildChatBody, buildMessageContent } from '../lib/chat'
+import { parseSSEChunks, buildChatBody, buildMessageContent, type ChatParams } from '../lib/chat'
 
 describe('parseSSEChunks', () => {
   // 完整单行 JSON
@@ -86,7 +86,7 @@ describe('parseSSEChunks', () => {
 })
 
 describe('buildChatBody', () => {
-  it('返回含 model / messages / stream 的对象', () => {
+  it('无 params 时仅含 model / messages / stream，不含采样参数键', () => {
     const body = buildChatBody('m1', [
       { role: 'user', content: 'hi' },
       { role: 'assistant', content: 'hey' },
@@ -99,6 +99,56 @@ describe('buildChatBody', () => {
       ],
       stream: true,
     })
+  })
+
+  it('带 params 时顶层携带 temperature / top_p / top_k / repeat_penalty / max_tokens', () => {
+    const params: ChatParams = {
+      temperature: 0.7,
+      topP: 0.9,
+      topK: 20,
+      repeatPenalty: 1.05,
+      maxTokens: 1024,
+      systemPrompt: '',
+    }
+    const body = buildChatBody('m1', [{ role: 'user', content: 'hi' }], params) as Record<string, unknown>
+    expect(body).toMatchObject({
+      model: 'm1',
+      stream: true,
+      temperature: 0.7,
+      top_p: 0.9,
+      top_k: 20,
+      repeat_penalty: 1.05,
+      max_tokens: 1024,
+    })
+  })
+
+  it('systemPrompt 非空时在 messages 最前插入 system 消息', () => {
+    const params: ChatParams = {
+      temperature: 0.8,
+      topP: 0.95,
+      topK: 40,
+      repeatPenalty: 1.1,
+      maxTokens: -1,
+      systemPrompt: '你是一个有帮助的助手',
+    }
+    const body = buildChatBody('m1', [{ role: 'user', content: 'hi' }], params) as Record<string, unknown>
+    const msgs = body.messages as Array<{ role: string; content: string }>
+    expect(msgs[0]).toEqual({ role: 'system', content: '你是一个有帮助的助手' })
+    expect(msgs[1]).toEqual({ role: 'user', content: 'hi' })
+  })
+
+  it('systemPrompt 为空时不注入 system 消息', () => {
+    const params: ChatParams = {
+      temperature: 0.8,
+      topP: 0.95,
+      topK: 40,
+      repeatPenalty: 1.1,
+      maxTokens: -1,
+      systemPrompt: '',
+    }
+    const body = buildChatBody('m1', [{ role: 'user', content: 'hi' }], params) as Record<string, unknown>
+    const msgs = body.messages as Array<{ role: string; content: string }>
+    expect(msgs.every(m => m.role !== 'system')).toBe(true)
   })
 })
 

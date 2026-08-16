@@ -182,6 +182,15 @@ const messages: Record<Locale, Record<string, string>> = {
     'chat.emptyHint': '开始与模型对话吧',
     'chat.you': '你',
     'chat.assistant': '助手',
+    'chat.settings': '参数设置',
+    'chat.temperature': '温度',
+    'chat.topP': 'Top P',
+    'chat.topK': 'Top K',
+    'chat.repeatPenalty': '重复惩罚',
+    'chat.maxTokens': '最大生成 Token',
+    'chat.systemPrompt': '系统提示词',
+    'chat.systemPromptPh': '留空则不注入系统提示',
+    'chat.resetDefaults': '恢复默认',
 
     // ─── 监控（Api.vue 内嵌） ───
     'monitor.title': '监控',
@@ -547,6 +556,15 @@ const messages: Record<Locale, Record<string, string>> = {
     'chat.emptyHint': 'Start chatting with your model',
     'chat.you': 'You',
     'chat.assistant': 'Assistant',
+    'chat.settings': 'Sampling settings',
+    'chat.temperature': 'Temperature',
+    'chat.topP': 'Top P',
+    'chat.topK': 'Top K',
+    'chat.repeatPenalty': 'Repeat penalty',
+    'chat.maxTokens': 'Max tokens',
+    'chat.systemPrompt': 'System prompt',
+    'chat.systemPromptPh': 'Leave empty to omit system prompt',
+    'chat.resetDefaults': 'Reset defaults',
 
     // ─── Monitor (embedded in Api.vue) ───
     'monitor.title': 'Monitor',

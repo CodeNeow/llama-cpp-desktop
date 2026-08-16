@@ -13,6 +13,16 @@ export interface RouterModel {
   status: string
 }
 
+/** 聊天采样参数（与 chatState.ChatParams 保持一致，避免 chat 库对 chatState 的硬依赖） */
+export interface ChatParams {
+  temperature: number
+  topP: number
+  topK: number
+  repeatPenalty: number
+  maxTokens: number
+  systemPrompt: string
+}
+
 /**
  * 增量解析 SSE 响应文本块。
  *
@@ -55,9 +65,16 @@ export function parseSSEChunks(buffer: string): { deltas: string[]; rest: string
  * messages 的每一项可选带 images 数组（data URL），有图片时走 OpenAI 兼容
  * 多模态格式：content 变为 parts 数组，text 在前、图片在后，对齐 llama.cpp
  * webui 的发送方式。
+ *
+ * params 存在时，将采样参数注入请求体顶层；systemPrompt 非空时在 messages
+ * 最前插入 system 消息。
  */
-export function buildChatBody(model: string, messages: { role: string; content: string; images?: string[] }[]): object {
-  return {
+export function buildChatBody(
+  model: string,
+  messages: { role: string; content: string; images?: string[] }[],
+  params?: ChatParams
+): object {
+  const body: Record<string, unknown> = {
     model,
     messages: messages.map(m => ({
       role: m.role,
@@ -65,6 +82,22 @@ export function buildChatBody(model: string, messages: { role: string; content: 
     })),
     stream: true,
   }
+
+  if (params) {
+    body.temperature = params.temperature
+    body.top_p = params.topP
+    body.top_k = params.topK
+    body.repeat_penalty = params.repeatPenalty
+    body.max_tokens = params.maxTokens
+    if (params.systemPrompt) {
+      ;(body.messages as Array<{ role: string; content: string }>).unshift({
+        role: 'system',
+        content: params.systemPrompt,
+      })
+    }
+  }
+
+  return body
 }
 
 /**
@@ -114,12 +147,13 @@ export async function streamChatCompletion(
   model: string,
   messages: { role: string; content: string }[],
   onDelta: (text: string) => void,
-  signal: AbortSignal
+  signal: AbortSignal,
+  params?: ChatParams
 ): Promise<void> {
   const res = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(buildChatBody(model, messages)),
+    body: JSON.stringify(buildChatBody(model, messages, params)),
     signal,
   })
 
