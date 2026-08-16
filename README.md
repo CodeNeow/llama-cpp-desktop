@@ -7,7 +7,7 @@
 [![GitHub release](https://img.shields.io/github/v/release/CodeNeow/llama-cpp-desktop?logo=github&color=blue)](https://github.com/CodeNeow/llama-cpp-desktop/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/CodeNeow/llama-cpp-desktop/.github/workflows/ci.yml?branch=main&logo=githubactions&logoColor=white)](https://github.com/CodeNeow/llama-cpp-desktop/actions)
 
-A local LLM desktop manager for [llama.cpp](https://github.com/ggml-org/llama.cpp): discover, download and configure GGUF models, serve them all behind one OpenAI-compatible endpoint, and monitor inference in real time — without touching a command line. Built with Wails v2 (Go backend + Vue 3 frontend, no third-party UI framework).
+A user-friendly desktop GUI for [llama.cpp](https://github.com/ggml-org/llama.cpp) — visually configure cutting-edge GGUF models like Qwen3.8-27B, serve them all on one OpenAI-compatible endpoint, with built-in model downloads, local chat and real-time monitoring. Built with Wails v2 (Go backend + Vue 3 frontend, no third-party UI framework).
 
 ## Highlights
 

@@ -7,7 +7,7 @@
 [![GitHub release](https://img.shields.io/github/v/release/CodeNeow/llama-cpp-desktop?logo=github&color=blue)](https://github.com/CodeNeow/llama-cpp-desktop/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/CodeNeow/llama-cpp-desktop/.github/workflows/ci.yml?branch=main&logo=githubactions&logoColor=white)](https://github.com/CodeNeow/llama-cpp-desktop/actions)
 
-本地大模型桌面管理工具，基于 [llama.cpp](https://github.com/ggml-org/llama.cpp)：在一个窗口里完成 GGUF 模型的搜索、下载与参数配置，通过单一 OpenAI 兼容端点对外服务，并实时监控推理状态，全程无需命令行。桌面端基于 Wails v2（Go 后端 + Vue 3 前端，无第三方 UI 框架）。
+一个友好的 [llama.cpp](https://github.com/ggml-org/llama.cpp) 桌面图形客户端 —— 可视化配置 Qwen3.8-27B 等最新 GGUF 模型，多模型共享一个 OpenAI 兼容端点，内置模型下载、本地聊天与实时监控。基于 Wails v2（Go 后端 + Vue 3 前端，无第三方 UI 框架）。
 
 ## 功能亮点
 
