@@ -1,11 +1,11 @@
 blank_issues_enabled: false
 contact_links:
-  - name: 提问 / 讨论
+  - name: Ask a Question / Discussion
     url: https://github.com/CodeNeow/llama-cpp-desktop/discussions
-    about: 使用问题、设计讨论、功能设想请到 Discussions（若仓库未开启，请使用 Issues 的"Bug 报告"模板提问）。
-  - name: 贡献指南
+    about: For usage questions, design discussions, and feature ideas, use Discussions (if the repo does not have Discussions enabled, open an issue using the "Bug Report" template to ask).
+  - name: Contributor Guide
     url: https://github.com/CodeNeow/llama-cpp-desktop/blob/main/CONTRIBUTING.md
-    about: 首次贡献请先阅读 CONTRIBUTING.md（提交规范、验证门、Issue/PR 流程）。
-  - name: 安全漏洞（敏感）
+    about: First-time contributors should read CONTRIBUTING.md (commit conventions, quality gates, Issue/PR workflow).
+  - name: Security Vulnerability (Sensitive)
     url: https://github.com/CodeNeow/llama-cpp-desktop/security/advisories/new
-    about: 涉及凭据、注入、越权等敏感安全漏洞，请走 Security Advisory 私密上报，勿开公开 issue。
+    about: For sensitive security vulnerabilities involving credentials, injection, or privilege escalation, use Security Advisory for private reporting. Do not open a public issue.

@@ -1,26 +1,26 @@
-name: "Bug 报告"
-description: "使用过程中遇到的非预期行为。面向日常报 bug。"
-title: "[Bug] 简明描述"
+name: "Bug Report"
+description: "Unexpected behavior encountered during use. For filing everyday bugs."
+title: "[Bug] Brief description"
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        感谢反馈！请尽量填全信息，便于快速定位。
+        Thanks for reporting! Please fill in as much information as possible to help us investigate quickly.
 
   - type: textarea
     id: what-happened
     attributes:
-      label: 发生了什么？
-      description: 描述你看到的现象，以及你原本期望发生什么。
-      placeholder: "我看到 ……，但我期望 ……"
+      label: What happened?
+      description: Describe the behavior you observed and what you expected to happen instead.
+      placeholder: "I saw …, but I expected …"
     validations:
       required: true
 
   - type: textarea
     id: reproduce
     attributes:
-      label: 复现步骤
+      label: Reproduction Steps
       placeholder: |
         1.
         2.
@@ -35,40 +35,40 @@ body:
   - type: dropdown
     id: area
     attributes:
-      label: 受影响区域
+      label: Affected Area
       options:
-        - 前端 (frontend)
-        - 后端 (backend)
-        - 模型管理 / 扫描
-        - 模型下载 (HF Mirror)
-        - API 服务 / llama-server
-        - llama.cpp 安装 / 下载
-        - 配置 / 主题
-        - 其他
+        - Frontend
+        - Backend
+        - Model Management / Scanning
+        - Model Download (HF Mirror)
+        - API Service / llama-server
+        - llama.cpp Installation / Download
+        - Configuration / Theme
+        - Other
     validations:
       required: true
 
   - type: textarea
     id: env
     attributes:
-      label: 环境
-      description: 操作系统与版本、模型文件（GGUF 名称）、llama.cpp 版本、服务端口、复现频率。
-      placeholder: "Windows 11 / qwen2.5-7b-instruct-q4_k_m.gguf / llama.cpp b4466 / 每次必现"
+      label: Environment
+      description: Operating system and version, model file (GGUF name), llama.cpp version, service port, reproduction frequency.
+      placeholder: "Windows 11 / qwen2.5-7b-instruct-q4_k_m.gguf / llama.cpp b4466 / always reproducible"
     validations:
       required: false
 
   - type: textarea
     id: logs
     attributes:
-      label: 截图 / 日志
-      description: 如有界面截图、API 页服务日志、错误提示，请贴出。注意**先脱敏**（`llama-desktop-config.json` 可能含本机路径）。
+      label: Screenshots / Logs
+      description: If you have UI screenshots, API page service logs, or error messages, please attach them. **Redact sensitive information first** (`llama-desktop-config.json` may contain machine-specific paths).
     validations:
       required: false
 
   - type: checkboxes
     id: sanitized
     attributes:
-      label: 脱敏确认
+      label: Redaction Confirmation
       options:
-        - label: 我已确认本 issue 不含 token、密钥、本机绝对路径等敏感信息
+        - label: I confirm this issue contains no tokens, secrets, machine-specific absolute paths, or other sensitive information
           required: true

@@ -1,31 +1,31 @@
-name: "审计发现 / 结构化缺陷"
-description: "系统性审计、代码评审或测试中发现的具体缺陷。带证据和验收标准。"
-title: "[P?] 简明描述（一句话，含受影响组件/模块）"
+name: "Audit Finding / Structured Defect"
+description: "Concrete defects found during systematic audits, code reviews, or testing. Include evidence and acceptance criteria."
+title: "[P?] Brief description (one sentence, include affected component/module)"
 labels: ["bug", "frontend"]
 body:
   - type: markdown
     attributes:
       value: |
-        感谢记录缺陷。请按下方结构填写。证据必须给出 `文件:行号`，便于定位。
-        优先级请客观评估：P0 阻断功能/安全漏洞；P1 明显影响体验或安全；P2 中等；P3 打磨。
+        Thanks for recording a defect. Please fill in the structure below. Evidence must include `file:line` references to aid localization.
+        Assess priority objectively: P0 blocks functionality / security vulnerability; P1 clearly harms experience or security; P2 moderate; P3 polish.
 
   - type: dropdown
     id: priority
     attributes:
-      label: 优先级
+      label: Priority
       options:
-        - P0-critical（阻断功能 / 安全漏洞，必须立即修）
-        - P1-high（高优先级，明显影响体验或安全）
-        - P2-medium（中等，体验/一致性问题）
-        - P3-low（低优先级，打磨项）
+        - P0-critical (blocks functionality / security vulnerability, must fix immediately)
+        - P1-high (high priority, clearly harms experience or security)
+        - P2-medium (moderate, experience / consistency issue)
+        - P3-low (low priority, polish item)
     validations:
       required: true
 
   - type: input
     id: component
     attributes:
-      label: 受影响范围
-      description: 组件/文件路径或模块，例如 `frontend/src/views/Models.vue` 或 `engine.go`。
+      label: Affected Scope
+      description: Component / file path or module, e.g. `frontend/src/views/Models.vue` or `engine.go`.
       placeholder: "engine.go"
     validations:
       required: true
@@ -33,20 +33,20 @@ body:
   - type: textarea
     id: symptom
     attributes:
-      label: 现象
-      description: 这个缺陷是什么？发生了什么？尽量一句话说清核心问题。
+      label: Symptom
+      description: What is the defect? What is happening? State the core problem in one sentence if possible.
     validations:
       required: true
 
   - type: textarea
     id: reproduce
     attributes:
-      label: 复现步骤
-      description: 一步步的操作指令。如不可复现，写明触发条件。
+      label: Reproduction Steps
+      description: Step-by-step operation instructions. If not reproducible, describe the trigger conditions.
       placeholder: |
-        1. 打开 ...
-        2. 点击 ...
-        3. 观察 ...
+        1. Open ...
+        2. Click ...
+        3. Observe ...
       value: |
         1.
         2.
@@ -57,10 +57,10 @@ body:
   - type: textarea
     id: evidence
     attributes:
-      label: 证据
+      label: Evidence
       description: |
-        必须给出 `文件:行号` 和相关代码片段。多处证据一并列出。
-        引用代码用 ``` 包裹。
+        Must include `file:line` references and relevant code snippets. List multiple pieces of evidence together.
+        Wrap quoted code in ```.
       placeholder: |
         `frontend/src/views/Downloads.vue:185`
         ```vue
@@ -72,16 +72,16 @@ body:
   - type: textarea
     id: impact
     attributes:
-      label: 影响
-      description: 这个问题造成的后果（功能失效 / 数据丢失 / 安全风险 / 体验损害等）。
+      label: Impact
+      description: The consequences caused by this issue (functionality failure / data loss / security risk / experience harm, etc.).
     validations:
       required: true
 
   - type: textarea
     id: fix
     attributes:
-      label: 修复建议
-      description: 给出 diff 或伪代码。如有多种方案，列 A/B 并说明权衡。
+      label: Fix Suggestion
+      description: Provide a diff or pseudocode. If there are multiple approaches, list A/B with trade-offs.
       placeholder: |
         ```diff
         - foo()
@@ -93,11 +93,11 @@ body:
   - type: textarea
     id: acceptance
     attributes:
-      label: 验收标准
-      description: 可验证的检查项，用 `- [ ]` 列出。修复后逐项打勾。
+      label: Acceptance Criteria
+      description: Verifiable checklist items, listed as `- [ ]`. Check each item after the fix.
       placeholder: |
-        - [ ] 点击暂停 → 任务状态变为"已暂停"
-        - [ ] 对应验证门通过（go build / gofmt / npm run build）
+        - [ ] Click pause → task status becomes "paused"
+        - [ ] Corresponding quality gates pass (go build / gofmt / npm run build)
       value: |
         - [ ]
         - [ ]
@@ -107,17 +107,17 @@ body:
   - type: checkboxes
     id: gates
     attributes:
-      label: 验证门（修复时确认）
-      description: 按 AGENTS.md 要求，相关改动需通过对应验证门，并在 PR 中附结果。
+      label: Quality Gates (confirm at fix time)
+      description: Per AGENTS.md requirements, relevant changes must pass the corresponding quality gates, and results must be attached in the PR.
       options:
-        - label: 我已确认此修复需要跑 [后端 / 前端] 验证门，并会在 PR 中附结果
+        - label: I confirm this fix requires running [backend / frontend] quality gates, and I will attach results in the PR
           required: false
 
   - type: input
     id: tracker
     attributes:
-      label: 上级 Tracker issue（可选）
-      description: 若本 issue 属于某次审计批次，填写 Tracker issue 编号，例如 #3。
+      label: Parent Tracker Issue (optional)
+      description: If this issue belongs to an audit batch, fill in the Tracker issue number, e.g. #3.
       placeholder: "#3"
     validations:
       required: false

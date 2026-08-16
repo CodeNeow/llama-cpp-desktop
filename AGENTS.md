@@ -1,219 +1,225 @@
-# Llama Desktop 开发规范
+# Llama Desktop Development Guidelines
 
-## 项目概览
+## Project Overview
 
-Llama Desktop 是一个本地大模型桌面管理工具：基于 **Wails v2**（Go 1.25 后端 + WebView2 前端），前端为 **Vue 3 + TypeScript + Vite 5**（无第三方 UI 库，手写 CSS 变量主题），推理引擎为 **llama.cpp**（llama-server 路由器模式）。
+Llama Desktop is a local LLM desktop management tool built on **Wails v2** (Go 1.25 backend + WebView2 frontend). The frontend uses **Vue 3 + TypeScript + Vite 5** (no third-party UI library, hand-written CSS variable theming). The inference engine is **llama.cpp** (llama-server router mode).
 
-核心链路：`LLM-Models/` 目录扫描 GGUF → 逐模型推理参数配置 → 生成 llama-server 模型预设（INI）→ 启动 OpenAI 兼容服务（默认 `127.0.0.1:8080`）。
+Core pipeline: scan `LLM-Models/` for GGUF files → configure per-model inference parameters → generate llama-server model presets (INI) → launch an OpenAI-compatible service (default `127.0.0.1:8080`).
 
-## 常用命令
+## Common Commands
 
-在仓库根目录执行：
-
-```bash
-wails dev                 # 开发模式：Go 后端 + Vite 前端（:5173）热重载
-wails build               # 生产构建，产物 build/bin/llama-desktop.exe（build/ 已 gitignore）
-cd frontend && npm run build   # 仅构建前端（vue-tsc 类型检查 + vite build）
-cd frontend && npm run dev     # 仅起 Vite（无 Wails 运行时，后端调用会失败，见下文）
-```
-
-验证门（改动后按需执行，见「提交前测试分级」）：
+Run these from the repository root:
 
 ```bash
-go build ./...                                   # 后端编译
-go test ./...                                    # 后端单测（标准库 testing）
-gofmt -l .                                       # Go 格式化检查，必须无输出
-golangci-lint run                                # Go 静态检查（govet / ineffassign / unused）
-cd frontend && npm run build                     # 前端类型检查 + 构建（vue-tsc --noEmit 零错误）
-cd frontend && npm test                          # 前端单测（vitest）
-make check                                       # 组合验证门（POSIX）
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check.ps1  # 组合验证门（Windows）
+wails dev                 # Dev mode: Go backend + Vite frontend (:5173) hot-reload
+wails build               # Production build; output at build/bin/llama-desktop.exe (build/ is gitignored)
+cd frontend && npm run build   # Frontend only (vue-tsc type-check + vite build)
+cd frontend && npm run dev     # Vite only (without Wails runtime, backend calls will fail; see below)
 ```
 
-> 前端产物 `frontend/dist` 是 `go:embed` 的编译依赖（已 gitignore）。本机前端未构建时先执行 `npm run build` 或 `make check-frontend`，再跑后端验证门。
+Quality gates (run as needed after changes; see "Pre-commit Test Tiers"):
 
-## 架构与代码导航
+```bash
+go build ./...                                   # Backend compilation
+go test ./...                                    # Backend unit tests (standard library testing)
+gofmt -l .                                       # Go formatting check; must produce no output
+golangci-lint run                                # Go static analysis (govet / ineffassign / unused)
+cd frontend && npm run build                     # Frontend type-check + build (vue-tsc --noEmit zero errors)
+cd frontend && npm test                          # Frontend unit tests (vitest)
+make check                                       # Combined quality gate (POSIX)
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check.ps1  # Combined quality gate (Windows)
+```
 
-| 文件 | 职责 |
+> The frontend artifact `frontend/dist` is a compile-time dependency embedded via `go:embed` (gitignored). If the frontend has not been built locally, run `npm run build` or `make check-frontend` before running backend quality gates.
+
+## Architecture and Code Navigation
+
+| File | Responsibility |
 | --- | --- |
-| `main.go` | Wails 入口：窗口配置（1200×800、Frameless）、资源嵌入、绑定 `core.App`（根目录仅此一个源文件） |
-| `core/app.go` | 全部 Wails 绑定方法：配置 / 系统信息 / 模型 / 服务 / 下载 / 监控 / 更新（薄封装），以及 `Startup` / `Shutdown` 生命周期 |
-| `core/engine.go` | 核心逻辑：环境检测、GGUF 扫描、llama.cpp 下载（断点续传）、模型下载任务队列、HF Mirror 搜索、配置持久化、模型预设生成 |
-| `core/monitor.go` | 实时监控：服务日志 TPS 解析与 CPU / 内存 / GPU 采样 |
-| `core/modelscope.go` | ModelScope（魔搭）模型源：搜索、文件列表、描述与下载 URL 构建 |
-| `core/bridge.go` | 服务启停与下载触发的桥接实现 |
-| `core/hidewindow_windows.go` / `core/hidewindow_other.go` | 子进程隐藏控制台窗口（Windows 实现 / 其他平台 no-op） |
-| `core/*_test.go` | 后端单测（`runCmd` 跨平台、`hideWindow` 平台分支、config 持久化、GGUF 解析、模型扫描、预设生成、下载/HF/ModelScope 网络测试、监控、更新等） |
-| `frontend/src/wails.ts` | 前端调用后端的唯一入口（`window.go.core.App.*` 桥接层） |
-| `frontend/src/views/` | 页面：`Home`（系统状态）、`Downloads`（HF Mirror / ModelScope 搜索与下载队列）、`Models`（模型列表+设置弹窗）、`Api`（服务启停与实时监控，原 `Monitor` 页已并入）、`Settings`（主题 / 下载源 / 检查更新） |
-| `frontend/src/components/` | `Sidebar`、`ModelSettings`（模型参数弹窗）、`UpdateModal`（更新下载弹窗）、`TaskDock`（全局右下角任务卡片：下载进度 + 内存模型卸载） |
-| `frontend/src/__tests__/` | 前端单测（vitest，覆盖 `store.ts` 配置加载与 `lib/` 纯函数：格式化、下载队列 / 任务状态、监控采样、更新等） |
-| `frontend/wailsjs/` | Wails 自动生成的绑定，**勿手改**，`wails build` 时自动重新生成 |
+| `main.go` | Wails entry point: window config (1200×800, Frameless), asset embedding, binding `core.App` (only source file at repo root) |
+| `core/app.go` | All Wails binding methods: config / system info / models / service / download / monitor / update (thin wrappers), plus `Startup` / `Shutdown` lifecycle |
+| `core/engine.go` | Core logic: environment detection, GGUF scanning, llama.cpp download (resumable), model download task queue, HF Mirror search, config persistence, model preset generation |
+| `core/monitor.go` | Real-time monitoring: service log TPS parsing and CPU / memory / GPU sampling |
+| `core/modelscope.go` | ModelScope source: search, file listing, description and download URL construction |
+| `core/bridge.go` | Service start/stop and download trigger bridge implementation |
+| `core/hidewindow_windows.go` / `core/hidewindow_other.go` | Hide child-process console windows (Windows implementation / other platforms no-op) |
+| `core/*_test.go` | Backend unit tests (`runCmd` cross-platform, `hideWindow` platform branch, config persistence, GGUF parsing, model scanning, preset generation, download/HF/ModelScope network tests, monitor, update, etc.) |
+| `frontend/src/wails.ts` | Sole frontend entry for calling the backend (`window.go.core.App.*` bridge layer) |
+| `frontend/src/views/` | Pages: `Home` (system status), `Downloads` (HF Mirror / ModelScope search and download queue), `Models` (model list + settings modal), `Api` (service start/stop and real-time monitor; former `Monitor` page merged in), `Settings` (theme / download source / check for updates) |
+| `frontend/src/components/` | `Sidebar`, `ModelSettings` (model parameter modal), `UpdateModal` (update download modal), `TaskDock` (global bottom-right task card: download progress + in-memory model unload) |
+| `frontend/src/__tests__/` | Frontend unit tests (vitest, covering `store.ts` config loading and `lib/` pure functions: formatting, download queue / task status, monitor sampling, update, etc.) |
+| `frontend/wailsjs/` | Wails auto-generated bindings — **do not edit manually**; regenerated on `wails build` |
 
-## Wails 绑定机制（重要）
+## Wails Binding Mechanism (Important)
 
-- 后端方法在 `core/app.go` 中以 `func (a *App) Xxx(...)` 声明，根 `main.go` 将 `core.NewApp()` 加入 `Bind` 列表暴露给前端。`App` 生命周期方法为导出的 `Startup` / `Shutdown`，由 `main.go` 的 `OnStartup` / `OnShutdown` 引用。
-- 前端统一在 `frontend/src/wails.ts` 中用 `window.go.core.App.Xxx(...)` 调用（方法返回 Promise）。**命名空间 `core` 来自 Go 包名 `core`**：若未来改包名或换绑定类型，`wails.ts` 的 `app()` 与 `wailsjs/go/` 下生成的绑定都要同步变化。新增 / 修改后端方法时，必须同步更新 `wails.ts` 中的封装，并保持命名一致。
-- `window.go` 仅由 Wails 运行时注入。单独运行 `vite`（无 `wails dev`）时所有后端调用会抛错——这是预期行为，不是 bug。若需脱离 Wails 单独调试前端界面，可在页面加载前注入一个实现全部绑定方法的 `window.go` mock（仓库不含该 mock，需自行准备）。
-- 后端返回结构体时，JSON 字段名以结构体 tag 为准（如 `DlTask` 的 `sizeHuman`）。修改返回结构后检查前端对应 interface 是否同步。
+- Backend methods are declared in `core/app.go` as `func (a *App) Xxx(...)`. The root `main.go` adds `core.NewApp()` to the `Bind` list to expose them to the frontend. `App` lifecycle methods are exported as `Startup` / `Shutdown`, referenced by `main.go`'s `OnStartup` / `OnShutdown`.
+- The frontend calls exclusively through `frontend/src/wails.ts` using `window.go.core.App.Xxx(...)` (methods return Promise). **The `core` namespace comes from the Go package name `core`**: if the package name or binding type ever changes, `wails.ts`'s `app()` and the generated bindings under `wailsjs/go/` must all be updated in sync. When adding or modifying backend methods, always update the wrappers in `wails.ts` and keep naming consistent.
+- `window.go` is injected only by the Wails runtime. Running `vite` standalone (without `wails dev`) causes all backend calls to throw — this is expected behavior, not a bug. To debug the frontend UI standalone without Wails, inject a `window.go` mock that implements all binding methods before page load (the repo does not include this mock; provide your own).
+- When the backend returns structs, JSON field names follow struct tags (e.g., `DlTask`'s `sizeHuman`). After modifying a returned struct, verify that the corresponding frontend interface stays in sync.
 
-## 多角色协作与工作流
+## Multi-role Collaboration and Workflows
 
-本文件面向所有 Agent 工具，但下列角色规则不是同时适用于每个工具。角色由用户在**任务开头的明确分工**决定：用户说「你是主审」，该会话承担主审职责；用户说「你是 agent 实施」（或交付实施任务包），承担实施 Agent 职责；用户说「你是 issues 发现者」，承担 Issues 发现者职责。实施 Agent 默认由 `general-purpose` 子代理承担。仅仅读取 `AGENTS.md`、使用某个厂商的模型，或完成实现和自测，都不会自动获得主审权限。
+This file covers all Agent tools, but the role rules below do not all apply to every tool simultaneously. Roles are determined by **explicit task instructions from the user at the start of the task**: if the user says "you are the reviewer", that session assumes reviewer duties; if the user says "you are the implementation agent" (or delivers an implementation task package), that session assumes implementation agent duties; if the user says "you are the issues finder", that session assumes issues finder duties. The implementation agent defaults to a `general-purpose` sub-agent. Simply reading AGENTS.md, using a vendor model, or completing implementation and self-testing does not automatically grant reviewer privileges.
 
-未声明角色时，按本文件其余章节的规则正常执行任务（含按「本地提交策略」直接提交）。除非用户在当前任务中明确改派角色，同一批次只能有一个主审。实施 Agent 不得自行升级为主审、批准自己的改动或把自报完成视为最终验收；主审也不得因自己能够修改代码而默认取代用户已选择的实施 Agent。
+When no role is declared, follow the remaining rules in this file normally (including direct commits per the "Local Commit Strategy"). Unless the user explicitly reassigns roles within the current task, only one reviewer may exist per batch. Implementation agents must not promote themselves to reviewer, approve their own changes, or treat their own completion report as final acceptance; reviewers must not assume the user's chosen implementation agent's role just because they could edit code themselves.
 
-所有 Agent 都必须保护无关用户改动，遵守本文件的范围纪律、验证门、仓库卫生与远程/破坏性操作限制；不得通过删除失败测试、跳过验证门或扩大豁免获得绿色结果。
+All agents must protect unrelated user changes and respect this file's scope discipline, quality gates, repo hygiene, and remote/destructive operation limits. Do not delete failing tests, skip quality gates, or expand exemptions to get a green result.
 
-在不降低架构边界、行为正确性、测试覆盖与验证门的前提下，所有方案和实施都应优化端到端完成时间：优先消除可预见的返工，合并同一所有权范围内必需的生产改动与测试，并行执行互不冲突的只读检查；不得通过扩大豁免、降低断言、跳过测试或扩大未审查范围换取速度。
+Without compromising architecture boundaries, behavioral correctness, test coverage, or quality gates, all plans and implementations should optimize end-to-end completion time: eliminate foreseeable rework first, merge required production changes and tests within the same ownership scope, and parallelize non-conflicting read-only checks. Do not trade speed for expanded exemptions, lowered assertions, skipped tests, or widened unreviewed scope.
 
-本文件只保留持久不变量与验证纪律；阶段状态、任务包、债务清单、决策与带日期证据放在 issue 评论或 `docs/` 权威文档中。任何 Agent 的完成报告都不是最终验收的事实来源。
+This file retains only persistent invariants and verification discipline; stage status, task packages, debt lists, decisions, and date-stamped evidence belong in issue comments or `docs/` authoritative documents. No agent's completion report is a final-acceptance source of truth.
 
-### 主审职责（用户声明「你是主审」时适用）
+### Reviewer Responsibilities (applies when the user declares "you are the reviewer")
 
-- 主审的核心输入是**用户下达的命令与目标**，而不是 issues。用户下达任务后，主审负责把目标转化为可执行的方案，并在整个任务生命周期内**持久制定方案、持久验证**：方案随实施反馈持续更新，验证覆盖每一轮实施而非只在结尾。
-- 完整闭环：理解用户命令与目标 → 制定方案 → 拆任务包交给实施 Agent → 审查实际 diff → 运行验证门 → 验收 → 按「本地提交策略」创建本地提交。
-- 主审**不得自行实施**：实施一律由实施 Agent（默认 `general-purpose` 子代理）承担，避免自审自批；仅当用户在当前任务中明确要求主审直接实施时例外。
-- 拉取与核对 issues 是主审的**可选输入**，不是默认起点：当用户要求、或任务涉及修复既有 issue 时，使用 `gh issue list` / `gh issue view <N>` 拉取远程 issues；对每个 issue 复现或定位到 `file:line` 证据，确认问题真实存在。不存在的在评论中说明结论，不规划修复。
-- 制定方案：按用户目标、影响与风险排出优先级，规划修复方案；方案可作为一个整体任务包，也可拆成多个任务包，均交给实施 Agent 执行。每个任务包必须写明：目标、允许修改的路径、禁止触碰的路径、预期行为、必须新增或更新的测试、必跑验证命令、交付证据与明确退出条件。
-- 审查顺序固定为先审查实际 diff、授权路径、关键行为与聚焦测试，再运行昂贵的完整验证门（`make check` / `scripts/check.ps1`，见「提交前测试分级」）。静态审查或聚焦复核发现阻塞问题时，先形成修复任务包，不提前运行完整门。
-- 持久验证：每一轮实施返回后，主审都必须重新读取实际 diff，按规范符合性、实现质量、边界与行为、测试充分性逐项审查，并亲自运行适用验证命令，不得仅依据实施 Agent 的自报总结。发现阻塞问题、测试失败、验收证据缺失或债务增长时不得提交，必须形成带文件、行为和命令证据的修复任务包继续处理，直到本批次全部退出条件满足。
-- 只有主审可以在验收通过后按「本地提交策略」创建本地提交；提交正文记录验证门实际结果。
+- The reviewer's core input is **the commands and goals issued by the user**, not issues. After the user assigns a task, the reviewer converts the goal into an executable plan and **persistently drives the plan and verification** across the task lifecycle: the plan evolves with implementation feedback, and verification covers every implementation round, not just the final one.
+- Full closed loop: understand the user's command and goal → formulate a plan → break into task packages for the implementation agent → review actual diffs → run quality gates → accept → create a local commit per the "Local Commit Strategy".
+- The reviewer **must not self-implement**: all implementation is done by the implementation agent (default `general-purpose` sub-agent) to avoid self-review. This exception applies only when the user explicitly requests the reviewer to implement directly in the current task.
+- Pulling and reviewing issues is an **optional input** for the reviewer, not the default starting point: when the user requests it, or when the task involves fixing existing issues, use `gh issue list` / `gh issue view <N>` to pull remote issues. For each issue, reproduce or locate `file:line` evidence to confirm it is real. For non-existent issues, explain the conclusion in a comment and do not plan a fix.
+- Plan formulation: prioritize by user goals, impact, and risk; the plan may be a single task package or multiple packages, all delivered to the implementation agent. Each task package must state: goal, allowed modification paths, forbidden paths, expected behavior, required new or updated tests, mandatory verification commands, delivery evidence, and explicit exit criteria.
+- Review order is fixed: review actual diff, authorized paths, key behavior, and focused tests first, then run expensive full quality gates (`make check` / `scripts/check.ps1`; see "Pre-commit Test Tiers"). When static review or focused review reveals blocking issues, form a fix task package first; do not run the full gate early.
+- Persistent verification: after every implementation round, the reviewer must re-read the actual diff, review against specification compliance, implementation quality, boundary and behavior, and test sufficiency item by item, and personally run applicable verification commands. Do not rely solely on the implementation agent's self-report. Blocking issues, test failures, missing acceptance evidence, or growing technical debt mean no submission — form a fix task package with file, behavior, and command evidence and continue until all exit criteria for the batch are met.
+- Only the reviewer may create a local commit after acceptance is verified; the commit body records actual quality gate results.
 
-### 实施 Agent 职责（默认由 `general-purpose` 子代理承担；用户声明「你是 agent 实施」时由该会话承担）
+### Implementation Agent Responsibilities (defaults to `general-purpose` sub-agent; applies when the user declares "you are the implementation agent")
 
-- 实施 Agent 负责按任务包（或用户指示）实现与验证：只修改授权范围内的路径和行为；实现预期行为与测试；运行指定验证命令；报告修改文件、关键设计决定、实际命令与完整结果、已知限制与未完成项。自报通过仅是待主审复核的交付证据。
-- 授权范围内可确定性验证的机械修复、测试补齐、格式收口应直接完成，不因可自行解决的小问题暂停；只有需要扩大授权路径、改变行为或验证契约、降低验证门，或执行远程/破坏性操作时才停止并请求方向。
-- 实施 Agent 不得执行 `git add`、commit、push、PR、merge 等操作；实现和自测完成后停止在未暂存工作树，等待主审审查或用户指示。发现的问题由主审形成修复任务包后在下一轮继续。
+- The implementation agent is responsible for implementing and verifying per the task package (or user instructions): only modify paths and behavior within the authorized scope; implement expected behavior and tests; run specified verification commands; report modified files, key design decisions, actual commands and full results, known limitations, and unfinished items. Self-reported pass is only delivery evidence pending reviewer re-validation.
+- Mechanical fixes, test additions, and formatting cleanups that are deterministically verifiable within the authorized scope should be completed directly without pausing for minor self-resolvable issues; only stop and request direction when the work requires expanding authorized paths, changing behavior or verification contracts, lowering quality gates, or executing remote/destructive operations.
+- The implementation agent must not run `git add`, `commit`, `push`, PR, `merge`, or similar operations. After implementation and self-testing, stop at an unstaged working tree and wait for reviewer review or user instructions. Issues found by the implementation agent become fix task packages in the next round by the reviewer.
 
-### Issues 发现者职责（用户声明「你是 issues 发现者」时适用）
+### Issues Finder Responsibilities (applies when the user declares "you are the issues finder")
 
-- Issues 发现者负责查找项目中真实存在的问题，验证后按「Issue 跟踪」章节规范提交到远程仓库 issues。
-- **验证流程（交互优先）**：优先使用 Playwright MCP 以真实用户交互行为发现功能缺陷——按核心流程逐项操作，例如：主页系统信息加载、模型扫描与参数设置、服务启停与 API 调用、下载任务管理、主题切换等。交互层面确认问题存在后，再回到代码定位根因（`file:line` 证据）。
-- 仅当交互验证通过（核心功能无问题）时，才转向代码审计查找非交互类问题（样式、a11y、i18n、安全、死代码、文档缺口等）。
-- 用户指定该角色即视为授权创建远程 issue，但提交前必须核对仓库现有 issues 避免重复，且遵循「Issue 跟踪」章节全部规范：表单模板、严重度前缀与 label、`file:line` 证据、验收标准、正文脱敏。批量发现先创建 Tracker 总览 issue，P0/P1 单独建子 issue，P2/P3 合并汇总。
-- 敏感安全漏洞（凭据泄漏、注入、越权等）不开公开 issue，通过 GitHub Security Advisories 私密上报。
-- 该授权仅覆盖创建/维护 issue；推送、开 PR、merge 等其他远程操作仍需用户明确授权。
-- 创建/更新远程 issue 同样适用「Git 工作流」的重试规则：网络类失败间隔一段时间重试，多次仍失败或属认证/权限类错误时报告暂停。
+- The issues finder is responsible for finding real problems in the project, verifying them, and submitting remote issues per the "Issue Tracking" chapter rules.
+- **Verification process (interaction-first)**: prefer Playwright MCP to discover functional defects via real user interactions — operate through the core flows item by item, such as: home page system info loading, model scanning and parameter settings, service start/stop and API calls, download task management, theme switching, etc. After interactive confirmation that the problem exists, return to the code to locate the root cause (`file:line` evidence).
+- Only when interactive verification passes (core functionality is sound) does the issues finder shift to code audit for non-interactive issues (style, a11y, i18n, security, dead code, documentation gaps, etc.).
+- When the user assigns this role, it is treated as authorization to create remote issues. Before submitting, cross-check existing remote issues to avoid duplicates, and follow all rules in the "Issue Tracking" chapter: form templates, severity prefixes and labels, `file:line` evidence, acceptance criteria, and body redaction. For batch findings, create a top-level Tracker overview issue first; create separate child issues for each P0/P1 finding; P2/P3 may be merged into a summary issue.
+- Sensitive security vulnerabilities (credential leaks, injection, privilege escalation, etc.) must not be filed as public issues. Report them privately via GitHub Security Advisories (`Security > Report a vulnerability`). After the fix lands, a non-sensitive tracking issue may be opened.
+- This authorization covers only issue creation and maintenance; push, open PR, merge, and other remote operations still require explicit user authorization.
+- Creating or updating remote issues is also subject to the "Git Workflow" retry rules: for network failures, wait a period (e.g., 30–60 seconds) and retry; multiple retries at different times usually succeed. Only report and pause when the failure is confirmed to be an authentication, permission, or conflict error, or when consecutive retries still fail.
 
-## Git 工作流
+## Git Workflow
 
-- 默认在本地 `main` 分支上直接提交，非必要不新建分支。仅当用户明确要求、或改动需要隔离评审（如准备发 PR 给外部协作者）时才创建特性分支，并在任务前说明理由。
-- 角色化协作时（见「多角色协作与工作流」），本地提交仅由承担主审职责的会话执行；被声明为实施 Agent 的会话停止在未暂存工作树，不提交。
-- 不要自作主张切换或创建分支；提交前若对分支选择有疑问，先与用户确认。
-- 推送、合并到远程、开 PR 等远程操作必须经用户明确授权后才执行。
-- 特性分支是临时性的，PR 合并后必须立即删除（远程 `git push origin --delete <branch>` 与本地 `git branch -D <branch>` 都要删）；合并时可尝试 `gh pr merge --delete-branch`，若未生效需手动补删，不留已合并的残留分支。
-- 远程操作（推送、`gh issue create` 等）可能因网络不稳定而失败：失败后不要立即判定为失败，应等待一段时间（如 30~60 秒）后重试，不同时间多试几次通常可以成功；仅当确认是认证、权限、冲突等非网络错误，或连续多次仍失败时，才报告并暂停等待用户指示。
+- By default, commit directly to the local `main` branch; only create feature branches when the user explicitly requests it or when changes need isolated review (e.g., preparing a PR for an external collaborator), and state the reason before the task.
+- In role-based collaboration (see "Multi-role Collaboration and Workflows"), local commits are made only by the session holding reviewer duties; sessions declared as implementation agents stop at an unstaged working tree and do not commit.
+- Do not switch or create branches on your own initiative; if unsure about branch choice before committing, confirm with the user first.
+- Remote operations (push, `gh issue create`, etc.) require explicit user authorization before execution.
+- Feature branches are temporary and must be deleted immediately after PR merge (both remote `git push origin --delete <branch>` and local `git branch -D <branch>`); on merge, try `gh pr merge --delete-branch`; if that does not take effect, manually clean up to avoid leftover merged branches.
+- Remote operations (push, `gh issue create`, etc.) may fail due to unstable network: do not declare failure immediately; wait a period (e.g., 30–60 seconds) and retry. Multiple retries at different times usually succeed. Only report and pause when the failure is confirmed to be a non-network error such as authentication, permission, or conflict, or when consecutive retries still fail.
 
-## 代码规范
+## Code Standards
 
-### Go 后端
+### Go Backend
 
-- 所有 Go 代码通过 `gofmt`、`go build ./...` 与 `golangci-lint run`（govet / ineffassign / unused 零诊断）；错误不得吞掉，用 `fmt.Errorf("...: %w", err)` 包装上下文。
-- 并发共享状态使用显式互斥（项目惯例：`configMu` / `serverLogsMu` / `downloadMu` / `dlTasksMu` 等），不得新增无锁共享变量。
-- 下载类状态机（`downloadState.Status`）取值：`idle / fetching / downloading / paused / extracting / done / error`，新增状态需同步前端 `statusLabel` 映射。
-- 日志统一 `log.Println` 并加前缀（`[INFO]` / `[WARN]` / `[ERROR]` / `[OK]`），服务日志走 `serverLogs` 环形缓冲。
-- 启动外部子进程必须调用 `hideWindow(cmd)`，避免 GUI 应用弹出控制台窗口（见 `hidewindow_windows.go`）。
-- 新行为必须带聚焦测试：测试使用标准库 `testing`，放同包 `*_test.go`，中文注释说明被测行为与断言依据。
+- All Go code must pass `gofmt`, `go build ./...`, and `golangci-lint run` (zero diagnostics for govet / ineffassign / unused); never swallow errors — wrap them with context using `fmt.Errorf("...: %w", err)`.
+- Concurrent shared state uses explicit mutexes (project convention: `configMu` / `serverLogsMu` / `downloadMu` / `dlTasksMu`, etc.); do not introduce new unlocked shared variables.
+- Download state machine (`downloadState.Status`) values: `idle / fetching / downloading / paused / extracting / done / error`; new states must be synced with the frontend `statusLabel` mapping.
+- Logs use `log.Println` with a consistent prefix (`[INFO]` / `[WARN]` / `[ERROR]` / `[OK]`); service logs flow through the `serverLogs` ring buffer.
+- Launching external child processes must call `hideWindow(cmd)` to prevent GUI applications from flashing a console window (see `hidewindow_windows.go`).
+- New behavior must include focused tests: use the standard library `testing`, placed in same-package `*_test.go`; write concise English comments describing the behavior under test.
 
-### Vue / TypeScript 前端
+### Vue / TypeScript Frontend
 
-- `npm run build`（vue-tsc strict）必须零错误；不留未使用变量、导入与死代码。
-- 样式统一使用 `var(--cn-*)` 之外本项目自定义的语义 token（`--bg-primary` / `--surface` / `--text-primary` / `--border` 等），深浅主题通过 `html[data-theme]` 切换；新增颜色必须同时提供深 / 浅两套取值。
-- 组件 props / emits 使用 `defineProps<T>` / `defineEmits` 类型化；不出现 `any`（测试与 mock 除外）。
-- 页面新增必须在 `router/index.ts` 注册路由并添加侧边栏导航项（`Sidebar.vue` 的 `navItems`）。
-- 用户可见文案使用中文，与现有页面风格保持一致。
-- 行为改动必须新增或更新 vitest 聚焦测试（`src/__tests__/`）；只 mock 有副作用的依赖链（Wails 桥接、网络、时间），不 mock 纯函数或纯数据模块。
+- `npm run build` (vue-tsc strict) must produce zero errors; no unused variables, imports, or dead code.
+- Styles use the project's own semantic tokens beyond `var(--cn-*)` (`--bg-primary` / `--surface` / `--text-primary` / `--border`, etc.); light/dark themes are switched via `html[data-theme]`; new colors must provide both light and dark values.
+- Component props / emits use `defineProps<T>` / `defineEmits` typed; `any` must not appear (tests and mocks are exempt).
+- New pages must register a route in `router/index.ts` and add a sidebar navigation item (`Sidebar.vue`'s `navItems`).
+- User-visible copy is bilingual via the i18n dictionary (`lib/i18n.ts`); never hardcode UI strings. Comments are in English throughout.
+- Behavior changes must add or update focused vitest tests (`src/__tests__/`); only mock side-effect-bearing dependency chains (Wails bridge, network, time). Do not mock pure functions or pure data modules.
 
-### 通用
+### General
 
-- 修复 bug 时改动仅限故障点及其配套文件，不混入无关重构。
-- 改动跨前后端（如新增绑定方法）时，`app.go`、`wails.ts` 与前端调用方必须一次提交到位，避免中间态。
-- 涉及下载状态机、服务启停、配置文件结构（`llama-desktop-config.json`）的改动，需同时检查旧数据兼容（`loadConfig` 的默认值兜底逻辑）。
-- 新行为必须带聚焦测试；修改或删除既有测试需说明原因，不得为通过验证门而删除断言。
+- When fixing bugs, limit changes to the fault site and its related files; do not mix in unrelated refactoring.
+- For cross-frontend-backend changes (e.g., adding binding methods), `app.go`, `wails.ts`, and the frontend caller must be updated in a single commit to avoid intermediate states.
+- For changes involving the download state machine, service start/stop, or config file structure (`llama-desktop-config.json`), also verify backward compatibility of old data (`loadConfig`'s default-value fallback logic).
+- New behavior must include focused tests; when modifying or deleting existing tests, explain the reason. Do not delete assertions to pass quality gates.
 
-## 提交前测试分级
+## Pre-commit Test Tiers
 
-验证强度以行为风险和所有权边界为主，文件数量只作为兜底信号，不能单独证明风险高低。
+Verification strength is determined primarily by behavioral risk and ownership boundaries; file count is only a fallback signal and cannot alone prove risk level.
 
-- **免测试提交**：仅修改文档，或仅修改不影响编译、lint 与运行时行为的注释。跳过测试套件，执行 `git diff --check` 及适用的文档检查。
-- **局部提交**：同一模块或同一所有权范围内通常不超过 3 个非文档文件，且不命中高风险条件。运行受影响一侧的验证门（后端：`go build` + `go test` + `gofmt -l` + `golangci-lint run`；前端：`npm run build` + `npm test`）与受影响的聚焦测试。
-- **中等提交**：4-5 个非文档文件但仍局限于同一模块、行为单一且有明确聚焦覆盖时，可继续采用局部验证；必须在提交正文说明范围与未跑全量的依据。
-- **全量提交**：跨模块或跨所有权联动、高风险行为变更，或者修改 6 个及以上非文档文件且不能证明只是局部机械变更。运行完整 `make check` / `scripts/check.ps1`。
-- 无论文件数量多少，以下情况都属于全量提交：
-  - 改动配置持久化结构、共享状态、服务启停逻辑、下载状态机；
-  - 新增后端绑定方法、API 端点或对外协议/响应结构；
-  - 改动共享测试基础设施、CI 配置或验证门脚本本身。
-- 文件数量统计排除纯文档、纯注释和由同一命令机械生成且已做漂移验证的产物；新增测试、fixture、快照和配置属于非文档文件。
-- 要求执行的验证只要有一项不通过，就绝对不能提交；必须修复后重新运行相应验证并确认通过。
-- **当前测试基线**：后端已有覆盖 `core` 包的聚焦测试（config 持久化、GGUF 解析、模型扫描、预设生成、下载/HF/ModelScope 网络测试、系统解析、服务命令构建等）；前端有 `store.ts` 与 `lib/` 纯函数的 vitest。新增行为必须补聚焦测试，不得以「没有测试框架」为由跳过。
+- **No-test commit**: changes documentation only, or changes only comments that do not affect compilation, lint, or runtime behavior. Skip the test suite; run `git diff --check` and applicable documentation checks.
+- **Local commit**: typically no more than 3 non-documentation files within the same module or ownership scope, and does not hit high-risk conditions. Run the affected side's quality gates (backend: `go build` + `go test` + `gofmt -l` + `golangci-lint run`; frontend: `npm run build` + `npm test`) and the affected focused tests.
+- **Medium commit**: 4–5 non-documentation files but still confined to the same module, with a single behavior and clear focused coverage; local verification may continue. The commit body must explain the scope and the rationale for not running the full suite.
+- **Full commit**: cross-module or cross-ownership linkage, high-risk behavioral changes, or 6+ non-documentation files that cannot be proven to be purely local mechanical changes. Run the full `make check` / `scripts/check.ps1`.
+- Regardless of file count, the following always qualify as full commits:
+  - Changes to config persistence structure, shared state, service start/stop logic, or the download state machine;
+  - New backend binding methods, API endpoints, or external protocol/response structures;
+  - Changes to shared test infrastructure, CI configuration, or the quality gate scripts themselves.
+- File count excludes pure documentation, pure comments, and artifacts mechanically generated by the same command that have been verified for drift; new tests, fixtures, snapshots, and configs count as non-documentation files.
+- If any required verification command fails, the commit must not proceed; fix the failure, re-run the applicable verification, and confirm it passes before proceeding.
+- **Current test baseline**: the backend has focused tests covering the `core` package (config persistence, GGUF parsing, model scanning, preset generation, download/HF/ModelScope network tests, system parsing, service command construction, etc.); the frontend has vitest for `store.ts` and `lib/` pure functions. New behavior must include focused tests; do not skip tests citing "no test framework".
 
-## 本地提交策略
+## Local Commit Strategy
 
-使用 `type(scope): 中文主题` 的 Conventional Commit 格式，主题保持一行；既有类型：`feat` / `fix` / `docs` / `chore` / `refactor` / `test` / `perf` / `security`，scope 如 `backend` / `frontend` / `build` / `models` / `server` / `downloads` / `config` 等，仅在有意义时使用。
+Use Conventional Commits in the form `type(scope): English subject`, with the subject on a single line. Existing types: `feat` / `fix` / `docs` / `chore` / `refactor` / `test` / `perf` / `security`. Scopes such as `backend` / `frontend` / `build` / `models` / `server` / `downloads` / `config` etc., used only when meaningful.
 
-详细正文必须包含以下结构：
+The detailed body must include the following structure:
 
 ```text
 Summary:
-- <主要变化，按域分段：Backend / Frontend / Tests / Docs 等>
+- <primary changes, grouped by domain: Backend / Frontend / Tests / Docs, etc.>
 
 Verification:
-- <实际执行的验证命令与通过结果，全量提交必须记录完整验证门结果>
+- <actual verification commands run and pass results; full commits must record complete quality gate results>
 
 Remaining gaps:
-- <明确说明未包含的后续工作；没有则写 None>
+- <explicitly state unfinished follow-up work; write None if there are none>
 ```
 
-- 按明确路径逐个暂存文件。提交前检查 `git status --short`、`git diff --cached --stat` 与 `git diff --cached --check`；提交后工作树必须干净。
-- 外部实施 Agent 不得暂存或提交；只有主审在重新审查实际 diff、确认任务包退出条件全部满足并亲自完成所需验证后可以提交。审查有问题时先进入下一轮修复，不提交。
+- Stage files by explicit path. Before committing, check `git status --short`, `git diff --cached --stat`, and `git diff --cached --check`; the working tree must be clean after commit.
+- External implementation agents must not stage or commit; only the reviewer may do so after re-reviewing the actual diff, confirming all task package exit criteria are met, and personally completing the required verification. If review reveals issues, enter the next fix round without committing.
 
-## 版本发布
+## Versioning and Releases
 
-- 更新日志的权威来源是根目录 `CHANGELOG.md`：发版前先新增对应版本条目（含日期与逐提交核心改动），**tag 注解消息与 GitHub Release 正文均从该条目复制**，保持一致；不依赖 GitHub「自动生成发布说明」（本仓库直接提交 main、无 PR，自动生成只产生 compare 链接）。
-- 版本标签为注解标签 `git tag -a vX.Y.Z`，消息取自 CHANGELOG 条目；发版前先确认验证门通过，推送 tag 属远程操作需用户授权。
-- GitHub Release 正文不会自动同步 tag 消息：创建/更新 Release 时从 CHANGELOG 条目粘贴正文，该操作属远程操作需用户明确授权。
+- The authoritative source for changelogs is the root `CHANGELOG.md`: before a release, add the corresponding version entry (with date and per-commit core changes). **Tag annotation messages and GitHub Release bodies are copied from this entry** to keep them in sync; do not rely on GitHub "auto-generate release notes" (this repo commits directly to main with no PRs, so auto-generation only produces a compare link).
+- Version tags are annotated tags (`git tag -a vX.Y.Z`) with the message taken from the CHANGELOG entry. Before tagging, confirm quality gates pass. Pushing tags is a remote operation and requires user authorization.
+- GitHub Release bodies are not automatically synced from tag messages: when creating or updating a Release, paste the body from the corresponding CHANGELOG entry. This is a remote operation requiring explicit user authorization.
 
-## 仓库卫生
+## Documentation Language
 
-- 提交前 `git status --short` 只包含本次任务有意改动的文件；`git diff --check` 无错误。
-- 不得提交：`node_modules/`、`frontend/dist/`、`build/`（含编译产物 exe）、`LLM-Models/` 下的模型文件、`llama-cpp/`、`llama-desktop-config.json`（本地配置，可能含本机路径）、`*.log`、`.zcode/plans/`。
-- 截图等文档资源提交到 `docs/` 目录（如 `docs/screenshots/`）。
-- 新增忽略类型时同步更新 `.gitignore`。
+- `README.md` is the English primary documentation. `README_zh.md` is the Chinese counterpart.
+- Screenshots live under `docs/screenshots/en/` and `docs/screenshots/zh/`; each document references the set matching its own language.
+- `CHANGELOG.md` entries are written in English. Historical Chinese entries are preserved as a matter of record.
 
-## Issue 跟踪
+## Repository Hygiene
 
-Issue 位于 `https://github.com/CodeNeow/llama-cpp-desktop/issues`。任何非平凡的缺陷或计划内工作都建议创建 issue，使进度可见；保持列表高信噪比。本章节是「多角色协作与工作流」中 Issues 发现者角色提交远程 issue 时的执行规范，也适用于任何需要创建 issue 的场合。
+- Before committing, `git status --short` must contain only intentionally modified files for the current task; `git diff --check` must produce no errors.
+- Do not commit: `node_modules/`, `frontend/dist/`, `build/` (including compiled exe artifacts), model files under `LLM-Models/`, `llama-cpp/`, `llama-desktop-config.json` (local config, may contain machine-specific paths), `*.log`, `.zcode/plans/`.
+- Screenshot and other documentation assets are committed under `docs/` (e.g., `docs/screenshots/`).
+- When adding new ignore patterns, update `.gitignore` in sync.
 
-### 创建
+## Issue Tracking
 
-- 网页创建的 issue 使用 `.github/ISSUE_TEMPLATE/` 下的表单模板：日常 bug 用 `bug-report.yml`，审计或代码评审的结构化发现用 `audit-finding.yml`（含 `file:line` 证据与验收标准）。
-- 批量发现（如完整审计）：创建一个置顶的 Tracker 总览 issue，在优先级表格中链接每个子 issue；为每个 P0/P1 发现单独建子 issue；P2/P3 可合并为汇总 issue。
-- 敏感安全漏洞（凭据泄漏、注入、越权等）不要开公开 issue。通过 GitHub Security Advisories（`Security > Report a vulnerability`）私密上报。修复落地后可再开非敏感跟踪 issue。
-- issue 正文绝不能包含密钥与本机绝对路径（`llama-desktop-config.json` 中可能含本机路径）。提交前对 token、密钥、DSN、路径脱敏，即便在日志或截图中也是如此。
+Issues live at `https://github.com/CodeNeow/llama-cpp-desktop/issues`. Any non-trivial defect or planned work should be filed as an issue to make progress visible; keep the list high signal-to-noise. This chapter applies as execution rules when the Issues finder role submits remote issues, and to anyone creating issues.
 
-### 标题与 Label
+### Creating Issues
 
-- 发现类标题加严重度前缀：`[P0]` / `[P1]` / `[P2]` / `[P3]`，其他用 `[Bug]` / `[Tracker]`。标题保持一行并指明受影响组件或区域，如 `[P1] 启动时子进程控制台窗口频繁闪现`。
-- 恰好打一个优先级 label（`P0-critical` / `P1-high` / `P2-medium` / `P3-low`）与至少一个区域 label（`frontend` / `backend` / `models` / `downloads` / `server` / `config` / `security`）。标签由 `scripts/create-labels.ps1` 一键创建。不得自创新 label，先提出申请。
-- 严重度反映影响而非工作量：P0 阻断核心功能或为安全漏洞；P1 实质损害体验或安全；P2 为一致性或打磨缺口；P3 为吹毛求疵的小问题。
+- Web-created issues use the form templates under `.github/ISSUE_TEMPLATE/`: daily bugs use `bug-report.yml`; structured findings from audits or code reviews use `audit-finding.yml` (includes `file:line` evidence and acceptance criteria).
+- Batch findings (e.g., a full audit): create a top-level Tracker overview issue, with each child issue linked in a priority table. Create separate child issues for each P0/P1 finding; P2/P3 may be merged into a summary issue.
+- Sensitive security vulnerabilities (credential leaks, injection, privilege escalation, etc.) must not be filed as public issues. Report them privately via GitHub Security Advisories. After the fix lands, a non-sensitive tracking issue may be opened.
+- Issue bodies must never contain secrets or machine-specific absolute paths (e.g., paths from `llama-desktop-config.json`). Redact tokens, secrets, DSNs, and paths before submitting, including in logs and screenshots.
 
-### 必填内容（发现类）
+### Titles and Labels
 
-一个发现 issue 必须包含：现象、复现步骤、带 `file:line` 的证据、影响、作为 `- [ ]` 勾选清单的验收标准。修复建议（含 diff）鼓励但非必需。若该发现属于某批次，在正文或评论中引用 Tracker issue 编号。
+- Finding-class titles add a severity prefix: `[P0]` / `[P1]` / `[P2]` / `[P3]`; other titles use `[Bug]` / `[Tracker]`. Keep the title on one line and name the affected component or area, e.g., `[P1] child-process console window flashes frequently at startup`.
+- Apply exactly one priority label (`P0-critical` / `P1-high` / `P2-medium` / `P3-low`) and at least one area label (`frontend` / `backend` / `models` / `downloads` / `server` / `config` / `security`). Labels are created in one shot via `scripts/create-labels.ps1`. Do not invent new labels; apply first.
+- Severity reflects impact, not effort: P0 blocks core functionality or is a security vulnerability; P1 materially harms experience or security; P2 is a consistency or polish gap; P3 is a nitpick-level minor issue.
 
-### 生命周期
+### Required Content (Findings)
 
-- PR 描述中用 `Fixes #N` 关联修复，合并时自动关闭对应 issue。
-- 验收标准未可验证地满足、且相关验证门未通过前，不得关闭 issue；验证门结果记录在 PR 中，而非仅记在 issue 中。
-- issue 被取代或重复时，评论指向规范 issue 后关闭；不要删除。
+A finding issue must include: phenomenon, reproduction steps, `file:line` evidence, impact, and acceptance criteria as a `- [ ]` checklist. Fix suggestions (including diffs) are encouraged but not required. If the finding belongs to a batch, reference the Tracker issue number in the body or a comment.
 
-## 常见坑
+### Lifecycle
 
-- **`wails dev` 报端口占用**：Vite 固定 `localhost:5173`（见 `wails.json` 的 `frontend:dev:serverUrl`），先结束占用进程再启动。
-- **改了 Go 结构体但前端拿不到新字段**：检查 `wails.ts` 封装与页面 interface 是否同步；`wailsjs/` 由构建自动更新，不需要手动改。
-- **API 页"启动服务"失败**：`startServerInternal` 会先扫描 `LLM-Models` 并生成预设，目录为空会直接报错（`LLM-Models 目录中没有模型`）——这是预期行为，先在「模型」页确认有 GGUF 文件。
-- **Windows 下停止服务**：`stopServerInternal` 通过 `cmd.Process.Signal(os.Kill)` 结束 llama-server；不要在外部用 `taskkill /IM llama-server.exe` 宽范围强杀，避免误杀其他实例。
-- **本机 `gofmt -l` 报大量既有文件**：仓库提交为 LF，Windows 检出（`core.autocrlf`）为 CRLF 会导致 gofmt 报告整个文件。判断格式问题时用 `git -c core.autocrlf=false diff` 核对实际改动，不要顺手改写未改动的行尾。
-- **本机前端未构建时报 `frontend/dist: no matching files found`**：`go:embed` 依赖 `frontend/dist`，先执行 `cd frontend && npm run build` 再跑后端命令。
-- **GitHub Release 页面只有 `Full Changelog` 对比链接**：自动生成发布说明按 PR 汇总，本仓库直接提交 main 无 PR，生成结果只剩 compare 链接；tag 消息不会自动同步到 Release 正文，需从 `CHANGELOG.md` 对应条目粘贴（见「版本发布」）。
+- Use `Fixes #N` in the PR description to associate the fix; the linked issue closes automatically on merge.
+- Do not close an issue until acceptance criteria are verifiably met and the relevant quality gates pass; quality gate results are recorded in the PR, not only in the issue.
+- When an issue is superseded or duplicated, comment linking to the canonical issue and close it; do not delete.
+
+## Common Pitfalls
+
+- **`wails dev` reports port-in-use**: Vite binds `localhost:5173` (see `wails.json`'s `frontend:dev:serverUrl`); end the occupying process before starting.
+- **Go struct changed but frontend does not receive new fields**: verify `wails.ts` wrappers and page interfaces are in sync; `wailsjs/` is auto-updated by build and does not need manual changes.
+- **"Start Service" fails on the API page**: `startServerInternal` scans `LLM-Models` and generates presets first; an empty directory returns an error (`no models found in the LLM-Models directory`) — this is expected behavior. Confirm GGUF files exist on the "Models" page first.
+- **Stopping service on Windows**: `stopServerInternal` terminates llama-server via `cmd.Process.Signal(os.Kill)`; do not use `taskkill /IM llama-server.exe` externally with broad force-kill, to avoid killing other instances.
+- **`gofmt -l` reports many existing files on this machine**: the repo commits as LF; Windows checkout (`core.autocrlf`) as CRLF causes `gofmt` to report the entire file. When judging formatting issues, use `git -c core.autocrlf=false diff` to inspect actual changes; do not rewrite untouched line endings as a side effect.
+- **`frontend/dist: no matching files found` when running backend commands locally**: `go:embed` depends on `frontend/dist`; run `cd frontend && npm run build` before running backend commands.
+- **GitHub Release page shows only a "Full Changelog" compare link**: auto-generated release notes aggregate by PR; this repo commits directly to main with no PRs, so the generated result is only a compare link. Tag messages are not synced to the Release body automatically; paste from the corresponding `CHANGELOG.md` entry (see "Versioning and Releases").
