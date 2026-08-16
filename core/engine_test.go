@@ -5,22 +5,24 @@ import (
 	"testing"
 )
 
-// TestRunCmdTrimsOutput 验证 runCmd 能捕获子进程 stdout 并去除首尾空白。
-// 使用 `go env GOHOSTOS`：跨平台可用，无需外部二进制与网络。
+// TestRunCmdTrimsOutput verifies runCmd captures child-process stdout and trims
+// leading/trailing whitespace.
+// Uses `go env GOHOSTOS`: cross-platform, no external binary or network needed.
 func TestRunCmdTrimsOutput(t *testing.T) {
 	out := runCmd("go", "env", "GOHOSTOS")
 	if strings.TrimSpace(out) != out {
-		t.Fatalf("runCmd 返回未 trim 的输出: %q", out)
+		t.Fatalf("runCmd returned untrimmed output: %q", out)
 	}
 	if out == "" {
-		t.Fatal("runCmd(go env GOHOSTOS) 返回空输出")
+		t.Fatal("runCmd(go env GOHOSTOS) returned empty output")
 	}
 }
 
-// TestRunCmdMissingBinary 验证命令不存在时 runCmd 返回空字符串而非 panic。
+// TestRunCmdMissingBinary verifies runCmd returns an empty string instead of panicking
+// when the command does not exist.
 func TestRunCmdMissingBinary(t *testing.T) {
 	out := runCmd("llama-desktop-no-such-binary-xyz", "--version")
 	if out != "" {
-		t.Fatalf("不存在的命令应返回空输出，实际: %q", out)
+		t.Fatalf("non-existent command should return empty output, got: %q", out)
 	}
 }

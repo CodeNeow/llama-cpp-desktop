@@ -11,10 +11,10 @@ import (
 	"testing"
 )
 
-// TestExtractZipFileTooLarge 验证 extractZip 拒绝超过单文件上限的条目。
-// 测试把 maxExtractFileSize 临时改小到 16 字节，构造含 100 字节文件的 zip
-// fixture，断言返回错误且目标文件未被写出（#2 解压炸弹单文件限制）。
-// 错误串经 tr 按当前语言返回，固定 zh 保证「超出解压大小上限」断言稳定。
+// TestExtractZipFileTooLarge verifies extractZip rejects entries exceeding the per-file limit.
+// The test lowers maxExtractFileSize to 16 bytes and builds a zip fixture with a 100-byte file,
+// asserting an error is returned and the target file is not written (#2 extraction bomb per-file limit).
+// The error string is returned via tr in the current language; fixed zh ensures the assertion is stable.
 func TestExtractZipFileTooLarge(t *testing.T) {
 	setLanguageForTest(t, "zh")
 	orig := maxExtractFileSize
@@ -39,9 +39,8 @@ func TestExtractZipFileTooLarge(t *testing.T) {
 	}
 }
 
-// TestExtractZipTotalTooLarge 验证 extractZip 累计解压总大小超过上限时
-// 返回错误（#2 解压炸弹总大小限制）。两个小文件各自未超单文件上限，
-// 但累计后触发 totalBytes > maxExtractTotalSize。
+// TestExtractZipTotalTooLarge verifies extractZip returns an error when the cumulative extraction size exceeds the limit
+// (#2 extraction bomb total-size limit). Two small files each stay under the per-file limit, but together trigger totalBytes > maxExtractTotalSize.
 func TestExtractZipTotalTooLarge(t *testing.T) {
 	origFile, origTotal := maxExtractFileSize, maxExtractTotalSize
 	maxExtractFileSize = 16
@@ -64,8 +63,7 @@ func TestExtractZipTotalTooLarge(t *testing.T) {
 	}
 }
 
-// TestExtractZipOK 验证未超限的 zip 正常解压（#2 的对照组：上限不误伤
-// 正常小文件）。
+// TestExtractZipOK verifies an under-limit zip extracts normally (control case for #2: the limit must not reject valid small files).
 func TestExtractZipOK(t *testing.T) {
 	orig := maxExtractFileSize
 	maxExtractFileSize = 16
@@ -89,9 +87,9 @@ func TestExtractZipOK(t *testing.T) {
 	}
 }
 
-// TestExtractTarGzSymlinkRejected 验证 extractTarGz 对 symlink 条目返回
-// 错误（#6）。默认分支仅处理目录与普通文件，符号链接等未知类型必须显式
-// 拒绝而非静默跳过，否则解压产物不完整且可能造成误写。
+// TestExtractTarGzSymlinkRejected verifies extractTarGz returns an error for symlink entries (#6).
+// The default branch only handles directories and regular files; unknown types like symlinks must be explicitly rejected
+// rather than silently skipped, otherwise extracted content may be incomplete or cause accidental writes.
 func TestExtractTarGzSymlinkRejected(t *testing.T) {
 	tarPath := filepath.Join(t.TempDir(), "link.tar.gz")
 	if err := writeTestTarGz(tarPath, []tarFixture{
@@ -105,8 +103,8 @@ func TestExtractTarGzSymlinkRejected(t *testing.T) {
 	}
 }
 
-// TestExtractTarGzFileTooLarge 验证 extractTarGz 拒绝超过单文件上限的
-// 条目（#2）。tar 头声明大小超过上限时提前拦截，不写盘。
+// TestExtractTarGzFileTooLarge verifies extractTarGz rejects entries exceeding the per-file limit (#2).
+// When the tar header declares a size above the limit, extraction is blocked before any disk write.
 func TestExtractTarGzFileTooLarge(t *testing.T) {
 	orig := maxExtractFileSize
 	maxExtractFileSize = 16
@@ -124,7 +122,7 @@ func TestExtractTarGzFileTooLarge(t *testing.T) {
 	}
 }
 
-// writeTestZip 用内存构造一个含给定文件的 zip 归档并写入 zipPath。
+// writeTestZip builds a zip archive in memory containing the given files and writes it to zipPath.
 func writeTestZip(zipPath string, files map[string]string) error {
 	var buf bytes.Buffer
 	w := zip.NewWriter(&buf)
@@ -143,7 +141,7 @@ func writeTestZip(zipPath string, files map[string]string) error {
 	return os.WriteFile(zipPath, buf.Bytes(), 0644)
 }
 
-// tarFixture 描述一个要写入 tar.gz 的条目。
+// tarFixture describes an entry to write into a tar.gz archive.
 type tarFixture struct {
 	Name     string
 	Typeflag byte
@@ -151,7 +149,7 @@ type tarFixture struct {
 	Size     int64
 }
 
-// writeTestTarGz 用内存构造含给定条目的 tar.gz 并写入 tarPath。
+// writeTestTarGz builds a tar.gz archive in memory containing the given fixtures and writes it to tarPath.
 func writeTestTarGz(tarPath string, fixtures []tarFixture) error {
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)

@@ -20,8 +20,9 @@ var trayIcon []byte
 func main() {
 	app := core.NewApp()
 
-	// 托盘图标在 Wails 启动前注入（SetTrayEnabled 运行时按配置启停托盘时需要），
-	// main 包仅声明 embed，图标字节经 core.TrayIcon 供 core 包使用。
+	// Tray icon is injected before Wails starts (needed because SetTrayEnabled
+	// may start/stop the tray at runtime); main only declares the embed, and
+	// the bytes are exposed to core via core.TrayIcon.
 	core.TrayIcon = trayIcon
 
 	err := wails.Run(&options.App{
@@ -36,15 +37,17 @@ func main() {
 		Frameless: true,
 		OnStartup: func(ctx context.Context) {
 			app.Startup(ctx)
-			// 按持久化配置决定是否启动系统托盘（4aacac2 起为无条件启动；
-			// 设置页可关闭）。loadConfig 已把旧配置缺字段兜底为 true。
-			// 默认 true 时应用启动即带托盘，用户关闭设置项需重启应用生效。
+			// Start system tray based on persisted config (unconditionally since
+			// 4aacac2; user can disable in settings). loadConfig defaults missing
+			// legacy fields to true. When enabled, the app starts with a tray
+			// icon; disabling the setting requires an app restart.
 			if core.TrayEnabled() {
 				core.InitTray(ctx, trayIcon)
 			}
 		},
 		OnShutdown: func(ctx context.Context) {
-			// 先摘托盘图标，再做应用清理（停止服务/持久化配置等）
+			// Remove tray icon first, then clean up the app (stop server /
+			// persist config, etc.)
 			core.QuitTray()
 			app.Shutdown(ctx)
 		},

@@ -4,8 +4,8 @@ package core
 
 import "syscall"
 
-// crossDeviceRenameErr 是 Windows 上 os.Rename 跨盘失败的真实错误
-// ERROR_NOT_SAME_DEVICE（winerror.h 值 17）。Go 在 Windows 的 syscall.EXDEV
-// 是发明常量（536871040），真实跨盘错误码与之永不相等，判断跨设备
-// 必须用本常量而非 syscall.EXDEV（否则跨盘回退复制永不触发）。
+// crossDeviceRenameErr is the real Windows error for os.Rename across drives:
+// ERROR_NOT_SAME_DEVICE (winerror.h 17). Go's syscall.EXDEV on Windows is a
+// fabricated constant (536871040) that never equals the real code, so rename
+// fallback must use this constant instead of syscall.EXDEV.
 var crossDeviceRenameErr error = syscall.Errno(17)

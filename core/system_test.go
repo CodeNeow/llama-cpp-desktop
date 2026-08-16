@@ -4,7 +4,8 @@ import "testing"
 
 // ─── parseLinuxCPUModel ──────────────────────────────────────────
 
-// TestParseLinuxCPUModel 验证从 /proc/cpuinfo 文本提取 "model name" 行并去除冒号后空白。
+// TestParseLinuxCPUModel verifies extracting the "model name" line from /proc/cpuinfo
+// text and stripping whitespace after the colon.
 func TestParseLinuxCPUModel(t *testing.T) {
 	out := "processor\t: 0\n" +
 		"model name\t: Intel(R) Core(TM) i7-10700K CPU @ 3.80GHz\n" +
@@ -13,11 +14,12 @@ func TestParseLinuxCPUModel(t *testing.T) {
 		t.Errorf("parseLinuxCPUModel = %q", got)
 	}
 	if got := parseLinuxCPUModel("no model here"); got != "" {
-		t.Errorf("无 model name 行应返回空串，实际 %q", got)
+		t.Errorf("no model name line should return empty string, got %q", got)
 	}
 }
 
-// TestCountString 验证按子串统计行数（用于 Linux 核数统计 "processor" 行）。
+// TestCountString verifies counting lines by substring (used for Linux core count
+// "processor" lines).
 func TestCountString(t *testing.T) {
 	out := "processor\t: 0\nprocessor\t: 1\nprocessor\t: 2\nmodel\t: x\n"
 	if got := countString(out, "processor"); got != 3 {
@@ -25,7 +27,8 @@ func TestCountString(t *testing.T) {
 	}
 }
 
-// TestParseCoresDarwin 验证 darwin 核数字符串解析，非法输入回退为 0。
+// TestParseCoresDarwin verifies darwin core-count string parsing; illegal input falls
+// back to 0.
 func TestParseCoresDarwin(t *testing.T) {
 	if got := parseCoresDarwin("8"); got != 8 {
 		t.Errorf("parseCoresDarwin(8) = %d", got)
@@ -37,7 +40,8 @@ func TestParseCoresDarwin(t *testing.T) {
 
 // ─── parseMemInfo / parseVMStat ──────────────────────────────────
 
-// TestParseMemInfo 验证从 /proc/meminfo 提取指定键的 kB 数值。
+// TestParseMemInfo verifies extracting the kB value for a specified key from
+// /proc/meminfo.
 func TestParseMemInfo(t *testing.T) {
 	out := "MemTotal:       33554432 kB\n" +
 		"MemFree:        10000000 kB\n" +
@@ -49,11 +53,11 @@ func TestParseMemInfo(t *testing.T) {
 		t.Errorf("MemAvailable = %d, want 20000000", got)
 	}
 	if got := parseMemInfo(out, "SwapTotal"); got != 0 {
-		t.Errorf("不存在的键应返回 0，实际 %d", got)
+		t.Errorf("non-existent key should return 0, got %d", got)
 	}
 }
 
-// TestParseVMStat 验证 darwin vm_stat 输出中 "Pages free: N" 形式的解析。
+// TestParseVMStat verifies parsing "Pages free: N" form from darwin vm_stat output.
 func TestParseVMStat(t *testing.T) {
 	out := "Mach Virtual Memory Statistics: (page size of 16384 bytes)\n" +
 		"Pages free:                            123456.\n" +
@@ -63,11 +67,11 @@ func TestParseVMStat(t *testing.T) {
 	}
 }
 
-// TestDefaultServerConfig 验证服务器配置默认值兜底（accessMode local、
-// host 派生 127.0.0.1、端口 8080）。
+// TestDefaultServerConfig verifies server config default-value fallback (accessMode local,
+// host derived 127.0.0.1, port 8080).
 func TestDefaultServerConfig(t *testing.T) {
 	cfg := defaultServerConfig()
 	if cfg.AccessMode != accessLocal || cfg.Host != "127.0.0.1" || cfg.Port != 8080 || cfg.MaxModels != 1 || cfg.CacheRAM != 8192 {
-		t.Errorf("默认服务器配置不符合预期: %+v", cfg)
+		t.Errorf("default server config does not match expected: %+v", cfg)
 	}
 }

@@ -2,9 +2,10 @@ package core
 
 import "testing"
 
-// TestLocaleToLanguage 验证 localeToLanguage 纯函数：前缀 "zh"（不区分大小写、
-// 忽略首尾空白）映射为 zh，覆盖 Windows 的 "zh-CN"、Unix 的 "zh_CN"、裸 "zh"
-// 与繁体中文区域 "zh-Hant-TW"；其余（含空串与英文区域）一律映射 en。
+// TestLocaleToLanguage verifies the localeToLanguage pure function: the "zh" prefix
+// (case-insensitive, ignoring leading/trailing whitespace) maps to zh, covering Windows
+// "zh-CN", Unix "zh_CN", bare "zh", and Traditional Chinese region "zh-Hant-TW";
+// everything else (including empty string and English regions) maps to en.
 func TestLocaleToLanguage(t *testing.T) {
 	cases := []struct {
 		locale string
@@ -14,13 +15,13 @@ func TestLocaleToLanguage(t *testing.T) {
 		{"zh_CN", "zh"},
 		{"zh", "zh"},
 		{"zh-Hant-TW", "zh"},
-		{"ZH-CN", "zh"},          // 大小写不敏感
-		{"  zh-CN.UTF-8 ", "zh"}, // 首尾空白忽略，带编码后缀也命中前缀
+		{"ZH-CN", "zh"},          // case-insensitive
+		{"  zh-CN.UTF-8 ", "zh"}, // leading/trailing whitespace ignored, encoding suffix still matches prefix
 		{"zh_CN.UTF-8", "zh"},
 		{"en-US", "en"},
 		{"en_US", "en"},
 		{"en", "en"},
-		{"", "en"}, // 空串（检测失败）兜底 en
+		{"", "en"}, // empty string (detection failure) falls back to en
 		{"fr", "en"},
 		{"ja-JP", "en"},
 		{"de_DE.UTF-8", "en"},

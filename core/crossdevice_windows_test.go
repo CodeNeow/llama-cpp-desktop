@@ -10,14 +10,11 @@ import (
 	"testing"
 )
 
-// TestMoveFileWindowsCrossVolumeRealError 是跨盘保存失败的回归测试：
-// Windows 上 os.Rename 跨盘的真实错误是 *os.LinkError 包裹
-// ERROR_NOT_SAME_DEVICE（winerror.h 值 17），而 Go 在 Windows 定义的
-// syscall.EXDEV 是发明常量（536871040），真实错误与之永不相等——
-// 此前 moveFile 用 errors.Is(err, syscall.EXDEV) 判断跨设备，
-// 在 Windows 上永不命中，导致更新下载跨盘保存直接报
-// "The system cannot move the file to a different disk drive"。
-// 断言：注入真实错误形态时 moveFile 回退为复制 + 删除源文件。
+// TestMoveFileWindowsCrossVolumeRealError is a cross-device save-failure regression test.
+// On Windows, os.Rename across volumes wraps ERROR_NOT_SAME_DEVICE (winerror.h 17),
+// while Go defines syscall.EXDEV as a synthetic constant (536871040) — the real error
+// never matches, so moveFile's old errors.Is(err, syscall.EXDEV) check never fired.
+// Assertion: when injected with the real error shape, moveFile falls back to copy + delete source.
 func TestMoveFileWindowsCrossVolumeRealError(t *testing.T) {
 	src := filepath.Join(t.TempDir(), "src.exe")
 	dst := filepath.Join(t.TempDir(), "dst.exe")
@@ -33,16 +30,16 @@ func TestMoveFileWindowsCrossVolumeRealError(t *testing.T) {
 	defer func() { renameFile = origRename }()
 
 	if err := moveFile(src, dst); err != nil {
-		t.Fatalf("Windows 真实跨盘错误应触发复制回退而非返回错误: %v", err)
+		t.Fatalf("Windows real cross-volume error should trigger copy fallback, not return error: %v", err)
 	}
 	got, err := os.ReadFile(dst)
 	if err != nil {
-		t.Fatalf("读取目标文件失败: %v", err)
+		t.Fatalf("failed to read destination: %v", err)
 	}
 	if string(got) != string(payload) {
-		t.Errorf("目标内容 = %q, want %q", got, payload)
+		t.Errorf("destination content = %q, want %q", got, payload)
 	}
 	if _, err := os.Stat(src); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("源文件应已被删除, stat err = %v", err)
+		t.Errorf("source should be deleted, stat err = %v", err)
 	}
 }

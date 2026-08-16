@@ -11,7 +11,8 @@ import (
 	"time"
 )
 
-// saveServerState 记录 server 相关全局状态并在测试结束后恢复。
+// saveServerState snapshots server-related globals (logs, running state, command, custom
+// llama.cpp dir, models dir) and restores them after the test.
 func saveServerState(t *testing.T) (origLogs []string, origDir string) {
 	t.Helper()
 	serverLogsMu.Lock()
@@ -45,8 +46,8 @@ func saveServerState(t *testing.T) (origLogs []string, origDir string) {
 	return
 }
 
-// TestBuildServerCommand 验证服务命令构建：默认 llama-server 二进制
-// 与固定参数序列（host/port/models-dir/preset/max/batching/webui）。
+// TestBuildServerCommand verifies server command construction: default llama-server binary
+// and fixed argument sequence (host/port/models-dir/preset/max/batching/webui).
 func TestBuildServerCommand(t *testing.T) {
 	saveServerState(t)
 	cfg := ServerConfig{AccessMode: accessLocal, Host: "127.0.0.1", Port: 8080, MaxModels: 1, CacheRAM: 0}
@@ -74,9 +75,9 @@ func TestBuildServerCommand(t *testing.T) {
 	}
 }
 
-// TestBuildServerCommandLANHost 验证 AccessMode=lan 时 --host 派生为
-// 0.0.0.0；即使 cfg.Host 仍是 127.0.0.1（未归一化），也以 effectiveHost
-// 的派生结果为准。
+// TestBuildServerCommandLANHost verifies --host is derived as 0.0.0.0 when AccessMode=lan;
+// even if cfg.Host is still 127.0.0.1 (not normalized), the effectiveHost derivation
+// result takes precedence.
 func TestBuildServerCommandLANHost(t *testing.T) {
 	saveServerState(t)
 	cfg := ServerConfig{AccessMode: accessLAN, Host: "127.0.0.1", Port: 8080, MaxModels: 1, CacheRAM: 0}
@@ -86,33 +87,33 @@ func TestBuildServerCommandLANHost(t *testing.T) {
 	for i, a := range args {
 		if a == "--host" && i+1 < len(args) {
 			if args[i+1] != "0.0.0.0" {
-				t.Fatalf("lan 模式 --host = %q, want 0.0.0.0 (args=%v)", args[i+1], args)
+				t.Fatalf("lan mode --host = %q, want 0.0.0.0 (args=%v)", args[i+1], args)
 			}
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("args 缺少 --host: %v", args)
+		t.Fatalf("args missing --host: %v", args)
 	}
 }
 
-// TestBuildServerCommandCacheRAM 验证 CacheRAM 配置追加 --cache-ram 参数，
-// 且 MaxModels 最小为 1（防止向 llama-server 传 0）。
+// TestBuildServerCommandCacheRAM verifies CacheRAM config appends the --cache-ram argument,
+// and MaxModels minimum is 1 (prevents passing 0 to llama-server).
 func TestBuildServerCommandCacheRAM(t *testing.T) {
 	cfg := ServerConfig{AccessMode: accessLocal, Host: "127.0.0.1", Port: 8080, MaxModels: 0, CacheRAM: 4096}
 	_, args := buildServerCommand(cfg, "/tmp/preset.ini")
 
 	joined := strings.Join(args, " ")
 	if !strings.Contains(joined, "--cache-ram 4096") {
-		t.Errorf("args 缺少 --cache-ram: %v", args)
+		t.Errorf("args missing --cache-ram: %v", args)
 	}
 	if !strings.Contains(joined, "--models-max 1") {
-		t.Errorf("MaxModels=0 应回退为 1: %v", args)
+		t.Errorf("MaxModels=0 should fall back to 1: %v", args)
 	}
 }
 
-// TestBuildServerCommandCustomDir 验证 PATH 无 llama-server 时优先使用
-// 自定义目录下存在的 llama-server(.exe) 二进制。
+// TestBuildServerCommandCustomDir verifies that when llama-server is not found in PATH,
+// the binary under the custom directory is used first (llama-server(.exe)).
 func TestBuildServerCommandCustomDir(t *testing.T) {
 	saveServerState(t)
 	custom := t.TempDir()
@@ -136,9 +137,9 @@ func TestBuildServerCommandCustomDir(t *testing.T) {
 	}
 }
 
-// TestBuildServerCommandCustomModelsDir 验证设置自定义模型目录后，
-// buildServerCommand 的 args 中 --models-dir 使用自定义目录而非默认
-// LLM-Models。
+// TestBuildServerCommandCustomModelsDir verifies that after setting a custom model directory,
+// --models-dir in buildServerCommand args uses the custom directory instead of the default
+// LLM-Models.
 func TestBuildServerCommandCustomModelsDir(t *testing.T) {
 	saveServerState(t)
 	customModels := t.TempDir()
@@ -156,12 +157,12 @@ func TestBuildServerCommandCustomModelsDir(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Errorf("args 中 --models-dir 应为 %q, 实际 args = %v", customModels, args)
+		t.Errorf("--models-dir in args should be %q, actual args = %v", customModels, args)
 	}
 }
 
-// TestAddServerLogRingBuffer 验证服务日志环形缓冲：超过 200 条后裁剪为
-// 最近 100 条，最新日志始终在末尾。
+// TestAddServerLogRingBuffer verifies the service-log ring buffer: after exceeding 200
+// entries it is trimmed to the most recent 100, and the latest log is always at the end.
 func TestAddServerLogRingBuffer(t *testing.T) {
 	serverLogsMu.Lock()
 	serverLogs = nil
@@ -179,17 +180,18 @@ func TestAddServerLogRingBuffer(t *testing.T) {
 	serverLogsMu.Lock()
 	defer serverLogsMu.Unlock()
 	if len(serverLogs) > 200 {
-		t.Errorf("日志数量 %d 超过上限 200", len(serverLogs))
+		t.Errorf("log count %d exceeds limit 200", len(serverLogs))
 	}
 	if serverLogs[len(serverLogs)-1] != "line" {
-		t.Errorf("最新日志应在末尾: %v", serverLogs[len(serverLogs)-1])
+		t.Errorf("latest log should be at the end: %v", serverLogs[len(serverLogs)-1])
 	}
 }
 
-// TestConcurrentStopServerInternalIdempotent 验证服务未启动时并发调用
-// stopServerInternal 幂等安全（#3）：无论并发多少次都返回 nil 且不 panic，
-// serverRunning 保持 false。此前 serverRunning 由 serverLogsMu 保护，
-// stop 路径锁外读 serverCmd.Process，重构后改为 serverMu 锁内取副本。
+// TestConcurrentStopServerInternalIdempotent verifies concurrent stopServerInternal calls
+// are idempotent-safe when the service is not started (#3): regardless of how many
+// concurrent calls are made, all return nil and do not panic, and serverRunning stays
+// false. Previously serverRunning was protected by serverLogsMu, and the stop path read
+// serverCmd.Process outside the lock; after refactoring, a copy is taken inside serverMu.
 func TestConcurrentStopServerInternalIdempotent(t *testing.T) {
 	saveServerState(t)
 	serverMu.Lock()
@@ -203,7 +205,7 @@ func TestConcurrentStopServerInternalIdempotent(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			if err := stopServerInternal(); err != nil {
-				t.Errorf("stopServerInternal 应返回 nil, 实际 %v", err)
+				t.Errorf("stopServerInternal should return nil, got %v", err)
 			}
 		}()
 	}
@@ -213,15 +215,16 @@ func TestConcurrentStopServerInternalIdempotent(t *testing.T) {
 	running := serverRunning
 	serverMu.Unlock()
 	if running {
-		t.Error("服务未启动时并发 stop 后 serverRunning 应为 false")
+		t.Error("serverRunning should be false after concurrent stop when service was not started")
 	}
 }
 
-// TestConcurrentStartStopServer 验证 StartServer 与 StopServer 高频交错
-// 不 panic（#3）。在空 LLM-Models 目录下 startServerInternal 于预设生成
-// 阶段失败并返回，不会真正启动 llama-server 子进程；StopServer 在未启动
-// 状态幂等返回 nil。两把锁（serverMu/serverLogsMu）的获取顺序不变量在
-// 此交错路径下不得死锁。
+// TestConcurrentStartStopServer verifies high-frequency interleaving of StartServer and
+// StopServer does not panic (#3). With an empty LLM-Models directory, startServerInternal
+// fails during preset generation and returns without actually launching the llama-server
+// child process; StopServer returns nil idempotently in the not-started state. The lock
+// acquisition order invariant (serverMu/serverLogsMu) must not deadlock along this
+// interleaving path.
 func TestConcurrentStartStopServer(t *testing.T) {
 	withTempCwd(t)
 	saveServerState(t)
@@ -237,7 +240,7 @@ func TestConcurrentStartStopServer(t *testing.T) {
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			// 空模型目录：StartServer 返回错误，但不 panic、不启动子进程
+			// empty model directory: StartServer returns error, but does not panic and does not launch child process
 			app.StartServer()
 		}()
 		go func() {
@@ -248,9 +251,9 @@ func TestConcurrentStartStopServer(t *testing.T) {
 	wg.Wait()
 }
 
-// TestHelperProcess 作为 llama-server 的替身子进程：当环境变量
-// GO_WANT_HELPER_PROCESS=1 时进入循环（模拟运行中的服务），供
-// TestStopServerInternalKillsRunningProcess 验证进程终止路径。
+// TestHelperProcess serves as a llama-server surrogate child process: when the environment
+// variable GO_WANT_HELPER_PROCESS=1 is set, it enters a loop (simulating a running service),
+// used by TestStopServerInternalKillsRunningProcess to verify the process-termination path.
 func TestHelperProcess(t *testing.T) {
 	if os.Getenv("GO_WANT_HELPER_PROCESS") != "1" {
 		return
@@ -260,10 +263,11 @@ func TestHelperProcess(t *testing.T) {
 	}
 }
 
-// TestStopServerInternalKillsRunningProcess 验证 stopServerInternal 对
-// 真实运行进程的终止路径（#3）：serverCmd 为已启动的替身子进程时，
-// 通过锁内副本调用 Process.Signal 应能终止进程；若仍锁外读全局
-// serverCmd 或在锁内持锁调用，此测试会暴露死锁/崩溃。
+// TestStopServerInternalKillsRunningProcess verifies the termination path of
+// stopServerInternal against a real running process (#3): when serverCmd is the started
+// surrogate child process, calling Process.Signal on the in-lock copy should terminate
+// the process; if it still reads the global serverCmd outside the lock or calls while
+// holding the lock, this test would expose deadlock/crash.
 func TestStopServerInternalKillsRunningProcess(t *testing.T) {
 	saveServerState(t)
 	serverMu.Lock()
@@ -288,7 +292,7 @@ func TestStopServerInternalKillsRunningProcess(t *testing.T) {
 		cmd.Process.Kill()
 	}()
 
-	// 在独立 goroutine 中调用 cmd.Wait，stop 成功后 Wait 应能返回
+	// call cmd.Wait in an independent goroutine; after stop succeeds, Wait should return
 	waitDone := make(chan struct{})
 	go func() {
 		cmd.Wait()
@@ -296,13 +300,13 @@ func TestStopServerInternalKillsRunningProcess(t *testing.T) {
 	}()
 
 	if err := stopServerInternal(); err != nil {
-		t.Fatalf("stopServerInternal 返回错误: %v", err)
+		t.Fatalf("stopServerInternal returned error: %v", err)
 	}
 
 	select {
 	case <-waitDone:
-		// 进程已终止，符合预期
+		// process terminated, as expected
 	case <-time.After(5 * time.Second):
-		t.Fatal("stopServerInternal 后替身进程未被终止")
+		t.Fatal("surrogate process was not terminated after stopServerInternal")
 	}
 }

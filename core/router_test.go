@@ -11,8 +11,8 @@ import (
 
 // ─── classifyModelType ──────────────────────────────────────────────
 
-// TestClassifyModelType 验证模型类型分类：audio/image/video/chat 四类
-// 均能正确判定，空输入归 chat。
+// TestClassifyModelType verifies model-type classification: audio/image/video/chat
+// are all classified correctly; empty input falls back to chat.
 func TestClassifyModelType(t *testing.T) {
 	tests := []struct {
 		name string
@@ -40,7 +40,7 @@ func TestClassifyModelType(t *testing.T) {
 
 // ─── fetchRouterModels ──────────────────────────────────────────────
 
-// routerModelsPayload 模拟 /models 响应：含 loaded/loading/sleeping/unloaded/downloading/failed 条目。
+// routerModelsPayload simulates a /models response containing loaded/loading/sleeping/unloaded/downloading/failed entries.
 const routerModelsPayload = `{
   "data": [
     {"id":"chat-model","path":"/m/chat.gguf","status":{"value":"loaded","args":[]},"architecture":{"input_modalities":["text"],"output_modalities":["text"]}},
@@ -53,7 +53,7 @@ const routerModelsPayload = `{
   ]
 }`
 
-// newRouterServer 起模拟路由器 API 的本地服务。
+// newRouterServer starts a local server simulating the router API.
 func newRouterServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -67,8 +67,8 @@ func newRouterServer(t *testing.T) *httptest.Server {
 	}))
 }
 
-// TestFetchRouterModels 验证 fetchRouterModels 过滤与映射：仅保留
-// loaded/loading/sleeping，类型按 output_modalities 分类。
+// TestFetchRouterModels verifies fetchRouterModels filtering and mapping: only
+// loaded/loading/sleeping are retained, types are classified by output_modalities.
 func TestFetchRouterModels(t *testing.T) {
 	srv := newRouterServer(t)
 	defer srv.Close()
@@ -82,7 +82,7 @@ func TestFetchRouterModels(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(models) != 4 {
-		t.Fatalf("got %d models, want 4 (loaded/loading/sleeping/video loaded)", len(models))
+		t.Fatalf("got %d models, want 4 (loaded/loading/sleeping/video-loaded)", len(models))
 	}
 	byID := make(map[string]LoadedModel)
 	for _, m := range models {
@@ -101,17 +101,17 @@ func TestFetchRouterModels(t *testing.T) {
 		t.Errorf("video-model = %+v, want type=video status=loaded", m)
 	}
 	if _, ok := byID["unloaded-model"]; ok {
-		t.Error("unloaded-model 应被过滤")
+		t.Error("unloaded-model should be filtered out")
 	}
 	if _, ok := byID["dl-model"]; ok {
-		t.Error("downloading 应被过滤")
+		t.Error("downloading should be filtered out")
 	}
 	if _, ok := byID["failed-model"]; ok {
-		t.Error("failed 应被过滤")
+		t.Error("failed should be filtered out")
 	}
 }
 
-// TestFetchRouterModelsConnectionError 验证连接失败时返回错误。
+// TestFetchRouterModelsConnectionError verifies a connection failure returns an error.
 func TestFetchRouterModelsConnectionError(t *testing.T) {
 	orig := routerBaseURL
 	routerBaseURL = func(port int) string { return "http://127.0.0.1:1" }
@@ -119,21 +119,21 @@ func TestFetchRouterModelsConnectionError(t *testing.T) {
 
 	_, err := fetchRouterModels(8080)
 	if err == nil {
-		t.Error("连接失败应返回错误")
+		t.Error("connection failure should return error")
 	}
 }
 
 // ─── unloadRouterModel ──────────────────────────────────────────────
 
-// newUnloadServer 起模拟卸载端点的本地服务。
+// newUnloadServer starts a local server simulating the unload endpoint.
 func newUnloadServer(t *testing.T, success bool) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
-			t.Errorf("unload 请求方法 = %s, want POST", r.Method)
+			t.Errorf("unload request method = %s, want POST", r.Method)
 		}
 		if r.URL.Path != "/models/unload" {
-			t.Errorf("unload 路径 = %s, want /models/unload", r.URL.Path)
+			t.Errorf("unload path = %s, want /models/unload", r.URL.Path)
 		}
 		var req routerUnloadRequest
 		_ = json.NewDecoder(r.Body).Decode(&req)
@@ -149,7 +149,8 @@ func newUnloadServer(t *testing.T, success bool) *httptest.Server {
 	}))
 }
 
-// TestUnloadRouterModel 验证卸载请求的方法、路径与 body 正确，成功时返回 nil。
+// TestUnloadRouterModel verifies the unload request has the correct method, path, and
+// body; returns nil on success.
 func TestUnloadRouterModel(t *testing.T) {
 	srv := newUnloadServer(t, true)
 	defer srv.Close()
@@ -164,7 +165,7 @@ func TestUnloadRouterModel(t *testing.T) {
 	}
 }
 
-// TestUnloadRouterModelError 验证非 2xx 响应返回错误。
+// TestUnloadRouterModelError verifies a non-2xx response returns an error.
 func TestUnloadRouterModelError(t *testing.T) {
 	srv := newUnloadServer(t, false)
 	defer srv.Close()
@@ -175,17 +176,18 @@ func TestUnloadRouterModelError(t *testing.T) {
 
 	err := unloadRouterModel(8080, "model-to-unload")
 	if err == nil {
-		t.Error("非 2xx 应返回错误")
+		t.Error("non-2xx should return error")
 	}
 	if !strings.Contains(err.Error(), "not found") {
-		t.Errorf("错误信息应包含服务器返回的错误: %v", err)
+		t.Errorf("error message should contain the server-returned error: %v", err)
 	}
 }
 
-// TestUnloadRouterModelEmptyID 验证空 id 立即返回错误，不发送请求。
+// TestUnloadRouterModelEmptyID verifies an empty id returns an error immediately
+// without sending a request.
 func TestUnloadRouterModelEmptyID(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Error("空 id 不应发送请求")
+		t.Error("empty id should not send any request")
 	}))
 	defer srv.Close()
 
@@ -195,31 +197,31 @@ func TestUnloadRouterModelEmptyID(t *testing.T) {
 
 	err := unloadRouterModel(8080, "")
 	if err == nil {
-		t.Error("空 id 应返回错误")
+		t.Error("empty id should return error")
 	}
 }
 
-// ─── serverPort 读写 ────────────────────────────────────────────────
+// ─── serverPort read/write ─────────────────────────────────────────
 
-// TestServerPortReadWrite 验证 setServerPort / getServerPort 读写一致。
+// TestServerPortReadWrite verifies setServerPort / getServerPort round-trip consistency.
 func TestServerPortReadWrite(t *testing.T) {
 	saveServerState(t)
 
 	setServerPort(0)
 	if p := getServerPort(); p != 0 {
-		t.Errorf("初始 port = %d, want 0", p)
+		t.Errorf("initial port = %d, want 0", p)
 	}
 	setServerPort(8080)
 	if p := getServerPort(); p != 8080 {
-		t.Errorf("写入 8080 后 port = %d, want 8080", p)
+		t.Errorf("after writing 8080, port = %d, want 8080", p)
 	}
 	setServerPort(0)
 	if p := getServerPort(); p != 0 {
-		t.Errorf("清零后 port = %d, want 0", p)
+		t.Errorf("after resetting, port = %d, want 0", p)
 	}
 }
 
-// TestConcurrentServerPort 验证 serverPort 并发读写安全。
+// TestConcurrentServerPort verifies concurrent reads/writes of serverPort are safe.
 func TestConcurrentServerPort(t *testing.T) {
 	saveServerState(t)
 

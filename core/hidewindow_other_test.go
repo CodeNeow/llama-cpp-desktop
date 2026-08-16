@@ -7,11 +7,12 @@ import (
 	"testing"
 )
 
-// TestHideWindowOther 验证非 Windows 平台 hideWindow 为 no-op，不修改 SysProcAttr。
+// TestHideWindowOther verifies hideWindow is a no-op on non-Windows platforms
+// and does not modify SysProcAttr.
 func TestHideWindowOther(t *testing.T) {
 	cmd := exec.Command("go", "version")
 	hideWindow(cmd)
 	if cmd.SysProcAttr != nil {
-		t.Fatal("非 Windows 平台 hideWindow 不应设置 SysProcAttr")
+		t.Fatal("hideWindow must not set SysProcAttr on non-Windows platforms")
 	}
 }

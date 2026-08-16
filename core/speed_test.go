@@ -4,26 +4,26 @@ import "testing"
 
 // ─── computeSpeed ─────────────────────────────────────────────────
 
-// TestComputeSpeed 验证下载速度纯函数 computeSpeed：
-// 正常间隔返回 bytes/s；elapsed 非正或 delta 非正时返回 0（无法计算或没有
-// 有效进度，速度不显示为负值/Inf）。
+// TestComputeSpeed verifies the computeSpeed pure function for download speed:
+// returns bytes/s for a normal interval; returns 0 when elapsed is non-positive or delta
+// is non-positive (cannot compute or no valid progress, speed must not be negative/Inf).
 func TestComputeSpeed(t *testing.T) {
 	if got := computeSpeed(2.0, 100); got != 50 {
 		t.Errorf("computeSpeed(2, 100) = %v, want 50", got)
 	}
-	// 零间隔：无法计算 → 0
+	// zero interval: cannot compute → 0
 	if got := computeSpeed(0, 100); got != 0 {
 		t.Errorf("computeSpeed(0, 100) = %v, want 0", got)
 	}
-	// 负间隔（时钟回拨防御）
+	// negative interval (clock-skew defense)
 	if got := computeSpeed(-1, 100); got != 0 {
 		t.Errorf("computeSpeed(-1, 100) = %v, want 0", got)
 	}
-	// 负 delta（暂停恢复后 downloaded 回退等场景）→ 0
+	// negative delta (pause-resume downloaded-back scenarios) → 0
 	if got := computeSpeed(1.0, -100); got != 0 {
 		t.Errorf("computeSpeed(1, -100) = %v, want 0", got)
 	}
-	// delta 为 0：没有进度 → 0
+	// delta is 0: no progress → 0
 	if got := computeSpeed(1.0, 0); got != 0 {
 		t.Errorf("computeSpeed(1, 0) = %v, want 0", got)
 	}

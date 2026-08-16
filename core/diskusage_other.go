@@ -7,10 +7,11 @@ import (
 	"syscall"
 )
 
-// diskUsageForPath 返回指定路径所在文件系统的用量：非 Windows 平台使用
-// syscall.Statfs 读取块信息，Free 取 Bavail（普通用户实际可用的块数，排除
-// root 保留块），Used = Total - Free。Path 原样返回传入路径。采样失败返回
-// 错误，由调用方 sampleDiskUsage 置 nil，不阻断其他采样指标。
+// diskUsageForPath returns filesystem usage for the given path on non-Windows
+// platforms: uses syscall.Statfs to read block info, Free uses Bavail (blocks
+// actually available to the normal user, excluding root reserved blocks),
+// Used = Total - Free. Path is returned as-is. Returns error on failure;
+// caller sampleDiskUsage sets nil to avoid blocking other sampling metrics.
 func diskUsageForPath(path string) (*DiskUsage, error) {
 	var st syscall.Statfs_t
 	if err := syscall.Statfs(path, &st); err != nil {

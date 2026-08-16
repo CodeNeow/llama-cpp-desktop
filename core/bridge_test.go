@@ -10,9 +10,11 @@ import (
 	"time"
 )
 
-// withModelScope404Server 把 modelscopeLegacyBase 注入本地 404 服务并把下载源
-// 切到 modelscope，返回恢复函数。用于需要真实入队（startHFDownload 会启动下载
-// goroutine）又不想打外网的测试：404 让 goroutine 快速失败退出，不残留网络连接。
+// withModelScope404Server injects a local 404 server as modelscopeLegacyBase and
+// switches the download source to modelscope, returning a restore function.
+// Used when a test needs real queueing (startHFDownload spawns a download goroutine)
+// but must avoid external network: the 404 response makes the goroutine fail fast
+// without leaving open connections.
 func withModelScope404Server(t *testing.T) func() {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -33,8 +35,9 @@ func withModelScope404Server(t *testing.T) func() {
 	}
 }
 
-// waitTasksTerminal 轮询等待所有任务进入终态（error/done/cancelled），带超时
-// 护栏。任务为空时直接返回。用于入队类测试避免残留 goroutine 影响后续用例。
+// waitTasksTerminal polls until all tasks reach a terminal state (error/done/cancelled),
+// with a timeout guard. Returns immediately when no tasks exist. Used by queue tests
+// to avoid stray goroutines polluting subsequent test cases.
 func waitTasksTerminal(t *testing.T, timeout time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
@@ -60,12 +63,13 @@ func waitTasksTerminal(t *testing.T, timeout time.Duration) {
 		statuses = append(statuses, tt.ID+":"+tt.Status)
 	}
 	dlTasksMu.Unlock()
-	t.Fatalf("任务未在 %v 内进入终态: %v", timeout, statuses)
+	t.Fatalf("tasks did not reach terminal state in %v: %v", timeout, statuses)
 }
 
-// waitTaskTerminal 轮询等待指定 id 的任务进入终态（error/done/cancelled），带
-// 超时护栏。只等待单个任务，适用于队列中同时存在无 goroutine 的任务（如恢复的
-// paused 任务）时只等新入队的活跃任务。
+// waitTaskTerminal polls until the task with the given id reaches a terminal state
+// (error/done/cancelled), with a timeout guard. Waits for a single task only;
+// useful when the queue also contains tasks with no goroutine (e.g. resumed paused
+// tasks) and we only need to wait for the newly enqueued active one.
 func waitTaskTerminal(t *testing.T, id string, timeout time.Duration) {
 	t.Helper()
 	deadline := time.Now().Add(timeout)
@@ -83,19 +87,20 @@ func waitTaskTerminal(t *testing.T, id string, timeout time.Duration) {
 		case "error", "done", "cancelled":
 			return
 		case "":
-			t.Fatalf("任务 %s 不存在", id)
+			t.Fatalf("task %s not found", id)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	t.Fatalf("任务 %s 未在 %v 内进入终态", id, timeout)
+	t.Fatalf("task %s did not reach terminal state in %v", id, timeout)
 }
 
-// TestStartHFDownloadNoDeadlock 是 #B1 死锁的回归测试：startHFDownload 入队后
-// 调用 persistTasksNow → saveConfig，而 saveConfig 末尾会再次获取 dlTasksMu 做
-// 快照。若 persistTasksNow 在持有 dlTasksMu（defer Unlock 作用域）时被调用，
-// 会自死锁——旧实现在这里卡死，导致 go test 600s 超时。测试用超时护栏断言
-// startHFDownload 快速返回，随后立即 GetDownloadTasks 快照不阻塞，并等待任务
-// 终态避免残留 goroutine。
+// TestStartHFDownloadNoDeadlock is a #B1 deadlock regression test: startHFDownload
+// calls persistTasksNow → saveConfig after enqueue, and saveConfig re-acquires dlTasksMu
+// at its tail for snapshotting. If persistTasksNow is called while dlTasksMu is held
+// (inside a defer Unlock scope), it deadlocks on itself — the old implementation hung
+// here, causing go test 600s timeouts. The test asserts startHFDownload returns fast,
+// then GetDownloadTasks snapshots without blocking, and waits for task terminal state
+// to avoid stray goroutines.
 func TestStartHFDownloadNoDeadlock(t *testing.T) {
 	withTempCwd(t)
 	saveConfigState(t)
@@ -115,32 +120,33 @@ func TestStartHFDownloadNoDeadlock(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		if err := startHFDownload("author/model", []string{"a.gguf", "b.gguf"}); err != nil {
-			t.Errorf("startHFDownload 返回错误: %v", err)
+			t.Errorf("startHFDownload returned error: %v", err)
 		}
 		close(done)
 	}()
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		t.Fatal("startHFDownload 死锁：5s 内未返回（persistTasksNow 不应在持有 dlTasksMu 时被调用）")
+		t.Fatal("startHFDownload deadlocked: did not return within 5s (persistTasksNow should not be called while holding dlTasksMu)")
 	}
 
-	// 入队后立即快照：GetDownloadTasks 内部获取 dlTasksMu，死锁实现下同样会卡住
+	// Snapshot immediately after enqueue: GetDownloadTasks acquires dlTasksMu internally;
+	// a deadlocked implementation would also hang here.
 	tasks := (&App{}).GetDownloadTasks()
 	if len(tasks) != 2 {
-		t.Fatalf("任务数 = %d, want 2", len(tasks))
+		t.Fatalf("task count = %d, want 2", len(tasks))
 	}
 	if tasks[0].Status != "queued" && tasks[0].Status != "downloading" {
-		t.Errorf("快照中任务状态 = %q, want queued 或 downloading", tasks[0].Status)
+		t.Errorf("snapshot status = %q, want queued or downloading", tasks[0].Status)
 	}
 
-	// 等待 goroutine 全部退出（404 快速失败到 error），避免残留
+	// Wait for goroutines to exit (404 fails fast to error state) to avoid leakage.
 	waitTasksTerminal(t, 5*time.Second)
 }
 
-// TestStartHFDownloadQueue 验证批量文件入队：任务 ID 递增、URL 使用
-// HF Mirror 域名、初始状态为 queued、目标目录为生效模型目录/<作者>/<仓库>
-// （三级落地：author/model/文件）。
+// TestStartHFDownloadQueue verifies batch file enqueue: IDs increment, URLs use
+// HF Mirror domain, initial status is queued, and destination is effectiveModelsDir/<author>/<repo>
+// (three-level layout: author/model/file).
 func TestStartHFDownloadQueue(t *testing.T) {
 	saveConfigState(t)
 	dlTasksMu.Lock()
@@ -161,30 +167,32 @@ func TestStartHFDownloadQueue(t *testing.T) {
 	dlTasksMu.Lock()
 	defer dlTasksMu.Unlock()
 	if len(dlTasks) != 2 {
-		t.Fatalf("任务数 = %d, want 2", len(dlTasks))
+		t.Fatalf("task count = %d, want 2", len(dlTasks))
 	}
 	if dlTasks[0].ID != "dl-1" || dlTasks[1].ID != "dl-2" {
-		t.Errorf("任务 ID 未递增: %s, %s", dlTasks[0].ID, dlTasks[1].ID)
+		t.Errorf("task IDs did not increment: %s, %s", dlTasks[0].ID, dlTasks[1].ID)
 	}
-	// 入队即启动下载 goroutine（go downloadTask），downloadTask 开篇就把状态翻为
-	// downloading。读取时可能仍是入队时的 queued（goroutine 未及调度），也可能是
-	// downloading（已调度并抢到锁）；两者都是入队成功后的合法初始状态。#B1 死锁
-	// 回归的验收标准同样认可「状态先 downloading 或按暂停流转」。
+	// Enqueue immediately spawns the download goroutine (go downloadTask), and the
+	// downloadTask entry flips status to downloading. At read time the status may
+	// still be queued (goroutine not yet scheduled) or already downloading (scheduled
+	// and acquired the lock); both are valid initial states after enqueue. The #B1
+	// deadlock regression also accepts "status becomes downloading first or flows through pause".
 	if dlTasks[0].Status != "queued" && dlTasks[0].Status != "downloading" {
-		t.Errorf("初始状态 = %q, want queued 或 downloading", dlTasks[0].Status)
+		t.Errorf("initial status = %q, want queued or downloading", dlTasks[0].Status)
 	}
 	if !strings.HasPrefix(dlTasks[0].URL, hfMirrorBase+"/author/model/resolve/main/") {
-		t.Errorf("URL 前缀错误: %q", dlTasks[0].URL)
+		t.Errorf("URL prefix wrong: %q", dlTasks[0].URL)
 	}
 	if !strings.HasSuffix(dlTasks[0].DestDir, filepath.Join(effectiveModelsDir(), "author", "model")) {
-		t.Errorf("DestDir = %q, want 以 %q 结尾", dlTasks[0].DestDir, filepath.Join(effectiveModelsDir(), "author", "model"))
+		t.Errorf("DestDir = %q, want to end with %q", dlTasks[0].DestDir, filepath.Join(effectiveModelsDir(), "author", "model"))
 	}
 	if dlTasks[0].cancel == nil {
-		t.Error("任务应持有 cancel 函数（供取消/退出清理）")
+		t.Error("task should hold cancel func (used by cancel / exit cleanup)")
 	}
 }
 
-// TestStopHFDownload 验证取消单个任务：cancel 触发 ctx 取消，状态置为 cancelled。
+// TestStopHFDownload verifies cancelling a single task: cancel triggers context
+// cancellation and status becomes cancelled.
 func TestStopHFDownload(t *testing.T) {
 	saveConfigState(t)
 	dlTasksMu.Lock()
@@ -208,11 +216,11 @@ func TestStopHFDownload(t *testing.T) {
 
 	task.cancel()
 	if err := task.ctx.Err(); err == nil {
-		t.Error("cancel 后 ctx 应处于取消状态")
+		t.Error("context should be cancelled after cancel()")
 	}
 }
 
-// TestCancelDownloadTaskUnknownID 验证取消不存在的任务返回 nil（幂等）。
+// TestCancelDownloadTaskUnknownID verifies cancelling a non-existent task returns nil (idempotent).
 func TestCancelDownloadTaskUnknownID(t *testing.T) {
 	saveConfigState(t)
 	dlTasksMu.Lock()
@@ -227,12 +235,12 @@ func TestCancelDownloadTaskUnknownID(t *testing.T) {
 	}()
 
 	if err := (&App{}).CancelDownloadTask("dl-999"); err != nil {
-		t.Errorf("未知任务 ID 应返回 nil, 实际 %v", err)
+		t.Errorf("unknown task ID should return nil, got %v", err)
 	}
 }
 
-// TestPauseResumeDownloadTask 验证暂停/恢复状态机：仅 downloading 可暂停、
-// 仅 paused 可恢复。
+// TestPauseResumeDownloadTask verifies pause/resume state machine: only downloading
+// can be paused; only paused can be resumed.
 func TestPauseResumeDownloadTask(t *testing.T) {
 	saveConfigState(t)
 	restoreSource := withModelScope404Server(t)
@@ -254,12 +262,14 @@ func TestPauseResumeDownloadTask(t *testing.T) {
 	dlTasksMu.Lock()
 	id := dlTasks[0].ID
 	dlTasksMu.Unlock()
-	// 必须等下载 goroutine 退出（本地 404 服务快速失败到 error 终态）再手动
-	// 改写状态：downloadTask 开篇会无条件把状态翻为 downloading（engine.go
-	// downloadTask 首段），goroutine 存活期间置 downloading 后暂停，其首段
-	// 写入可能落在 Pause 之后把 paused 覆盖回 downloading——CI 满载 runner
-	// 上曾据此偶发失败。生产路径无此交错（downloading 只能由 goroutine 自己
-	// 置位，Pause 对 queued 不生效），属测试伪造状态引出的竞态。
+	// Must wait for download goroutine to exit (local 404 fails fast to error state)
+	// before manually mutating status: downloadTask unconditionally flips status to
+	// downloading at entry (engine.go downloadTask prologue). While the goroutine is
+	// alive, setting downloading → pause may be overwritten back to downloading by the
+	// goroutine's entry write landing after Pause — CI full-load runners have hit this
+	// intermittent failure. Production paths have no such interleaving (downloading is
+	// only set by the goroutine itself; Pause on queued is a no-op); this is a race
+	// introduced by test-forged state.
 	waitTaskTerminal(t, id, 5*time.Second)
 
 	dlTasksMu.Lock()
@@ -272,7 +282,7 @@ func TestPauseResumeDownloadTask(t *testing.T) {
 	}
 	dlTasksMu.Lock()
 	if task.Status != "paused" {
-		t.Errorf("暂停后状态 = %q, want paused", task.Status)
+		t.Errorf("status after pause = %q, want paused", task.Status)
 	}
 	dlTasksMu.Unlock()
 
@@ -281,13 +291,13 @@ func TestPauseResumeDownloadTask(t *testing.T) {
 	}
 	dlTasksMu.Lock()
 	if task.Status != "downloading" {
-		t.Errorf("恢复后状态 = %q, want downloading", task.Status)
+		t.Errorf("status after resume = %q, want downloading", task.Status)
 	}
 	dlTasksMu.Unlock()
 }
 
-// TestGetDownloadTasksSnapshot 验证 GetDownloadTasks 返回深拷贝，
-// 修改返回值不影响内部任务状态。
+// TestGetDownloadTasksSnapshot verifies GetDownloadTasks returns a deep copy:
+// mutating the returned slice must not affect internal task state.
 func TestGetDownloadTasksSnapshot(t *testing.T) {
 	saveConfigState(t)
 	dlTasksMu.Lock()
@@ -307,21 +317,21 @@ func TestGetDownloadTasksSnapshot(t *testing.T) {
 
 	tasks := (&App{}).GetDownloadTasks()
 	if len(tasks) != 1 {
-		t.Fatalf("任务数 = %d, want 1", len(tasks))
+		t.Fatalf("task count = %d, want 1", len(tasks))
 	}
 	tasks[0].Status = "hacked"
 	dlTasksMu.Lock()
 	realStatus := dlTasks[0].Status
 	dlTasksMu.Unlock()
 	if realStatus == "hacked" {
-		t.Error("修改快照不应影响内部任务状态")
+		t.Error("mutating snapshot must not affect internal task state")
 	}
 }
 
-// TestStartHFDownloadRejectsPathTraversal 验证 startHFDownload 对恶意
-// modelID / fileName 返回错误且不创建任何任务（#1）。author 部分含
-// 路径分隔符或 "../" 时 DestDir 会用 filepath.Join 逃出 LLM-Models 目录，
-// 必须在入队前拒绝。
+// TestStartHFDownloadRejectsPathTraversal verifies startHFDownload returns an error
+// for malicious modelID / fileName and creates no tasks (#1). When the author segment
+// contains a path separator or "../", DestDir escapes LLM-Models via filepath.Join,
+// so rejection must happen before enqueue.
 func TestStartHFDownloadRejectsPathTraversal(t *testing.T) {
 	saveConfigState(t)
 	dlTasksMu.Lock()
@@ -335,38 +345,38 @@ func TestStartHFDownloadRejectsPathTraversal(t *testing.T) {
 		dlTasksMu.Unlock()
 	}()
 
-	// author 部分为 "../evil"：DestDir 会 join 出 LLM-Models 之外的目录
+	// author segment is "../evil": DestDir joins outside LLM-Models
 	if err := startHFDownload("../evil", []string{"evil.gguf"}); err == nil {
-		t.Error("../evil modelID 应返回错误")
+		t.Error("../evil modelID should return error")
 	}
-	// 含路径分隔符的 modelID（"a/b" 或 "a\\b"）同样拒绝
+	// modelID containing path separator ("a/b" or "a\\b") is also rejected
 	if err := startHFDownload("a\\b/model", []string{"x.gguf"}); err == nil {
-		t.Error("author 含 \\ 的 modelID 应返回错误")
+		t.Error("modelID with \\ in author should return error")
 	}
-	// 文件名可逃逸到父目录
+	// filename can escape to parent directory
 	if err := startHFDownload("author/model", []string{"../../etc/x.gguf"}); err == nil {
-		t.Error("../../etc/x.gguf 文件名应返回错误")
+		t.Error("../../etc/x.gguf filename should return error")
 	}
-	// 绝对路径文件名拒绝（按平台构造：Windows 需 C:\ 前缀、Unix 需 /
-	// 前缀，filepath.IsAbs 才判定为绝对；单一字符串无法跨平台成立）
+	// absolute-path filenames are rejected (platform-dependent: Windows needs C:\ prefix,
+	// Unix needs / prefix for filepath.IsAbs; no single string works cross-platform)
 	absName := "/etc/x.gguf"
 	if runtime.GOOS == "windows" {
 		absName = `C:\Windows\system.ini`
 	}
 	if err := startHFDownload("author/model", []string{absName}); err == nil {
-		t.Error("绝对路径文件名应返回错误")
+		t.Error("absolute-path filename should return error")
 	}
 
-	// 拒绝分支不得创建任何任务
+	// rejection branch must create zero tasks
 	dlTasksMu.Lock()
 	defer dlTasksMu.Unlock()
 	if len(dlTasks) != 0 || dlTaskCounter != 0 {
-		t.Errorf("非法输入不应创建任务: len=%d counter=%d", len(dlTasks), dlTaskCounter)
+		t.Errorf("invalid input must not create tasks: len=%d counter=%d", len(dlTasks), dlTaskCounter)
 	}
 }
 
-// TestStartHFDownloadRejectsInvalidModelID 验证 modelID 作者部分为
-// 空 / "." / ".." 时返回错误（#1）。
+// TestStartHFDownloadRejectsInvalidModelID verifies empty / "." / ".." author parts
+// return an error (#1).
 func TestStartHFDownloadRejectsInvalidModelID(t *testing.T) {
 	saveConfigState(t)
 	dlTasksMu.Lock()
@@ -381,20 +391,20 @@ func TestStartHFDownloadRejectsInvalidModelID(t *testing.T) {
 	}()
 
 	if err := startHFDownload("/model", []string{"x.gguf"}); err == nil {
-		t.Error("/model 的空 author 应返回错误")
+		t.Error("/model with empty author should return error")
 	}
 	if err := startHFDownload("./model", []string{"x.gguf"}); err == nil {
-		t.Error("./model 的 . author 应返回错误")
+		t.Error("./model with . author should return error")
 	}
 	if err := startHFDownload("../model", []string{"x.gguf"}); err == nil {
-		t.Error("../model 的 .. author 应返回错误")
+		t.Error("../model with .. author should return error")
 	}
 }
 
-// TestStartHFDownloadRejectsInvalidRepoPart 验证 modelID 的 repo 部分为空或
-// 含路径分隔符时返回错误且不创建任务（#1）。DestDir 会以 repoPart 做
-// filepath.Join：repoPart 含 "/"（如 SplitN("author/model/extra","/",2)
-// 的 "model/extra"）或为空（如 "author/"）都会把下载目标写到错误层级。
+// TestStartHFDownloadRejectsInvalidRepoPart verifies empty or path-separator-containing
+// repo parts return an error without creating tasks (#1). DestDir uses repoPart in
+// filepath.Join: repoPart containing "/" (e.g. SplitN("author/model/extra","/",2) → "model/extra")
+// or empty (e.g. "author/") both write the download target to a wrong directory level.
 func TestStartHFDownloadRejectsInvalidRepoPart(t *testing.T) {
 	saveConfigState(t)
 	dlTasksMu.Lock()
@@ -408,30 +418,30 @@ func TestStartHFDownloadRejectsInvalidRepoPart(t *testing.T) {
 		dlTasksMu.Unlock()
 	}()
 
-	// repoPart 含 "/"：SplitN("a/b/c","/",2) 的 repoPart 为 "b/c"
+	// repoPart contains "/": SplitN("a/b/c","/",2) → repoPart = "b/c"
 	if err := startHFDownload("author/model/extra", []string{"x.gguf"}); err == nil {
-		t.Error("repoPart 含 / 的 modelID 应返回错误")
+		t.Error("modelID with / in repoPart should return error")
 	}
-	// repoPart 为空：SplitN("author/","/",2) 的 repoPart 为 ""
+	// repoPart is empty: SplitN("author/","/",2) → repoPart = ""
 	if err := startHFDownload("author/", []string{"x.gguf"}); err == nil {
-		t.Error("repoPart 为空的 modelID 应返回错误")
+		t.Error("modelID with empty repoPart should return error")
 	}
-	// repoPart 为 "." / ".."：join 后等效于上一级目录
+	// repoPart is "." / "..": equivalent to parent directory after join
 	if err := startHFDownload("author/.", []string{"x.gguf"}); err == nil {
-		t.Error("repoPart 为 . 的 modelID 应返回错误")
+		t.Error("modelID with . repoPart should return error")
 	}
 	if err := startHFDownload("author/..", []string{"x.gguf"}); err == nil {
-		t.Error("repoPart 为 .. 的 modelID 应返回错误")
+		t.Error("modelID with .. repoPart should return error")
 	}
-	// 无 "/" 的 modelID 没有 repo 部分，同样拒绝
+	// modelID with no "/" has no repo part; also rejected
 	if err := startHFDownload("author", []string{"x.gguf"}); err == nil {
-		t.Error("无 repo 部分的 modelID 应返回错误")
+		t.Error("modelID without repoPart should return error")
 	}
 
-	// 拒绝分支不得创建任何任务
+	// rejection branch must create zero tasks
 	dlTasksMu.Lock()
 	defer dlTasksMu.Unlock()
 	if len(dlTasks) != 0 || dlTaskCounter != 0 {
-		t.Errorf("非法输入不应创建任务: len=%d counter=%d", len(dlTasks), dlTaskCounter)
+		t.Errorf("invalid input must not create tasks: len=%d counter=%d", len(dlTasks), dlTaskCounter)
 	}
 }

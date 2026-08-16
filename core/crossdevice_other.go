@@ -4,6 +4,7 @@ package core
 
 import "syscall"
 
-// crossDeviceRenameErr 是非 Windows 平台 os.Rename 跨设备（跨挂载点）
-// 失败的真实错误 EXDEV，供 moveFile 判断是否回退为复制 + 删除。
+// crossDeviceRenameErr is the real cross-device rename error (EXDEV) on
+// non-Windows platforms, used by moveFile to decide whether to fall back to
+// copy + delete.
 var crossDeviceRenameErr error = syscall.EXDEV

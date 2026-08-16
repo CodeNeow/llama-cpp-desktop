@@ -38,9 +38,9 @@ func startServerInternal() error {
 	// Build command
 	llamaServer, args := buildServerCommand(cfg, presetPath)
 
-	// 在 serverMu 锁内创建命令并绑定日志输出（#3）。这里先不置
-	// serverRunning=true：必须在 Start() 成功之后才置位，保证
-	// 「serverRunning==true ⟹ serverCmd.Process 非 nil」这一不变量。
+	// Create the command and bind log output inside serverMu (#3). Do not set
+	// serverRunning=true yet: it must only be set after Start() succeeds,
+	// preserving the invariant "serverRunning==true ⟹ serverCmd.Process != nil".
 	serverMu.Lock()
 	cmd := exec.Command(llamaServer, args...)
 	hideWindow(cmd)
@@ -76,7 +76,8 @@ func startServerInternal() error {
 		serverRunning = false
 		serverStartTime = time.Time{}
 		serverPort = 0
-		// 仅当全局仍指向本命令时清理，避免覆盖新启动的实例
+		// Only clear the global cmd reference when it still points to this
+		// instance, to avoid clobbering a newly started server.
 		if serverCmd == cmd {
 			serverCmd = nil
 		}
@@ -95,9 +96,10 @@ func startServerInternal() error {
 // llama-cpp/ download dir, then PATH) and builds its argument list from the
 // server config. The preset path points at the generated models INI file.
 func buildServerCommand(cfg ServerConfig, presetPath string) (string, []string) {
-	// 与 getLlamaCppInfo 共用 resolveLlamaServerBin，保证两处对 llama.cpp
-	// 安装位置的解析一致（下载目录解压后即可启动服务）；未命中时回退到
-	// 裸二进制名，由 exec.Command 启动时给出错误提示。
+	// Shares resolveLlamaServerBin with getLlamaCppInfo to keep llama.cpp
+	// install-location resolution consistent in both places (download dir is
+	// ready to serve immediately after extraction); falls back to the bare
+	// binary name when not found, letting exec.Command report the error.
 	llamaServer := resolveLlamaServerBin()
 	if llamaServer == "" {
 		llamaServer = "llama-server"
@@ -119,8 +121,9 @@ func buildServerCommand(cfg ServerConfig, presetPath string) (string, []string) 
 }
 
 func stopServerInternal() error {
-	// 在 serverMu 锁内读取 running/cmd 局部副本，锁外对副本操作（#3），
-	// 避免 stopServerInternal 与 start/goroutine 并发访问 serverCmd/Process。
+	// Read running/cmd local copies inside serverMu, operate on the copies
+	// outside (#3), to avoid concurrent access to serverCmd/Process between
+	// stopServerInternal and start/goroutine.
 	serverMu.Lock()
 	running := serverRunning
 	cmd := serverCmd
@@ -150,9 +153,9 @@ func startLlamaCppDownload() {
 // ─── HF Mirror download trigger ──────────────────────────────────
 
 func startHFDownload(modelID string, files []string) error {
-	// 校验 modelID 的 author 部分（DestDir 会以它做 filepath.Join），
-	// 防止 "../evil"、"."、".." 或含路径分隔符的 modelID 把下载目标
-	// 写到 LLM-Models 目录之外（路径遍历 #1）。
+	// Validate the author segment of modelID (DestDir uses it in filepath.Join)
+	// to prevent "../evil", ".", "..", or modelIDs containing path separators
+	// from writing downloads outside LLM-Models (path traversal #1).
 	parts := strings.SplitN(modelID, "/", 2)
 	authorPart := parts[0]
 	if authorPart == "" || authorPart == "." || authorPart == ".." ||
@@ -160,8 +163,9 @@ func startHFDownload(modelID string, files []string) error {
 		return fmt.Errorf("invalid modelID: %q", modelID)
 	}
 
-	// 校验每个文件名：清理后的文件名不得为空、以 ".." 开头（目录逃逸）
-	// 或为绝对路径。任务统一使用清理后的 cleanName（#1）。
+	// Validate each file name: the cleaned name must not be empty, start with
+	// ".." (directory escape), or be an absolute path. Tasks uniformly use the
+	// cleaned cleanName (#1).
 	for _, fileName := range files {
 		cleanName := filepath.Clean(fileName)
 		if cleanName == "." || strings.HasPrefix(cleanName, "..") || filepath.IsAbs(cleanName) {
@@ -169,10 +173,11 @@ func startHFDownload(modelID string, files []string) error {
 		}
 	}
 
-	// 校验 modelID 的 repo 部分（DestDir 会以它做 filepath.Join），与
-	// authorPart 同策略（#1 路径遍历防御）：无 repo 部分、repoPart 为空、
-	// "."、".." 或含 \ / 任一者拒绝。注意 SplitN("a/b/c","/",2) 的
-	// repoPart 为 "b/c"，含 "/" 必须被拒，避免落到目标目录之外。
+	// Validate the repo segment of modelID (DestDir uses it in filepath.Join),
+	// same strategy as authorPart (#1 path traversal defense): missing repo
+	// segment, empty repoPart, ".", "..", or containing \ / are all rejected.
+	// Note that SplitN("a/b/c","/",2) yields repoPart "b/c", so "/" must be
+	// rejected to avoid landing outside the target directory.
 	if len(parts) < 2 {
 		return fmt.Errorf("invalid modelID: %q", modelID)
 	}
@@ -182,15 +187,18 @@ func startHFDownload(modelID string, files []string) error {
 		return fmt.Errorf("invalid modelID: %q", modelID)
 	}
 
-	// 当前下载源决定 URL 构建方式：hf 走 hf-mirror resolve 端点，modelscope
-	// 走 legacy repo 端点；任务记录 Source 供队列持久化恢复时重建 URL。
+	// The active download source determines URL construction: hf uses the
+	// hf-mirror resolve endpoint, modelscope uses the legacy repo endpoint;
+	// the task records Source so the queue can rebuild URLs on restore.
 	source := activeDownloadSource()
 
-	// 入队前预校验 source 并预构建一次 URL（#B2）：buildModelDownloadURL 仅在
-	// 未知 source 下返回错误（防御纵深，activeDownloadSource 已被白名单约束）。
-	// 在入队任何任务之前一次性探测，失败即整体返回错误，不留半入队状态，也
-	// 不存在「弹出上一个已入队任务」的误回滚。合法 source 下各文件 URL 构建
-	// 不会失败，循环内的错误分支仅作防御。
+	// Pre-validate source and pre-build one URL before enqueuing (#B2):
+	// buildModelDownloadURL only returns error for unknown sources (defense in
+	// depth; activeDownloadSource is already allowlisted). Probing once before
+	// any task is enqueued means failure returns a single error, leaving no
+	// half-enqueued state and no need to roll back previously enqueued tasks.
+	// For valid sources, per-file URL construction never fails; error branches
+	// inside the loop are defensive only.
 	if _, err := buildModelDownloadURL(source, modelID, "probe.gguf"); err != nil {
 		return err
 	}
@@ -200,8 +208,10 @@ func startHFDownload(modelID string, files []string) error {
 		cleanName := filepath.Clean(fileName)
 		url, err := buildModelDownloadURL(source, modelID, cleanName)
 		if err != nil {
-			// 防御分支：URL 构建失败视为整体错误，已入队任务保持原样（#B2），
-			// 先解锁再返回（不能持有 dlTasksMu 返回，见下方 #B1 说明）。
+			// Defensive branch: URL build failure is treated as a global error;
+			// already-enqueued tasks remain as-is (#B2). Unlock before
+			// returning (must not return while holding dlTasksMu; see #B1
+			// explanation below).
 			dlTasksMu.Unlock()
 			return err
 		}
@@ -222,9 +232,11 @@ func startHFDownload(modelID string, files []string) error {
 		dlTasks = append(dlTasks, task)
 		go downloadTask(task)
 	}
-	// 入队完成后先解锁再持久化队列（#B1）：persistTasksNow → saveConfig 末尾会
-	// 再次获取 dlTasksMu 做快照。若此处仍持有 dlTasksMu（如 defer Unlock 作用域
-	// 内调用），将自死锁——这是此前 go test 600s 超时卡在 dlTasksMu.Lock() 的根因。
+	// Unlock before persisting the queue (#B1): persistTasksNow → saveConfig
+	// acquires dlTasksMu again at the end to take a snapshot. If dlTasksMu is
+	// still held here (e.g. inside a defer Unlock scope), it deadlocks with
+	// itself — this was the root cause of a previous go test 600s timeout
+	// stuck on dlTasksMu.Lock().
 	dlTasksMu.Unlock()
 	persistTasksNow()
 	return nil

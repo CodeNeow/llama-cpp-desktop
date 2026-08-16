@@ -12,8 +12,8 @@ import (
 	"testing"
 )
 
-// TestPickBestAssetForWindowsCUDA 验证 Windows+CUDA 环境下优先选择与
-// 本机 CUDA 版本精确匹配的 cuda 构建。
+// TestPickBestAssetForWindowsCUDA verifies that in Windows+CUDA environments, the asset
+// with an exact match to the host CUDA version is preferred.
 func TestPickBestAssetForWindowsCUDA(t *testing.T) {
 	assets := []GitHubAsset{
 		{Name: "llama-b3840-bin-win-cuda-12.8-x64.zip"},
@@ -23,11 +23,12 @@ func TestPickBestAssetForWindowsCUDA(t *testing.T) {
 	}
 	got := pickBestAssetFor(assets, "windows", "amd64", true, "12.8")
 	if got == nil || got.Name != "llama-b3840-bin-win-cuda-12.8-x64.zip" {
-		t.Errorf("应选 cuda-12.8 精确匹配构建, 实际 %v", got)
+		t.Errorf("should pick cuda-12.8 exact-match build, got %v", got)
 	}
 }
 
-// TestPickBestAssetForWindowsCPU 验证无 GPU 时选择 avx2 构建而非 cuda。
+// TestPickBestAssetForWindowsCPU verifies that when no GPU is present, the avx2 build
+// is selected instead of cuda.
 func TestPickBestAssetForWindowsCPU(t *testing.T) {
 	assets := []GitHubAsset{
 		{Name: "llama-b3840-bin-win-cuda-12.8-x64.zip"},
@@ -36,11 +37,11 @@ func TestPickBestAssetForWindowsCPU(t *testing.T) {
 	}
 	got := pickBestAssetFor(assets, "windows", "amd64", false, "")
 	if got == nil || got.Name != "llama-b3840-bin-win-avx2-x64.zip" {
-		t.Errorf("无 GPU 时应选 avx2 构建, 实际 %v", got)
+		t.Errorf("no GPU should pick avx2 build, got %v", got)
 	}
 }
 
-// TestPickBestAssetForLinuxArm64 验证 Linux arm64 匹配 arm64 归档。
+// TestPickBestAssetForLinuxArm64 verifies that Linux arm64 matches the arm64 archive.
 func TestPickBestAssetForLinuxArm64(t *testing.T) {
 	assets := []GitHubAsset{
 		{Name: "llama-b3840-bin-linux-x64.zip"},
@@ -49,30 +50,32 @@ func TestPickBestAssetForLinuxArm64(t *testing.T) {
 	}
 	got := pickBestAssetFor(assets, "linux", "arm64", false, "")
 	if got == nil || got.Name != "llama-b3840-bin-linux-arm64.zip" {
-		t.Errorf("应选 linux arm64 构建, 实际 %v", got)
+		t.Errorf("should pick linux arm64 build, got %v", got)
 	}
 }
 
-// TestPickBestAssetForNoMatch 验证没有匹配当前平台的资产时返回 nil。
+// TestPickBestAssetForNoMatch verifies that nil is returned when no asset matches
+// the current platform.
 func TestPickBestAssetForNoMatch(t *testing.T) {
 	assets := []GitHubAsset{{Name: "llama-b3840-bin-macos-arm64.zip"}}
 	if got := pickBestAssetFor(assets, "windows", "amd64", false, ""); got != nil {
-		t.Errorf("无 windows 资产应返回 nil, 实际 %v", got)
+		t.Errorf("no windows assets should return nil, got %v", got)
 	}
 	if got := pickBestAssetFor(nil, "windows", "amd64", false, ""); got != nil {
-		t.Errorf("空资产列表应返回 nil, 实际 %v", got)
+		t.Errorf("nil asset list should return nil, got %v", got)
 	}
 }
 
-// TestPickBestAssetForWindowsCUDAExcludesCudart 验证 Windows+CUDA 环境选择
-// 主程序资产时排除 cudart 运行库资产：llama.cpp b10342 起 Windows CUDA 构建
-// 拆分为 cudart 运行库 zip（cudart-llama-bin-win-cuda-XX.X-x64.zip）与主程序
-// zip（llama-b*-bin-win-cuda-XX.X-x64.zip）两个资产，两者评分相同且 cudart
-// 在 release 列表中排在主程序之前，若不排除会只选中运行库、漏掉主程序
-// （用户现象：解压产物只有 cublas64_12.dll / cublasLt64_12.dll /
-// cudart64_12.dll，没有 llama-server.exe）。断言按 release 顺序构造的
-// [cudart, 主程序 cuda, 主程序 cpu] 列表选出主程序 cuda 资产而非排在前面的
-// cudart。
+// TestPickBestAssetForWindowsCUDAExcludesCudart verifies that when selecting the main
+// program asset in a Windows+CUDA environment, cudart runtime assets are excluded:
+// since llama.cpp b10342, Windows CUDA builds are split into cudart runtime zip
+// (cudart-llama-bin-win-cuda-XX.X-x64.zip) and main program zip (llama-b*-bin-win-cuda-XX.X-x64.zip).
+// Both score the same and cudart appears before the main program in the release list;
+// without exclusion, only the runtime library would be selected and the main program
+// would be missed (user-visible symptom: extracted artifacts only contain
+// cublas64_12.dll / cublasLt64_12.dll / cudart64_12.dll, no llama-server.exe).
+// Assertion: from a list ordered [cudart, main cuda, main cpu], the main cuda asset
+// is selected rather than the preceding cudart.
 func TestPickBestAssetForWindowsCUDAExcludesCudart(t *testing.T) {
 	assets := []GitHubAsset{
 		{Name: "cudart-llama-bin-win-cuda-12.4-x64.zip"},
@@ -81,50 +84,52 @@ func TestPickBestAssetForWindowsCUDAExcludesCudart(t *testing.T) {
 	}
 	got := pickBestAssetFor(assets, "windows", "amd64", true, "12.4")
 	if got == nil || got.Name != "llama-b9999-bin-win-cuda-12.4-x64.zip" {
-		t.Errorf("cudart 排在前时仍应选主程序 cuda 资产, 实际 %v", got)
+		t.Errorf("should still pick main cuda asset when cudart comes first, got %v", got)
 	}
 }
 
-// TestPickCudartAssetFor 验证 cudart 运行库资产匹配：
-//   - 精确版本命中且大小写不敏感（cudaVer=12.4 → cudart-...cuda-12.4-x64.zip）；
-//   - 不存在的版本返回 nil（11.8 不在列表中）；
-//   - 无 cudart 资产返回 nil；
-//   - 空版本回退为任一 win cudart 资产（返回列表中第一个，best-effort 覆盖
-//     无 nvcc、toolkit 版本解析失败的主机，保证全链路附加下载可验证）。
+// TestPickCudartAssetFor verifies cudart runtime asset matching:
+//   - exact version match, case-insensitive (cudaVer=12.4 → cudart-...cuda-12.4-x64.zip);
+//   - non-existent version returns nil (11.8 not in list);
+//   - no cudart assets returns nil;
+//   - empty version falls back to any win cudart asset (returns first in list, best-effort
+//     coverage for hosts without nvcc / failed toolkit version parsing, ensuring the
+//     full download chain is verifiable).
 func TestPickCudartAssetFor(t *testing.T) {
 	assets := []GitHubAsset{
 		{Name: "cudart-llama-bin-win-cuda-12.4-x64.zip"},
 		{Name: "cudart-llama-bin-win-cuda-13.3-x64.zip"},
 	}
 	if got := pickCudartAssetFor(assets, "12.4"); got == nil || got.Name != "cudart-llama-bin-win-cuda-12.4-x64.zip" {
-		t.Errorf("cudaVer=12.4 应命中 12.4 资产, 实际 %v", got)
+		t.Errorf("cudaVer=12.4 should match 12.4 asset, got %v", got)
 	}
 	if got := pickCudartAssetFor(assets, "13.3"); got == nil || got.Name != "cudart-llama-bin-win-cuda-13.3-x64.zip" {
-		t.Errorf("cudaVer=13.3 应命中 13.3 资产, 实际 %v", got)
+		t.Errorf("cudaVer=13.3 should match 13.3 asset, got %v", got)
 	}
 	if got := pickCudartAssetFor(assets, "11.8"); got != nil {
-		t.Errorf("不存在的版本 11.8 应返回 nil, 实际 %v", got)
+		t.Errorf("non-existent version 11.8 should return nil, got %v", got)
 	}
-	// 大小写不敏感：全大写资产名同样命中
+	// case-insensitive: all-uppercase asset name also matches
 	upper := []GitHubAsset{{Name: "CUDART-LLAMA-BIN-WIN-CUDA-12.4-X64.ZIP"}}
 	if got := pickCudartAssetFor(upper, "12.4"); got == nil {
-		t.Error("资产名大小写不敏感应命中")
+		t.Error("asset name should be case-insensitive")
 	}
-	// 无 cudart 资产返回 nil
+	// no cudart assets returns nil
 	noCudart := []GitHubAsset{{Name: "llama-b9999-bin-win-cuda-12.4-x64.zip"}}
 	if got := pickCudartAssetFor(noCudart, "12.4"); got != nil {
-		t.Errorf("无 cudart 资产应返回 nil, 实际 %v", got)
+		t.Errorf("no cudart assets should return nil, got %v", got)
 	}
-	// 空版本回退为列表中第一个 cudart 资产
+	// empty version falls back to first cudart asset in list
 	if got := pickCudartAssetFor(assets, ""); got == nil || got.Name != "cudart-llama-bin-win-cuda-12.4-x64.zip" {
-		t.Errorf("空版本应回退为第一个 cudart 资产, 实际 %v", got)
+		t.Errorf("empty version should fall back to first cudart asset, got %v", got)
 	}
 	if got := pickCudartAssetFor(nil, ""); got != nil {
-		t.Errorf("空版本且无 cudart 资产应返回 nil, 实际 %v", got)
+		t.Errorf("empty version with no cudart assets should return nil, got %v", got)
 	}
 }
 
-// TestBuildDownloadRequest 验证下载请求带 User-Agent，续传时加 Range 头。
+// TestBuildDownloadRequest verifies download requests carry User-Agent and add a Range
+// header for resume downloads.
 func TestBuildDownloadRequest(t *testing.T) {
 	req, err := buildDownloadRequest("https://example.com/model.gguf", 0)
 	if err != nil {
@@ -134,7 +139,7 @@ func TestBuildDownloadRequest(t *testing.T) {
 		t.Errorf("User-Agent = %q, want llama-desktop", req.Header.Get("User-Agent"))
 	}
 	if req.Header.Get("Range") != "" {
-		t.Errorf("无偏移时不应有 Range 头: %q", req.Header.Get("Range"))
+		t.Errorf("no offset should not have Range header: %q", req.Header.Get("Range"))
 	}
 
 	req, err = buildDownloadRequest("https://example.com/model.gguf", 1024)
@@ -146,7 +151,8 @@ func TestBuildDownloadRequest(t *testing.T) {
 	}
 }
 
-// TestFetchLatestReleaseAt 验证从注入的 URL 拉取并解析最新 release。
+// TestFetchLatestReleaseAt verifies fetching and parsing the latest release from an
+// injected URL.
 func TestFetchLatestReleaseAt(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -159,11 +165,11 @@ func TestFetchLatestReleaseAt(t *testing.T) {
 		t.Fatal(err)
 	}
 	if rel.TagName != "b3840" || len(rel.Assets) != 1 || rel.Assets[0].Name != "a.zip" {
-		t.Errorf("release 解析错误: %+v", rel)
+		t.Errorf("release parse error: %+v", rel)
 	}
 }
 
-// TestFetchLatestReleaseAtHTTPError 验证非 200 响应返回错误。
+// TestFetchLatestReleaseAtHTTPError verifies a non-200 response returns an error.
 func TestFetchLatestReleaseAtHTTPError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -171,17 +177,19 @@ func TestFetchLatestReleaseAtHTTPError(t *testing.T) {
 	defer srv.Close()
 
 	if _, err := fetchLatestReleaseAt(srv.URL); err == nil {
-		t.Error("500 响应应返回错误")
+		t.Error("500 response should return error")
 	}
 }
 
-// TestDownloadTaskRenameFailure 验证 downloadTask 完成分支重命名失败时
-// 任务标记为 error（#10）。此前 os.Rename 返回值被忽略，失败会静默把
-// 任务置为 done 但文件未就位；修复后 renameFile（可注入包级变量）失败
-// 即置 error。测试用 httptest 提供固定字节流，注入 renameFile 失败并
-// 完整跑通 downloadTask，断言任务状态与错误信息。
+// TestDownloadTaskRenameFailure verifies that when the rename in the downloadTask
+// completion branch fails, the task is marked as error (#10). Previously the os.Rename
+// return value was ignored, causing silent done status with the file not in place;
+// after the fix, renameFile (injectable package-level variable) failure immediately
+// sets error. The test uses httptest to provide a fixed byte stream, injects renameFile
+// failure, runs downloadTask end-to-end, and asserts task status and error message.
 func TestDownloadTaskRenameFailure(t *testing.T) {
-	// 错误串经 tr 按当前语言返回，固定 zh 保证「重命名失败」断言与语言无关。
+	// error string is returned by tr in the current language; pin zh so the
+	// Chinese-prefix assertion below is language-independent.
 	setLanguageForTest(t, "zh")
 	withTempCwd(t)
 	dlTasksMu.Lock()
@@ -200,7 +208,7 @@ func TestDownloadTaskRenameFailure(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// 注入 renameFile 失败
+	// inject renameFile failure
 	origRename := renameFile
 	renameFile = func(oldpath, newpath string) error {
 		return errors.New("mock rename fail")
@@ -225,20 +233,23 @@ func TestDownloadTaskRenameFailure(t *testing.T) {
 	dlTasksMu.Unlock()
 
 	if status != "error" {
-		t.Errorf("rename 失败后任务状态 = %q, want error", status)
+		t.Errorf("status after rename failure = %q, want error", status)
 	}
 	if !strings.Contains(errMsg, "重命名失败") {
-		t.Errorf("错误信息应包含 重命名失败: %q", errMsg)
+		t.Errorf("error message should contain 重命名失败: %q", errMsg)
 	}
 }
 
-// TestMoveFileCrossDeviceFallbackCopy 验证 moveFile 在 renameFile 返回
-// 当前平台的真实跨设备错误（Windows 跨盘 ERROR_NOT_SAME_DEVICE=17 /
-// Unix 跨挂载点 EXDEV，常量 crossDeviceRenameErr 按平台取值，并用
-// LinkError 包裹模拟 os.Rename 的真实错误形态）时回退为
-// 复制 + 删除源文件：断言目标内容与源一致、源已删除、目标保留源文件权限
-// （Linux 更新 exe 依赖执行位；Windows 上 os.Stat 恒报 0666，故断言与源
-// 实际 mode 一致而非硬编码 0755）。renameFile 为包级注入点，defer 恢复。
+// TestMoveFileCrossDeviceFallbackCopy verifies that moveFile falls back to
+// copy + delete source when renameFile returns the current platform's real
+// cross-device error (Windows cross-drive ERROR_NOT_SAME_DEVICE=17 /
+// Unix cross-mount EXDEV, constant crossDeviceRenameErr is platform-specific,
+// wrapped in LinkError to simulate os.Rename's real error shape):
+// asserts destination content matches source, source is deleted, destination
+// retains source file permissions (Linux update exe depends on execute bit;
+// Windows os.Stat always reports 0666, so assert destination mode matches
+// source actual mode rather than hardcoded 0755). renameFile is a package-level
+// injection point, restored by defer.
 func TestMoveFileCrossDeviceFallbackCopy(t *testing.T) {
 	src := filepath.Join(t.TempDir(), "src.bin")
 	dst := filepath.Join(t.TempDir(), "dst.bin")
@@ -259,30 +270,31 @@ func TestMoveFileCrossDeviceFallbackCopy(t *testing.T) {
 	defer func() { renameFile = origRename }()
 
 	if err := moveFile(src, dst); err != nil {
-		t.Fatalf("跨设备回退应成功: %v", err)
+		t.Fatalf("cross-device fallback should succeed: %v", err)
 	}
 	got, err := os.ReadFile(dst)
 	if err != nil {
-		t.Fatalf("读取目标文件失败: %v", err)
+		t.Fatalf("failed to read destination: %v", err)
 	}
 	if string(got) != string(payload) {
-		t.Errorf("目标内容 = %q, want %q", got, payload)
+		t.Errorf("destination content = %q, want %q", got, payload)
 	}
 	if _, err := os.Stat(src); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("源文件应已被删除, stat err = %v", err)
+		t.Errorf("source should be deleted, stat err = %v", err)
 	}
 	dstFi, err := os.Stat(dst)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if dstFi.Mode().Perm() != origMode {
-		t.Errorf("目标权限 = %v, want 与源一致 %v", dstFi.Mode().Perm(), origMode)
+		t.Errorf("destination mode = %v, want source mode %v", dstFi.Mode().Perm(), origMode)
 	}
 }
 
-// TestMoveFileNonCrossDeviceError 验证 renameFile 返回非跨设备错误且目标
-// 不存在时（模拟 TestDownloadTaskRenameFailure 的场景），moveFile 不触发
-// 复制回退、不误删/误动源文件，按原语义返回原始错误。
+// TestMoveFileNonCrossDeviceError verifies that when renameFile returns a non-cross-device
+// error and the destination does not exist (simulating the TestDownloadTaskRenameFailure
+// scenario), moveFile does not trigger copy fallback, does not mistakenly delete/move the
+// source file, and returns the original error as-is.
 func TestMoveFileNonCrossDeviceError(t *testing.T) {
 	src := filepath.Join(t.TempDir(), "src.bin")
 	dst := filepath.Join(t.TempDir(), "dst.bin")
@@ -298,24 +310,25 @@ func TestMoveFileNonCrossDeviceError(t *testing.T) {
 
 	err := moveFile(src, dst)
 	if err == nil {
-		t.Fatal("非 EXDEV 失败应返回错误")
+		t.Fatal("non-EXDEV failure should return error")
 	}
 	if !strings.Contains(err.Error(), "mock rename fail") {
-		t.Errorf("错误应保留原始错误信息: %v", err)
+		t.Errorf("error should preserve original error message: %v", err)
 	}
 	if _, statErr := os.Stat(src); statErr != nil {
-		t.Errorf("非 EXDEV 失败时源文件不应被移动或删除: %v", statErr)
+		t.Errorf("source file should not be moved or deleted on non-EXDEV failure: %v", statErr)
 	}
 	if _, statErr := os.Stat(dst); !errors.Is(statErr, os.ErrNotExist) {
-		t.Errorf("非 EXDEV 失败时目标文件不应被创建: %v", statErr)
+		t.Errorf("destination file should not be created on non-EXDEV failure")
 	}
 }
 
-// TestMoveFileExdevDoesNotDeleteExistingDest 验证跨设备判定优先于「删旧重试」：
-// 目标已存在旧文件且跨设备时，moveFile 走复制覆盖而非先删除旧文件，避免
-// 旧文件在复制失败时丢失。注入 renameFile 返回当前平台真实跨设备错误
-// （crossDeviceRenameErr，LinkError 包裹），断言旧文件内容被覆盖、
-// 源文件被删除。
+// TestMoveFileExdevDoesNotDeleteExistingDest verifies cross-device detection takes
+// priority over "delete old and retry": when the destination already contains an old
+// file and the operation is cross-device, moveFile copies over instead of deleting
+// the old file first, preventing data loss if the copy fails. renameFile is injected
+// with the current platform's real cross-device error (crossDeviceRenameErr, wrapped
+// in LinkError); asserts old file content is overwritten and source file is deleted.
 func TestMoveFileExdevDoesNotDeleteExistingDest(t *testing.T) {
 	src := filepath.Join(t.TempDir(), "src.bin")
 	dst := filepath.Join(t.TempDir(), "dst.bin")
@@ -333,28 +346,32 @@ func TestMoveFileExdevDoesNotDeleteExistingDest(t *testing.T) {
 	defer func() { renameFile = origRename }()
 
 	if err := moveFile(src, dst); err != nil {
-		t.Fatalf("跨设备回退应成功: %v", err)
+		t.Fatalf("cross-device fallback should succeed: %v", err)
 	}
 	got, err := os.ReadFile(dst)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(got) != "new content" {
-		t.Errorf("目标内容 = %q, want 覆盖为新内容", got)
+		t.Errorf("destination content = %q, want overwritten with new content", got)
 	}
 	if _, err := os.Stat(src); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("源文件应已被删除, stat err = %v", err)
+		t.Errorf("source should be deleted, stat err = %v", err)
 	}
 }
 
-// TestDownloadTaskRangeIgnoredRestart 是 #B3 的回归测试：服务器忽略 Range 头
-// （带 offset 的续传请求返回 200 + 全量内容）时，downloadTask 必须先截断 .part
-// 再重新从 0 下载，否则会把全量内容重复追加到已有部分导致文件损坏。
-// 测试构造带 Range 头的场景：先注入一个已有 .part 文件（offset>0）并置
-// Downloaded>0 模拟断点续传，httptest 服务器对带 Range 的请求返回 200 全量
-// body（对不带 Range 的请求也返回 200 全量 body，保证 offset 归零后能跑通）。
-// 断言：最终文件内容等于全量 body（不重复拼接）、服务器对带 Range 的请求恰好
-// 只请求一次（offset 归零后重连不带 Range，不陷入无限循环）。
+// TestDownloadTaskRangeIgnoredRestart is a #B3 regression test: when the server
+// ignores the Range header (a resume request with offset returns 200 + full content),
+// downloadTask must first truncate the .part file and re-download from 0, otherwise
+// the full content would be repeatedly appended to the existing partial content,
+// corrupting the file.
+// The test constructs a Range-header scenario: first injects an existing .part file
+// (offset>0) and sets Downloaded>0 to simulate interrupted resume; the httptest server
+// returns 200 full body for Range requests (and also for non-Range requests, ensuring
+// the reconnection after offset-zero can complete).
+// Assertions: final file content equals full body (no duplicate concatenation); the
+// server receives exactly one Range request (after offset-zero the reconnection does
+// not use Range, avoiding infinite loops).
 func TestDownloadTaskRangeIgnoredRestart(t *testing.T) {
 	withTempCwd(t)
 	dlTasksMu.Lock()
@@ -368,7 +385,7 @@ func TestDownloadTaskRangeIgnoredRestart(t *testing.T) {
 		dlTasksMu.Unlock()
 	}()
 
-	payload := []byte("0123456789abcdef") // 16 字节全量内容
+	payload := []byte("0123456789abcdef") // 16 bytes full content
 	rangeReqCount := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Range") != "" {
@@ -384,7 +401,7 @@ func TestDownloadTaskRangeIgnoredRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 预置已有 .part 文件（模拟中断的断点续传状态）与任务进度
+	// pre-populate existing .part file (simulating interrupted resume state) and task progress
 	tmpPath := filepath.Join(destDir, "model.gguf.part")
 	if err := os.WriteFile(tmpPath, []byte("partial"), 0644); err != nil {
 		t.Fatal(err)
@@ -409,20 +426,22 @@ func TestDownloadTaskRangeIgnoredRestart(t *testing.T) {
 	status := task.Status
 	dlTasksMu.Unlock()
 	if status != "done" {
-		t.Fatalf("任务状态 = %q, want done（服务器忽略 Range 时应截断重下）", status)
+		t.Fatalf("task status = %q, want done (server ignoring Range must truncate and redownload)", status)
 	}
 
 	got, err := os.ReadFile(filepath.Join(destDir, "model.gguf"))
 	if err != nil {
-		t.Fatalf("下载文件未落盘: %v", err)
+		t.Fatalf("downloaded file not written to disk: %v", err)
 	}
-	// 文件内容必须等于全量 body，且不含旧部分（partial）——一旦重复追加即损坏
+	// file content must equal the full body and not contain the old partial
+	// bytes — appending the full body onto the old partial corrupts the file
 	if string(got) != string(payload) {
-		t.Errorf("文件内容 = %q, want 全量 %q（不得把全量内容追加到旧 .part 上）", got, payload)
+		t.Errorf("file content = %q, want full %q (must not append the full body onto the old .part)", got, payload)
 	}
 
-	// offset 归零后的重连请求不带 Range，服务器不再收到带 Range 的请求
+	// after offset resets to zero the reconnect carries no Range header; the
+	// server must not see another Range request
 	if rangeReqCount != 1 {
-		t.Errorf("带 Range 的请求次数 = %d, want 1（应只触发一次截断重连，offset=0 后不再带 Range）", rangeReqCount)
+		t.Errorf("Range request count = %d, want 1 (truncate-reconnect happens once; offset=0 sends no Range header)", rangeReqCount)
 	}
 }

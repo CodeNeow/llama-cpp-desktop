@@ -9,8 +9,9 @@ import (
 	"time"
 )
 
-// withTempCwd 切到临时目录并在测试结束后恢复原工作目录。
-// loadConfig/saveConfig 读取相对路径 configFile，测试需隔离工作目录。
+// withTempCwd switches to a temp directory and restores the original working directory
+// after the test. loadConfig/saveConfig read configFile as a relative path, so tests
+// need an isolated working directory.
 func withTempCwd(t *testing.T) string {
 	t.Helper()
 	orig, err := os.Getwd()
@@ -23,13 +24,14 @@ func withTempCwd(t *testing.T) string {
 	}
 	t.Cleanup(func() {
 		if err := os.Chdir(orig); err != nil {
-			t.Errorf("恢复工作目录失败: %v", err)
+			t.Errorf("failed to restore working directory: %v", err)
 		}
 	})
 	return tmp
 }
 
-// saveConfigState 记录配置相关全局状态，供测试结束后恢复，避免污染其他测试。
+// saveConfigState snapshots all config-related global state and restores it after the
+// test, preventing cross-test pollution.
 func saveConfigState(t *testing.T) (origModels map[string]ModelConfig, origServer ServerConfig, origTheme string, origDir string, origModelsDir string) {
 	t.Helper()
 	modelConfigsMu.Lock()
@@ -80,18 +82,19 @@ func saveConfigState(t *testing.T) (origModels map[string]ModelConfig, origServe
 	return
 }
 
-// TestSaveLoadConfigRoundTrip 验证 saveConfig 写入、loadConfig 读回的一致性。
+// TestSaveLoadConfigRoundTrip verifies saveConfig writes and loadConfig reads back
+// consistently.
 func TestSaveLoadConfigRoundTrip(t *testing.T) {
 	tmp := withTempCwd(t)
 	saveConfigState(t)
 
-	// 自定义模型目录必须真实存在，loadConfig 才会接受（见 loadConfig 校验）。
+	// Custom model directory must actually exist for loadConfig to accept it (see loadConfig validation).
 	modelsDirPath := filepath.Join(tmp, "custom-models")
 	if err := os.MkdirAll(modelsDirPath, 0755); err != nil {
 		t.Fatal(err)
 	}
 
-	// 写入
+	// write
 	modelConfigsMu.Lock()
 	cachedModelConfigs = map[string]ModelConfig{
 		"qwen": {Threads: 8, GPULayers: "99", CtxSize: 8192, FlashAttn: true},
@@ -118,10 +121,10 @@ func TestSaveLoadConfigRoundTrip(t *testing.T) {
 	saveConfig()
 
 	if _, err := os.Stat(configFile); err != nil {
-		t.Fatalf("saveConfig 未生成配置文件: %v", err)
+		t.Fatalf("saveConfig did not create config file: %v", err)
 	}
 
-	// 清空全局，模拟全新启动
+	// clear globals, simulate fresh start
 	modelConfigsMu.Lock()
 	cachedModelConfigs = map[string]ModelConfig{}
 	modelConfigsMu.Unlock()
@@ -141,7 +144,7 @@ func TestSaveLoadConfigRoundTrip(t *testing.T) {
 	currentLanguage = ""
 	languageMu.Unlock()
 	configMu.Lock()
-	trayEnabled = true // 与包级默认一致；loadConfig 应读回 false（显式禁用被持久化）
+	trayEnabled = true // matches package default; loadConfig should read back false (explicit disable was persisted)
 	configMu.Unlock()
 
 	loadConfig()
@@ -150,48 +153,49 @@ func TestSaveLoadConfigRoundTrip(t *testing.T) {
 	got := cachedModelConfigs["qwen"]
 	modelConfigsMu.Unlock()
 	if got.Threads != 8 || got.CtxSize != 8192 || !got.FlashAttn {
-		t.Errorf("模型配置读回错误: %+v", got)
+		t.Errorf("model config round-trip failed: %+v", got)
 	}
 	serverConfigMu.Lock()
 	scfg := cachedServerConfig
 	serverConfigMu.Unlock()
 	if scfg.AccessMode != accessLAN || scfg.Host != "0.0.0.0" || scfg.Port != 9000 || scfg.MaxModels != 2 {
-		t.Errorf("服务器配置读回错误（accessMode 与派生 host 应一致）: %+v", scfg)
+		t.Errorf("server config round-trip failed (accessMode and derived host must match): %+v", scfg)
 	}
 	configMu.Lock()
 	if currentTheme != "light" {
-		t.Errorf("主题读回错误: %q", currentTheme)
+		t.Errorf("theme round-trip failed: %q", currentTheme)
 	}
 	configMu.Unlock()
 	customLlamaCppMu.Lock()
 	if customLlamaCppDir != "D:\\llama-cpp" {
-		t.Errorf("自定义 llama.cpp 目录读回错误: %q", customLlamaCppDir)
+		t.Errorf("custom llama.cpp dir round-trip failed: %q", customLlamaCppDir)
 	}
 	customLlamaCppMu.Unlock()
 	modelsDirMu.Lock()
 	if customModelsDir != modelsDirPath {
-		t.Errorf("自定义模型目录读回错误: %q, want %q", customModelsDir, modelsDirPath)
+		t.Errorf("custom models dir round-trip failed: %q, want %q", customModelsDir, modelsDirPath)
 	}
 	modelsDirMu.Unlock()
 	languageMu.Lock()
 	if currentLanguage != "en" {
-		t.Errorf("语言偏好读回错误: %q, want %q", currentLanguage, "en")
+		t.Errorf("language preference round-trip failed: %q, want %q", currentLanguage, "en")
 	}
 	languageMu.Unlock()
-	// trayEnabled=false（非默认）持久化往返：saveConfig 写回、loadConfig 恢复
+	// trayEnabled=false (non-default) round-trip: saveConfig writes back, loadConfig restores false
 	configMu.Lock()
 	if trayEnabled != false {
-		t.Errorf("trayEnabled 读回错误: %v, want false（非默认值必须持久化恢复）", trayEnabled)
+		t.Errorf("trayEnabled round-trip failed: %v, want false (non-default value must persist)", trayEnabled)
 	}
 	configMu.Unlock()
 }
 
-// TestLoadConfigDefaults 验证缺失/部分配置时用默认值兜底，不因旧数据崩溃。
+// TestLoadConfigDefaults verifies default-value fallback when config is missing or partial,
+// preventing crashes from stale data.
 func TestLoadConfigDefaults(t *testing.T) {
 	withTempCwd(t)
 	saveConfigState(t)
 
-	// 只有 host 的残缺配置
+	// partial config with only host
 	if err := os.WriteFile(configFile, []byte(`{"serverConfig":{"host":"127.0.0.1"}}`), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -201,37 +205,38 @@ func TestLoadConfigDefaults(t *testing.T) {
 	scfg := cachedServerConfig
 	serverConfigMu.Unlock()
 	if scfg.Port != 8080 || scfg.MaxModels != 1 || scfg.CacheRAM != 8192 {
-		t.Errorf("残缺配置应回退默认端口/模型数/缓存: %+v", scfg)
+		t.Errorf("partial config should fall back to default port/model-count/cache: %+v", scfg)
 	}
-	// 旧配置无 accessMode 字段：兜底 local 且 host 派生为 127.0.0.1
+	// old config has no accessMode field: fallback to local and host derived as 127.0.0.1
 	if scfg.AccessMode != accessLocal || scfg.Host != "127.0.0.1" {
-		t.Errorf("旧配置无 accessMode 时应兜底 local 且 host=127.0.0.1, 实际 %+v", scfg)
+		t.Errorf("missing accessMode should fall back to local with host=127.0.0.1, got %+v", scfg)
 	}
 	configMu.Lock()
 	if currentTheme != "light" {
-		t.Errorf("无主题时应回退 light, 实际 %q", currentTheme)
+		t.Errorf("missing theme should fall back to light, got %q", currentTheme)
 	}
 	configMu.Unlock()
 	modelConfigsMu.Lock()
 	if cachedModelConfigs == nil {
-		t.Error("无模型配置时不应为 nil map")
+		t.Error("nil model configs map should be initialized to empty map")
 	}
 	modelConfigsMu.Unlock()
 	languageMu.Lock()
 	if currentLanguage != "auto" {
-		t.Errorf("旧配置无 language 字段时应兜底 auto, 实际 %q", currentLanguage)
+		t.Errorf("missing language field should fall back to auto, got %q", currentLanguage)
 	}
 	languageMu.Unlock()
-	// 旧配置无 trayEnabled 字段：兜底 true（保持 4aacac2 无条件启托盘的行为）
+	// old config has no trayEnabled field: fallback to true (preserving 4aacac2 unconditional tray behavior)
 	configMu.Lock()
 	if trayEnabled != true {
-		t.Errorf("旧配置无 trayEnabled 字段时应兜底 true, 实际 %v", trayEnabled)
+		t.Errorf("missing trayEnabled field should fall back to true, got %v", trayEnabled)
 	}
 	configMu.Unlock()
 }
 
-// TestLoadConfigTrayEnabledExplicitFalse 验证显式写 trayEnabled=false 的配置
-// 不会被默认值兜底覆盖（缺字段与显式禁用必须区分）。
+// TestLoadConfigTrayEnabledExplicitFalse verifies an explicitly-written trayEnabled=false
+// is not overwritten by the default-value fallback (missing fields must be distinguished
+// from explicit disable).
 func TestLoadConfigTrayEnabledExplicitFalse(t *testing.T) {
 	withTempCwd(t)
 	saveConfigState(t)
@@ -242,15 +247,16 @@ func TestLoadConfigTrayEnabledExplicitFalse(t *testing.T) {
 	loadConfig()
 	configMu.Lock()
 	if trayEnabled != false {
-		t.Errorf("显式 trayEnabled=false 应保持不变, 实际 %v", trayEnabled)
+		t.Errorf("explicit trayEnabled=false must be preserved, got %v", trayEnabled)
 	}
 	configMu.Unlock()
 }
 
-// TestSetTrayEnabledPersists 验证 SetTrayEnabled 持久化往返：设为 false 后
-// saveConfig 写回、loadConfig 恢复为 false；显式禁用与缺字段默认 true 区分。
-// 不实际启动 systray（Windows 分支的 InitTray/QuitTray 在测试进程无窗口消息
-// 循环的环境不可靠），仅断言配置状态机行为。
+// TestSetTrayEnabledPersists verifies SetTrayEnabled round-trip persistence: after setting
+// false, saveConfig writes back and loadConfig restores false; explicit disable is
+// distinguished from missing-field default true.
+// Does not actually start systray (Windows InitTray/QuitTray is unreliable in test processes
+// without a window message loop); only asserts config state-machine behavior.
 func TestSetTrayEnabledPersists(t *testing.T) {
 	withTempCwd(t)
 	saveConfigState(t)
@@ -261,39 +267,41 @@ func TestSetTrayEnabledPersists(t *testing.T) {
 	}
 	configMu.Lock()
 	if trayEnabled != false {
-		t.Errorf("SetTrayEnabled(false) 后 trayEnabled = %v, want false", trayEnabled)
+		t.Errorf("SetTrayEnabled(false) left trayEnabled = %v, want false", trayEnabled)
 	}
 	configMu.Unlock()
 
-	// 重启模拟：读回配置文件
+	// restart simulation: read config file back
 	configMu.Lock()
 	trayEnabled = true
 	configMu.Unlock()
 	loadConfig()
 	configMu.Lock()
 	if trayEnabled != false {
-		t.Errorf("持久化往返后 trayEnabled = %v, want false（显式禁用必须恢复）", trayEnabled)
+		t.Errorf("after round-trip trayEnabled = %v, want false (explicit disable must persist)", trayEnabled)
 	}
 	configMu.Unlock()
 }
 
-// TestConfigSidebarCollapsedRoundtrip 验证侧边栏收起偏好持久化往返无损：
-// 配置文件显式写 "sidebarCollapsed": true → loadConfig 读入 → saveConfig 写回
-// 后该字段仍在（load→save 链路不丢字段）；再写 false 场景断言保持 false。
-// 与 trayEnabled 相同：loadConfig 预置默认 true（侧边栏默认收起），区分「旧
-// 配置缺字段」（兜底收起）与「显式设为 false」（保持展开）。
+// TestConfigSidebarCollapsedRoundtrip verifies sidebar-collapsed preference round-trip
+// survives losslessly:
+// config file explicitly writes "sidebarCollapsed": true → loadConfig reads it → saveConfig
+// writes it back (load→save chain does not drop fields); then writes false and asserts
+// false is preserved.
+// Like trayEnabled: loadConfig pre-fills default true (sidebar defaults to collapsed),
+// distinguishing "old config missing field" (fallback collapsed) from "explicitly set to false" (keep expanded).
 func TestConfigSidebarCollapsedRoundtrip(t *testing.T) {
 	withTempCwd(t)
 	saveConfigState(t)
 
-	// 写 "sidebarCollapsed": true 的配置
+	// write config with "sidebarCollapsed": true
 	if err := os.WriteFile(configFile, []byte(`{"sidebarCollapsed":true}`), 0644); err != nil {
 		t.Fatal(err)
 	}
 	loadConfig()
 	configMu.Lock()
 	if currentSidebarCollapsed != true {
-		t.Errorf("loadConfig 后 currentSidebarCollapsed = %v, want true", currentSidebarCollapsed)
+		t.Errorf("after loadConfig currentSidebarCollapsed = %v, want true", currentSidebarCollapsed)
 	}
 	configMu.Unlock()
 
@@ -303,42 +311,43 @@ func TestConfigSidebarCollapsedRoundtrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(data), `"sidebarCollapsed": true`) {
-		t.Errorf("saveConfig 后配置文件应保留 sidebarCollapsed: true, 实际内容: %s", data)
+		t.Errorf("after saveConfig file should retain sidebarCollapsed: true, actual: %s", data)
 	}
 
-	// false 场景：显式 false 持久化往返后保持 false（不因零值兜底被顶成 true）
+	// false scenario: explicit false round-trip preserves false (not promoted to true by zero-value fallback)
 	if err := os.WriteFile(configFile, []byte(`{"sidebarCollapsed":false}`), 0644); err != nil {
 		t.Fatal(err)
 	}
 	loadConfig()
 	configMu.Lock()
-	currentSidebarCollapsed = true // 先置非默认值，验证 loadConfig 读回显式 false
+	currentSidebarCollapsed = true // set non-default first to verify loadConfig reads back explicit false
 	configMu.Unlock()
 	loadConfig()
 	configMu.Lock()
 	if currentSidebarCollapsed != false {
-		t.Errorf("显式 false 持久化往返后 currentSidebarCollapsed = %v, want false", currentSidebarCollapsed)
+		t.Errorf("after explicit-false round-trip currentSidebarCollapsed = %v, want false", currentSidebarCollapsed)
 	}
 	configMu.Unlock()
 
-	// 缺字段的旧配置：loadConfig 预置默认 true（收起），与 trayEnabled 同模式
+	// missing-field old config: loadConfig pre-fills default true (collapsed), same pattern as trayEnabled
 	if err := os.WriteFile(configFile, []byte(`{"theme":"light"}`), 0644); err != nil {
 		t.Fatal(err)
 	}
 	configMu.Lock()
-	currentSidebarCollapsed = false // 先置非默认值，验证缺字段时兜底回收起
+	currentSidebarCollapsed = false // set non-default first to verify missing-field fallback recovers collapsed
 	configMu.Unlock()
 	loadConfig()
 	configMu.Lock()
 	if currentSidebarCollapsed != true {
-		t.Errorf("旧配置缺 sidebarCollapsed 字段应兜底 true（收起）, 实际 %v", currentSidebarCollapsed)
+		t.Errorf("old config missing sidebarCollapsed should fall back to true (collapsed), got %v", currentSidebarCollapsed)
 	}
 	configMu.Unlock()
 }
 
-// TestLoadConfigAccessModeFallback 验证旧配置的 host 值不再被信任：无
-// accessMode 字段时兜底 local 且 host 强制派生为 127.0.0.1；即使旧配置
-// 写了 0.0.0.0 这类原本不允许的值，也不会把服务悄悄暴露到局域网。
+// TestLoadConfigAccessModeFallback verifies old-config host values are no longer trusted:
+// without an accessMode field, fallback to local and host is force-derived as 127.0.0.1;
+// even if the old config wrote a previously-disallowed value like 0.0.0.0, the service
+// will not be silently exposed to the LAN.
 func TestLoadConfigAccessModeFallback(t *testing.T) {
 	withTempCwd(t)
 	saveConfigState(t)
@@ -352,12 +361,12 @@ func TestLoadConfigAccessModeFallback(t *testing.T) {
 	scfg := cachedServerConfig
 	serverConfigMu.Unlock()
 	if scfg.AccessMode != accessLocal || scfg.Host != "127.0.0.1" {
-		t.Errorf("旧配置非法 host 应兜底 local 且 host=127.0.0.1, 实际 %+v", scfg)
+		t.Errorf("old illegal host should fall back to local with host=127.0.0.1, got %+v", scfg)
 	}
 }
 
-// TestLoadConfigAccessModeLAN 验证配置了 accessMode=lan 时 loadConfig 保留
-// lan 并把 host 派生为 0.0.0.0。
+// TestLoadConfigAccessModeLAN verifies that when accessMode=lan is configured, loadConfig
+// preserves lan and derives host as 0.0.0.0.
 func TestLoadConfigAccessModeLAN(t *testing.T) {
 	withTempCwd(t)
 	saveConfigState(t)
@@ -371,52 +380,55 @@ func TestLoadConfigAccessModeLAN(t *testing.T) {
 	scfg := cachedServerConfig
 	serverConfigMu.Unlock()
 	if scfg.AccessMode != accessLAN || scfg.Host != "0.0.0.0" {
-		t.Errorf("accessMode=lan 应保留并派生 host=0.0.0.0, 实际 %+v", scfg)
+		t.Errorf("accessMode=lan should be preserved with host=0.0.0.0, got %+v", scfg)
 	}
 }
 
-// TestLoadConfigLanguageFallback 验证语言偏好白名单兜底：缺失字段与非法值均
-// 回退 auto，仅 zh/en/auto 合法取值被保留（与 downloadSource 同策略）。
+// TestLoadConfigLanguageFallback verifies the language preference whitelist fallback:
+// missing fields and illegal values both fall back to auto; only zh/en/auto are kept
+// (same policy as downloadSource).
 func TestLoadConfigLanguageFallback(t *testing.T) {
 	withTempCwd(t)
 	saveConfigState(t)
 
-	// 缺失 language 字段 → auto（已由 TestLoadConfigDefaults 覆盖，这里补充非法值）
+	// missing language field → auto (already covered by TestLoadConfigDefaults; here we cover illegal values)
 	if err := os.WriteFile(configFile, []byte(`{"language":"fr"}`), 0644); err != nil {
 		t.Fatal(err)
 	}
 	loadConfig()
 	languageMu.Lock()
 	if currentLanguage != "auto" {
-		t.Errorf("非法语言 fr 应兜底 auto, 实际 %q", currentLanguage)
+		t.Errorf("illegal language 'fr' should fall back to auto, got %q", currentLanguage)
 	}
 	languageMu.Unlock()
 
-	// 合法取值保留
+	// valid values preserved
 	if err := os.WriteFile(configFile, []byte(`{"language":"zh"}`), 0644); err != nil {
 		t.Fatal(err)
 	}
 	loadConfig()
 	languageMu.Lock()
 	if currentLanguage != "zh" {
-		t.Errorf("合法语言 zh 应保持不变, 实际 %q", currentLanguage)
+		t.Errorf("valid language 'zh' should be kept, got %q", currentLanguage)
 	}
 	languageMu.Unlock()
 }
 
-// TestLoadConfigMissingFile 验证配置文件不存在时静默返回（首次启动场景）。
+// TestLoadConfigMissingFile verifies the config file missing case returns silently (first-launch scenario).
 func TestLoadConfigMissingFile(t *testing.T) {
 	withTempCwd(t)
 	saveConfigState(t)
-	loadConfig() // 不应 panic
+	loadConfig() // must not panic
 }
 
-// TestLoadConfigMigratesLegacyFile 验证 llama-gui → llama-desktop 更名后的
-// 配置文件迁移：新文件不存在而旧文件存在时，loadConfig 把旧文件内容复制到
-// 新文件再加载（老用户主题等配置无损）。迁移只读旧写新、不删除或改名源文件，
-// 旧文件保留原处且内容不变——wails dev 的文件监视器监视项目根目录，启动期
-// 删除/改名根目录文件会触发 Wails CLI GetFileAttributesEx 竞态崩溃退出；
-// 新文件已存在时不再迁移，避免旧文件覆盖新配置。
+// TestLoadConfigMigratesLegacyFile verifies the llama-gui → llama-desktop rename migration:
+// when the new file does not exist but the old one does, loadConfig copies old-file content
+// into the new file and then loads it (user settings like theme survive). Migration only
+// reads old and writes new — it does not delete or rename the source file.
+// The old file is kept in place with unchanged contents: wails dev's file watcher monitors
+// the project root; deleting/renaming a root-directory file during startup triggers a
+// Wails CLI GetFileAttributesEx race crash. Migration is skipped when the new file already
+// exists, preventing old-file content from overwriting the new config.
 func TestLoadConfigMigratesLegacyFile(t *testing.T) {
 	withTempCwd(t)
 	saveConfigState(t)
@@ -431,26 +443,26 @@ func TestLoadConfigMigratesLegacyFile(t *testing.T) {
 	theme := currentTheme
 	configMu.Unlock()
 	if theme != "dark" {
-		t.Errorf("迁移后应加载旧配置 theme=dark, 实际 %q", theme)
+		t.Errorf("after migration old config theme=dark should be loaded, got %q", theme)
 	}
 	newData, err := os.ReadFile(configFile)
 	if err != nil {
-		t.Fatalf("迁移后应存在新配置文件: %v", err)
+		t.Fatalf("new config file should exist after migration: %v", err)
 	}
 	if string(newData) != string(legacyData) {
-		t.Errorf("新配置文件内容应与旧文件字节级一致, 实际 %q", newData)
+		t.Errorf("new config file content should be byte-identical to old file, got %q", newData)
 	}
-	// 行为反转点：旧文件保留在原处且内容不变（保留旧文件避免 wails dev
-	// 文件监视器竞态），迁移不再删除或改名源文件。
+	// behavior invariant: old file is kept in place with unchanged contents (keeping it avoids
+	// wails dev file-watcher race); migration no longer deletes or renames the source file.
 	keptData, err := os.ReadFile(legacyConfigFile)
 	if err != nil {
-		t.Fatalf("迁移后旧文件应保留在原处: %v", err)
+		t.Fatalf("old file should remain in place after migration: %v", err)
 	}
 	if string(keptData) != string(legacyData) {
-		t.Errorf("旧文件内容应保持不变, 实际 %q", keptData)
+		t.Errorf("old file content must remain unchanged, got %q", keptData)
 	}
 
-	// 新文件已存在时优先加载新文件，旧文件保持原样不参与迁移
+	// when new file already exists, it is loaded preferentially; old file stays unchanged
 	if err := os.WriteFile(configFile, []byte(`{"theme":"light"}`), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -462,13 +474,14 @@ func TestLoadConfigMigratesLegacyFile(t *testing.T) {
 	theme = currentTheme
 	configMu.Unlock()
 	if theme != "light" {
-		t.Errorf("新文件存在时应加载新配置 theme=light, 实际 %q", theme)
+		t.Errorf("new file should be loaded when it exists, expected theme=light, got %q", theme)
 	}
 }
 
-// TestLoadConfigMigratesMLockNoMMap 验证旧格式配置中的 mlock/noMmap 字段
-// 在 loadConfig 时迁移为 load-mode（b10342 起 mlock/no-mmap DEPRECATED），
-// 兼容字段随即清零，避免旧布尔值被写入新格式配置。
+// TestLoadConfigMigratesMLockNoMMap verifies legacy mlock/noMmap fields in old-format configs
+// are migrated to load-mode at loadConfig time (mlock/no-mmap DEPRECATED since b10342);
+// compatibility fields are zeroed immediately after, preventing old boolean values from
+// being written into the new format.
 func TestLoadConfigMigratesMLockNoMMap(t *testing.T) {
 	withTempCwd(t)
 	saveConfigState(t)
@@ -479,9 +492,9 @@ func TestLoadConfigMigratesMLockNoMMap(t *testing.T) {
 		want       string
 	}{
 		{"mlock only", `{"modelConfigs":{"m1":{"threads":4,"mlock":true,"noMmap":false}}}`, "mlock"},
-		{"mlock and noMmap", `{"modelConfigs":{"m1":{"threads":4,"mlock":true,"noMmap":true}}}`, "mlock"}, // mlock 语义优先
+		{"mlock and noMmap", `{"modelConfigs":{"m1":{"threads":4,"mlock":true,"noMmap":true}}}`, "mlock"}, // mlock takes priority
 		{"noMmap only", `{"modelConfigs":{"m1":{"threads":4,"mlock":false,"noMmap":true}}}`, "none"},
-		{"neither", `{"modelConfigs":{"m1":{"threads":4,"mlock":false,"noMmap":false}}}`, ""}, // 无旧字段保持默认
+		{"neither", `{"modelConfigs":{"m1":{"threads":4,"mlock":false,"noMmap":false}}}`, ""}, // no legacy fields → keep default
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -493,15 +506,15 @@ func TestLoadConfigMigratesMLockNoMMap(t *testing.T) {
 			got := cachedModelConfigs["m1"]
 			modelConfigsMu.Unlock()
 			if got.LoadMode != c.want {
-				t.Errorf("LoadMode = %q, want %q（config %s）", got.LoadMode, c.want, c.configJSON)
+				t.Errorf("LoadMode = %q, want %q (config %s)", got.LoadMode, c.want, c.configJSON)
 			}
 			if got.MLock || got.NoMMap {
-				t.Errorf("迁移后兼容字段应清零, 实际 MLock=%v NoMMap=%v", got.MLock, got.NoMMap)
+				t.Errorf("compatibility fields must be zeroed after migration, MLock=%v NoMMap=%v", got.MLock, got.NoMMap)
 			}
 		})
 	}
 
-	// 新格式配置（已含 loadMode）不应被迁移覆盖
+	// new-format config (already has loadMode) must not be overwritten by migration
 	writeConfig := `{"modelConfigs":{"m1":{"threads":4,"loadMode":"dio"}}}`
 	if err := os.WriteFile(configFile, []byte(writeConfig), 0644); err != nil {
 		t.Fatal(err)
@@ -511,118 +524,119 @@ func TestLoadConfigMigratesMLockNoMMap(t *testing.T) {
 	got := cachedModelConfigs["m1"]
 	modelConfigsMu.Unlock()
 	if got.LoadMode != "dio" {
-		t.Errorf("新格式 loadMode=dio 应保持不变, 实际 %q", got.LoadMode)
+		t.Errorf("new-format loadMode=dio must be preserved, got %q", got.LoadMode)
 	}
 }
 
-// TestSaveServerConfigRejectsInvalidAccessMode 验证 SaveServerConfig 拒绝
-// 白名单（local/lan）之外的访问范围（#5）。若允许任意 host 值，llama-server
-// 可能把推理服务暴露到局域网/公网，须在存配置前拒绝；拒绝分支不得改写
-// 已存的 cachedServerConfig。
+// TestSaveServerConfigRejectsInvalidAccessMode verifies SaveServerConfig rejects access
+// scopes outside the whitelist (local/lan) (#5). Allowing arbitrary host values would expose
+// the inference service to the LAN/public via llama-server; rejection must happen before
+// persisting; the rejection branch must not alter the already-stored cachedServerConfig.
 func TestSaveServerConfigRejectsInvalidAccessMode(t *testing.T) {
 	withTempCwd(t)
 	saveConfigState(t)
 
 	app := &App{}
 	if err := app.SaveServerConfig(ServerConfig{AccessMode: "wan", Host: "0.0.0.0", Port: 8080, MaxModels: 1, CacheRAM: 0}); err == nil {
-		t.Error("AccessMode=wan 应返回错误")
+		t.Error("AccessMode=wan should return error")
 	}
 	if err := app.SaveServerConfig(ServerConfig{AccessMode: "192.168.1.10", Host: "0.0.0.0", Port: 8080, MaxModels: 1, CacheRAM: 0}); err == nil {
-		t.Error("非法局域网地址值应返回错误")
+		t.Error("illegal LAN-address-style value should return error")
 	}
 	if err := app.SaveServerConfig(ServerConfig{AccessMode: "", Host: "0.0.0.0", Port: 8080, MaxModels: 1, CacheRAM: 0}); err == nil {
-		t.Error("空 AccessMode 应返回错误")
+		t.Error("empty AccessMode should return error")
 	}
-	// 拒绝分支不得改动已存配置
+	// rejection branch must not alter the stored config
 	serverConfigMu.Lock()
 	got := cachedServerConfig
 	serverConfigMu.Unlock()
 	if got.Host != "127.0.0.1" || got.AccessMode != accessLocal {
-		t.Errorf("非法 AccessMode 不应改写配置, 当前 = %+v", got)
+		t.Errorf("illegal AccessMode must not overwrite config, current = %+v", got)
 	}
 }
 
-// TestSaveServerConfigDerivesHostFromAccessMode 验证 SaveServerConfig 通过后
-// Host 按 AccessMode 强制派生：lan → 0.0.0.0，local → 127.0.0.1，不信任前端
-// 传入的 host 值。
+// TestSaveServerConfigDerivesHostFromAccessMode verifies that after SaveServerConfig succeeds,
+// Host is force-derived from AccessMode: lan → 0.0.0.0, local → 127.0.0.1, ignoring the
+// host value supplied by the frontend.
 func TestSaveServerConfigDerivesHostFromAccessMode(t *testing.T) {
 	withTempCwd(t)
 	saveConfigState(t)
 
 	app := &App{}
 	if err := app.SaveServerConfig(ServerConfig{AccessMode: accessLAN, Host: "1.2.3.4", Port: 8080, MaxModels: 2, CacheRAM: 4096}); err != nil {
-		t.Fatalf("AccessMode=lan 应被接受: %v", err)
+		t.Fatalf("AccessMode=lan should be accepted: %v", err)
 	}
 	serverConfigMu.Lock()
 	got := cachedServerConfig
 	serverConfigMu.Unlock()
 	if got.AccessMode != accessLAN || got.Host != "0.0.0.0" {
-		t.Errorf("lan 保存后 Host 应派生为 0.0.0.0, 实际 %+v", got)
+		t.Errorf("after saving lan, Host should be derived as 0.0.0.0, got %+v", got)
 	}
 
 	if err := app.SaveServerConfig(ServerConfig{AccessMode: accessLocal, Host: "0.0.0.0", Port: 8080, MaxModels: 1, CacheRAM: 0}); err != nil {
-		t.Fatalf("AccessMode=local 应被接受: %v", err)
+		t.Fatalf("AccessMode=local should be accepted: %v", err)
 	}
 	serverConfigMu.Lock()
 	got = cachedServerConfig
 	serverConfigMu.Unlock()
 	if got.AccessMode != accessLocal || got.Host != "127.0.0.1" {
-		t.Errorf("local 保存后 Host 应派生为 127.0.0.1, 实际 %+v", got)
+		t.Errorf("after saving local, Host should be derived as 127.0.0.1, got %+v", got)
 	}
 }
 
-// TestSaveServerConfigRejectsInvalidPort 验证端口必须落在 1024-65535，
-// 避开特权端口与非法范围（#5）。
+// TestSaveServerConfigRejectsInvalidPort verifies the port must be within 1024-65535,
+// avoiding privileged ports and out-of-range values (#5).
 func TestSaveServerConfigRejectsInvalidPort(t *testing.T) {
 	withTempCwd(t)
 	saveConfigState(t)
 
 	app := &App{}
 	if err := app.SaveServerConfig(ServerConfig{AccessMode: accessLocal, Host: "127.0.0.1", Port: 80, MaxModels: 1, CacheRAM: 0}); err == nil {
-		t.Error("Port=80（特权端口）应返回错误")
+		t.Error("Port=80 (privileged) should return error")
 	}
 	if err := app.SaveServerConfig(ServerConfig{AccessMode: accessLocal, Host: "127.0.0.1", Port: 99999, MaxModels: 1, CacheRAM: 0}); err == nil {
-		t.Error("Port=99999 超出范围应返回错误")
+		t.Error("Port=99999 is out of range and should return error")
 	}
 }
 
-// TestSaveServerConfigRejectsInvalidNumbers 验证 MaxModels 至少为 1、
-// CacheRAM 非负（#5）。
+// TestSaveServerConfigRejectsInvalidNumbers verifies MaxModels >= 1 and CacheRAM >= 0 (#5).
 func TestSaveServerConfigRejectsInvalidNumbers(t *testing.T) {
 	withTempCwd(t)
 	saveConfigState(t)
 
 	app := &App{}
 	if err := app.SaveServerConfig(ServerConfig{AccessMode: accessLocal, Host: "127.0.0.1", Port: 8080, MaxModels: 0, CacheRAM: 0}); err == nil {
-		t.Error("MaxModels=0 应返回错误")
+		t.Error("MaxModels=0 should return error")
 	}
 	if err := app.SaveServerConfig(ServerConfig{AccessMode: accessLocal, Host: "127.0.0.1", Port: 8080, MaxModels: 1, CacheRAM: -1}); err == nil {
-		t.Error("CacheRAM 为负应返回错误")
+		t.Error("negative CacheRAM should return error")
 	}
 }
 
-// TestSaveServerConfigAcceptsLocalAccessMode 验证合法访问范围被接受并写入
-// 全局缓存与配置文件：local 模式下 host 恒被派生为 127.0.0.1（无论前端传入
-// 什么 host 值，如 localhost/::1 也归一化为 127.0.0.1）。
+// TestSaveServerConfigAcceptsLocalAccessMode verifies a valid access scope is accepted and
+// written to the global cache and config file: in local mode, Host is always derived as
+// 127.0.0.1 (regardless of the host value passed by the frontend, e.g. localhost/::1 are
+// all normalized to 127.0.0.1).
 func TestSaveServerConfigAcceptsLocalAccessMode(t *testing.T) {
 	withTempCwd(t)
 	saveConfigState(t)
 
 	app := &App{}
 	if err := app.SaveServerConfig(ServerConfig{AccessMode: accessLocal, Host: "localhost", Port: 8080, MaxModels: 2, CacheRAM: 4096}); err != nil {
-		t.Fatalf("AccessMode=local 应被接受: %v", err)
+		t.Fatalf("AccessMode=local should be accepted: %v", err)
 	}
 	serverConfigMu.Lock()
 	got := cachedServerConfig
 	serverConfigMu.Unlock()
 	if got.AccessMode != accessLocal || got.Host != "127.0.0.1" || got.Port != 8080 || got.MaxModels != 2 || got.CacheRAM != 4096 {
-		t.Errorf("AccessMode=local 配置未正确写入（host 应归一化 127.0.0.1）: %+v", got)
+		t.Errorf("AccessMode=local config not written correctly (host should be normalized to 127.0.0.1): %+v", got)
 	}
 }
 
-// TestSaveModelConfigRejectsInjection 验证 SaveModelConfig 拒绝含换行的
-// 字符串字段（#9）。这类值若进入预设生成会被原样写入 INI，构成配置注入。
-// 拒绝分支不得写入配置缓存；合法值则正常写入（对照组）。
+// TestSaveModelConfigRejectsInjection verifies SaveModelConfig rejects string fields
+// containing newlines (#9). Such values would be written verbatim into INI during preset
+// generation, constituting a config injection.
+// Rejection branch must not write to config cache; valid values write normally (control group).
 func TestSaveModelConfigRejectsInjection(t *testing.T) {
 	withTempCwd(t)
 	saveConfigState(t)
@@ -630,51 +644,51 @@ func TestSaveModelConfigRejectsInjection(t *testing.T) {
 	app := &App{}
 	badGPU := "99\n[evil]\nmodel=/tmp/x"
 	if err := app.SaveModelConfig("m1", ModelConfig{GPULayers: badGPU}); err == nil {
-		t.Error("含换行的 GPULayers 应返回错误")
+		t.Error("GPULayers with newline should return error")
 	}
 	if err := app.SaveModelConfig("m1", ModelConfig{CacheTypeK: "q8_0\nfoo"}); err == nil {
-		t.Error("含换行的 CacheTypeK 应返回错误")
+		t.Error("CacheTypeK with newline should return error")
 	}
-	// 拒绝分支不得写入配置缓存
+	// rejection branch must not write to config cache
 	modelConfigsMu.Lock()
 	_, ok := cachedModelConfigs["m1"]
 	modelConfigsMu.Unlock()
 	if ok {
-		t.Error("被拒绝的配置不应写入缓存")
+		t.Error("rejected config must not be written to cache")
 	}
 
-	// 合法 CacheTypeK 应被接受并写入
+	// valid CacheTypeK should be accepted and written
 	if err := app.SaveModelConfig("m1-ok", ModelConfig{CacheTypeK: "q4_0"}); err != nil {
-		t.Errorf("合法 CacheTypeK 应被接受: %v", err)
+		t.Errorf("valid CacheTypeK should be accepted: %v", err)
 	}
 	modelConfigsMu.Lock()
 	got, ok := cachedModelConfigs["m1-ok"]
 	modelConfigsMu.Unlock()
 	if !ok || got.CacheTypeK != "q4_0" {
-		t.Error("合法配置未写入缓存")
+		t.Error("valid config was not written to cache")
 	}
 }
 
-// TestSaveModelConfigRejectsInvalidWhitelist 验证 GPULayers / CacheType
-// 白名单之外的值被拒绝（#9 第一层）。
+// TestSaveModelConfigRejectsInvalidWhitelist verifies GPULayers / CacheType values outside
+// the whitelist are rejected (#9 first layer).
 func TestSaveModelConfigRejectsInvalidWhitelist(t *testing.T) {
 	withTempCwd(t)
 	saveConfigState(t)
 
 	app := &App{}
 	if err := app.SaveModelConfig("m2", ModelConfig{GPULayers: "-1"}); err == nil {
-		t.Error("GPULayers=-1 应返回错误")
+		t.Error("GPULayers=-1 should return error")
 	}
 	if err := app.SaveModelConfig("m2", ModelConfig{GPULayers: "1.5"}); err == nil {
-		t.Error("GPULayers=1.5 应返回错误")
+		t.Error("GPULayers=1.5 should return error")
 	}
 	if err := app.SaveModelConfig("m2", ModelConfig{CacheTypeV: "q4_2"}); err == nil {
-		t.Error("CacheTypeV=q4_2 不在白名单应返回错误")
+		t.Error("CacheTypeV=q4_2 outside whitelist should return error")
 	}
 }
 
-// TestEffectiveModelsDir 验证生效模型目录：默认返回 LLM-Models；配置了
-// 自定义目录后返回自定义目录。
+// TestEffectiveModelsDir verifies the effective models directory: defaults to LLM-Models;
+// returns the configured custom directory when one is set.
 func TestEffectiveModelsDir(t *testing.T) {
 	saveConfigState(t)
 
@@ -682,7 +696,7 @@ func TestEffectiveModelsDir(t *testing.T) {
 	customModelsDir = ""
 	modelsDirMu.Unlock()
 	if got := effectiveModelsDir(); got != modelsDir {
-		t.Errorf("默认生效目录 = %q, want %q", got, modelsDir)
+		t.Errorf("default effective dir = %q, want %q", got, modelsDir)
 	}
 
 	custom := t.TempDir()
@@ -690,13 +704,13 @@ func TestEffectiveModelsDir(t *testing.T) {
 	customModelsDir = custom
 	modelsDirMu.Unlock()
 	if got := effectiveModelsDir(); got != custom {
-		t.Errorf("设置自定义目录后生效目录 = %q, want %q", got, custom)
+		t.Errorf("effective dir after setting custom = %q, want %q", got, custom)
 	}
 }
 
-// TestLoadConfigIgnoresInvalidModelDir 验证配置文件中 modelDir 指向不存在的
-// 目录或普通文件时，loadConfig 忽略该值（打 WARN 并回退默认），customModelsDir
-// 保持为空。
+// TestLoadConfigIgnoresInvalidModelDir verifies that when modelDir in the config points to
+// a non-existent directory or a plain file, loadConfig ignores it (logs WARN and falls back
+// to default), leaving customModelsDir empty.
 func TestLoadConfigIgnoresInvalidModelDir(t *testing.T) {
 	withTempCwd(t)
 	saveConfigState(t)
@@ -704,7 +718,7 @@ func TestLoadConfigIgnoresInvalidModelDir(t *testing.T) {
 	customModelsDir = ""
 	modelsDirMu.Unlock()
 
-	// writeConfig 用 json.Marshal 编码路径，避免 Windows 反斜杠破坏 JSON 转义。
+	// writeConfig uses json.Marshal to encode the path, avoiding Windows backslash JSON escape issues.
 	writeConfig := func(modelDir string) {
 		t.Helper()
 		cfg := appConfig{ModelDir: modelDir}
@@ -717,16 +731,16 @@ func TestLoadConfigIgnoresInvalidModelDir(t *testing.T) {
 		}
 	}
 
-	// modelDir 指向不存在的目录
+	// modelDir points to a non-existent directory
 	writeConfig(filepath.Join(t.TempDir(), "does-not-exist"))
 	loadConfig()
 	modelsDirMu.Lock()
 	if customModelsDir != "" {
-		t.Errorf("不存在的 modelDir 应被忽略, 实际 customModelsDir = %q", customModelsDir)
+		t.Errorf("non-existent modelDir should be ignored, customModelsDir = %q", customModelsDir)
 	}
 	modelsDirMu.Unlock()
 
-	// modelDir 指向普通文件（非目录）
+	// modelDir points to a plain file (not a directory)
 	filePath := filepath.Join(t.TempDir(), "plain-file")
 	if err := os.WriteFile(filePath, []byte("x"), 0644); err != nil {
 		t.Fatal(err)
@@ -735,51 +749,52 @@ func TestLoadConfigIgnoresInvalidModelDir(t *testing.T) {
 	loadConfig()
 	modelsDirMu.Lock()
 	if customModelsDir != "" {
-		t.Errorf("普通文件的 modelDir 应被忽略, 实际 customModelsDir = %q", customModelsDir)
+		t.Errorf("plain-file modelDir should be ignored, customModelsDir = %q", customModelsDir)
 	}
 	modelsDirMu.Unlock()
 }
 
-// TestSetModelsDir 验证 SetModelsDir：非法输入（空串/不存在路径/普通文件）
-// 返回错误且不改写 customModelsDir；合法目录写入成功并使模型缓存失效。
+// TestSetModelsDir verifies SetModelsDir: illegal input (empty string / non-existent path /
+// plain file) returns an error without rewriting customModelsDir; a valid directory is written
+// successfully and invalidates the model cache.
 func TestSetModelsDir(t *testing.T) {
 	withTempCwd(t)
 	saveConfigState(t)
 	saveModelsState(t)
 	app := &App{}
 
-	// 先置缓存有效，便于断言 SetModelsDir 使缓存失效
+	// prime cache to a valid state so SetModelsDir invalidation is assertable
 	modelsMu.Lock()
 	modelsCacheValid.Store(true)
 	modelsMu.Unlock()
 
-	// 空串
+	// empty string
 	if err := app.SetModelsDir(""); err == nil {
-		t.Error("空串应返回错误")
+		t.Error("empty string should return error")
 	}
-	// 不存在的路径
+	// non-existent path
 	if err := app.SetModelsDir(filepath.Join(t.TempDir(), "missing")); err == nil {
-		t.Error("不存在的路径应返回错误")
+		t.Error("non-existent path should return error")
 	}
-	// 普通文件
+	// plain file
 	filePath := filepath.Join(t.TempDir(), "a.txt")
 	if err := os.WriteFile(filePath, []byte("x"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	if err := app.SetModelsDir(filePath); err == nil {
-		t.Error("普通文件应返回错误")
+		t.Error("plain file should return error")
 	}
-	// 非法输入不得改写状态
+	// illegal input must not rewrite state
 	modelsDirMu.Lock()
 	if customModelsDir != "" {
-		t.Errorf("非法输入不应改写 customModelsDir, 实际 %q", customModelsDir)
+		t.Errorf("illegal input must not rewrite customModelsDir, got %q", customModelsDir)
 	}
 	modelsDirMu.Unlock()
 
-	// 合法目录
+	// valid directory
 	valid := t.TempDir()
 	if err := app.SetModelsDir(valid); err != nil {
-		t.Fatalf("合法目录应写入成功: %v", err)
+		t.Fatalf("valid directory should be written successfully: %v", err)
 	}
 	modelsDirMu.Lock()
 	if customModelsDir != valid {
@@ -787,14 +802,15 @@ func TestSetModelsDir(t *testing.T) {
 	}
 	modelsDirMu.Unlock()
 	if modelsCacheValid.Load() {
-		t.Error("SetModelsDir 成功后模型缓存应失效")
+		t.Error("model cache must be invalidated after successful SetModelsDir")
 	}
 }
 
-// ─── downloadSource 持久化 ────────────────────────────────────────
+// ─── downloadSource persistence ────────────────────────────────────────
 
-// TestLoadConfigDownloadSourceDefault 验证旧配置没有 downloadSource 字段时
-// 下载源兜底为 hf（#12：旧数据兼容，不因缺字段报错或留下空值）。
+// TestLoadConfigDownloadSourceDefault verifies the download source falls back to hf when
+// the old config lacks a downloadSource field (#12: backward compatibility, no error or
+// empty value for missing fields).
 func TestLoadConfigDownloadSourceDefault(t *testing.T) {
 	withTempCwd(t)
 	saveConfigState(t)
@@ -805,13 +821,13 @@ func TestLoadConfigDownloadSourceDefault(t *testing.T) {
 	loadConfig()
 
 	if got := activeDownloadSource(); got != sourceHF {
-		t.Errorf("旧配置无 downloadSource 字段时应兜底 hf, 实际 %q", got)
+		t.Errorf("old config without downloadSource should fall back to hf, got %q", got)
 	}
 }
 
-// TestSetDownloadSourcePersist 验证 SetDownloadSource 合法值写入并持久化往返：
-// 设置 modelscope 后 activeDownloadSource 立即生效，saveConfig + loadConfig 后
-// 仍为 modelscope（含非默认值在重启后恢复）。
+// TestSetDownloadSourcePersist verifies SetDownloadSource valid-value write and round-trip:
+// after setting modelscope, activeDownloadSource takes effect immediately; after
+// saveConfig + loadConfig it is still modelscope (non-default value survives restart).
 func TestSetDownloadSourcePersist(t *testing.T) {
 	withTempCwd(t)
 	saveConfigState(t)
@@ -821,21 +837,21 @@ func TestSetDownloadSourcePersist(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := activeDownloadSource(); got != sourceModelScope {
-		t.Errorf("设置后 activeDownloadSource = %q, want modelscope", got)
+		t.Errorf("after set, activeDownloadSource = %q, want modelscope", got)
 	}
 
-	// 重启模拟：读回配置文件
+	// restart simulation: read config file back
 	downloadSourceMu.Lock()
 	downloadSource = sourceHF
 	downloadSourceMu.Unlock()
 	loadConfig()
 	if got := activeDownloadSource(); got != sourceModelScope {
-		t.Errorf("持久化往返后 activeDownloadSource = %q, want modelscope", got)
+		t.Errorf("after round-trip activeDownloadSource = %q, want modelscope", got)
 	}
 }
 
-// TestSetDownloadSourceRejectsInvalid 验证 SetDownloadSource 拒绝白名单外的值
-// 且不改写当前状态（非法值返回中文错误）。
+// TestSetDownloadSourceRejectsInvalid verifies SetDownloadSource rejects values outside
+// the whitelist and does not overwrite current state (illegal values return Chinese error).
 func TestSetDownloadSourceRejectsInvalid(t *testing.T) {
 	withTempCwd(t)
 	saveConfigState(t)
@@ -846,22 +862,22 @@ func TestSetDownloadSourceRejectsInvalid(t *testing.T) {
 
 	app := &App{}
 	if err := app.SetDownloadSource("github"); err == nil {
-		t.Error("非法下载源 github 应返回错误")
+		t.Error("illegal download source 'github' should return error")
 	}
 	if err := app.SetDownloadSource(""); err == nil {
-		t.Error("空下载源应返回错误")
+		t.Error("empty download source should return error")
 	}
 	if got := activeDownloadSource(); got != sourceHF {
-		t.Errorf("非法值不应改写下载源, 实际 %q", got)
+		t.Errorf("illegal value must not change download source, got %q", got)
 	}
 }
 
-// ─── 下载任务队列持久化 ───────────────────────────────────────────
+// ─── download task queue persistence ───────────────────────────────────
 
-// TestDownloadTasksPersistRoundTrip 验证下载任务队列 saveConfig/loadConfig 往返：
-// 含终态任务（done）在内全部字段（ID/ModelID/FileName/DestDir/Source/Status/
-// Progress/Total/Downloaded/SizeHuman/Error）保持一致，运行期字段（URL/ctx/
-// cancel/resumeCh）不持久化、URL 在恢复时重建。
+// TestDownloadTasksPersistRoundTrip verifies download task queue saveConfig/loadConfig round-trip:
+// all fields (ID/ModelID/FileName/DestDir/Source/Status/Progress/Total/Downloaded/SizeHuman/Error)
+// stay consistent for terminal tasks (done); runtime fields (URL/ctx/cancel/resumeCh) are
+// not persisted, URL is rebuilt on restore.
 func TestDownloadTasksPersistRoundTrip(t *testing.T) {
 	withTempCwd(t)
 	saveConfigState(t)
@@ -869,13 +885,13 @@ func TestDownloadTasksPersistRoundTrip(t *testing.T) {
 	dlTasksMu.Lock()
 	dlTasks = []*DlTask{
 		{ID: "dl-1", ModelID: "author/model", FileName: "a.gguf", DestDir: "D:/models/author/model", Source: "hf", Status: "done", Progress: 100, Total: 100, Downloaded: 100, SizeHuman: "100 B"},
-		{ID: "dl-2", ModelID: "author/model2", FileName: "b.gguf", DestDir: "D:/models/author/model2", Source: "modelscope", Status: "paused", Progress: 50, Total: 200, Downloaded: 100, SizeHuman: "200 B", Error: "曾失败"},
+		{ID: "dl-2", ModelID: "author/model2", FileName: "b.gguf", DestDir: "D:/models/author/model2", Source: "modelscope", Status: "paused", Progress: 50, Total: 200, Downloaded: 100, SizeHuman: "200 B", Error: "previously failed"},
 	}
 	dlTasksMu.Unlock()
 
 	saveConfig()
 
-	// 清空全局，模拟全新启动
+	// clear globals, simulate fresh start
 	dlTasksMu.Lock()
 	dlTasks = nil
 	dlTaskCounter = 0
@@ -887,33 +903,33 @@ func TestDownloadTasksPersistRoundTrip(t *testing.T) {
 	restored := dlTasks
 	dlTasksMu.Unlock()
 	if len(restored) != 2 {
-		t.Fatalf("恢复任务数 = %d, want 2", len(restored))
+		t.Fatalf("restored task count = %d, want 2", len(restored))
 	}
 	got := restored[0]
 	if got.ID != "dl-1" || got.ModelID != "author/model" || got.FileName != "a.gguf" ||
 		got.DestDir != "D:/models/author/model" || got.Source != "hf" || got.Status != "done" ||
 		got.Progress != 100 || got.Total != 100 || got.Downloaded != 100 || got.SizeHuman != "100 B" {
-		t.Errorf("done 任务字段读回不一致: %+v", got)
+		t.Errorf("done task fields inconsistent after round-trip: %+v", got)
 	}
 	got2 := restored[1]
-	if got2.Source != "modelscope" || got2.Status != "paused" || got2.Error != "曾失败" || got2.Downloaded != 100 {
-		t.Errorf("paused 任务字段读回不一致: %+v", got2)
+	if got2.Source != "modelscope" || got2.Status != "paused" || got2.Error != "previously failed" || got2.Downloaded != 100 {
+		t.Errorf("paused task fields inconsistent after round-trip: %+v", got2)
 	}
-	// URL 恢复时按 Source 重建（不持久化原始 URL）
+	// URL is rebuilt from Source at restore time (original URL is not persisted)
 	wantURL, err := buildModelDownloadURL("hf", "author/model", "a.gguf")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if restored[0].URL != wantURL {
-		t.Errorf("URL 应按 source 重建, got %q", restored[0].URL)
+		t.Errorf("URL should be rebuilt from source, got %q", restored[0].URL)
 	}
 }
 
-// TestLoadConfigRestoresDownloadTasks 验证恢复规范化（#12）：
-//   - downloading 状态（进程退出后 goroutine 已消亡）规整为 paused；
-//   - 非法/空 status 规整为 paused；
-//   - Source 为空兜底 hf；
-//   - URL 按 source 重建正确。
+// TestLoadConfigRestoresDownloadTasks verifies restore normalization (#12):
+//   - downloading status (goroutine died after process exit) is normalized to paused;
+//   - illegal/empty status is normalized to paused;
+//   - empty Source falls back to hf;
+//   - URL is rebuilt from source correctly.
 func TestLoadConfigRestoresDownloadTasks(t *testing.T) {
 	withTempCwd(t)
 	saveConfigState(t)
@@ -938,38 +954,38 @@ func TestLoadConfigRestoresDownloadTasks(t *testing.T) {
 	dlTasksMu.Lock()
 	defer dlTasksMu.Unlock()
 	if len(dlTasks) != 3 {
-		t.Fatalf("恢复任务数 = %d, want 3", len(dlTasks))
+		t.Fatalf("restored task count = %d, want 3", len(dlTasks))
 	}
 	// downloading → paused
 	if dlTasks[0].Status != "paused" {
-		t.Errorf("dl-1 downloading 应规整为 paused, 实际 %q", dlTasks[0].Status)
+		t.Errorf("dl-1 downloading should be normalized to paused, got %q", dlTasks[0].Status)
 	}
 	if dlTasks[0].Source != "hf" {
 		t.Errorf("dl-1 Source = %q, want hf", dlTasks[0].Source)
 	}
 	wantURL := hfMirrorBase + "/author/model/resolve/main/a.gguf"
 	if dlTasks[0].URL != wantURL {
-		t.Errorf("dl-1 URL 重建 = %q, want %q", dlTasks[0].URL, wantURL)
+		t.Errorf("dl-1 URL rebuild = %q, want %q", dlTasks[0].URL, wantURL)
 	}
-	// 非法 status + 空 source → paused / hf
+	// illegal status + empty source → paused / hf
 	if dlTasks[1].Status != "paused" {
-		t.Errorf("dl-2 非法 status 应规整为 paused, 实际 %q", dlTasks[1].Status)
+		t.Errorf("dl-2 illegal status should be normalized to paused, got %q", dlTasks[1].Status)
 	}
 	if dlTasks[1].Source != sourceHF {
-		t.Errorf("dl-2 空 Source 应兜底 hf, 实际 %q", dlTasks[1].Source)
+		t.Errorf("dl-2 empty Source should fall back to hf, got %q", dlTasks[1].Source)
 	}
-	// queued 保持原样，modelscope URL 用默认 Legacy Base 重建
+	// queued is preserved, modelscope URL rebuilt with default Legacy Base
 	if dlTasks[2].Status != "queued" {
-		t.Errorf("dl-3 queued 应保持原样, 实际 %q", dlTasks[2].Status)
+		t.Errorf("dl-3 queued should be preserved, got %q", dlTasks[2].Status)
 	}
 	if !strings.HasPrefix(dlTasks[2].URL, "https://modelscope.cn/api/v1/models/") {
-		t.Errorf("dl-3 modelscope URL 重建前缀错误: %q", dlTasks[2].URL)
+		t.Errorf("dl-3 modelscope URL rebuild prefix wrong: %q", dlTasks[2].URL)
 	}
 }
 
-// TestDownloadTaskCounterNoConflict 验证恢复任务后 dlTaskCounter 与既有任务不冲突：
-// 配置文件含 dl-3 任务，loadConfig 后 counter 至少为 3；再经 startHFDownload 入队
-// 新任务，新任务 id 唯一（dl-4）且不覆盖既有任务。
+// TestDownloadTaskCounterNoConflict verifies dlTaskCounter does not conflict with restored
+// tasks after loadConfig: config contains dl-3 task, so counter must be >= 3 after loadConfig;
+// a subsequently enqueued task has a unique id (dl-4) that does not overwrite existing tasks.
 func TestDownloadTaskCounterNoConflict(t *testing.T) {
 	withTempCwd(t)
 	saveConfigState(t)
@@ -990,10 +1006,10 @@ func TestDownloadTaskCounterNoConflict(t *testing.T) {
 	restoredCounter := dlTaskCounter
 	dlTasksMu.Unlock()
 	if restoredCounter < 3 {
-		t.Errorf("恢复后 dlTaskCounter = %d, want >= 3（不得小于已恢复任务最大序号）", restoredCounter)
+		t.Errorf("after restore dlTaskCounter = %d, want >= 3 (must not be less than max restored task sequence)", restoredCounter)
 	}
 
-	// 经真实入队路径新增任务：id 应唯一（dl-4）
+	// enqueue via real path: id must be unique (dl-4)
 	if err := startHFDownload("author/model", []string{"new.gguf"}); err != nil {
 		t.Fatal(err)
 	}
@@ -1006,18 +1022,18 @@ func TestDownloadTaskCounterNoConflict(t *testing.T) {
 	seen := map[string]bool{}
 	for _, id := range ids {
 		if seen[id] {
-			t.Errorf("任务 id 重复: %v", ids)
+			t.Errorf("duplicate task id: %v", ids)
 		}
 		seen[id] = true
 	}
 	if !seen["dl-4"] {
-		t.Errorf("新入队任务 id 应为 dl-4（恢复 dl-3 后 counter=3）, 实际 ids=%v", ids)
+		t.Errorf("newly enqueued task id should be dl-4 (after restoring dl-3 counter=3), got ids=%v", ids)
 	}
 	if len(ids) != 2 {
-		t.Errorf("任务总数 = %d, want 2（dl-3 恢复 + dl-4 新入队）: %v", len(ids), ids)
+		t.Errorf("total task count = %d, want 2 (dl-3 restored + dl-4 newly enqueued): %v", len(ids), ids)
 	}
 
-	// 等待新任务 goroutine 进入终态（404 快速失败），避免残留；恢复的 dl-3 为
-	// paused 无 goroutine，不参与等待。
+	// wait for new task goroutine to reach terminal state (404 fails fast), avoiding leakage;
+	// restored dl-3 is paused with no goroutine and is not waited on.
 	waitTaskTerminal(t, "dl-4", 5*time.Second)
 }

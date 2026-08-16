@@ -117,14 +117,14 @@ type DlTask struct {
 	ModelID    string  `json:"modelId"`
 	FileName   string  `json:"fileName"`
 	DestDir    string  `json:"destDir"`
-	Source     string  `json:"source"` // 下载源: hf / modelscope
+	Source     string  `json:"source"` // download source: hf / modelscope
 	URL        string  `json:"-"`
 	Status     string  `json:"status"`
 	Progress   int     `json:"progress"`
 	Total      int64   `json:"total"`
 	Downloaded int64   `json:"downloaded"`
 	SizeHuman  string  `json:"sizeHuman"`
-	Speed      float64 `json:"speed"` // 当前下载速度（字节/秒）
+	Speed      float64 `json:"speed"` // current download speed (bytes/sec)
 	Error      string  `json:"error"`
 	ctx        context.Context
 	cancel     context.CancelFunc
@@ -158,17 +158,20 @@ var llamaCacheValid atomic.Bool
 
 var cachedModels []ModelInfo
 
-// modelsCacheValid 标记模型缓存是否有效（原子读，供 GetModels 快速路径）。
-// 写入在 modelsMu 锁内完成；不能用 sync.Once 的变量重赋值来实现失效，
-// 因为并发 Do 与赋值会破坏 Once 内部互斥状态（#4）。
+// modelsCacheValid marks whether the model cache is valid (atomic read, used by
+// the GetModels fast path). Writes happen inside the modelsMu lock; invalidation
+// cannot be implemented by reassigning a sync.Once variable, because concurrent
+// Do plus assignment corrupts Once's internal mutex state (#4).
 var modelsCacheValid atomic.Bool
 
-// modelsMu 保护 cachedModels 的读写与缓存失效标记，避免并发扫描/刷新
-// 模型缓存时发生数据竞争（#4）。读取侧统一在锁内拷贝副本再返回。
+// modelsMu guards reads/writes of cachedModels and the cache-validity flag,
+// preventing data races during concurrent model scans/refreshes (#4). Readers
+// copy the slice under the lock before returning.
 var modelsMu sync.Mutex
 
-// invalidateModelCache 使模型缓存失效：下次 GetModels 会重新扫描目录。
-// 供下载完成与手动刷新等路径调用，保证缓存失效与访问并发安全。
+// invalidateModelCache invalidates the model cache: the next GetModels rescans
+// the directory. Called from paths such as download completion and manual
+// refresh, keeping invalidation safe under concurrent access.
 func invalidateModelCache() {
 	modelsMu.Lock()
 	modelsCacheValid.Store(false)
@@ -198,13 +201,14 @@ const (
 	defaultDownloadSource = sourceHF
 )
 
-// downloadSource 为当前模型下载源（hf / modelscope），downloadSourceMu 保护其
-// 读写，与 customLlamaCppDir 等配置项的风格保持一致。搜索、文件列表、描述与
-// 下载 URL 构建均以 activeDownloadSource() 的当前值路由。
+// downloadSource is the current model download source (hf / modelscope);
+// downloadSourceMu guards its reads/writes, consistent with the style of
+// customLlamaCppDir and other config entries. Search, file listing, description,
+// and download URL construction all route on the current activeDownloadSource().
 var downloadSource = defaultDownloadSource
 var downloadSourceMu sync.Mutex
 
-// activeDownloadSource 返回当前生效的下载源，在锁内读取。
+// activeDownloadSource returns the currently active download source, read under the lock.
 func activeDownloadSource() string {
 	downloadSourceMu.Lock()
 	s := downloadSource
@@ -414,9 +418,10 @@ func getCUDAInfo() CUDAInfo {
 
 // ─── llama.cpp ───────────────────────────────────────────────────
 
-// findLlamaBinInDir 在 dir 下查找 llama.cpp 二进制 bin：先查 dir 根目录，
-// 再查一层子目录（下载 zip 解压可能带顶层文件夹，如 llama-b9999-bin/）。
-// Windows 上同时兼容不带 .exe 后缀的文件。命中返回绝对路径，未命中返回空串。
+// findLlamaBinInDir searches for llama.cpp binary bin under dir: first the dir
+// root, then one-level subdirectories (the downloaded zip may extract with a
+// top-level folder, e.g. llama-b9999-bin/). On Windows, also accepts files
+// without the .exe suffix. Returns the absolute path on hit, empty string otherwise.
 func findLlamaBinInDir(dir, bin string) string {
 	name := bin
 	if runtime.GOOS == "windows" {
@@ -434,7 +439,7 @@ func findLlamaBinInDir(dir, bin string) string {
 	if p := check(filepath.Join(dir, name)); p != "" {
 		return p
 	}
-	// Windows 后备：不带 .exe 后缀的文件
+	// Windows fallback: files without the .exe suffix
 	if runtime.GOOS == "windows" {
 		if p := check(filepath.Join(dir, bin)); p != "" {
 			return p
@@ -460,8 +465,9 @@ func findLlamaBinInDir(dir, bin string) string {
 	return ""
 }
 
-// findLlamaBin 在 dir 下查找 llama.cpp 二进制 bin：dir 为空串表示走 PATH
-// （exec.LookPath），返回 LookPath 解析结果；非空目录委托 findLlamaBinInDir。
+// findLlamaBin searches for llama.cpp binary bin under dir: an empty dir means
+// PATH lookup (exec.LookPath), returning the LookPath-resolved result; a
+// non-empty directory delegates to findLlamaBinInDir.
 func findLlamaBin(dir, bin string) string {
 	if dir == "" {
 		path, err := exec.LookPath(bin)
@@ -473,11 +479,11 @@ func findLlamaBin(dir, bin string) string {
 	return findLlamaBinInDir(dir, bin)
 }
 
-// resolveLlamaServerBin 按 customLlamaCppDir > llama-cpp/ 下载目录 > PATH
-// 的优先级解析 llama-server 可执行文件路径，供 getLlamaCppInfo 与
-// buildServerCommand 共用，避免两处查找逻辑漂移。目录命中返回绝对路径；
-// PATH 命中返回二进制名 "llama-server"（交给 exec.Command 解析）；
-// 全部未命中返回空串。
+// resolveLlamaServerBin resolves the llama-server executable path by priority
+// customLlamaCppDir > llama-cpp/ download directory > PATH, shared by
+// getLlamaCppInfo and buildServerCommand to keep the two lookups from drifting.
+// A directory hit returns an absolute path; a PATH hit returns the bare binary
+// name "llama-server" (left for exec.Command to resolve); no hit returns "".
 func resolveLlamaServerBin() string {
 	customLlamaCppMu.Lock()
 	customDir := customLlamaCppDir
@@ -496,19 +502,25 @@ func resolveLlamaServerBin() string {
 	return ""
 }
 
-// llamaVersionProbeTimeout 为 llama.cpp 版本探测的超时上限。正常二进制
-// --version 毫秒级返回；超时说明二进制异常（如把 -v 误当版本标志而启动
-// 完整 HTTP 服务器并无限运行），此时 kill 子进程并返回空，保证
-// getLlamaCppInfo 快速返回、检测链不被任何异常二进制冻结。设计为包级 var
-// 而非 const，便于测试临时缩短超时验证 kill 行为（与 probeLlamaVersion 同
-// 风格的注入点，测试用后立即恢复）。
+// llamaVersionProbeTimeout is the upper bound for llama.cpp version probing.
+// A healthy binary returns from --version in milliseconds; a timeout means the
+// binary is misbehaving (e.g. treating -v as a version flag and starting a full
+// HTTP server that runs forever), in which case the child process is killed and
+// an empty string returned so getLlamaCppInfo returns quickly and the detection
+// chain is never frozen by a broken binary. It is a package-level var instead
+// of a const so tests can temporarily shorten it to verify the kill behavior
+// (an injection point in the same style as probeLlamaVersion; tests restore it
+// immediately after use).
 var llamaVersionProbeTimeout = 5 * time.Second
 
-// probeLlamaVersion 为 llama.cpp 版本探测命令执行注入点（与
-// githubReleasesAPI / renameFile / updateRepoAPI 同风格的包级 var）：
-// 默认实现带超时运行 `path --version` 并合并 stdout+stderr。测试可替换该
-// 变量注入假探测命令，避免真实启动二进制；同时由于探针参数（--version）
-// 封装在默认实现内部，替换后可直接断言只调用了 --version、从不回退 -v。
+// probeLlamaVersion is the injection point for the llama.cpp version-probe
+// command execution (a package-level var in the same style as
+// githubReleasesAPI / renameFile / updateRepoAPI): the default implementation
+// runs `path --version` with a timeout and merges stdout+stderr. Tests can
+// replace this variable to inject a fake probe command and avoid launching a
+// real binary; and since the probe argument (--version) is encapsulated inside
+// the default implementation, tests can directly assert that only --version is
+// ever invoked, with no fallback to -v.
 var probeLlamaVersion = func(path string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), llamaVersionProbeTimeout)
 	defer cancel()
@@ -518,17 +530,18 @@ var probeLlamaVersion = func(path string) string {
 	var out, errOut bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errOut
-	// runCmd 只捕获 stdout，而 llama-server 的 --version 输出全部走 stderr
-	// （实证 stdout 为空），这里合并两者才能拿到版本号
+	// runCmd only captures stdout, while llama-server's --version output goes
+	// entirely to stderr (stdout empirically empty); merge both to get the version
 	if err := cmd.Run(); err != nil && errOut.Len() > 0 {
 		log.Printf("[CMD] %s --version stderr: %s", path, strings.TrimSpace(errOut.String()))
 	}
 	return strings.TrimSpace(out.String() + errOut.String())
 }
 
-// parseLlamaVersion 从版本探测输出中提取版本号：优先取以 "version" 开头或
-// 含 "build" 的行（llama.cpp --version 的典型输出，如 "version: 1234"），
-// 否则返回整体 trim 后的输出。纯字符串逻辑，供单元测试直接断言。
+// parseLlamaVersion extracts the version string from probe output: prefer lines
+// starting with "version" or containing "build" (typical llama.cpp --version
+// output, e.g. "version: 1234"), otherwise return the whole trimmed output.
+// Pure string logic, directly assertable by unit tests.
 func parseLlamaVersion(versionOut string) string {
 	versionOut = strings.TrimSpace(versionOut)
 	if versionOut == "" {
@@ -543,11 +556,14 @@ func parseLlamaVersion(versionOut string) string {
 	return versionOut
 }
 
-// fillLlamaCppVersion 尝试运行二进制读取版本号填充 info.Version。探测只调用
-// `--version`（合并 stdout+stderr），不再回退 `-v`：llama-server 10342 的 -v
-// 不是版本标志而是启动完整 HTTP 服务器，曾导致版本探测无限阻塞、主页永久
-// 显示"未找到"。带超时保护，任何异常二进制都不会冻结检测链。运行失败（如
-// Windows 上 stub 非可执行文件）只影响 Version 为空，不影响 Installed。
+// fillLlamaCppVersion tries to run the binary to read its version into
+// info.Version. Probing only invokes `--version` (merging stdout+stderr), never
+// falling back to `-v`: llama-server 10342's -v is not a version flag but starts
+// a full HTTP server, which previously caused version probing to block forever
+// and the home page to permanently show "not found". Timeout-protected, so no
+// misbehaving binary can freeze the detection chain. A failed run (e.g. a stub
+// that is not executable on Windows) only leaves Version empty; Installed is
+// unaffected.
 func fillLlamaCppVersion(info *LlamaCppInfo, path string) {
 	versionOut := probeLlamaVersion(path)
 	if versionOut != "" {
@@ -555,15 +571,18 @@ func fillLlamaCppVersion(info *LlamaCppInfo, path string) {
 	}
 }
 
-// getLlamaCppInfo 检测 llama.cpp 运行时：按 customLlamaCppDir > llama-cpp/
-// 下载目录 > PATH 的优先级查找二进制。llama-server 走公共 helper
-// resolveLlamaServerBin（下载目录支持根目录与一层子目录两种布局）；
-// 其余候选二进制（llama-cli / llama.cpp / llama）沿用同一目录优先级。
+// getLlamaCppInfo detects the llama.cpp runtime: searches for the binary by
+// priority customLlamaCppDir > llama-cpp/ download directory > PATH.
+// llama-server goes through the shared helper resolveLlamaServerBin (the
+// download directory supports both root and one-level-subdir layouts); the
+// other candidate binaries (llama-cli / llama.cpp / llama) follow the same
+// directory priority.
 func getLlamaCppInfo() LlamaCppInfo {
 	info := LlamaCppInfo{}
 
-	// PATH 命中的 llama-server 由 helper 返回裸二进制名，这里还原
-	// exec.LookPath 的解析结果，便于前端展示完整路径
+	// A PATH hit for llama-server is returned by the helper as the bare binary
+	// name; restore the exec.LookPath-resolved result so the frontend can show
+	// the full path
 	if p := resolveLlamaServerBin(); p != "" {
 		if p == "llama-server" {
 			if resolved, err := exec.LookPath(p); err == nil {
@@ -585,7 +604,7 @@ func getLlamaCppInfo() LlamaCppInfo {
 		dirsToCheck = append(dirsToCheck, customDir)
 	}
 	dirsToCheck = append(dirsToCheck, downloadDir)
-	dirsToCheck = append(dirsToCheck, "") // 空串表示 PATH
+	dirsToCheck = append(dirsToCheck, "") // empty string means PATH
 
 	for _, dir := range dirsToCheck {
 		for _, bin := range []string{"llama-cli", "llama.cpp", "llama"} {
@@ -669,8 +688,9 @@ func parseVMStat(out, key string) uint64 {
 		if len(fields) < 2 {
 			continue
 		}
-		// 匹配 "<key>:" 形式的字段（macOS 输出为 "Pages free:    123456."，
-		// 值在 key 字段之后且以句号结尾），避免解析失败导致可用内存恒为 0。
+		// Match fields of the form "<key>:" (macOS output is "Pages free:
+		// 123456." — the value follows the key field and ends with a period),
+		// avoiding parse failures that would leave free memory stuck at 0.
 		for i, f := range fields {
 			if strings.TrimRight(f, ":") != key {
 				continue
@@ -691,15 +711,16 @@ func parseVMStat(out, key string) uint64 {
 
 const modelsDir = "LLM-Models"
 
-// customModelsDir 为自定义模型目录（空表示未配置，使用默认 modelsDir）。
-// modelsDirMu 保护其读写，与 customLlamaCppMu 保护 customLlamaCppDir 的
-// 风格保持一致。
+// customModelsDir is the custom model directory (empty means unset, use the
+// default modelsDir). modelsDirMu guards its reads/writes, consistent with the
+// style of customLlamaCppMu guarding customLlamaCppDir.
 var customModelsDir string
 var modelsDirMu sync.Mutex
 
-// effectiveModelsDir 返回当前生效的模型目录：配置了自定义目录时返回自定义
-// 目录，否则回退到默认 modelsDir。读取在 modelsDirMu 锁内完成，保证与
-// SetModelsDir / loadConfig / saveConfig 的写入并发安全。
+// effectiveModelsDir returns the currently effective model directory: the
+// custom directory when configured, otherwise falling back to the default
+// modelsDir. Reads happen under the modelsDirMu lock, staying safe against
+// concurrent writes from SetModelsDir / loadConfig / saveConfig.
 func effectiveModelsDir() string {
 	modelsDirMu.Lock()
 	dir := customModelsDir
@@ -714,7 +735,8 @@ func effectiveModelsDir() string {
 // the default LLM-Models directory only when no custom dir is configured.
 func scanModels() []ModelInfo {
 	dir := effectiveModelsDir()
-	// 自定义目录由用户选择，应已存在；仅默认目录需要惰性创建。
+	// Custom directories are user-picked and expected to exist already;
+	// only the default directory needs lazy creation.
 	if dir == modelsDir {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			log.Printf("[WARN] Failed to create %s dir: %v", dir, err)
@@ -824,9 +846,11 @@ func scanModelsDir(dir string) []ModelInfo {
 	return models
 }
 
-// buildModelInfo 从一个 GGUF 主文件路径构建 ModelInfo：读取 GGUF 元数据覆盖
-// 名称/架构/量化，缺失时用 fallbackName/author 兜底。两级与三级扫描共用，
-// 避免 variant 目录与 author 散文件两处重复同样的元数据读取与回退逻辑。
+// buildModelInfo builds a ModelInfo from one GGUF main-file path: reads GGUF
+// metadata to override name/architecture/quantization, falling back to
+// fallbackName/author when missing. Shared by the two-level and three-level
+// scans, avoiding duplicated metadata reading and fallback logic between
+// variant directories and author loose files.
 func buildModelInfo(path, author, fallbackName string) ModelInfo {
 	model := ModelInfo{Author: author, Path: path, Name: fallbackName}
 	if fi, err := os.Stat(path); err == nil {
@@ -954,8 +978,9 @@ func readGGUFMeta(path string) map[string]string {
 		return nil
 	}
 
-	// 防御恶意/损坏文件：kvCount 无上限时循环可能解析超长 KV 列表并放大
-	// 解析开销（#7.2）。正常 GGUF 元数据键极少，超过 4096 直接放弃解析。
+	// Guard against malicious/corrupt files: without a cap on kvCount, the
+	// loop could parse an extremely long KV list and amplify parsing cost
+	// (#7.2). Real GGUF metadata keys are few; give up parsing beyond 4096.
 	if kvCount > 4096 {
 		return nil
 	}
@@ -1126,17 +1151,19 @@ func formatBytes(bytes int64) string {
 
 // ─── llama.cpp download ──────────────────────────────────────────
 
-// githubReleasesAPI 指向 llama.cpp 的 latest release API，声明为 var 以便
-// 测试通过替换包级变量注入本地 httptest 服务器（与 updateRepoAPI 同风格）。
+// githubReleasesAPI points to the llama.cpp latest release API, declared as a
+// var so tests can replace the package-level variable to inject a local
+// httptest server (same style as updateRepoAPI).
 var githubReleasesAPI = "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest"
 
 const downloadDir = "llama-cpp"
 
-// llamaCppDownloadDir 返回 llama.cpp 下载解压的目标目录：用户设置过自定义
-// llama.cpp 目录（customLlamaCppDir）时优先安装到该目录，否则退回默认的
-// llama-cpp/。与 getLlamaCppInfo / resolveLlamaServerBin 的检测优先级
-// （customLlamaCppDir > downloadDir > PATH）保持一致，保证下载产物落点
-// 与检测位置一致。
+// llamaCppDownloadDir returns the target directory for llama.cpp download
+// extraction: when the user has set a custom llama.cpp directory
+// (customLlamaCppDir), install there first; otherwise fall back to the default
+// llama-cpp/. Matches the detection priority of getLlamaCppInfo /
+// resolveLlamaServerBin (customLlamaCppDir > downloadDir > PATH) so the
+// download landing spot and the detection location stay consistent.
 func llamaCppDownloadDir() string {
 	customLlamaCppMu.Lock()
 	customDir := customLlamaCppDir
@@ -1147,20 +1174,24 @@ func llamaCppDownloadDir() string {
 	return downloadDir
 }
 
-// configFile 是配置持久化路径，声明为 var 以便测试通过 chdir 覆盖。
+// configFile is the config persistence path, declared as a var so tests can
+// override it via chdir.
 var configFile = "llama-desktop-config.json"
 
-// legacyConfigFile 是 llama-gui → llama-desktop 更名前的配置文件名。仅作
-// 一次性迁移来源（见 migrateLegacyConfig）：新文件不存在而旧文件存在时整体
-// 改名复用，老用户的主题 / 目录 / 模型参数 / 下载队列无损保留。
+// legacyConfigFile is the config filename from before the llama-gui →
+// llama-desktop rename. It serves only as a one-shot migration source (see
+// migrateLegacyConfig): when the new file does not exist but the old one does,
+// it is renamed wholesale and reused, preserving theme / directories / model
+// params / download queue for existing users losslessly.
 var legacyConfigFile = "llama-gui-config.json"
 
-// renameFile 为测试注入点（与 configFile 同风格），用于模拟下载完成后
-// 重命名临时文件失败的分支（#10）。
+// renameFile is a test injection point (same style as configFile), used to
+// simulate the branch where renaming the temp file after download fails (#10).
 var renameFile = os.Rename
 
-// copyFile 把 src 复制到 dst：以 src 的 FileMode 创建 dst 并显式 chmod，
-// 保留执行权限（Linux 更新 exe 依赖 +x），避免受 umask 影响。
+// copyFile copies src to dst: creates dst with src's FileMode and explicitly
+// chmods, preserving the executable permission (updating the exe on Linux
+// needs +x), independent of umask.
 func copyFile(src, dst string) error {
 	srcF, err := os.Open(src)
 	if err != nil {
@@ -1185,27 +1216,33 @@ func copyFile(src, dst string) error {
 	if closeErr != nil {
 		return fmt.Errorf(tr("关闭目标文件失败: %w", "failed to close destination file: %w"), closeErr)
 	}
-	// 显式 chmod 保证目标权限与源完全一致（不受 umask 影响）
+	// Explicit chmod guarantees destination permissions exactly match the
+	// source (independent of umask)
 	if err := os.Chmod(dst, fi.Mode()); err != nil {
 		return fmt.Errorf(tr("设置目标文件权限失败: %w", "failed to set destination file permissions: %w"), err)
 	}
 	return nil
 }
 
-// moveFile 把 src 移动到 dst：优先 renameFile（包级注入点，测试可模拟失败）；
-// 跨设备（Windows 跨盘 ERROR_NOT_SAME_DEVICE / Unix 跨挂载点 EXDEV）时
-// os.Rename 必然失败，回退为 copyFile + os.Remove(src)，并保留源文件权限。
-// 跨设备判定用平台常量 crossDeviceRenameErr：Windows 上 syscall.EXDEV 是
-// Go 发明的常量，与真实错误码永不相等，不能用它判断。
-// 其他失败（如目标已存在）保持原语义：删除 dst 后重试一次 renameFile。
-// 关键顺序：必须先判定跨设备再走删旧重试，避免跨设备时误删已存在的旧文件。
+// moveFile moves src to dst: prefers renameFile (a package-level injection
+// point so tests can simulate failure); across devices (Windows cross-drive
+// ERROR_NOT_SAME_DEVICE / Unix cross-mount EXDEV) os.Rename always fails, so
+// it falls back to copyFile + os.Remove(src), preserving source permissions.
+// Cross-device detection uses the platform constant crossDeviceRenameErr: on
+// Windows, syscall.EXDEV is an invented Go constant that never equals the real
+// error code, so it must not be used for the check.
+// Other failures (e.g. destination already exists) keep the original
+// semantics: delete dst and retry renameFile once.
+// Critical ordering: the cross-device check must run before the delete-old-
+// and-retry path, to avoid deleting an existing old file in cross-device cases.
 func moveFile(src, dst string) error {
 	err := renameFile(src, dst)
 	if err == nil {
 		return nil
 	}
 	if errors.Is(err, crossDeviceRenameErr) {
-		// 跨设备无法 rename：复制到目标（覆盖已存在的同名文件）后删除源文件
+		// Rename across devices is impossible: copy to the destination
+		// (overwriting an existing same-name file), then remove the source
 		if copyErr := copyFile(src, dst); copyErr != nil {
 			return copyErr
 		}
@@ -1214,7 +1251,8 @@ func moveFile(src, dst string) error {
 		}
 		return nil
 	}
-	// 目标已存在等其他失败：先删除旧目标再重试一次，与原有更新逻辑一致
+	// Other failures such as destination-exists: delete the old destination
+	// and retry once, consistent with the original update logic
 	if removeErr := os.Remove(dst); removeErr == nil {
 		return renameFile(src, dst)
 	}
@@ -1246,18 +1284,21 @@ func downloadLlamaCpp() {
 		return
 	}
 
-	// Step 2: Find best asset（主程序资产；cudart 运行库为附加资产）
+	// Step 2: Find best asset (the main-program asset; the cudart runtime is an additional asset)
 	mainAsset := pickBestAsset(release.Assets)
 	if mainAsset == nil {
 		setDownloadError(tr("未找到适用于当前平台的 llama.cpp 构建", "No llama.cpp build found for the current platform"))
 		return
 	}
 
-	// Windows 的 CUDA 构建自 b10342 起将运行库拆为独立 cudart zip，主程序
-	// zip 不再内置运行库，需附加下载并解压到同一目录。以主程序资产名是否
-	// 含 "cuda" 判定（pickBestAsset 仅在 Windows 检测到 GPU 时才会选中 cuda
-	// 构建，资产名即选择结果，避免二次 GPU 检测）；非 Windows 平台的 cuda
-	// 构建（如有）不附加 win 专属的 cudart 资产。
+	// Since b10342, Windows CUDA builds split the runtime into a separate
+	// cudart zip; the main-program zip no longer bundles it, so the cudart
+	// asset must be co-downloaded and extracted into the same directory.
+	// Detected by whether the main asset name contains "cuda"
+	// (pickBestAsset only picks a cuda build on Windows when a GPU is
+	// detected, so the asset name is the selection result — no second GPU
+	// probe needed); non-Windows cuda builds (if any) do not get the
+	// Windows-exclusive cudart asset attached.
 	assets := []*GitHubAsset{mainAsset}
 	if runtime.GOOS == "windows" && strings.Contains(strings.ToLower(mainAsset.Name), "cuda") {
 		if cudart := pickCudartAssetFor(release.Assets, cudaVersionFromToolkit()); cudart != nil {
@@ -1268,7 +1309,8 @@ func downloadLlamaCpp() {
 	downloadMu.Lock()
 	downloadState.Status = "downloading"
 	downloadState.FileName = mainAsset.Name
-	// 多资产顺序下载：Total 为全部资产大小之和，Downloaded 跨资产累加
+	// Sequential multi-asset download: Total is the sum of all asset sizes,
+	// Downloaded accumulates across assets
 	var totalBytes int64
 	for _, a := range assets {
 		totalBytes += a.Size
@@ -1278,18 +1320,20 @@ func downloadLlamaCpp() {
 	downloadState.Downloaded = 0
 	downloadMu.Unlock()
 
-	// 目标目录：自定义 llama.cpp 目录优先，否则默认 llama-cpp/；解压前建一次
+	// Target directory: custom llama.cpp directory first, otherwise the
+	// default llama-cpp/; created once before extraction
 	targetDir := llamaCppDownloadDir()
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
 		setDownloadError(tr("创建目录失败: ", "Failed to create directory: ") + err.Error())
 		return
 	}
 
-	// Step 3: 顺序下载并解压各资产（先主程序后 cudart），pause/stop 语义不变；
-	// 进度以 baseDownloaded 叠加前序资产已完成字节
+	// Step 3: Download and extract each asset sequentially (main program
+	// first, then cudart); pause/stop semantics unchanged; progress overlays
+	// baseDownloaded with bytes already completed by previous assets
 	var baseDownloaded int64
 	for _, asset := range assets {
-		// FileName 随循环更新为当前正在下载的资产名
+		// FileName updates per loop iteration to the asset currently downloading
 		downloadMu.Lock()
 		downloadState.FileName = asset.Name
 		downloadMu.Unlock()
@@ -1311,7 +1355,7 @@ func downloadLlamaCpp() {
 			return
 		}
 
-		// 临时文件在解压后清理（含取消/出错路径）
+		// Temp file cleaned up after extraction (including cancel/error paths)
 		defer os.Remove(tmpPath)
 
 		// Check if stopped during download
@@ -1321,7 +1365,7 @@ func downloadLlamaCpp() {
 		default:
 		}
 
-		// Step 4: Extract（与主程序解压到同一目录）
+		// Step 4: Extract (into the same directory as the main program)
 		downloadMu.Lock()
 		downloadState.Status = "extracting"
 		downloadState.Progress = 100
@@ -1334,7 +1378,8 @@ func downloadLlamaCpp() {
 		case strings.HasSuffix(asset.Name, ".tar.gz"):
 			extractErr = extractTarGz(tmpPath, targetDir)
 		default:
-			// 与原有单资产逻辑一致：不支持格式直接报错，不带"解压失败"前缀
+			// Same as the original single-asset logic: unsupported formats
+			// error out directly, without the "extraction failed" prefix
 			setDownloadError(tr("不支持的文件格式: ", "Unsupported file format: ") + asset.Name)
 			return
 		}
@@ -1346,7 +1391,7 @@ func downloadLlamaCpp() {
 		baseDownloaded += asset.Size
 	}
 
-	// Step 5: Done（全部资产下载并解压成功后才置完成）
+	// Step 5: Done (only set after all assets downloaded and extracted)
 	downloadMu.Lock()
 	downloadState.Status = "done"
 	downloadState.Progress = 100
@@ -1354,17 +1399,19 @@ func downloadLlamaCpp() {
 
 	// Reset model cache so new models are picked up
 	invalidateModelCache()
-	// 失效 llama.cpp 检测缓存：GetLlamaCpp 在挂载时缓存的结果（Installed=false）
-	// 已过期，解压成功后需重新检测，否则主页一直显示"未找到"
+	// Invalidate the llama.cpp detection cache: the result cached at mount
+	// time (Installed=false) is stale; re-detect after successful extraction,
+	// otherwise the home page keeps showing "not found"
 	llamaCacheValid.Store(false)
 
 	log.Printf("[OK] llama.cpp %s downloaded and extracted to %s/", release.TagName, targetDir)
 }
 
 // downloadWithResume downloads a file with pause/resume support.
-// baseDownloaded 是该文件之前已完成资产的总字节数：多资产顺序下载（如
-// llama.cpp 主程序 + cudart 运行库）时进度需叠加前序累计值，单一资产
-// 调用传入 0。
+// baseDownloaded is the total bytes of assets already completed before this
+// file: in sequential multi-asset downloads (e.g. llama.cpp main program +
+// cudart runtime) progress must overlay the previous cumulative value; pass 0
+// for a single-asset call.
 // Returns the path to the downloaded temp file.
 func downloadWithResume(ctx context.Context, url string, totalSize int64, baseDownloaded int64) (string, error) {
 	tmpFile, err := os.CreateTemp("", "llamacpp-download-*"+filepath.Ext(url[strings.LastIndex(url, "."):]))
@@ -1492,7 +1539,8 @@ func downloadWithResume(ctx context.Context, url string, totalSize int64, baseDo
 				downloadMu.Lock()
 				downloadState.Downloaded = baseDownloaded + downloaded
 				if downloadState.Total > 0 {
-					// 进度按含基偏移的累计字节计算，跨资产单调递增不回落
+					// progress computed from cumulative bytes including the
+					// base offset, monotonically non-decreasing across assets
 					downloadState.Progress = int(float64(baseDownloaded+downloaded) * 100 / float64(downloadState.Total))
 				}
 				downloadMu.Unlock()
@@ -1560,10 +1608,11 @@ func pickBestAsset(assets []GitHubAsset) *GitHubAsset {
 	return pickBestAssetFor(assets, runtime.GOOS, runtime.GOARCH, len(getGPUInfo()) > 0, cudaVersionFromToolkit())
 }
 
-// cudaVersionFromToolkit 从本机 CUDA Toolkit 版本（nvcc 输出，如 "12.4.131"）
-// 解析出资产命名使用的"主.次"版本（如 "12.4"）；无 Toolkit 或解析失败返回
-// 空串。pickBestAssetFor 的精确版本加分与 pickCudartAssetFor 的运行库匹配
-// 共用该推导，保证两处版本口径一致。
+// cudaVersionFromToolkit derives the "major.minor" version used in asset
+// naming (e.g. "12.4") from the local CUDA Toolkit version (nvcc output, e.g.
+// "12.4.131"); returns an empty string with no Toolkit or on parse failure.
+// Shared by pickBestAssetFor's exact-version bonus and pickCudartAssetFor's
+// runtime matching so both use the same version interpretation.
 func cudaVersionFromToolkit() string {
 	cudaInfo := getCUDAInfo()
 	if cudaInfo.ToolkitVersion == "" {
@@ -1578,8 +1627,9 @@ func cudaVersionFromToolkit() string {
 
 // pickBestAssetFor scores release assets for a given platform/arch and returns
 // the best match. hasCUDA and cudaVer allow preferring matching CUDA builds on
-// Windows. Windows 下跳过 cudart 运行库资产（主程序与运行库拆分下载，运行库
-// 由 pickCudartAssetFor 单独匹配）。Returns nil when no asset matches the platform.
+// Windows. On Windows, cudart runtime assets are skipped (the main program and
+// runtime are downloaded separately; the runtime is matched by
+// pickCudartAssetFor). Returns nil when no asset matches the platform.
 func pickBestAssetFor(assets []GitHubAsset, platform, arch string, hasCUDA bool, cudaVer string) *GitHubAsset {
 	if len(assets) == 0 {
 		return nil
@@ -1621,12 +1671,15 @@ func pickBestAssetFor(assets []GitHubAsset, platform, arch string, hasCUDA bool,
 
 		// Skip if wrong arch (but "x64" is sometimes implicit for win)
 		if platformKey == "win" {
-			// 跳过 cudart 运行库资产：llama.cpp b10342 起 Windows CUDA 构建
-			// 拆分为主程序 zip（llama-b*-bin-win-cuda-*-x64.zip）与 cudart
-			// 运行库 zip 两个资产，两者评分相同且 cudart 在 release 列表中排
-			// 在更前，若不排除会只选中运行库、漏掉主程序（解压产物只有
-			// cudart64_12.dll 等运行库、没有 llama-server.exe）。运行库由
-			// pickCudartAssetFor 单独匹配后随主程序一并下载。
+			// Skip cudart runtime assets: since llama.cpp b10342, Windows CUDA
+			// builds are split into a main-program zip
+			// (llama-b*-bin-win-cuda-*-x64.zip) and a separate cudart runtime
+			// zip; both score equally and cudart is listed earlier in the
+			// release, so without exclusion only the runtime would be picked
+			// and the main program lost (extraction artifacts would contain
+			// only runtime DLLs like cudart64_12.dll, no llama-server.exe).
+			// The runtime is matched separately by pickCudartAssetFor and
+			// downloaded alongside the main program.
 			if strings.HasPrefix(name, "cudart") {
 				continue
 			}
@@ -1691,13 +1744,16 @@ func pickBestAssetFor(assets []GitHubAsset, platform, arch string, hasCUDA bool,
 	return best.asset
 }
 
-// pickCudartAssetFor 返回与给定 CUDA 版本精确匹配的 cudart 运行库资产
-// （cudart-llama-bin-win-cuda-<cudaVer>-x64.zip，大小写不敏感），未找到返回
-// nil。cudaVer 为空时不匹配精确版本，回退为任一 win cudart 资产（best-effort：
-// 覆盖无 nvcc 但 GPU 检测成功、toolkit 版本解析失败的主机，此时主程序选中
-// 了 CUDA 构建，仍需要运行库才能启动）。
-// 本函数不判断平台：是否附加运行库由调用方（downloadLlamaCpp 的
-// Windows+CUDA 判定）决定，便于测试跨平台直接构造 cudart 资产断言匹配逻辑。
+// pickCudartAssetFor returns the cudart runtime asset exactly matching the
+// given CUDA version (cudart-llama-bin-win-cuda-<cudaVer>-x64.zip,
+// case-insensitive), or nil when not found. With an empty cudaVer it skips
+// exact-version matching and falls back to any win cudart asset (best-effort:
+// covers hosts where GPU detection succeeded but nvcc is missing or toolkit
+// version parsing failed — a CUDA build was selected as the main program and
+// the runtime is still required to launch).
+// This function does not check the platform: whether to attach the runtime is
+// decided by the caller (the Windows+CUDA check in downloadLlamaCpp), letting
+// tests construct cudart assets directly and assert matching across platforms.
 func pickCudartAssetFor(assets []GitHubAsset, cudaVer string) *GitHubAsset {
 	for i := range assets {
 		a := &assets[i]
@@ -1715,10 +1771,11 @@ func pickCudartAssetFor(assets []GitHubAsset, cudaVer string) *GitHubAsset {
 	return nil
 }
 
-// 解压大小上限（声明为 var 便于测试改小验证）。防止 zip/tar 解压炸弹
-// 造成磁盘写满或内存耗尽（#2）。
-var maxExtractFileSize int64 = 4 << 30   // 单文件解压上限 4GB
-var maxExtractTotalSize int64 = 16 << 30 // 单次解压总上限 16GB
+// Extraction size caps (declared as vars so tests can shrink them for
+// verification). Prevent zip/tar extraction bombs from filling the disk or
+// exhausting memory (#2).
+var maxExtractFileSize int64 = 4 << 30   // per-file extraction cap: 4GB
+var maxExtractTotalSize int64 = 16 << 30 // per-run total extraction cap: 16GB
 
 func extractZip(src, dest string) error {
 	r, err := zip.OpenReader(src)
@@ -1742,7 +1799,8 @@ func extractZip(src, dest string) error {
 			continue
 		}
 
-		// 提前按声明大小拦截超大文件，避免先写出再发现超限
+		// Reject oversized files up front by declared size, instead of
+		// writing them out first and discovering the limit afterwards
 		if f.UncompressedSize64 > uint64(maxExtractFileSize) {
 			return fmt.Errorf(tr("文件超出解压大小上限: %s", "file exceeds the extraction size limit: %s"), path)
 		}
@@ -1762,9 +1820,9 @@ func extractZip(src, dest string) error {
 			return err
 		}
 
-		// io.CopyN 只拷贝 maxExtractFileSize+1 字节：src 恰好等于上限时返回
-		// (max, io.EOF)，src 超出上限时返回 (max+1, nil)，因此用
-		// n > maxExtractFileSize 判断超限（#2）。
+		// io.CopyN copies at most maxExtractFileSize+1 bytes: a src exactly at
+		// the cap returns (max, io.EOF), a src beyond the cap returns
+		// (max+1, nil); hence the n > maxExtractFileSize over-limit check (#2).
 		n, copyErr := io.CopyN(outFile, rc, maxExtractFileSize+1)
 		rc.Close()
 		outFile.Close()
@@ -1818,7 +1876,7 @@ func extractTarGz(src, dest string) error {
 		case tar.TypeDir:
 			os.MkdirAll(path, 0755)
 		case tar.TypeReg:
-			// 提前按声明的条目大小拦截超大文件（#2）
+			// Reject oversized files up front by declared entry size (#2)
 			if header.Size > maxExtractFileSize {
 				return fmt.Errorf(tr("文件超出解压大小上限: %s", "file exceeds the extraction size limit: %s"), path)
 			}
@@ -1842,8 +1900,9 @@ func extractTarGz(src, dest string) error {
 				return fmt.Errorf(tr("解压总大小超出上限: %d 字节", "total extraction size exceeds the limit: %d bytes"), totalBytes)
 			}
 		default:
-			// 符号链接/硬链接/设备文件等未知类型显式拒绝，避免静默跳过
-			// 产生不完整解压或潜在安全问题（#6）
+			// Explicitly reject symlinks/hardlinks/device files and other
+			// unknown types, avoiding silently skipped entries that would
+			// leave an incomplete extraction or a potential security issue (#6)
 			return fmt.Errorf(tr("不支持的 tar 条目类型 %d: %s", "unsupported tar entry type %d: %s"), header.Typeflag, header.Name)
 		}
 	}
@@ -1863,18 +1922,21 @@ func setDownloadError(msg string) {
 //go:embed VERSION
 var versionFile []byte
 
-// currentVersion 是应用当前版本，与 GitHub 发布 tag 对齐（如 v0.1.0）。
-// 版本号来自 core/VERSION 文件（编译时嵌入，类似前端 .env），
-// 发布新版本时修改该文件再打同名的 tag。
+// currentVersion is the current app version, aligned with GitHub release tags
+// (e.g. v0.1.0). The version comes from the core/VERSION file (embedded at
+// compile time, similar to the frontend .env); bump that file and tag the same
+// name when releasing.
 var currentVersion = strings.TrimSpace(string(versionFile))
 
-// updateRepoAPI 指向本仓库的 latest release API。URL 由 CheckForUpdateAt
-// 接收以支持测试注入本地 httptest 服务器。声明为 var 以便测试通过替换
-// 包级变量模拟网络（与 configFile / renameFile 同风格）。
+// updateRepoAPI points to this repository's latest release API. The URL is
+// received by CheckForUpdateAt to support test injection of a local httptest
+// server. Declared as a var so tests can replace the package-level variable to
+// simulate the network (same style as configFile / renameFile).
 var updateRepoAPI = "https://api.github.com/repos/CodeNeow/llama-cpp-desktop/releases/latest"
 
-// compareVersions 比较两个形如 v1.2.3 的版本号（忽略前导 v / V）。
-// 返回 -1 表示 a < b，0 相等，1 表示 a > b；无法解析的分段按 0 处理。
+// compareVersions compares two version strings like v1.2.3 (leading v / V
+// ignored). Returns -1 when a < b, 0 when equal, 1 when a > b; unparseable
+// segments are treated as 0.
 func compareVersions(a, b string) int {
 	parse := func(s string) []int {
 		s = strings.TrimPrefix(strings.TrimPrefix(s, "v"), "V")
@@ -1907,16 +1969,18 @@ func compareVersions(a, b string) int {
 	return 0
 }
 
-// UpdateCheckResult 是更新检查结果，返回给前端判断是否有新版本。
+// UpdateCheckResult is the update-check result returned to the frontend to
+// decide whether a new version exists.
 type UpdateCheckResult struct {
 	HasUpdate bool   `json:"hasUpdate"`
-	Version   string `json:"version"`   // 最新版本号（tag 名，如 v0.1.1）
-	Notes     string `json:"notes"`     // 发布说明
-	Published string `json:"published"` // 发布时间
+	Version   string `json:"version"`   // latest version (tag name, e.g. v0.1.1)
+	Notes     string `json:"notes"`     // release notes
+	Published string `json:"published"` // publish time
 }
 
-// CheckForUpdateAt 请求指定仓库的 latest release 并比较版本号。
-// apiURL 可注入以便测试用 httptest 替代真实网络。
+// CheckForUpdateAt requests the latest release of the given repository and
+// compares versions. apiURL is injectable so tests can use httptest instead
+// of the real network.
 func CheckForUpdateAt(apiURL string) (*UpdateCheckResult, error) {
 	release, err := fetchLatestReleaseAt(apiURL)
 	if err != nil {
@@ -1930,8 +1994,8 @@ func CheckForUpdateAt(apiURL string) (*UpdateCheckResult, error) {
 	}, nil
 }
 
-// updateDownloadState 跟踪应用更新下载（更新 exe）的进度。
-// 下载状态机取值：idle / downloading / done / error。
+// updateDownloadState tracks the progress of the app update download
+// (updating the exe). State machine values: idle / downloading / done / error.
 type UpdateDownloadState struct {
 	Status     string `json:"status"`
 	Progress   int    `json:"progress"`
@@ -1940,27 +2004,31 @@ type UpdateDownloadState struct {
 	Version    string `json:"version"`
 	FilePath   string `json:"filePath"`
 	Error      string `json:"error"`
-	Kind       string `json:"kind"` // 本次下载产物类型：setup（安装器） / portable（便携版）
+	Kind       string `json:"kind"` // download artifact kind: setup (installer) / portable
 }
 
 var updateDownloadState = &UpdateDownloadState{Status: "idle"}
 var updateDownloadMu sync.Mutex
 var updateDownloadCancel context.CancelFunc
 
-// updateExePath 为测试注入点（与 renameFile / configFile 同风格），
-// 返回当前可执行文件路径，用于确定更新 exe 的目标目录。
+// updateExePath is a test injection point (same style as renameFile /
+// configFile) returning the current executable path, used to determine the
+// target directory for the update exe.
 var updateExePath = os.Executable
 
-// 安装类型常量：setup 为 NSIS 安装版（下载 setup 安装器），
-// portable 为便携版（下载便携版 exe）。用于更新产物挑选与前端提示区分。
+// Install-kind constants: setup is the NSIS installer build (downloads the
+// setup installer), portable is the portable build (downloads the portable
+// exe). Used for update artifact selection and distinguishing frontend hints.
 const (
 	installKindSetup    = "setup"
 	installKindPortable = "portable"
 )
 
-// detectInstallKind 判断当前安装类型：setup 安装版由 NSIS 安装，安装目录必有
-// uninstall.exe；portable 便携版为绿色版，目录下无 uninstall.exe。纯文件系统
-// 判断，跨平台。复用 updateExePath（os.Executable 的测试注入点）保证可测。
+// detectInstallKind detects the current install type: a setup install is done
+// by NSIS and the install directory always contains uninstall.exe; a portable
+// install is a green build with no uninstall.exe. Pure filesystem detection,
+// cross-platform. Reuses updateExePath (the os.Executable test injection point)
+// to stay testable.
 func detectInstallKind() string {
 	exePath, err := updateExePath()
 	if err != nil {
@@ -1972,16 +2040,19 @@ func detectInstallKind() string {
 	return installKindPortable
 }
 
-// pickUpdateAsset 按安装类型挑选更新下载使用的资产，按关键词匹配（与产物
-// 前缀无关），兼容三代命名：
-//   - 现命名：setup 安装器 llama-desktop-setup-vX.Y.Z-amd64.exe、便携版
-//     llama-desktop-portable-vX.Y.Z-amd64.exe；
-//   - 旧命名（v0.1.7 起）：llama-gui-setup- / llama-gui-portable- 前缀；
-//   - 最旧命名（v0.1.6）：安装器 llama-gui-amd64-installer.exe、便携版 llama-gui.exe。
+// pickUpdateAsset picks the update-download asset by install kind, matching
+// by keyword (independent of artifact prefix), compatible with three naming
+// generations:
+//   - Current naming: setup installer llama-desktop-setup-vX.Y.Z-amd64.exe,
+//     portable llama-desktop-portable-vX.Y.Z-amd64.exe;
+//   - Old naming (since v0.1.7): llama-gui-setup- / llama-gui-portable- prefixes;
+//   - Oldest naming (v0.1.6): installer llama-gui-amd64-installer.exe,
+//     portable llama-gui.exe.
 //
-// setup 返回第一个安装器资产（名字含 installer 或 setup）；
-// portable 返回第一个含 portable 或非安装器的 exe 资产（最旧命名 llama-gui.exe
-// 不含 portable/installer/setup，命中「非安装器」分支）。
+// setup returns the first installer asset (name contains installer or setup);
+// portable returns the first asset containing portable or any non-installer
+// exe (the oldest llama-gui.exe contains none of portable/installer/setup and
+// hits the "non-installer" branch).
 func pickUpdateAsset(assets []GitHubAsset, kind string) *GitHubAsset {
 	for i := range assets {
 		a := &assets[i]
@@ -1995,7 +2066,7 @@ func pickUpdateAsset(assets []GitHubAsset, kind string) *GitHubAsset {
 			if isInstaller {
 				return a
 			}
-		default: // installKindPortable（含未知取值兜底为便携版语义）
+		default: // installKindPortable (unknown values fall back to portable semantics)
 			if strings.Contains(name, "portable") || !isInstaller {
 				return a
 			}
@@ -2004,9 +2075,11 @@ func pickUpdateAsset(assets []GitHubAsset, kind string) *GitHubAsset {
 	return nil
 }
 
-// downloadUpdateRelease 按当前安装类型下载新版本对应产物到可执行文件同目录：
-// setup 安装版下载安装器、portable 便携版下载便携版 exe（无法直接替换正在运行
-// 的自身），完成后提示用户关闭应用后按安装类型完成更新。
+// downloadUpdateRelease downloads the artifact matching the current install
+// kind to the executable's directory: a setup install downloads the installer,
+// a portable install downloads the portable exe (the running exe cannot be
+// replaced directly); when finished, the user is prompted to close the app and
+// complete the update per install kind.
 func downloadUpdateRelease(version string) {
 	ctx, cancel := context.WithCancel(context.Background())
 	updateDownloadMu.Lock()
@@ -2020,11 +2093,11 @@ func downloadUpdateRelease(version string) {
 		cancel()
 	}()
 
-	// 下载开始前先判定安装类型：决定挑选哪种资产与下载命名（setup 安装器 /
-	// portable 便携版 exe）。
+	// Detect the install kind before the download starts: it decides which
+	// asset to pick and the download naming (setup installer / portable exe).
 	kind := detectInstallKind()
 
-	// Step 1: 拉取最新发布信息，按安装类型挑对应 exe 资产
+	// Step 1: fetch the latest release info and pick the matching exe asset by install kind
 	updateDownloadMu.Lock()
 	updateDownloadState.Status = "downloading"
 	updateDownloadState.Progress = 0
@@ -2050,8 +2123,8 @@ func downloadUpdateRelease(version string) {
 	updateDownloadState.Total = asset.Size
 	updateDownloadMu.Unlock()
 
-	// Step 2: 下载到可执行文件同目录，命名按安装类型区分：
-	// setup → llama-desktop-setup-v<tag>.exe；portable → llama-desktop-portable-v<tag>.exe
+	// Step 2: download into the executable's directory, named by install kind:
+	// setup → llama-desktop-setup-v<tag>.exe; portable → llama-desktop-portable-v<tag>.exe
 	exePath, err := updateExePath()
 	if err != nil {
 		setUpdateDownloadError(tr("无法定位可执行文件路径: ", "Unable to locate the executable path: ") + err.Error())
@@ -2080,8 +2153,9 @@ func downloadUpdateRelease(version string) {
 	}
 	defer os.Remove(tmpPath)
 
-	// Step 3: 移动到目标路径（跨设备时 moveFile 回退为复制，保留源权限；
-	// 非跨设备失败且目标已存在时先删旧文件再重试）
+	// Step 3: move to the destination path (across devices moveFile falls back
+	// to copy, preserving source permissions; on non-cross-device failure with
+	// an existing destination, delete the old file first and retry)
 	if err := moveFile(tmpPath, destPath); err != nil {
 		setUpdateDownloadError(tr("保存文件失败: ", "Failed to save file: ") + err.Error())
 		return
@@ -2105,9 +2179,10 @@ func setUpdateDownloadError(msg string) {
 	log.Printf("[ERROR] update download error: %s", msg)
 }
 
-// downloadUpdateWithResume 下载更新文件到临时文件并上报进度，支持取消。
-// 与 downloadWithResume 不同：更新 exe 体量小、不支持暂停/断点续传，
-// 仅响应 context 取消（应用退出/停止下载）。
+// downloadUpdateWithResume downloads the update file to a temp file and
+// reports progress, supporting cancellation. Unlike downloadWithResume: the
+// update exe is small and does not support pause/resume; it only responds to
+// context cancellation (app exit / stop download).
 func downloadUpdateWithResume(ctx context.Context, url string, totalSize int64) (string, error) {
 	tmpFile, err := os.CreateTemp("", "llama-desktop-update-*.exe")
 	if err != nil {
@@ -2187,31 +2262,40 @@ var serverLogs []string
 var serverLogsMu sync.Mutex
 var serverRunning bool
 
-// serverMu 保护 serverCmd 与 serverRunning 的完整生命周期（创建/启停/清理），
-// 与只保护 serverLogs 的 serverLogsMu 职责分离（#3）。任何同时持有两把锁的
-// 路径必须按「先 serverMu 后 serverLogsMu」的顺序获取，避免死锁。
+// serverMu guards the full lifecycle of serverCmd and serverRunning
+// (create/start/stop/cleanup), separate in responsibility from serverLogsMu
+// which only guards serverLogs (#3). Any path holding both locks must acquire
+// them in the order "serverMu first, then serverLogsMu" to avoid deadlock.
 var serverMu sync.Mutex
 
-// serverStartTime 记录 llama-server 成功启动的时刻（serverMu 保护），供
-// GetMonitorStatus 计算运行时长；进程退出（cmd.Wait goroutine）置零。
+// serverStartTime records when llama-server started successfully (guarded by
+// serverMu), used by GetMonitorStatus to compute uptime; zeroed when the
+// process exits (in the cmd.Wait goroutine).
 var serverStartTime time.Time
 
-// serverPort 记录 llama-server 成功启动时使用的端口（serverMu 保护），
-// 0 表示未运行。路由器 API 查询用此值而非当前配置，避免运行中修改配置
-// 导致查询到错误的地址。
+// serverPort records the port used by the successfully started llama-server
+// (guarded by serverMu), 0 means not running. Router API queries use this
+// value instead of the current config, so editing the config mid-run cannot
+// redirect queries to the wrong address.
 var serverPort int
 
-// serverLogWriter 把子进程 stdout/stderr 的写入按行重组后再进入环形日志，避免
-// 日志条目被任意分片拦腰截断。此前 Write 把每次 stderr 写入的任意分片直接当作
-// 一条日志（addServerLog(strings.TrimSpace(string(p)))）：llama-server 输出按小块
-// 写入，print_timing 行可能被拆成多次 Write——用户实贴日志出现「0.00.136.078」
-// 单独成条，以及「( 0.63 ms per token, 2362.80 tokens per second)」这种只剩后半句
-// 的分片；后者不再含 "prompt eval time" 标记，parseTPS 无法把它归类为预填充行，
-// 2362.80 这类长 prompt 预填充速度就漏进了 TPS。按行缓冲让 addServerLog 永远收到
-// 完整行，从根上消除截断（日志显示拆行与 TPS 误读同源）。
+// serverLogWriter reassembles child-process stdout/stderr writes into whole
+// lines before they enter the ring log, preventing log entries from being cut
+// in half by arbitrary chunks. Previously Write treated each arbitrary stderr
+// chunk as one log entry (addServerLog(strings.TrimSpace(string(p)))):
+// llama-server writes in small chunks, so a print_timing line could be split
+// across multiple Writes — user-pasted logs showed "0.00.136.078" appearing as
+// a standalone entry, and fragments like "( 0.63 ms per token, 2362.80 tokens
+// per second)" reduced to the second half; the latter no longer contains the
+// "prompt eval time" marker, so parseTPS cannot classify it as a prefill line
+// and long-prompt prefill speeds like 2362.80 leaked into TPS. Line buffering
+// makes addServerLog always receive complete lines, eliminating truncation at
+// the root (the log line-splitting and the TPS misreading share the same
+// cause).
 //
-// 每个实例持有独立缓冲与互斥锁（项目「显式互斥」惯例），bridge.go 中
-// cmd.Stdout 与 cmd.Stderr 各挂一个实例，各自缓冲自己的流，互不干扰。
+// Each instance holds its own buffer and mutex (the project's "explicit mutex"
+// convention); in bridge.go, cmd.Stdout and cmd.Stderr each get their own
+// instance buffering its own stream without interference.
 type serverLogWriter struct {
 	mu  sync.Mutex
 	buf bytes.Buffer
@@ -2224,9 +2308,11 @@ func (w *serverLogWriter) Write(p []byte) (int, error) {
 	for {
 		line, err := w.buf.ReadString('\n')
 		if err != nil {
-			// 无换行结尾：ReadString 已消费整个缓冲，line 为未完成残片。
-			// 清空后把残片写回，与下一次 Write 拼成完整行；无残片时直接
-			// 清空，防止缓冲随已消费字节无限增长。
+			// No trailing newline: ReadString has already consumed the whole
+			// buffer and line is an unfinished fragment. Reset and write the
+			// fragment back so the next Write completes the line; with no
+			// fragment just reset, preventing the buffer from growing without
+			// bound on consumed bytes.
 			w.buf.Reset()
 			if line != "" {
 				w.buf.WriteString(line)
@@ -2250,13 +2336,15 @@ func addServerLog(msg string) {
 	log.Println("[llama-server]", msg)
 }
 
-// validIniValue 校验将写入 INI 预设的值：不得含换行/空字符（防止配置注入）
-// 且不得有首尾空白（避免值被静默裁剪引起歧义）。
+// validIniValue validates values written into INI presets: no newlines/null
+// bytes (prevents config injection) and no leading/trailing whitespace (avoids
+// ambiguity from values being silently trimmed).
 func validIniValue(s string) bool {
 	return !strings.ContainsAny(s, "\n\r\x00") && s == strings.TrimSpace(s)
 }
 
-// validGPULayersValue 校验 gpu-layers 取值：允许空、auto、all、0 或纯正整数。
+// validGPULayersValue validates gpu-layers values: empty, auto, all, 0, or a
+// pure positive integer are allowed.
 func validGPULayersValue(s string) bool {
 	if s == "" || s == "auto" || s == "all" || s == "0" {
 		return true
@@ -2265,7 +2353,8 @@ func validGPULayersValue(s string) bool {
 	return err == nil && n > 0
 }
 
-// validCacheTypeValue 校验 cache-type-k/v 取值白名单（b10342 实际支持列表）。
+// validCacheTypeValue validates the cache-type-k/v whitelist (the list actually
+// supported by b10342).
 func validCacheTypeValue(s string) bool {
 	switch s {
 	case "", "f32", "f16", "bf16", "q8_0", "q4_0", "q4_1", "iq4_nl", "q5_0", "q5_1":
@@ -2274,8 +2363,8 @@ func validCacheTypeValue(s string) bool {
 	return false
 }
 
-// validLoadModeValue 校验 load-mode 取值白名单（b10342 起替代 mlock/no-mmap，
-// 空值表示使用 llama-server 默认 mmap）。
+// validLoadModeValue validates the load-mode whitelist (replaces
+// mlock/no-mmap since b10342; empty means use llama-server's default mmap).
 func validLoadModeValue(s string) bool {
 	switch s {
 	case "", "none", "mmap", "mlock", "mmap+mlock", "dio":
@@ -2284,7 +2373,8 @@ func validLoadModeValue(s string) bool {
 	return false
 }
 
-// validSplitModeValue 校验 split-mode 取值白名单（多 GPU 张量切分策略）。
+// validSplitModeValue validates the split-mode whitelist (multi-GPU tensor
+// split strategy).
 func validSplitModeValue(s string) bool {
 	switch s {
 	case "", "none", "layer", "row", "tensor":
@@ -2293,7 +2383,8 @@ func validSplitModeValue(s string) bool {
 	return false
 }
 
-// validRopeScalingValue 校验 rope-scaling 取值白名单（长上下文外推策略）。
+// validRopeScalingValue validates the rope-scaling whitelist (long-context
+// extrapolation strategy).
 func validRopeScalingValue(s string) bool {
 	switch s {
 	case "", "none", "linear", "yarn":
@@ -2302,8 +2393,9 @@ func validRopeScalingValue(s string) bool {
 	return false
 }
 
-// validSpecTypeValue 校验 spec-type 取值白名单（MTP 多 token 预测策略，
-// 空值表示使用 llama-server 默认单 token 预测）。
+// validSpecTypeValue validates the spec-type whitelist (MTP multi-token
+// prediction strategy; empty means llama-server's default single-token
+// prediction).
 func validSpecTypeValue(s string) bool {
 	switch s {
 	case "", "draft-mtp":
@@ -2334,9 +2426,11 @@ func generateModelsPresetFrom(models []ModelInfo, cfgs map[string]ModelConfig) (
 	}
 
 	var buf bytes.Buffer
-	// 稳定去重别名：sanitizeAlias 会把空格/斜杠等不同字符统一为 '-'，
-	// 不同模型名可能碰撞出相同段名（#7.1）。按模型顺序对已占用的别名
-	// 追加 -2、-3… 直到唯一，结果确定、不依赖随机/时间。
+	// Deterministic alias dedup: sanitizeAlias maps different characters like
+	// spaces and slashes all to '-', so distinct model names can collide into
+	// the same section name (#7.1). Append -2, -3... to already-used aliases
+	// in model order until unique; the result is deterministic, independent of
+	// randomness/time.
 	used := make(map[string]int)
 	for _, m := range models {
 		alias := sanitizeAlias(m.Name)
@@ -2358,7 +2452,8 @@ func generateModelsPresetFrom(models []ModelInfo, cfgs map[string]ModelConfig) (
 			buf.WriteString("embeddings = true\n")
 		}
 
-		// 显式 mmproj 路径覆盖时跳过下方同目录自动检测（避免输出两条 mmproj）
+		// With an explicit mmproj path override, skip the same-directory
+		// auto-detection below (avoids emitting two mmproj lines)
 		explicitMMProj := false
 
 		// Apply per-model config if set
@@ -2396,9 +2491,11 @@ func generateModelsPresetFrom(models []ModelInfo, cfgs map[string]ModelConfig) (
 				}
 				buf.WriteString(fmt.Sprintf("cache-type-v = %s\n", cfg.CacheTypeV))
 			}
-			// 以下新参数 b10342 起生效。LoadMode/SplitMode/RopeScaling 空值或
-			// 等于 llama-server 默认时不写入，避免噪音；MLock/NoMMap 已废弃，
-			// 仅由 loadConfig 迁移为 LoadMode，不再直接写入预设。
+			// New params below take effect since b10342. LoadMode/SplitMode/
+			// RopeScaling are omitted when empty or equal to llama-server's
+			// default to avoid noise; MLock/NoMMap are deprecated — loadConfig
+			// migrates them into LoadMode and they are never written directly
+			// into the preset anymore.
 			if cfg.LoadMode != "" && cfg.LoadMode != "mmap" {
 				if !validIniValue(cfg.LoadMode) {
 					return "", fmt.Errorf(tr("非法 LoadMode 值 %q：不能包含换行或首尾空白", "invalid LoadMode value %q: must not contain newlines or leading/trailing whitespace"), cfg.LoadMode)
@@ -2435,8 +2532,10 @@ func generateModelsPresetFrom(models []ModelInfo, cfgs map[string]ModelConfig) (
 			if cfg.RopeScale > 0 {
 				buf.WriteString(fmt.Sprintf("rope-scale = %g\n", cfg.RopeScale))
 			}
-			// 显式 mmproj 路径覆盖：非空且通过 INI 注入校验时优先于同目录自动检测，
-			// 不要求文件存在（模型可能移动，llama-server 启动时自行报错）。
+			// Explicit mmproj path override: when non-empty and passing INI
+			// injection validation it takes priority over same-directory
+			// auto-detection; file existence is not required (the model may
+			// have been moved; llama-server reports the error at startup).
 			if cfg.MMProj != "" {
 				if !validIniValue(cfg.MMProj) {
 					return "", fmt.Errorf(tr("非法 MMProj 值 %q：不能包含换行或首尾空白", "invalid MMProj value %q: must not contain newlines or leading/trailing whitespace"), cfg.MMProj)
@@ -2511,15 +2610,16 @@ type appConfig struct {
 	ModelConfigs     map[string]ModelConfig `json:"modelConfigs"`
 	ServerConfig     ServerConfig           `json:"serverConfig"`
 	DownloadSource   string                 `json:"downloadSource"`
-	Language         string                 `json:"language"`         // 语言偏好: zh / en / auto（空或非法值兜底 auto）
-	TrayEnabled      bool                   `json:"trayEnabled"`      // Windows 系统托盘开关，默认 true
-	SidebarCollapsed bool                   `json:"sidebarCollapsed"` // 侧边栏收起状态，默认 true（收起）
+	Language         string                 `json:"language"`         // language preference: zh / en / auto (empty or invalid falls back to auto)
+	TrayEnabled      bool                   `json:"trayEnabled"`      // Windows system tray toggle, default true
+	SidebarCollapsed bool                   `json:"sidebarCollapsed"` // sidebar collapsed state, default true (collapsed)
 	DownloadTasks    []PersistedDlTask      `json:"downloadTasks,omitempty"`
 }
 
-// PersistedDlTask 是下载任务队列的持久化形态（写入 llama-desktop-config.json）。
-// 与 DlTask 的区别：URL / ctx / cancel / resumeCh 这类运行时状态不持久化，
-// URL 在 loadConfig 恢复时按 Source + buildModelDownloadURL 重建。
+// PersistedDlTask is the persisted form of download queue tasks (written to
+// llama-desktop-config.json). Differs from DlTask: runtime state such as URL /
+// ctx / cancel / resumeCh is not persisted; the URL is rebuilt on loadConfig
+// restore from Source + buildModelDownloadURL.
 type PersistedDlTask struct {
 	ID         string `json:"id"`
 	ModelID    string `json:"modelId"`
@@ -2534,15 +2634,17 @@ type PersistedDlTask struct {
 	Error      string `json:"error"`
 }
 
-// 服务访问范围取值：local 表示仅本机可访问（监听 127.0.0.1），lan 表示允许
-// 同网络设备访问（监听 0.0.0.0）。ServerConfig.AccessMode 只接受这两个值，
-// 其余（含空串）一律兜底 local。
+// Service access scope values: local means reachable only from this machine
+// (listen on 127.0.0.1), lan means reachable from devices on the same network
+// (listen on 0.0.0.0). ServerConfig.AccessMode accepts only these two values;
+// anything else (including empty) falls back to local.
 const accessLocal = "local"
 const accessLAN = "lan"
 
 type ServerConfig struct {
-	// AccessMode 是服务访问范围（"local" | "lan"，默认 "local"）；Host 为
-	// 按 AccessMode 派生后的实际监听地址，不直接接受用户输入。
+	// AccessMode is the service access scope ("local" | "lan", default
+	// "local"); Host is the derived actual listen address per AccessMode and
+	// never takes direct user input.
 	AccessMode string `json:"accessMode"`
 	Host       string `json:"host"`
 	Port       int    `json:"port"`
@@ -2550,9 +2652,11 @@ type ServerConfig struct {
 	CacheRAM   int    `json:"cacheRam"`
 }
 
-// effectiveHost 按访问范围派生实际监听地址：lan → "0.0.0.0"，其余任何取值
-// （含空串与非法值）→ "127.0.0.1"。纯函数，供 SaveServerConfig 归一化、
-// loadConfig 兼容与 buildServerCommand 共用，保证各处 Host 口径一致。
+// effectiveHost derives the actual listen address from the access scope:
+// lan → "0.0.0.0", any other value (including empty and invalid) →
+// "127.0.0.1". Pure function shared by SaveServerConfig normalization,
+// loadConfig compatibility, and buildServerCommand, keeping Host consistent
+// everywhere.
 func effectiveHost(mode string) string {
 	if mode == accessLAN {
 		return "0.0.0.0"
@@ -2570,29 +2674,33 @@ type ModelConfig struct {
 	CacheTypeK    string  `json:"cacheTypeK"`
 	CacheTypeV    string  `json:"cacheTypeV"`
 	LoadMode      string  `json:"loadMode"`         // "", none, mmap, mlock, mmap+mlock, dio
-	CPUMoe        bool    `json:"cpuMoe"`           // 所有 MoE 专家留 CPU
-	NCpuMoe       int     `json:"nCpuMoe"`          // 前 N 层 MoE 留 CPU, 0=不启用
+	CPUMoe        bool    `json:"cpuMoe"`           // keep all MoE experts on CPU
+	NCpuMoe       int     `json:"nCpuMoe"`          // keep first N MoE layers on CPU, 0=disabled
 	SplitMode     string  `json:"splitMode"`        // "", none, layer, row, tensor
-	TensorSplit   string  `json:"tensorSplit"`      // 如 "3,1"
-	MainGPU       int     `json:"mainGpu"`          // 默认 0
+	TensorSplit   string  `json:"tensorSplit"`      // e.g. "3,1"
+	MainGPU       int     `json:"mainGpu"`          // default 0
 	RopeScaling   string  `json:"ropeScaling"`      // "", none, linear, yarn
-	RopeScale     float64 `json:"ropeScale"`        // 0=不启用
-	MMProj        string  `json:"mmproj"`           // 显式 mmproj 路径覆盖, 空=自动检测
-	Reasoning     bool    `json:"reasoning"`        // 关闭思考（写 reasoning = off）
+	RopeScale     float64 `json:"ropeScale"`        // 0=disabled
+	MMProj        string  `json:"mmproj"`           // explicit mmproj path override, empty=auto-detect
+	Reasoning     bool    `json:"reasoning"`        // disable thinking (writes reasoning = off)
 	SpecType      string  `json:"specType"`         // "", draft-mtp
-	SpecDraftNMax int     `json:"specDraftNMax"`    // >0 时写 spec-draft-n-max
-	MLock         bool    `json:"mlock,omitempty"`  // 已废弃,仅为读取旧配置迁移
-	NoMMap        bool    `json:"noMmap,omitempty"` // 已废弃,仅为读取旧配置迁移
+	SpecDraftNMax int     `json:"specDraftNMax"`    // >0 writes spec-draft-n-max
+	MLock         bool    `json:"mlock,omitempty"`  // deprecated, kept only to migrate old configs
+	NoMMap        bool    `json:"noMmap,omitempty"` // deprecated, kept only to migrate old configs
 }
 
-// migrateLegacyConfig 把 llama-gui 时代的旧配置文件内容复制到新文件名：
-// 仅当新文件不存在且旧文件存在时，读出旧文件内容后写入新文件（0644 与
-// saveConfig 写入惯例一致），不做任何删除或改名。旧文件保留原处、内容不变。
-// 之所以用复制而非改名：wails dev 的文件监视器监视项目根目录，启动期删除/
-// 改名根目录文件会触发 Wails CLI 的 GetFileAttributesEx 竞态导致崩溃退出；
-// 复制不删源文件，且新文件存在即短路、旧文件残留无副作用——仅当用户删掉
-// 新文件后迁移才会再次触发。失败只记警告并走 loadConfig 的默认配置兜底，
-// 不阻断启动。
+// migrateLegacyConfig copies the legacy llama-gui-era config file content to
+// the new filename: only when the new file does not exist and the old one
+// does, it reads the old content and writes it to the new file (0644, matching
+// the saveConfig write convention) — no deletion or renaming. The old file
+// stays in place, unchanged.
+// Copy instead of rename because: wails dev's file watcher watches the project
+// root, and deleting/renaming root files during startup triggers a
+// GetFileAttributesEx race in the Wails CLI that crashes the run; copying does
+// not delete the source, the new file's existence short-circuits, and a
+// leftover old file has no side effects — migration re-triggers only if the
+// user deletes the new file. Failures only log a warning and fall back to
+// loadConfig's defaults, never blocking startup.
 func migrateLegacyConfig() {
 	if _, err := os.Stat(configFile); err == nil {
 		return
@@ -2619,10 +2727,12 @@ func loadConfig() {
 		return // file doesn't exist yet, that's ok
 	}
 	var cfg appConfig
-	// 预置默认值后再 Unmarshal：Go 零值 false 无法区分「旧配置缺字段」与
-	// 「显式设为 false」。trayEnabled 缺省时必须兜底 true（历史配置升级后
-	// 托盘默认开启，与 4aacac2 无条件启托盘的行为一致）；sidebarCollapsed
-	// 缺省时兜底 true（侧边栏默认收起，无保存偏好即收起）。
+	// Pre-populate defaults before Unmarshal: Go's zero value false cannot
+	// distinguish "old config missing the field" from "explicitly set to
+	// false". trayEnabled must default to true when absent (tray stays on
+	// after historical config upgrades, matching 4aacac2's unconditional
+	// tray); sidebarCollapsed must default to true when absent (sidebar
+	// collapses by default with no saved preference).
 	cfg.TrayEnabled = true
 	cfg.SidebarCollapsed = true
 	if err := json.Unmarshal(data, &cfg); err != nil {
@@ -2635,8 +2745,10 @@ func loadConfig() {
 		customLlamaCppMu.Unlock()
 		log.Printf("[DIR] Loaded custom llama.cpp dir from config: %s", cfg.LlamaCppDir)
 	}
-	// 自定义模型目录：值为空或路径不存在/非目录时忽略并回退默认目录，
-	// 防止配置损坏或目录被删除后扫描/下载落在无效路径上。
+	// Custom model directory: empty values or paths that do not exist / are
+	// not directories are ignored and fall back to the default directory,
+	// preventing scans/downloads from landing on invalid paths after config
+	// corruption or directory deletion.
 	if cfg.ModelDir != "" {
 		if fi, err := os.Stat(cfg.ModelDir); err != nil || !fi.IsDir() {
 			log.Printf("[WARN] Ignoring invalid model dir from config: %s", cfg.ModelDir)
@@ -2655,14 +2767,15 @@ func loadConfig() {
 		cfg.ModelConfigs = make(map[string]ModelConfig)
 	}
 	cachedModelConfigs = cfg.ModelConfigs
-	// 迁移旧 mlock/noMmap 到 load-mode（b10342 起两者 DEPRECATED）：
-	// 旧配置若未显式设置 loadMode，则按旧布尔组合推导并清零兼容字段，
-	// saveConfig 时 omitempty 保证不再写回旧键（渐进清理）。
+	// Migrate legacy mlock/noMmap to load-mode (both DEPRECATED since b10342):
+	// if an old config has no explicit loadMode, derive it from the old boolean
+	// combination and clear the compatibility fields; omitempty in saveConfig
+	// guarantees the old keys are never written back (gradual cleanup).
 	for k, c := range cachedModelConfigs {
 		if c.LoadMode == "" && (c.MLock || c.NoMMap) {
 			switch {
 			case c.MLock && c.NoMMap:
-				c.LoadMode = "mlock" // mlock 语义优先
+				c.LoadMode = "mlock" // mlock semantics take priority
 			case c.MLock:
 				c.LoadMode = "mlock"
 			case c.NoMMap:
@@ -2675,9 +2788,11 @@ func loadConfig() {
 	}
 	// Merge server config with defaults
 	scfg := defaultServerConfig()
-	// 访问范围：空值或不在 {local,lan} 白名单时兜底 local（旧配置无
-	// accessMode 字段或数据损坏时不报错）。Host 一律由 effectiveHost 按
-	// accessMode 派生，不信任旧配置里可能存在的非法 host 值（#5 防御延续）。
+	// Access scope: empty values or anything outside the {local,lan} whitelist
+	// fall back to local (no error when old configs lack accessMode or data is
+	// corrupt). Host is always derived by effectiveHost from accessMode; a
+	// possibly-invalid host value in old configs is never trusted (extending
+	// the #5 defense).
 	if cfg.ServerConfig.AccessMode != accessLocal && cfg.ServerConfig.AccessMode != accessLAN {
 		cfg.ServerConfig.AccessMode = accessLocal
 	}
@@ -2694,7 +2809,8 @@ func loadConfig() {
 	}
 	cachedServerConfig = scfg
 
-	// 下载源：空值或非法值兜底默认 hf（旧配置无此字段或数据损坏时不报错）。
+	// Download source: empty or invalid values fall back to the default hf
+	// (no error when old configs lack this field or data is corrupt).
 	if cfg.DownloadSource != sourceHF && cfg.DownloadSource != sourceModelScope {
 		cfg.DownloadSource = defaultDownloadSource
 	}
@@ -2702,8 +2818,10 @@ func loadConfig() {
 	downloadSource = cfg.DownloadSource
 	downloadSourceMu.Unlock()
 
-	// 语言偏好：空值或不在 zh/en/auto 白名单时兜底 auto（旧配置无此字段或
-	// 数据损坏时不报错）。与 downloadSource 同策略：非法值一律规整回默认。
+	// Language preference: empty values or anything outside the zh/en/auto
+	// whitelist fall back to auto (no error when old configs lack this field
+	// or data is corrupt). Same strategy as downloadSource: invalid values are
+	// always normalized back to the default.
 	if cfg.Language != "zh" && cfg.Language != "en" && cfg.Language != "auto" {
 		cfg.Language = "auto"
 	}
@@ -2711,24 +2829,30 @@ func loadConfig() {
 	currentLanguage = cfg.Language
 	languageMu.Unlock()
 
-	// 系统托盘开关：字段缺失时保持预置默认 true；显式 false 才禁用
-	//（旧配置升级后托盘默认开启，与 4aacac2 无条件启托盘的行为一致）。
+	// System tray toggle: keep the pre-populated default true when the field is
+	// missing; only an explicit false disables it (tray stays on after old
+	// config upgrades, matching 4aacac2's unconditional tray behavior).
 	configMu.Lock()
 	trayEnabled = cfg.TrayEnabled
 	configMu.Unlock()
 
-	// 侧边栏收起状态：缺字段时保持预置默认 true（收起，见上方 appConfig
-	// 预置）；仅显式 false（用户展开偏好）才为 false，与 trayEnabled 同模式。
+	// Sidebar collapsed state: keep the pre-populated default true when the
+	// field is missing (collapsed, see the appConfig pre-population above);
+	// only an explicit false (user's expand preference) yields false, same
+	// pattern as trayEnabled.
 	configMu.Lock()
 	currentSidebarCollapsed = cfg.SidebarCollapsed
 	configMu.Unlock()
 
-	// 恢复下载任务队列（进程重启后无活跃 goroutine，任何任务都不自动启动下载）：
-	// Source 兜底 hf；Status 白名单外与 downloading 一律规整为 paused（downloading
-	// 状态的 goroutine 已随进程退出消亡，前端可对任务继续/重试）；URL 按
-	// buildModelDownloadURL 重建；resumeCh 新建缓冲 channel，ctx/cancel 留 nil
-	//（RetryDownloadTask 重建 ctx 后再启动）。恢复后调整 dlTaskCounter 避免与
-	// 既有任务 id 冲突。
+	// Restore the download task queue (after a process restart there are no
+	// active goroutines, so no task auto-starts its download): Source falls
+	// back to hf; statuses outside the whitelist and downloading are all
+	// normalized to paused (the downloading goroutine died with the process;
+	// the frontend can offer resume/retry); URLs are rebuilt via
+	// buildModelDownloadURL; resumeCh is a fresh buffered channel while
+	// ctx/cancel stay nil (RetryDownloadTask rebuilds ctx before starting).
+	// After restoring, bump dlTaskCounter to avoid id collisions with
+	// existing tasks.
 	restored := make([]*DlTask, 0, len(cfg.DownloadTasks))
 	for _, pt := range cfg.DownloadTasks {
 		src := pt.Source
@@ -2738,9 +2862,9 @@ func loadConfig() {
 		status := pt.Status
 		switch status {
 		case "done", "error", "cancelled", "queued", "paused":
-			// 终态与可控状态保持原样
+			// terminal and controllable states stay as-is
 		default:
-			// 空值、非法值或 downloading → paused
+			// empty, invalid, or downloading → paused
 			status = "paused"
 		}
 		task := &DlTask{
@@ -2764,8 +2888,9 @@ func loadConfig() {
 	}
 	dlTasksMu.Lock()
 	dlTasks = restored
-	// id 取已恢复任务的最大序号 +1（解析 "dl-N"），避免新增任务 id 冲突；
-	// 解析失败或没有已恢复任务时保持原值。
+	// Bump the id counter to max restored sequence + 1 (parsing "dl-N") to
+	// avoid id collisions with new tasks; keep the current value on parse
+	// failure or when nothing was restored.
 	maxSeq := 0
 	for _, t := range restored {
 		if n, err := strconv.Atoi(strings.TrimPrefix(t.ID, "dl-")); err == nil && n > maxSeq {
@@ -2792,19 +2917,24 @@ func defaultServerConfig() ServerConfig {
 var currentTheme = "light"
 var configMu sync.Mutex
 
-// trayEnabled 表示是否启用 Windows 系统托盘（关闭窗口缩到托盘），默认 true；
-// 受 configMu 保护，持久化到配置文件的 trayEnabled 字段。旧配置缺该字段时
-// loadConfig 兜底 true（见 loadConfig 的 appConfig{TrayEnabled: true} 预置）。
+// trayEnabled indicates whether the Windows system tray is enabled (closing
+// the window minimizes to tray), default true; guarded by configMu and
+// persisted to the config file's trayEnabled field. When an old config lacks
+// the field, loadConfig falls back to true (see the appConfig{TrayEnabled:
+// true} pre-population in loadConfig).
 var trayEnabled = true
 
-// currentSidebarCollapsed 表示侧边栏是否处于收起状态（纯图标栏），默认 true
-// （收起）；受 configMu 保护，持久化到配置文件的 sidebarCollapsed 字段。旧配置
-// 缺该字段时 loadConfig 预置默认 true（见 loadConfig 的 appConfig 预置），与
-// trayEnabled 的兜底模式一致。
+// currentSidebarCollapsed indicates whether the sidebar is collapsed
+// (icon-only rail), default true (collapsed); guarded by configMu and
+// persisted to the config file's sidebarCollapsed field. When an old config
+// lacks the field, loadConfig pre-populates the default true (see the
+// appConfig pre-population in loadConfig), the same fallback pattern as
+// trayEnabled.
 var currentSidebarCollapsed = true
 
-// TrayEnabled 返回当前托盘启用偏好（并发安全，configMu 保护）。供 main.go 的
-// OnStartup 按持久化配置决定是否启动托盘。
+// TrayEnabled returns the current tray preference (concurrency-safe, guarded
+// by configMu). Used by main.go's OnStartup to decide whether to start the
+// tray per the persisted config.
 func TrayEnabled() bool {
 	configMu.Lock()
 	defer configMu.Unlock()
@@ -2851,10 +2981,12 @@ func saveConfig() {
 	sidebarCollapsed := currentSidebarCollapsed
 	configMu.Unlock()
 
-	// 锁序铁律：saveConfig 内 dlTasksMu 必须是最后获取的锁。任何调用点都不得
-	// 在持有 dlTasksMu 时调用 saveConfig——调用方须先锁内取副本、解锁、再
-	// save（如 CancelDownloadTask 在 defer Unlock 前不调 saveConfig）。否则会
-	// 违反 dlTasksMu 与其他锁（configMu 等）的全局顺序，造成死锁。
+	// Lock-ordering iron rule: inside saveConfig, dlTasksMu must be the last
+	// lock acquired. No call site may call saveConfig while holding dlTasksMu —
+	// callers must copy under the lock, unlock, then save (e.g.
+	// CancelDownloadTask does not call saveConfig before its deferred Unlock).
+	// Otherwise the global ordering between dlTasksMu and other locks
+	// (configMu etc.) is violated, causing deadlock.
 	dlTasksMu.Lock()
 	persistedTasks := make([]PersistedDlTask, 0, len(dlTasks))
 	for _, t := range dlTasks {
@@ -2900,10 +3032,10 @@ func saveConfig() {
 
 const hfMirrorBase = "https://hf-mirror.com"
 
-// buildModelDownloadURL 按下载源构建模型文件下载 URL：
-//   - hf：{hfMirrorBase}/{modelID}/resolve/main/{fileName}（PathEscape 转义文件名）
-//   - modelscope：委托 buildModelScopeDownloadURL（legacy API 的 repo 端点）
-//   - 未知 source 返回错误（防御纵深，调用方不应传入非法值）
+// buildModelDownloadURL builds the model file download URL per download source:
+//   - hf: {hfMirrorBase}/{modelID}/resolve/main/{fileName} (filename PathEscaped)
+//   - modelscope: delegates to buildModelScopeDownloadURL (the legacy API repo endpoint)
+//   - unknown source returns an error (defense in depth; callers must not pass invalid values)
 func buildModelDownloadURL(source, modelID, fileName string) (string, error) {
 	switch source {
 	case sourceHF:
@@ -2921,13 +3053,17 @@ func searchHFMirror(q string, filter string) ([]HFSearchResult, error) {
 }
 
 // searchHFMirrorAt queries an HF-compatible API base for models matching q,
-// filtering to models containing GGUF files. filter 参数已弃用，仅保留签名兼容，
-// 不再按 pipeline_tag 类型过滤（embedding / llm 分类已移除）。
-// API 不支持 library 过滤与分页，只能以较大 limit 拉取候选后过滤 GGUF。
-// 为覆盖尽可能多的候选，并行请求 downloads / likes / lastModified 三种排序
-// （各 limit=200&full=true），各自过滤 GGUF 后按 downloads → likes →
-// lastModified 顺序按 modelId 合并去重（已见过的跳过）。任一排序请求失败仅跳过
-// 该路（打 [WARN]），三路全部失败才返回错误。
+// filtering to models containing GGUF files. The filter parameter is
+// deprecated, kept only for signature compatibility; no pipeline_tag type
+// filtering happens anymore (embedding / llm classification was removed).
+// The API supports neither library filtering nor pagination, so candidates
+// are pulled with a large limit and then filtered for GGUF. To cover as many
+// candidates as possible, three sorts — downloads / likes / lastModified —
+// are requested in parallel (each limit=200&full=true), each filtered for
+// GGUF and then merged and deduplicated by modelId in downloads → likes →
+// lastModified order (already-seen entries skipped). A failed sort request
+// only skips that route (with a [WARN]); an error is returned only when all
+// three routes fail.
 func searchHFMirrorAt(baseURL, q, filter string) ([]HFSearchResult, error) {
 	sorts := []string{"downloads", "likes", "lastModified"}
 
@@ -2937,7 +3073,8 @@ func searchHFMirrorAt(baseURL, q, filter string) ([]HFSearchResult, error) {
 	}
 	routeResults := make([]routeResult, len(sorts))
 
-	// 三路排序并行拉取，每路独立结果切片，无共享写入
+	// Three sort routes fetched in parallel, each with its own result slice;
+	// no shared writes
 	var wg sync.WaitGroup
 	for i, sort := range sorts {
 		wg.Add(1)
@@ -2954,7 +3091,7 @@ func searchHFMirrorAt(baseURL, q, filter string) ([]HFSearchResult, error) {
 	for i, sort := range sorts {
 		if routeResults[i].err != nil {
 			failed++
-			log.Printf("[WARN] HF 搜索排序 %s 请求失败，跳过该路: %v", sort, routeResults[i].err)
+			log.Printf("[WARN] HF search sort %s request failed, skipping route: %v", sort, routeResults[i].err)
 			continue
 		}
 		for _, r := range routeResults[i].results {
@@ -2976,9 +3113,11 @@ func searchHFMirrorAt(baseURL, q, filter string) ([]HFSearchResult, error) {
 	return results, nil
 }
 
-// searchHFMirrorSortAt 以指定 sort 向 HF 兼容 API 拉取一页候选
-// （limit=200&full=true），过滤出含 GGUF 文件的结果。请求失败或非 200 时返回
-// 错误，由 searchHFMirrorAt 决定整路跳过（不影响其他排序）。
+// searchHFMirrorSortAt fetches one page of candidates from an HF-compatible
+// API with the given sort (limit=200&full=true), filtering for results with
+// GGUF files. Request failures or non-200 statuses return an error;
+// searchHFMirrorAt then decides to skip the whole route (other sorts are
+// unaffected).
 func searchHFMirrorSortAt(baseURL, q, sort string) ([]HFSearchResult, error) {
 	apiURL := fmt.Sprintf("%s/api/models?search=%s&sort=%s&limit=200&full=true", baseURL, q, sort)
 
@@ -3037,7 +3176,8 @@ func searchHFMirrorSortAt(baseURL, q, sort string) ([]HFSearchResult, error) {
 	return results, nil
 }
 
-// hasGGUF 判断 HF 搜索结果是否包含 .gguf 后缀文件（HF 搜索候选的 GGUF 过滤）。
+// hasGGUF reports whether an HF search result contains a .gguf file (the GGUF
+// filter for HF search candidates).
 func hasGGUF(r HFSearchResult) bool {
 	for _, s := range r.Siblings {
 		if strings.HasSuffix(strings.ToLower(s.Filename), ".gguf") {
@@ -3054,10 +3194,12 @@ func getModelDescription(modelID string) (string, error) {
 
 // getModelDescriptionAt fetches the README of a model on an HF-compatible base
 // and extracts its natural-language description:
-//   - GET {base}/{modelID}/raw/main/README.md（User-Agent llama-desktop，30s 超时）
-//   - 非 200 返回错误；YAML front-matter（首行为 --- 的块）会被跳过
-//   - 按空行分段，取第一个「非空且不以 # 开头」的段落，trim 后截断 200 rune
-//   - README 存在但没有描述段落时返回空串与 nil 错误（静默）
+//   - GET {base}/{modelID}/raw/main/README.md (User-Agent llama-desktop, 30s timeout)
+//   - non-200 returns an error; YAML front-matter (a block starting with ---) is skipped
+//   - split by blank lines, take the first paragraph that is non-empty and does
+//     not start with #, trim it and truncate to 200 runes
+//   - when the README exists but has no description paragraph, return an empty
+//     string and a nil error (silent)
 func getModelDescriptionAt(baseURL, modelID string) (string, error) {
 	readmeURL := fmt.Sprintf("%s/%s/raw/main/README.md", baseURL, modelID)
 
@@ -3086,14 +3228,18 @@ func getModelDescriptionAt(baseURL, modelID string) (string, error) {
 	return extractDescription(string(body)), nil
 }
 
-// extractDescription 从 README 正文提取自然语言描述（HF 与 ModelScope 共用）：
-//   - 跳过 YAML front-matter（首行 trim 后为 --- 的块）
-//   - 按空行分段，取第一个「非空且不以 # 开头」的段落，trim 后截断 200 rune
-//   - 正文没有描述段落时返回空串（静默，不视为失败）
+// extractDescription extracts the natural-language description from a README
+// body (shared by HF and ModelScope):
+//   - skip YAML front-matter (a block whose first line trims to ---)
+//   - split by blank lines, take the first paragraph that is non-empty and does
+//     not start with #, trim it and truncate to 200 runes
+//   - return an empty string when the body has no description paragraph
+//     (silent, not treated as a failure)
 func extractDescription(body string) string {
 	lines := strings.Split(body, "\n")
 	start := 0
-	// 跳过 YAML front-matter：首行 trim 后为 ---，则跳过到下一个 --- 之后
+	// Skip YAML front-matter: when the first line trims to ---, skip past the
+	// next ---
 	if len(lines) > 0 && strings.TrimSpace(lines[0]) == "---" {
 		for i := 1; i < len(lines); i++ {
 			if strings.TrimSpace(lines[i]) == "---" {
@@ -3103,7 +3249,8 @@ func extractDescription(body string) string {
 		}
 	}
 
-	// 按空行分段，取第一个「非空且不以 # 开头」的段落
+	// Split by blank lines, take the first paragraph that is non-empty and
+	// does not start with #
 	var paragraphs []string
 	var cur strings.Builder
 	flush := func() {
@@ -3129,7 +3276,7 @@ func extractDescription(body string) string {
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
-		// 截断 200 个 rune，超出加省略号
+		// Truncate to 200 runes, appending an ellipsis when exceeded
 		runes := []rune(trimmed)
 		if len(runes) > 200 {
 			return string(runes[:200]) + "..."
@@ -3146,7 +3293,8 @@ func getHFModelFiles(modelID string) ([]HFFileOut, error) {
 }
 
 // getHFModelFilesAt lists the GGUF siblings of a model on an HF-compatible API base.
-// blobs=true 让接口返回文件真实大小（HF 搜索/详情接口默认 siblings 不带 size）。
+// blobs=true makes the API return real file sizes (HF search/detail APIs do
+// not include size on siblings by default).
 func getHFModelFilesAt(baseURL, modelID string) ([]HFFileOut, error) {
 	apiURL := fmt.Sprintf("%s/api/models/%s?blobs=true", baseURL, modelID)
 
@@ -3186,16 +3334,19 @@ func getHFModelFilesAt(baseURL, modelID string) ([]HFFileOut, error) {
 	return files, nil
 }
 
-// getHFModelMaxGGUFSize 返回模型最大的 GGUF 文件大小（走默认镜像）。
+// getHFModelMaxGGUFSize returns the size of the model's largest GGUF file
+// (via the default mirror).
 func getHFModelMaxGGUFSize(modelID string) (int64, error) {
 	return getHFModelMaxGGUFSizeAt(hfMirrorBase, modelID)
 }
 
-// getHFModelMaxGGUFSizeAt 查询模型详情接口（blobs=true 才有真实 size），返回
-// 该模型最大的 .gguf 文件大小，无 GGUF 时返回 0 与 nil。HF 搜索接口的 siblings
-// 不带 size（实测全为 null），搜索卡片上的模型大小只能按 modelId 走详情接口
-// 逐个获取；取最大文件而非全部 GGUF 总和，避免多量化模型（数十个量化文件）
-// 的总和虚高误导用户对模型规模的判断。
+// getHFModelMaxGGUFSizeAt queries the model detail API (blobs=true is required
+// for real sizes) and returns the size of the model's largest .gguf file; 0
+// and nil when there is no GGUF. The HF search API's siblings carry no size
+// (empirically all null), so model sizes on search cards can only be fetched
+// one by one via the detail API by modelId; the largest file is used instead
+// of the sum of all GGUFs to avoid the inflated totals of multi-quant models
+// (dozens of quantized files) misleading users about model scale.
 func getHFModelMaxGGUFSizeAt(baseURL, modelID string) (int64, error) {
 	apiURL := fmt.Sprintf("%s/api/models/%s?blobs=true", baseURL, modelID)
 
@@ -3238,8 +3389,10 @@ func getHFModelMaxGGUFSizeAt(baseURL, modelID string) (int64, error) {
 
 // ─── Download task runner ────────────────────────────────────────
 
-// computeSpeed 由采样间隔（秒）与间隔内下载字节数计算下载速度（字节/秒）。
-// 纯函数：elapsed 非正或 delta 非正时返回 0（无法计算或没有有效进度）。
+// computeSpeed computes the download speed (bytes/sec) from the sampling
+// interval (seconds) and the bytes downloaded within it. Pure function:
+// returns 0 when elapsed or delta is non-positive (not computable or no
+// valid progress).
 func computeSpeed(elapsedSec float64, deltaBytes int64) float64 {
 	if elapsedSec <= 0 || deltaBytes <= 0 {
 		return 0
@@ -3247,14 +3400,17 @@ func computeSpeed(elapsedSec float64, deltaBytes int64) float64 {
 	return float64(deltaBytes) / elapsedSec
 }
 
-// lastTaskPersist 为下载任务队列最近一次持久化时间戳，lastTaskPersistMu 保护其
-// 读写。进度更新路径用 persistTasksThrottled 节流：距上次保存不足 5 秒跳过，
-// 避免下载高频进度把配置文件写入打满（#12 队列持久化）。
+// lastTaskPersist is the timestamp of the last download-queue persistence;
+// lastTaskPersistMu guards its reads/writes. Progress-update paths use
+// persistTasksThrottled: saves less than 5 seconds after the previous one are
+// skipped, preventing high-frequency download progress from saturating config
+// file writes (#12 queue persistence).
 var lastTaskPersist time.Time
 var lastTaskPersistMu sync.Mutex
 
-// persistTasksNow 立即持久化下载任务队列（入队、状态变更与终态路径）。
-// 调用方必须不持有 dlTasksMu：saveConfig 末尾会再获取 dlTasksMu 做快照。
+// persistTasksNow persists the download task queue immediately (enqueue,
+// status-change, and terminal-state paths). Callers must not hold dlTasksMu:
+// saveConfig acquires dlTasksMu again at the end for its snapshot.
 func persistTasksNow() {
 	lastTaskPersistMu.Lock()
 	lastTaskPersist = time.Now()
@@ -3262,8 +3418,9 @@ func persistTasksNow() {
 	saveConfig()
 }
 
-// persistTasksThrottled 节流持久化下载任务队列（进度更新路径）：距上次保存
-// （无论 persistTasksNow 还是本函数触发的保存）不足 5 秒时直接跳过。
+// persistTasksThrottled persists the download task queue with throttling
+// (progress-update paths): skips saves less than 5 seconds after the last one
+// (whether triggered by persistTasksNow or this function).
 func persistTasksThrottled() {
 	lastTaskPersistMu.Lock()
 	if time.Since(lastTaskPersist) < 5*time.Second {
@@ -3275,14 +3432,17 @@ func persistTasksThrottled() {
 	saveConfig()
 }
 
-// retryDownloadTask 重建任务的下载上下文并重新启动下载 goroutine。任务进入
-// error/cancelled/done 终态时 ctx 已结束（goroutine 已退出），不能复用旧 ctx，
-// 需要新建 context.WithCancel；downloadTask 启动时会读取 .part 文件大小作为
-// 续传 offset，天然复用断点续传。调用方必须持有 dlTasksMu。
+// retryDownloadTask rebuilds the task's download context and restarts the
+// download goroutine. Once a task reaches a terminal error/cancelled/done
+// state its ctx is already finished (the goroutine exited) and cannot be
+// reused; a fresh context.WithCancel is required. downloadTask reads the
+// .part file size at startup as the resume offset, naturally reusing
+// resumable downloads. Callers must hold dlTasksMu.
 func retryDownloadTask(task *DlTask) {
 	task.ctx, task.cancel = context.WithCancel(context.Background())
-	// 清空错误与旧进度显示，避免前端继续展示上一次失败的红色错误框；
-	// downloadTask 会根据 .part 续传 offset 重新填充 Downloaded/Total/Progress。
+	// Clear the error and stale progress display so the frontend stops
+	// showing the previous red error box; downloadTask refills
+	// Downloaded/Total/Progress from the .part resume offset.
 	task.Error = ""
 	task.Downloaded = 0
 	task.Total = 0
@@ -3319,8 +3479,9 @@ func downloadTask(task *DlTask) {
 		offset = fi.Size()
 	}
 
-	// 速度采样状态（downloadTask goroutine 独占，无需加锁）：记录上次采样时间与
-	// 字节数，读循环内间隔 ≥1s 时更新 task.Speed。
+	// Speed sampling state (exclusive to the downloadTask goroutine, no
+	// locking needed): records the last sample time and byte count;
+	// task.Speed is updated inside the read loop at intervals ≥1s.
 	var lastSampleTime time.Time
 	var lastSampleBytes int64
 
@@ -3361,9 +3522,11 @@ func downloadTask(task *DlTask) {
 				waitForTaskResume(task, resumeCh)
 				continue
 			}
-			// 取消与网络错误的竞态防御：ctx 已取消（如用户刚点取消）时
-			// 任务应标记 cancelled 而非 error，避免取消竞态把任务打回
-			// error 终态（如 hf-mirror 主动取消流的网络错误）。
+			// Cancel-vs-network-error race defense: when ctx is already
+			// cancelled (e.g. the user just clicked cancel), the task should
+			// be marked cancelled rather than error, preventing the race from
+			// pushing the task back to the error terminal state (e.g. the
+			// network error from hf-mirror actively aborting the stream).
 			if task.ctx.Err() != nil {
 				task.Status = "cancelled"
 				task.Speed = 0
@@ -3390,13 +3553,17 @@ func downloadTask(task *DlTask) {
 			return
 		}
 
-		// 服务器忽略 Range 的健壮性（#B3）：offset>0 时本次请求带了 Range 头，
-		// 但部分服务器（如 ModelScope repo 端点）不保证支持 Range，会忽略该头
-		// 返回 200 全量内容。若仍按 offset 追加写入 .part，会把全量内容重复追加
-		// 到已有部分导致文件损坏。处理：关闭响应、截断 .part 到 0、offset 归零、
-		// 清零进度显示，随后 continue 走外层循环重连。offset=0 后再请求不带 Range
-		// 头，服务器若继续忽略 Range 返回 200 也从零开始写——内容正确且只会重连
-		// 这一次，不会无限循环。
+		// Robustness against servers ignoring Range (#B3): when offset>0 this
+		// request carried a Range header, but some servers (e.g. the
+		// ModelScope repo endpoint) do not guarantee Range support and ignore
+		// the header, returning the full body with 200. Appending that full
+		// body to the .part at offset would duplicate content onto the
+		// existing partial file and corrupt it. Handling: close the response,
+		// truncate .part to 0, zero the offset, clear the progress display,
+		// then continue the outer loop to reconnect. With offset=0 the next
+		// request carries no Range header; if the server keeps ignoring Range
+		// and returns 200, writing still starts from zero — the content is
+		// correct, the reconnect happens only this once, no infinite loop.
 		if offset > 0 && resp.StatusCode == http.StatusOK {
 			resp.Body.Close()
 			dlTasksMu.Lock()
@@ -3416,7 +3583,8 @@ func downloadTask(task *DlTask) {
 				return
 			}
 			offset = 0
-			// 重置速度采样基线：全量重写后 downloaded 从 0 重新累计。
+			// Reset the speed sampling baseline: after a full rewrite,
+			// downloaded accumulates from 0 again.
 			lastSampleTime = time.Time{}
 			lastSampleBytes = 0
 			continue
@@ -3463,8 +3631,10 @@ func downloadTask(task *DlTask) {
 				if fi, err := os.Stat(tmpPath); err == nil {
 					offset = fi.Size()
 				}
-				// 重置速度采样基线：暂停期间 elapsed 会虚高，恢复后从新 offset
-				// 重新建立采样，避免第一段速度被暂停时长拉低。
+				// Reset the speed sampling baseline: elapsed would be inflated
+				// by the pause duration; re-establish sampling from the new
+				// offset after resume so the first segment's speed is not
+				// dragged down by the paused time.
 				lastSampleTime = time.Time{}
 				lastSampleBytes = 0
 				break // outer loop will re-establish connection
@@ -3513,8 +3683,10 @@ func downloadTask(task *DlTask) {
 				if task.Total > 0 {
 					task.Progress = int(float64(downloaded) * 100 / float64(task.Total))
 				}
-				// 速度采样：间隔 ≥1s 才更新，避免高频计算与波动。暂停恢复后
-				// downloaded 从新 offset 重新累计，delta 为负时按 0 处理。
+				// Speed sampling: update only at intervals ≥1s to avoid
+				// high-frequency computation and jitter. After a pause/resume,
+				// downloaded accumulates from the new offset; negative deltas
+				// are treated as 0.
 				now := time.Now()
 				if lastSampleTime.IsZero() {
 					lastSampleTime = now
@@ -3534,9 +3706,11 @@ func downloadTask(task *DlTask) {
 			if rr.err == io.EOF {
 				resp.Body.Close()
 				out.Close()
-				// 移动失败时标记任务错误并返回，不再推进到 done（#10）。
-				// moveFile 内部使用可注入的包级变量 renameFile，测试可模拟失败；
-				// 跨设备（Windows 跨盘）时回退为复制 + 删除源文件。
+				// On move failure, mark the task as errored and return without
+				// advancing to done (#10). moveFile internally uses the
+				// injectable package-level variable renameFile so tests can
+				// simulate failure; across devices (cross-drive on Windows) it
+				// falls back to copy + delete source.
 				if err := moveFile(tmpPath, destPath); err != nil {
 					dlTasksMu.Lock()
 					task.Status = "error"
@@ -3559,8 +3733,9 @@ func downloadTask(task *DlTask) {
 				resp.Body.Close()
 				out.Close()
 				dlTasksMu.Lock()
-				// 取消与读取错误的竞态防御：ctx 已取消时标记 cancelled 而非
-				// error（与 client.Do 错误分支同策略）。
+				// Cancel-vs-read-error race defense: when ctx is already
+				// cancelled, mark cancelled rather than error (same strategy
+				// as the client.Do error branch).
 				if task.ctx.Err() != nil {
 					task.Status = "cancelled"
 				} else {

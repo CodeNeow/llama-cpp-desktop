@@ -7,12 +7,13 @@ import (
 	"testing"
 )
 
-// TestGenerateModelsPresetFrom 验证预设 INI 生成：节名取别名，
-// model 行使用正斜杠路径，embedding 模型自动加 embeddings=true。
+// TestGenerateModelsPresetFrom verifies preset INI generation: section names use the
+// alias, model lines use forward-slash paths, and embedding models automatically get
+// embeddings=true.
 func TestGenerateModelsPresetFrom(t *testing.T) {
-	// 用相对路径经 filepath.Join 构造（Windows 产出反斜杠、Unix 产出
-	// 正斜杠），断言 INI 中 model 行等于 filepath.ToSlash(path)，跨平台
-	// 均验证「model 路径使用正斜杠」。
+	// construct paths via filepath.Join (Windows produces backslashes, Unix produces
+	// forward slashes); assert INI model lines equal filepath.ToSlash(path), cross-platform
+	// verification that "model paths use forward slashes".
 	models := []ModelInfo{
 		{Name: "Qwen2.5 7B", Path: filepath.Join("models", "qwen", "model.gguf")},
 		{Name: "bge-small-zh", Path: filepath.Join("models", "bge", "model.gguf")},
@@ -30,17 +31,18 @@ func TestGenerateModelsPresetFrom(t *testing.T) {
 	content := string(data)
 
 	if !strings.Contains(content, "[qwen2.5-7b]\n") {
-		t.Errorf("缺少 qwen2.5-7b 节: %q", content)
+		t.Errorf("missing qwen2.5-7b section: %q", content)
 	}
 	if !strings.Contains(content, "model = "+filepath.ToSlash(models[0].Path)+"\n") {
-		t.Errorf("model 路径应转正斜杠: %q", content)
+		t.Errorf("model path should use forward slashes: %q", content)
 	}
 	if !strings.Contains(content, "[bge-small-zh]\n") || !strings.Contains(content, "embeddings = true\n") {
-		t.Errorf("embedding 模型应输出 embeddings=true: %q", content)
+		t.Errorf("embedding model should output embeddings=true: %q", content)
 	}
 }
 
-// TestGenerateModelsPresetFromConfigs 验证逐模型参数完整写入预设。
+// TestGenerateModelsPresetFromConfigs verifies per-model parameters are fully written
+// into the preset.
 func TestGenerateModelsPresetFromConfigs(t *testing.T) {
 	models := []ModelInfo{{Name: "deepseek-r1", Path: "/models/deepseek.gguf"}}
 	cfgs := map[string]ModelConfig{
@@ -71,15 +73,16 @@ func TestGenerateModelsPresetFromConfigs(t *testing.T) {
 	}
 	for _, w := range wantLines {
 		if !strings.Contains(content, w+"\n") {
-			t.Errorf("预设缺少 %q: %q", w, content)
+			t.Errorf("preset missing %q: %q", w, content)
 		}
 	}
 	if strings.Contains(content, "no-mmap") {
-		t.Errorf("NoMMap=false 不应输出 no-mmap: %q", content)
+		t.Errorf("NoMMap=false should not output no-mmap: %q", content)
 	}
 }
 
-// TestGenerateModelsPresetFromNoConfig 验证未配置参数的模型仅输出 model 行。
+// TestGenerateModelsPresetFromNoConfig verifies a model with no configured parameters
+// only outputs a model line.
 func TestGenerateModelsPresetFromNoConfig(t *testing.T) {
 	models := []ModelInfo{{Name: "plain", Path: "/models/plain.gguf"}}
 	path, err := generateModelsPresetFrom(models, nil)
@@ -91,18 +94,18 @@ func TestGenerateModelsPresetFromNoConfig(t *testing.T) {
 	data, _ := os.ReadFile(path)
 	content := string(data)
 	if content != "[plain]\nmodel = /models/plain.gguf\n\n" {
-		t.Errorf("预设内容不符合预期: %q", content)
+		t.Errorf("preset content does not match expected: %q", content)
 	}
 }
 
-// TestGenerateModelsPresetFromEmpty 验证空模型列表返回错误。
+// TestGenerateModelsPresetFromEmpty verifies an empty model list returns an error.
 func TestGenerateModelsPresetFromEmpty(t *testing.T) {
 	if _, err := generateModelsPresetFrom(nil, nil); err == nil {
-		t.Error("空模型列表应返回错误")
+		t.Error("empty model list should return error")
 	}
 }
 
-// TestGenerateModelsPresetFromMMProj 验证多模态模型输出 mmproj 行。
+// TestGenerateModelsPresetFromMMProj verifies a multimodal model outputs an mmproj line.
 func TestGenerateModelsPresetFromMMProj(t *testing.T) {
 	dir := t.TempDir()
 	mmprojPath := filepath.Join(dir, "mmproj-f16.gguf")
@@ -124,36 +127,40 @@ func TestGenerateModelsPresetFromMMProj(t *testing.T) {
 	data, _ := os.ReadFile(path)
 	content := string(data)
 	if !strings.Contains(content, "mmproj = "+filepath.ToSlash(mmprojPath)) {
-		t.Errorf("预设缺少 mmproj 行: %q", content)
+		t.Errorf("preset missing mmproj line: %q", content)
 	}
 }
 
-// TestGenerateModelsPresetFromRejectsInjection 验证 generateModelsPresetFrom
-// 对含换行/首尾空白的 GPULayers / CacheType 值返回错误（#9 第二层防御）。
-// 该函数是纯函数，直接写入 INI 文本，若值带换行可注入任意节/键。
+// TestGenerateModelsPresetFromRejectsInjection verifies generateModelsPresetFrom
+// returns errors for GPULayers / CacheType values containing newlines or leading/trailing
+// whitespace (#9 second defense layer).
+// This function is a pure function that directly writes INI text; if values carry newlines,
+// arbitrary sections/keys can be injected.
 func TestGenerateModelsPresetFromRejectsInjection(t *testing.T) {
 	models := []ModelInfo{{Name: "m", Path: "/models/m.gguf"}}
 	badCfgs := []map[string]ModelConfig{
 		{"m": {GPULayers: "99\n[evil]\nmodel=/tmp/x"}},
 		{"m": {CacheTypeK: "q8_0\nfoo"}},
 		{"m": {CacheTypeV: "f16\nbar"}},
-		{"m": {GPULayers: " 99 "}}, // 首尾空白拒绝
+		{"m": {GPULayers: " 99 "}}, // leading/trailing whitespace rejected
 	}
 	for i, cfgs := range badCfgs {
 		if _, err := generateModelsPresetFrom(models, cfgs); err == nil {
-			t.Errorf("case %d: 含非法值应返回错误", i)
+			t.Errorf("case %d: illegal values should return error", i)
 		}
 	}
 }
 
-// TestGenerateModelsPresetFromAliasDedup 验证别名去重（#7.1）：sanitizeAlias
-// 会把空格/斜杠/大写统一为小写与 '-', 不同模型名可能碰撞出相同段名。
-// 按模型顺序对已占用别名追加 -2、-3… 直到唯一，结果确定不依赖随机。
+// TestGenerateModelsPresetFromAliasDedup verifies alias deduplication (#7.1): sanitizeAlias
+// unifies spaces/slashes/uppercase into lowercase and '-', so different model names may
+// collide into the same section name.
+// Already-occupied aliases get -2, -3… appended in model order until unique; the result
+// is deterministic and does not depend on randomness.
 func TestGenerateModelsPresetFromAliasDedup(t *testing.T) {
 	models := []ModelInfo{
 		{Name: "Model v1", Path: "/models/a.gguf"},
-		{Name: "Model/v1", Path: "/models/b.gguf"}, // 碰撞 → model-v1-2
-		{Name: "Model-V1", Path: "/models/c.gguf"}, // 再碰撞 → model-v1-3
+		{Name: "Model/v1", Path: "/models/b.gguf"}, // collision → model-v1-2
+		{Name: "Model-V1", Path: "/models/c.gguf"}, // another collision → model-v1-3
 	}
 	path, err := generateModelsPresetFrom(models, nil)
 	if err != nil {
@@ -164,20 +171,20 @@ func TestGenerateModelsPresetFromAliasDedup(t *testing.T) {
 	data, _ := os.ReadFile(path)
 	content := string(data)
 
-	// 三个模型必须各自拥有唯一段名，且都含自己的 model 路径
+	// three models must each have a unique section name, and each must contain its own model path
 	if !strings.Contains(content, "[model-v1]\nmodel = /models/a.gguf") {
-		t.Errorf("首个模型段名应为 model-v1: %q", content)
+		t.Errorf("first model section should be model-v1: %q", content)
 	}
 	if !strings.Contains(content, "[model-v1-2]\nmodel = /models/b.gguf") {
-		t.Errorf("第二个模型段名应为 model-v1-2: %q", content)
+		t.Errorf("second model section should be model-v1-2: %q", content)
 	}
 	if !strings.Contains(content, "[model-v1-3]\nmodel = /models/c.gguf") {
-		t.Errorf("第三个模型段名应为 model-v1-3: %q", content)
+		t.Errorf("third model section should be model-v1-3: %q", content)
 	}
 }
 
-// TestGenerateModelsPresetFromAcceptsValidValues 验证合法值（空 / auto /
-// all / 0 / 正整数 / 缓存白名单）生成成功（#9 对照组）。
+// TestGenerateModelsPresetFromAcceptsValidValues verifies valid values (empty / auto /
+// all / 0 / positive integers / cache whitelist) generate successfully (#9 control group).
 func TestGenerateModelsPresetFromAcceptsValidValues(t *testing.T) {
 	models := []ModelInfo{{Name: "m", Path: "/models/m.gguf"}}
 	cfgs := map[string]ModelConfig{
@@ -192,16 +199,17 @@ func TestGenerateModelsPresetFromAcceptsValidValues(t *testing.T) {
 	data, _ := os.ReadFile(path)
 	content := string(data)
 	if !strings.Contains(content, "cache-type-k = q8_0\n") || !strings.Contains(content, "cache-type-v = bf16\n") {
-		t.Errorf("合法缓存类型未写入: %q", content)
+		t.Errorf("valid cache types not written: %q", content)
 	}
 	if strings.Contains(content, "gpu-layers") {
-		t.Errorf("GPULayers=auto 不应输出 gpu-layers 行: %q", content)
+		t.Errorf("GPULayers=auto should not output gpu-layers line: %q", content)
 	}
 }
 
-// TestGenerateModelsPresetNewFields 验证 b10342 新字段写入预设 INI：
-// 全部非默认值时逐行输出；旧 mlock/noMmap 兼容字段不再直接写入（迁移后
-// 由 LoadMode 承担），避免废弃键重新进入预设。
+// TestGenerateModelsPresetNewFields verifies b10342 new fields are written to preset INI:
+// all non-default values are output line-by-line; legacy mlock/noMmap compatibility
+// fields are no longer written directly (post-migration LoadMode takes over), preventing
+// deprecated keys from re-entering presets.
 func TestGenerateModelsPresetNewFields(t *testing.T) {
 	models := []ModelInfo{{Name: "m", Path: "/models/m.gguf"}}
 
@@ -232,14 +240,14 @@ func TestGenerateModelsPresetNewFields(t *testing.T) {
 		}
 		for _, w := range wantLines {
 			if !strings.Contains(content, w+"\n") {
-				t.Errorf("预设缺少 %q: %q", w, content)
+				t.Errorf("preset missing %q: %q", w, content)
 			}
 		}
 	})
 
 	t.Run("defaults not written", func(t *testing.T) {
-		// LoadMode=mmap/空、SplitMode=layer/空、MainGPU=0、RopeScale=0、
-		// CPUMoe=false 等默认值不应产生键，避免预设噪音。
+		// LoadMode=mmap/empty, SplitMode=layer/empty, MainGPU=0, RopeScale=0,
+		// CPUMoe=false etc. defaults must not produce keys, avoiding preset noise.
 		for _, lm := range []string{"", "mmap"} {
 			for _, sm := range []string{"", "layer"} {
 				cfgs := map[string]ModelConfig{
@@ -253,7 +261,7 @@ func TestGenerateModelsPresetNewFields(t *testing.T) {
 				content := string(data)
 				for _, banned := range []string{"load-mode", "split-mode", "cpu-moe", "main-gpu", "rope-scale", "rope-scaling"} {
 					if strings.Contains(content, banned+" =") {
-						t.Errorf("默认值不应输出 %q（load-mode=%q split-mode=%q）: %q", banned, lm, sm, content)
+						t.Errorf("defaults must not output %q (load-mode=%q split-mode=%q): %q", banned, lm, sm, content)
 					}
 				}
 				os.Remove(path)
@@ -262,8 +270,9 @@ func TestGenerateModelsPresetNewFields(t *testing.T) {
 	})
 
 	t.Run("legacy mlock noMmap not written", func(t *testing.T) {
-		// 模拟迁移后状态：旧布尔清零、LoadMode 已派生；即使兼容字段残留
-		// 为 true，预设也只写 load-mode，绝不写废弃键 mlock/no-mmap。
+		// simulate post-migration state: legacy booleans zeroed, LoadMode already derived;
+		// even if compatibility fields residue to true, preset only writes load-mode,
+		// never writes deprecated keys mlock/no-mmap.
 		cfgs := map[string]ModelConfig{
 			"m": {LoadMode: "mlock", MLock: true, NoMMap: true},
 		}
@@ -276,93 +285,95 @@ func TestGenerateModelsPresetNewFields(t *testing.T) {
 		data, _ := os.ReadFile(path)
 		content := string(data)
 		if !strings.Contains(content, "load-mode = mlock\n") {
-			t.Errorf("迁移后应输出 load-mode = mlock: %q", content)
+			t.Errorf("post-migration should output load-mode = mlock: %q", content)
 		}
 		if strings.Contains(content, "mlock =") {
-			t.Errorf("兼容字段 MLock 不应直接输出 mlock 键: %q", content)
+			t.Errorf("compatibility field MLock must not output mlock key directly: %q", content)
 		}
 		if strings.Contains(content, "no-mmap") {
-			t.Errorf("兼容字段 NoMMap 不应直接输出 no-mmap 键: %q", content)
+			t.Errorf("compatibility field NoMMap must not output no-mmap key directly: %q", content)
 		}
 	})
 }
 
-// TestValidCacheTypeValueExtended 验证 cache-type 白名单在 b10342 下扩展：
-// 新增 f32/q4_1/iq4_nl/q5_0/q5_1 均应合法，列表外取值非法。
+// TestValidCacheTypeValueExtended verifies cache-type whitelist expansion under b10342:
+// newly added f32/q4_1/iq4_nl/q5_0/q5_1 must all be valid, values outside the list are illegal.
 func TestValidCacheTypeValueExtended(t *testing.T) {
 	for _, v := range []string{"", "f32", "f16", "bf16", "q8_0", "q4_0", "q4_1", "iq4_nl", "q5_0", "q5_1"} {
 		if !validCacheTypeValue(v) {
-			t.Errorf("validCacheTypeValue(%q) 应为 true（b10342 支持）", v)
+			t.Errorf("validCacheTypeValue(%q) should be true (b10342 supported)", v)
 		}
 	}
 	for _, v := range []string{"q4_2", "q6_k", "f32\nx", " q8_0"} {
 		if validCacheTypeValue(v) {
-			t.Errorf("validCacheTypeValue(%q) 应为 false", v)
+			t.Errorf("validCacheTypeValue(%q) should be false", v)
 		}
 	}
 }
 
-// TestValidLoadModeValue 验证 load-mode 白名单（b10342 替代 mlock/no-mmap）。
+// TestValidLoadModeValue verifies load-mode whitelist (b10342 replacement for mlock/no-mmap).
 func TestValidLoadModeValue(t *testing.T) {
 	for _, v := range []string{"", "none", "mmap", "mlock", "mmap+mlock", "dio"} {
 		if !validLoadModeValue(v) {
-			t.Errorf("validLoadModeValue(%q) 应为 true", v)
+			t.Errorf("validLoadModeValue(%q) should be true", v)
 		}
 	}
 	for _, v := range []string{"foo", "mmap+", " mlock", "mlock\n"} {
 		if validLoadModeValue(v) {
-			t.Errorf("validLoadModeValue(%q) 应为 false", v)
+			t.Errorf("validLoadModeValue(%q) should be false", v)
 		}
 	}
 }
 
-// TestValidSplitModeValue 验证 split-mode 白名单（多 GPU 切分策略）。
+// TestValidSplitModeValue verifies split-mode whitelist (multi-GPU split strategy).
 func TestValidSplitModeValue(t *testing.T) {
 	for _, v := range []string{"", "none", "layer", "row", "tensor"} {
 		if !validSplitModeValue(v) {
-			t.Errorf("validSplitModeValue(%q) 应为 true", v)
+			t.Errorf("validSplitModeValue(%q) should be true", v)
 		}
 	}
 	for _, v := range []string{"layers", "column", " row"} {
 		if validSplitModeValue(v) {
-			t.Errorf("validSplitModeValue(%q) 应为 false", v)
+			t.Errorf("validSplitModeValue(%q) should be false", v)
 		}
 	}
 }
 
-// TestValidRopeScalingValue 验证 rope-scaling 白名单（长上下文外推）。
+// TestValidRopeScalingValue verifies rope-scaling whitelist (long-context extrapolation).
 func TestValidRopeScalingValue(t *testing.T) {
 	for _, v := range []string{"", "none", "linear", "yarn"} {
 		if !validRopeScalingValue(v) {
-			t.Errorf("validRopeScalingValue(%q) 应为 true", v)
+			t.Errorf("validRopeScalingValue(%q) should be true", v)
 		}
 	}
 	for _, v := range []string{"dynamic", "linear2", " yarn"} {
 		if validRopeScalingValue(v) {
-			t.Errorf("validRopeScalingValue(%q) 应为 false", v)
+			t.Errorf("validRopeScalingValue(%q) should be false", v)
 		}
 	}
 }
 
-// TestValidSpecTypeValue 验证 spec-type 白名单（MTP 多 token 预测）。
+// TestValidSpecTypeValue verifies spec-type whitelist (MTP multi-token prediction).
 func TestValidSpecTypeValue(t *testing.T) {
 	for _, v := range []string{"", "draft-mtp"} {
 		if !validSpecTypeValue(v) {
-			t.Errorf("validSpecTypeValue(%q) 应为 true", v)
+			t.Errorf("validSpecTypeValue(%q) should be true", v)
 		}
 	}
 	for _, v := range []string{"draft", "mtp", "draft-mtp2", " draft-mtp"} {
 		if validSpecTypeValue(v) {
-			t.Errorf("validSpecTypeValue(%q) 应为 false", v)
+			t.Errorf("validSpecTypeValue(%q) should be false", v)
 		}
 	}
 }
 
-// TestGenerateModelsPresetFromMMProjReasoningSpec 验证模型新参数写入预设 INI：
-// 显式 mmproj 路径（优先于自动检测，输出且仅输出一条 mmproj 行）、reasoning=off、
-// spec-type / spec-draft-n-max。MMProj 为空且 HasMMProj=true 时维持自动检测。
+// TestGenerateModelsPresetFromMMProjReasoningSpec verifies new model parameters are
+// written to preset INI: explicit mmproj path (takes priority over auto-detection,
+// outputs exactly one mmproj line), reasoning=off, spec-type / spec-draft-n-max.
+// When MMProj is empty and HasMMProj=true, auto-detection is maintained.
 func TestGenerateModelsPresetFromMMProjReasoningSpec(t *testing.T) {
-	// 显式 mmproj 场景：同目录放一个真实 mmproj 文件，显式路径应覆盖自动检测
+	// explicit mmproj scenario: place a real mmproj file in the same directory;
+	// explicit path should override auto-detection
 	dir := t.TempDir()
 	autoMMProj := filepath.Join(dir, "mmproj-auto.gguf")
 	if err := os.WriteFile(autoMMProj, []byte("proj"), 0644); err != nil {
@@ -388,31 +399,32 @@ func TestGenerateModelsPresetFromMMProjReasoningSpec(t *testing.T) {
 	data, _ := os.ReadFile(path)
 	content := string(data)
 
-	// 显式 mmproj 行存在且使用正斜杠
+	// explicit mmproj line exists and uses forward slashes
 	wantMM := "mmproj = " + filepath.ToSlash(cfgs["llava"].MMProj)
 	if !strings.Contains(content, wantMM+"\n") {
-		t.Errorf("预设缺少显式 mmproj 行 %q: %q", wantMM, content)
+		t.Errorf("preset missing explicit mmproj line %q: %q", wantMM, content)
 	}
-	// 显式路径存在时不得再输出自动检测的 mmproj 行（仅一条 mmproj）
+	// when explicit path exists, auto-detected mmproj line must not be output (only one mmproj line)
 	if strings.Contains(content, "mmproj-auto.gguf") {
-		t.Errorf("显式 mmproj 存在时不应输出自动检测的 mmproj: %q", content)
+		t.Errorf("explicit mmproj exists, auto-detected mmproj must not be output: %q", content)
 	}
 	if strings.Count(content, "mmproj =") != 1 {
-		t.Errorf("应只输出一条 mmproj 行: %q", content)
+		t.Errorf("only one mmproj line should be output: %q", content)
 	}
 	if !strings.Contains(content, "reasoning = off\n") {
-		t.Errorf("预设缺少 reasoning = off: %q", content)
+		t.Errorf("preset missing reasoning = off: %q", content)
 	}
 	if !strings.Contains(content, "spec-type = draft-mtp\n") {
-		t.Errorf("预设缺少 spec-type = draft-mtp: %q", content)
+		t.Errorf("preset missing spec-type = draft-mtp: %q", content)
 	}
 	if !strings.Contains(content, "spec-draft-n-max = 4\n") {
-		t.Errorf("预设缺少 spec-draft-n-max = 4: %q", content)
+		t.Errorf("preset missing spec-draft-n-max = 4: %q", content)
 	}
 }
 
-// TestGenerateModelsPresetFromMMProjAutoDetection 验证 MMProj 为空时维持既有
-// 同目录自动检测逻辑（HasMMProj=true 且目录存在 mmproj-*.gguf 时输出 mmproj 行）。
+// TestGenerateModelsPresetFromMMProjAutoDetection verifies that when MMProj is empty,
+// the existing same-directory auto-detection logic is maintained (HasMMProj=true and
+// directory contains mmproj-*.gguf → mmproj line is output).
 func TestGenerateModelsPresetFromMMProjAutoDetection(t *testing.T) {
 	dir := t.TempDir()
 	mmprojPath := filepath.Join(dir, "mmproj-f16.gguf")
@@ -422,7 +434,7 @@ func TestGenerateModelsPresetFromMMProjAutoDetection(t *testing.T) {
 	modelPath := filepath.Join(dir, "llava.gguf")
 
 	models := []ModelInfo{{Name: "llava", Path: modelPath, HasMMProj: true}}
-	// MMProj 为空：行为与未配置该字段一致，走自动检测
+	// MMProj is empty: behavior matches unconfigured field, uses auto-detection
 	path, err := generateModelsPresetFrom(models, map[string]ModelConfig{"llava": {}})
 	if err != nil {
 		t.Fatal(err)
@@ -432,28 +444,28 @@ func TestGenerateModelsPresetFromMMProjAutoDetection(t *testing.T) {
 	data, _ := os.ReadFile(path)
 	content := string(data)
 	if !strings.Contains(content, "mmproj = "+filepath.ToSlash(mmprojPath)) {
-		t.Errorf("MMProj 为空时应自动检测 mmproj: %q", content)
+		t.Errorf("empty MMProj should auto-detect mmproj: %q", content)
 	}
 }
 
-// TestGenerateModelsPresetFromRejectsSpecAndMMProj 验证预设生成对非法 SpecType
-// 与非法 mmproj（INI 注入 payload）返回错误（第二层防御）。
+// TestGenerateModelsPresetFromRejectsSpecAndMMProj verifies preset generation returns
+// errors for illegal SpecType and illegal mmproj (INI injection payload) (second defense layer).
 func TestGenerateModelsPresetFromRejectsSpecAndMMProj(t *testing.T) {
 	models := []ModelInfo{{Name: "m", Path: "/models/m.gguf"}}
 	badCfgs := []map[string]ModelConfig{
 		{"m": {SpecType: "draft-unknown"}},
 		{"m": {MMProj: "x.gguf\n[evil]\nmodel=/tmp/x"}},
-		{"m": {MMProj: " /etc/x.gguf"}}, // 首尾空白拒绝
+		{"m": {MMProj: " /etc/x.gguf"}}, // leading/trailing whitespace rejected
 	}
 	for i, cfgs := range badCfgs {
 		if _, err := generateModelsPresetFrom(models, cfgs); err == nil {
-			t.Errorf("case %d: 非法 SpecType/MMProj 应返回错误", i)
+			t.Errorf("case %d: illegal SpecType/MMProj should return error", i)
 		}
 	}
 
-	// 对照组：SpecDraftNMax 默认 0 与合法 SpecType 生成成功
+	// control group: SpecDraftNMax default 0 and valid SpecType generate successfully
 	okCfgs := map[string]ModelConfig{"m": {SpecType: "draft-mtp", SpecDraftNMax: 0}}
 	if _, err := generateModelsPresetFrom(models, okCfgs); err != nil {
-		t.Errorf("合法 SpecType 应生成成功: %v", err)
+		t.Errorf("valid SpecType should generate successfully: %v", err)
 	}
 }

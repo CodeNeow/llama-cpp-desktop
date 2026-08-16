@@ -2,9 +2,9 @@ package core
 
 import "testing"
 
-// TestEffectiveHost 验证 effectiveHost 纯函数：lan → 0.0.0.0，其余取值
-// （含空串与非法值）一律 → 127.0.0.1。SaveServerConfig / loadConfig /
-// buildServerCommand 三处共用该派生，保证 Host 口径一致。
+// TestEffectiveHost verifies effectiveHost pure function: lan → 0.0.0.0,
+// all other values (including empty and invalid) → 127.0.0.1.
+// Shared by SaveServerConfig / loadConfig / buildServerCommand for consistent host derivation.
 func TestEffectiveHost(t *testing.T) {
 	cases := []struct {
 		mode string
@@ -12,9 +12,9 @@ func TestEffectiveHost(t *testing.T) {
 	}{
 		{accessLocal, "127.0.0.1"},
 		{accessLAN, "0.0.0.0"},
-		{"", "127.0.0.1"},       // 空串兜底本机
-		{"local ", "127.0.0.1"}, // 带空白非法值兜底本机
-		{"wan", "127.0.0.1"},    // 白名单外非法值兜底本机
+		{"", "127.0.0.1"},       // empty string falls back to loopback
+		{"local ", "127.0.0.1"}, // whitespace-padded invalid value falls back to loopback
+		{"wan", "127.0.0.1"},    // out-of-whitelist value falls back to loopback
 		{"0.0.0.0", "127.0.0.1"},
 	}
 	for _, c := range cases {

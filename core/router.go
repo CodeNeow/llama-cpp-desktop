@@ -9,19 +9,21 @@ import (
 	"time"
 )
 
-// ─── Router API（llama-server 路由器模式）─────────────────────────────
+// ─── Router API (llama-server router mode) ─────────────────────────
 //
-// 以下类型与函数封装 llama-server 路由器模式的 HTTP API（GET /models、
-// POST /models/unload），供前端 TaskDock 展示内存模型列表与卸载。
+// Types and functions wrapping the llama-server router HTTP API (GET /models,
+// POST /models/unload) so the frontend TaskDock can list in-memory models and
+// unload them.
 
-// LoadedModel 表示路由器中当前加载/加载中/休眠的模型条目。
+// LoadedModel represents a model entry currently loaded / loading / sleeping
+// in the router.
 type LoadedModel struct {
-	ID     string `json:"id"`     // 模型标识（与 API 响应的 id 一致）
-	Type   string `json:"type"`   // 模型类型：chat | audio | image | video
+	ID     string `json:"id"`     // Model ID (matches API response id)
+	Type   string `json:"type"`   // Model type: chat | audio | image | video
 	Status string `json:"status"` // loaded | loading | sleeping
 }
 
-// routerModelsResponse 对齐 llama-server GET /models 的 JSON 响应结构。
+// routerModelsResponse mirrors the llama-server GET /models JSON structure.
 type routerModelsResponse struct {
 	Data []routerModelItem `json:"data"`
 }
@@ -43,29 +45,30 @@ type routerModelArch struct {
 	OutputModalities []string `json:"output_modalities"`
 }
 
-// routerUnloadRequest 是 POST /models/unload 的请求体。
+// routerUnloadRequest is the request body for POST /models/unload.
 type routerUnloadRequest struct {
 	Model string `json:"model"`
 }
 
-// routerUnloadResponse 是 POST /models/unload 的响应体。
+// routerUnloadResponse is the response body for POST /models/unload.
 type routerUnloadResponse struct {
 	Success bool `json:"success"`
 }
 
-// ─── URL 注入点 ─────────────────────────────────────────────────────
+// ─── URL injection point ───────────────────────────────────────────
 //
-// routerBaseURL 声明为包级 var，便于测试通过替换注入本地 httptest 服务器
-// （与 githubReleasesAPI / updateRepoAPI 同风格）。
+// routerBaseURL is declared as a package-level var so tests can swap in a
+// local httptest server (same style as githubReleasesAPI / updateRepoAPI).
 var routerBaseURL = func(port int) string {
 	return fmt.Sprintf("http://127.0.0.1:%d", port)
 }
 
-// ─── 模型类型分类 ────────────────────────────────────────────────────
+// ─── Model type classification ─────────────────────────────────────
 
-// classifyModelType 按 output_modalities 判定模型类型：含 audio→audio；
-// 含 image→image；含 video→video；否则 chat。视觉输入的聊天模型（如 LLaVA）
-// output 为 text，自然归 chat。
+// classifyModelType determines the model type from output_modalities: audio
+// if audio is present, image if image, video if video, otherwise chat. Chat
+// models with vision input (e.g. LLaVA) output text, so they naturally fall
+// into chat.
 func classifyModelType(outputModalities []string) string {
 	for _, m := range outputModalities {
 		switch m {
@@ -80,10 +83,11 @@ func classifyModelType(outputModalities []string) string {
 	return "chat"
 }
 
-// ─── 查询 / 卸载 ────────────────────────────────────────────────────
+// ─── Query / Unload ────────────────────────────────────────────────
 
-// fetchRouterModels 查询 llama-server 路由器模型列表，过滤出 loaded /
-// loading / sleeping 条目并映射为 LoadedModel 切片。
+// fetchRouterModels queries the llama-server router for the model list,
+// filters to loaded / loading / sleeping entries, and maps them to a
+// LoadedModel slice.
 func fetchRouterModels(port int) ([]LoadedModel, error) {
 	base := routerBaseURL(port)
 	url := base + "/models"
@@ -118,7 +122,7 @@ func fetchRouterModels(port int) ([]LoadedModel, error) {
 	return out, nil
 }
 
-// unloadRouterModel 向 llama-server 发送模型卸载请求。
+// unloadRouterModel sends a model unload request to llama-server.
 func unloadRouterModel(port int, id string) error {
 	if id == "" {
 		return errors.New("unload router model: empty model id")
@@ -161,7 +165,8 @@ func unloadRouterModel(port int, id string) error {
 	return nil
 }
 
-// getServerPort 返回当前记录的服务器端口（0 表示未运行），并发安全。
+// getServerPort returns the currently recorded server port (0 means not
+// running); safe for concurrent use.
 func getServerPort() int {
 	serverMu.Lock()
 	port := serverPort
@@ -169,7 +174,8 @@ func getServerPort() int {
 	return port
 }
 
-// setServerPort 设置当前服务器端口（启动成功时调用；0 表示未运行）。
+// setServerPort sets the current server port (called on successful start; 0
+// means not running).
 func setServerPort(port int) {
 	serverMu.Lock()
 	serverPort = port

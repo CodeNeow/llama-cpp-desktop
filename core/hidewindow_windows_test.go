@@ -7,12 +7,12 @@ import (
 	"testing"
 )
 
-// TestHideWindowWindows 验证 Windows 下 hideWindow 设置 HideWindow 标志，
-// 防止 GUI 程序启动子进程时闪现控制台窗口。
+// TestHideWindowWindows verifies hideWindow sets the HideWindow flag on Windows,
+// preventing console windows from flashing when a GUI app spawns child processes.
 func TestHideWindowWindows(t *testing.T) {
 	cmd := exec.Command("go", "version")
 	hideWindow(cmd)
 	if cmd.SysProcAttr == nil || !cmd.SysProcAttr.HideWindow {
-		t.Fatal("Windows 下 hideWindow 未设置 SysProcAttr.HideWindow")
+		t.Fatal("hideWindow did not set SysProcAttr.HideWindow on Windows")
 	}
 }

@@ -11,14 +11,17 @@ import (
 	"time"
 )
 
-// ─── 实时监控（CPU / 内存 / GPU / TPS）──────────────────────────────
+// ─── Realtime Monitor (CPU / Memory / GPU / TPS) ──────────────────
 //
-// 采样器以 1s 间隔在后台 goroutine 运行，采样结果缓存到 monitorStatus（monitorMu
-// 保护），GetMonitorStatus 在锁内拷贝返回，避免 Wails 调用与采样并发读写同一
-// 结构。CPU/内存解析全部为纯函数，测试只测解析、不 mock runCmd。
+// The sampler runs in a background goroutine at 1s intervals, caching results
+// in monitorStatus (guarded by monitorMu). GetMonitorStatus copies the cache
+// under the lock before returning, so Wails calls and sampling never race on
+// the same struct. CPU/memory parsing is pure functions; tests cover parsing
+// only and do not mock runCmd.
 
-// MonitorStatus 是 GetMonitorStatus 返回给前端的 JSON 契约，字段与
-// frontend/src/lib/monitor.ts 的 MonitorStatus 一一对应，改动需两侧同步。
+// MonitorStatus is the JSON contract returned to the frontend by
+// GetMonitorStatus; fields match frontend/src/lib/monitor.ts MonitorStatus
+// one-to-one, so changes must sync on both sides.
 type MonitorStatus struct {
 	CPUPercent    float64      `json:"cpuPercent"`
 	MemUsed       uint64       `json:"memUsed"`
@@ -28,20 +31,21 @@ type MonitorStatus struct {
 	PromptTPS     float64      `json:"promptTps"`
 	DecodeTPS     float64      `json:"decodeTps"`
 	UptimeSeconds int64        `json:"uptimeSeconds"`
-	// Disk 为模型目录所在卷的磁盘用量；采样失败时为 nil（前端隐藏磁盘行），
-	// 不阻断其他采样指标。
+	// Disk is the disk usage of the volume containing the model directory;
+	// nil when sampling fails (frontend hides the disk row), and it never
+	// blocks other sampling metrics.
 	Disk *DiskUsage `json:"disk"`
 }
 
-// DiskUsage 是单个磁盘卷的用量：Path 为卷根路径（Windows 如 "C:\"、
-// 非 Windows 如 "/"），Used = Total - Free。
+// DiskUsage is the usage of a single disk volume: Path is the volume root
+// (Windows like "C:\", non-Windows like "/"), Used = Total - Free.
 type DiskUsage struct {
 	Path  string `json:"path"`
 	Used  uint64 `json:"used"`
 	Total uint64 `json:"total"`
 }
 
-// MonitorGPU 是单个 GPU 的监控数据（nvidia-smi 采样）。
+// MonitorGPU is the per-GPU monitoring data (sampled via nvidia-smi).
 type MonitorGPU struct {
 	Index       int     `json:"index"`
 	Name        string  `json:"name"`
@@ -50,55 +54,65 @@ type MonitorGPU struct {
 	MemTotal    uint64  `json:"memTotal"`
 }
 
-// monitorStatus 为采样缓存，monitorMu 保护读写。
+// monitorStatus is the sampling cache, guarded by monitorMu.
 var monitorStatus MonitorStatus
 var monitorMu sync.Mutex
 
-// monitorOnce 保证采样器只启动一次（StartMonitorSampler 由 app.Startup 调用，
-// 幂等防重复启动）。
+// monitorOnce ensures the sampler is started only once (StartMonitorSampler
+// is called by app.Startup; idempotent to prevent duplicate starts).
 var monitorOnce sync.Once
 
-// linuxCPUPrevIdle / linuxCPUPrevTotal 为 Linux /proc/stat 两次采样差值的
-// 上次采样值（仅采样 goroutine 读写，无需加锁）；首轮返回 0。
+// linuxCPUPrevIdle / linuxCPUPrevTotal hold the previous sample's idle and
+// total ticks from /proc/stat for delta-based CPU calculation on Linux (only
+// the sampling goroutine reads/writes these, so no lock is needed); first
+// sample returns 0.
 var linuxCPUPrevIdle, linuxCPUPrevTotal uint64
 
-// tpsLogRegex 匹配 llama-server 日志中的吞吐片段 "N tokens per second"
-// （预填充 prompt eval 行与解码 eval 行都含该片段，属于哪类由 parsePromptTPS /
-// parseDecodeTPS 按行分类决定）。
+// tpsLogRegex matches the throughput snippet "N tokens per second" in
+// llama-server logs (both prompt-eval and decode-eval lines contain this
+// snippet; parsePromptTPS / parseDecodeTPS classify which kind per line).
 var tpsLogRegex = regexp.MustCompile(`([\d.]+)\s+tokens?\s+per\s+second`)
 
-// tg3sLogRegex 匹配实时解码行的 3 秒窗口速度 "tg_3s = N t/s"（N 为浮点数）。
+// tg3sLogRegex matches the realtime decode line's 3-second window speed
+// "tg_3s = N t/s" (N is a float).
 var tg3sLogRegex = regexp.MustCompile(`tg_3s\s*=\s*([\d.]+)\s+t/s`)
 
-// splitLogLines 先把日志条目拼成文本再按行切分：历史遗留的多行条目（一次
-// stderr Write 含多行）在此被拆成独立行，与写入侧行缓冲（serverLogWriter）
-// 双保险，保证 print_timing 行整体进入后续分类、预填充值不会漏入解码速度。
-// 纯函数：空列表经 Join 为 "" 再 Split 得到单条空行（各解析函数无关键词命中
-// 时自然返回 0）。
+// splitLogLines joins log entries into text then splits by line: legacy
+// multi-line entries (multiple lines in one stderr Write) are split into
+// independent lines here, complementing the write-side line buffer
+// (serverLogWriter) to guarantee print_timing lines enter classification as
+// whole lines and prompt prefill values cannot leak into decode speed.
+// Pure function: an empty list joins to "" then splits to a single empty line
+// (parsing functions naturally return 0 when no keyword matches).
 func splitLogLines(logs []string) []string {
 	return strings.Split(strings.Join(logs, "\n"), "\n")
 }
 
-// parsePromptTPS 从服务日志行中提取最后一条预填充行的 "N tokens per second"
-// 数值（tokens/s），即提示词处理 / 预填充（prefill）速度。llama-server 的预填充
-// 计时来自两类行，实时行（新版 llama.cpp）与终结行（新旧版本都有）：
+// parsePromptTPS extracts the last prompt prefill line's "N tokens per second"
+// value (tokens/s) from server log lines, i.e. prompt processing / prefill
+// speed. llama-server prefill timing comes in two line forms, realtime lines
+// (newer llama.cpp) and terminal lines (both old and new):
 //
 //	I slot print_timing: id  3 | task 0 | prompt processing, n_tokens =   2048, progress = 0.16, t =  20.47 s / 100.05 tokens per second
 //	I slot print_timing: id  3 | task 0 | prompt eval time =    357.49 ms /     27 tokens (   75.53 tokens per second)
 //
-// 实时行（prompt processing）是预填充期间按批打印的进度行，仅当预填充耗时
-// >=3s 时出现（短预填充没有该行）；终结行（prompt eval time）在每次请求结束时
-// 打印。两者都提取、多行取最后一条：实时行持续刷新，日志顺序天然保证终结行
-// 最后出现，终结值即最终权威值；旧版二进制只有终结行，同样兼容。该值反映提示
-// 词吞吐（长 prompt 上可达数千 t/s），与解码速度是两个独立指标，由监控页
-// 「推理」模块展示。纯函数：无预填充行返回 0；多行多值取最后一条预填充行
-// （最新采样为准）；单行内多个匹配只取第一个命中（regexp FindStringSubmatch
-// 语义）；支持小数。
+// Realtime lines (prompt processing) are progress lines printed per batch
+// during prefill, appearing only when prefill takes >=3s (short prefill has
+// no such line); terminal lines (prompt eval time) print at the end of every
+// request. Both are extracted, and the last value wins: realtime lines keep
+// refreshing, and log order naturally puts the terminal line last, so the
+// terminal value is the final authoritative one; older binaries only have
+// terminal lines, which are still compatible. This value reflects prompt
+// throughput (thousands of t/s on long prompts), distinct from decode speed,
+// shown by the monitoring page's "Inference" module. Pure function: returns 0
+// when no prefill line exists; when multiple lines have multiple values, the
+// last prefill line wins (latest sample); within a single line, only the
+// first regexp match is used; supports decimals.
 func parsePromptTPS(logs []string) float64 {
 	var last float64
 	for _, line := range splitLogLines(logs) {
-		// 两类预填充行都认：新版预填充实时行（prompt processing）与新旧版通用
-		// 的请求结束终结行（prompt eval time）。
+		// Recognize both prefill line types: newer realtime line (prompt
+		// processing) and older/newer terminal line (prompt eval time).
 		if !strings.Contains(line, "prompt processing") && !strings.Contains(line, "prompt eval time") {
 			continue
 		}
@@ -111,22 +125,31 @@ func parsePromptTPS(logs []string) float64 {
 	return last
 }
 
-// parseDecodeTPS 从服务日志行中提取生成（解码）实时速度（tokens/s）。路由器
-// 模式 llama-server 生成期间每约 3 秒打印一行实时统计、请求结束打印总计时行：
+// parseDecodeTPS extracts the realtime generation (decode) speed (tokens/s)
+// from server log lines. Router-mode llama-server prints a realtime stats
+// line approximately every 3 seconds during generation, and a terminal timing
+// line when the request ends:
 //
 //	I slot print_timing: id  3 | task 0 | n_decoded =    414, tg =  68.82 t/s, tg_3s =  67.32 t/s
 //	I slot print_timing: id  3 | task 0 |        eval time =  12334.07 ms /    900 tokens (   72.97 tokens per second)
 //
-// 新版本行带 "id N | task N |" 前缀、eval time 行数值前有多余空格：行分类依赖
-// 关键词 Contains、数值提取依赖 tpsLogRegex / tg3sLogRegex 子串匹配，前缀与空格
-// 均不影响命中，旧版无前缀行同样兼容。实时行中 tg 为累计平均解码速度、tg_3s 为
-// 最近 3 秒窗口速度（实时值），本函数只取 tg_3s 并优先返回（即使其后还有 eval
-// time 行，实时值优先于请求结束时的总计时）；旧版二进制无实时行时回退最后一条
-// eval time 行的数值。回退分支严格要求 "eval time" 标记：仅剩 "tokens per second"
-// 片段的截断分片不再被采用（分片重组是写入侧行缓冲 serverLogWriter 的职责）。
-// 曾经的「TPS 恒 0」根因：旧实现只解析生成结束才打印的 eval time 行，而实时行
-// 不含 "tokens per second"，导致生成期间无值。
-// 纯函数：无候选返回 0；多行多值取最后一行（最新采样为准）；支持小数。
+// Newer lines have the "id N | task N |" prefix, and eval-time lines have
+// extra leading spaces: line classification relies on keyword Contains, and
+// value extraction relies on tpsLogRegex / tg3sLogRegex substring matches, so
+// prefixes and spaces do not affect matching, and older prefix-less lines are
+// still compatible. Realtime lines use tg for cumulative average decode speed
+// and tg_3s for the recent 3-second window speed (realtime value); this
+// function only takes tg_3s and prefers it (even when an eval time line
+// follows, realtime wins over the terminal total); older binaries without
+// realtime lines fall back to the last eval time line's value. The fallback
+// branch strictly requires the "eval time" marker: truncated fragments that
+// only contain the "tokens per second" snippet are no longer accepted
+// (fragment reassembly is the responsibility of the write-side line buffer
+// serverLogWriter). Former "TPS always 0" root cause: the old implementation
+// only parsed eval time lines printed at generation end, while realtime lines
+// lack "tokens per second", leaving no value during generation.
+// Pure function: returns 0 when no candidate exists; when multiple lines
+// have multiple values, the last line wins (latest sample); supports decimals.
 func parseDecodeTPS(logs []string) float64 {
 	var lastTg3s, lastEval float64
 	for _, line := range splitLogLines(logs) {
@@ -138,8 +161,9 @@ func parseDecodeTPS(logs []string) float64 {
 			}
 			continue
 		}
-		// 预填充行先行排除：prompt eval time 是 eval time 的子串，且其中同样含
-		// "tokens per second" 片段（如 75.53），不跳过会污染解码速度。
+		// Exclude prefill lines first: "prompt eval time" is a substring of
+		// "eval time", and it also contains the "tokens per second" snippet
+		// (e.g. 75.53); skipping it prevents polluting decode speed.
 		if strings.Contains(line, "prompt eval time") {
 			continue
 		}
@@ -157,8 +181,9 @@ func parseDecodeTPS(logs []string) float64 {
 	return lastEval
 }
 
-// StartMonitorSampler 启动后台采样器（sync.Once 保证只启动一次）。采样间隔
-// 1s，无限循环直到进程退出；每一轮刷新 monitorStatus 缓存。
+// StartMonitorSampler starts the background sampler (sync.Once guarantees it
+// starts only once). Sampling interval is 1s, infinite loop until process
+// exit; each round refreshes the monitorStatus cache.
 func StartMonitorSampler() {
 	monitorOnce.Do(func() {
 		go func() {
@@ -170,9 +195,10 @@ func StartMonitorSampler() {
 	})
 }
 
-// GetMonitorStatus 返回当前监控采样快照：读 monitorStatus 缓存（monitorMu），
-// ServerRunning / UptimeSeconds / PromptTPS / DecodeTPS 每次现取（serverMu /
-// serverLogsMu），保证缓存采样周期内这些高频变化字段仍是实时的。
+// GetMonitorStatus returns the current monitoring sample snapshot: reads the
+// monitorStatus cache (monitorMu), while ServerRunning / UptimeSeconds /
+// PromptTPS / DecodeTPS are fetched live (serverMu / serverLogsMu), so these
+// high-frequency fields remain real-time within the cache sampling period.
 func GetMonitorStatus() *MonitorStatus {
 	monitorMu.Lock()
 	st := monitorStatus
@@ -189,7 +215,8 @@ func GetMonitorStatus() *MonitorStatus {
 		st.UptimeSeconds = 0
 	}
 
-	// TPS：读服务日志尾部 50 条（serverLogsMu），现算预填充与解码速度
+	// TPS: read the last 50 log lines (serverLogsMu), compute prefill and
+	// decode speeds on the fly
 	serverLogsMu.Lock()
 	logs := serverLogs
 	if n := len(logs); n > 50 {
@@ -204,8 +231,9 @@ func GetMonitorStatus() *MonitorStatus {
 	return &st
 }
 
-// sampleMonitor 执行一轮系统采样并更新缓存（monitorMu）。各平台解析均使用
-// runCmd（hideWindow 已内置，不弹控制台窗口）。
+// sampleMonitor runs one round of system sampling and updates the cache
+// (monitorMu). All platform parsers use runCmd (hideWindow suppresses the
+// console window).
 func sampleMonitor() {
 	var st MonitorStatus
 	switch runtime.GOOS {
@@ -226,13 +254,15 @@ func sampleMonitor() {
 	monitorMu.Unlock()
 }
 
-// ─── 磁盘采样 ─────────────────────────────────────────────────────
+// ─── Disk Sampling ────────────────────────────────────────────────
 
-// sampleDiskUsage 采样模型目录所在卷的磁盘用量：目标盘取生效模型目录
-// （effectiveModelsDir，modelsDirMu 保护读取）绝对化后的卷根；非 Windows 平台
-// 无卷名概念（filepath.VolumeName 为空）时取当前工作目录所在卷根。Used =
-// Total - Free 在各平台分支（diskUsageForPath）内计算。采样失败返回 nil，
-// 不阻断其他采样指标。
+// sampleDiskUsage samples the disk usage of the volume containing the model
+// directory: the target volume is the root of the absolute path of the
+// effective model directory (effectiveModelsDir, read under modelsDirMu). On
+// non-Windows platforms where filepath.VolumeName is empty, it falls back to
+// the volume root of the current working directory. Used = Total - Free is
+// computed inside the platform-specific diskUsageForPath. Returns nil on
+// sampling failure, without blocking other sampling metrics.
 func sampleDiskUsage() *DiskUsage {
 	dir := effectiveModelsDir()
 	abs, err := filepath.Abs(dir)
@@ -250,7 +280,8 @@ func sampleDiskUsage() *DiskUsage {
 			root = string(filepath.Separator)
 		}
 	} else {
-		// Windows 卷名形如 "C:"，补分隔符得到 "C:\" 才是指向该卷根目录。
+		// On Windows, volume names look like "C:"; append the separator to get
+		// "C:\", which points to the volume root.
 		root += string(filepath.Separator)
 	}
 	d, err := diskUsageForPath(root)
@@ -260,12 +291,14 @@ func sampleDiskUsage() *DiskUsage {
 	return d
 }
 
-// ─── CPU 采样 ─────────────────────────────────────────────────────
+// ─── CPU Sampling ─────────────────────────────────────────────────
 
-// parseCPUWindows 解析 PowerShell Win32_Processor 平均负载百分比输出
-// （`(Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage
-// -Average).Average`），返回 0-100 的浮点数。多核多包输出可能含多行/多值，
-// 取首个可解析数字；无有效数字返回 0。
+// parseCPUWindows parses the PowerShell Win32_Processor average load
+// percentage output
+// (`(Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage
+// -Average).Average`), returning a float between 0 and 100. Multi-core /
+// multi-package output may contain multiple lines/values; takes the first
+// parseable number, or 0 when none is valid.
 func parseCPUWindows(out string) float64 {
 	for _, line := range strings.Split(out, "\n") {
 		for _, f := range strings.Fields(line) {
@@ -277,14 +310,15 @@ func parseCPUWindows(out string) float64 {
 	return 0
 }
 
-// sampleCPUWindows 通过 PowerShell WMI 查询平均负载百分比。
+// sampleCPUWindows queries the average load percentage via PowerShell WMI.
 func sampleCPUWindows() float64 {
 	return parseCPUWindows(runCmd("powershell", "-NoProfile", "-Command",
 		"(Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average"))
 }
 
-// parseProcStat 解析 /proc/stat 首行 "cpu ..." 的 idle 与总 ticks（jiffies）。
-// 纯函数，返回 (idle, total)；解析失败或找不到 cpu 行返回 (0,0)。
+// parseProcStat parses the first line "cpu ..." of /proc/stat for idle and
+// total ticks (jiffies). Pure function returning (idle, total); returns
+// (0,0) on parse failure or when no cpu line is found.
 func parseProcStat(out string) (idle, total uint64) {
 	for _, line := range strings.Split(out, "\n") {
 		fields := strings.Fields(line)
@@ -306,9 +340,10 @@ func parseProcStat(out string) (idle, total uint64) {
 	return 0, 0
 }
 
-// cpuPercentFromDeltas 由两次采样差值计算 CPU 占用率（%）：idle 与 total 的
-// 增量比值，100*(1 - Δidle/Δtotal)；Δtotal<=0（无有效间隔）返回 0。
-// 纯函数，供 parseProcStat 测试与 sampleCPULinux 共用。
+// cpuPercentFromDeltas computes CPU usage (%) from two sampling deltas:
+// idle and total increments, 100*(1 - Δidle/Δtotal); returns 0 when
+// Δtotal<=0 (no valid interval). Pure function, shared by parseProcStat tests
+// and sampleCPULinux.
 func cpuPercentFromDeltas(prevIdle, prevTotal, curIdle, curTotal uint64) float64 {
 	totalDelta := curTotal - prevTotal
 	if totalDelta <= 0 {
@@ -321,8 +356,9 @@ func cpuPercentFromDeltas(prevIdle, prevTotal, curIdle, curTotal uint64) float64
 	return 100 * (1 - float64(idleDelta)/float64(totalDelta))
 }
 
-// sampleCPULinux 用两次 /proc/stat 采样差值计算 CPU 占用率（%）。采样器持
-// prevIdle/prevTotal 包级状态；首轮无前值返回 0。
+// sampleCPULinux computes CPU usage (%) from two /proc/stat sampling deltas.
+// The sampler holds prevIdle/prevTotal as package-level state; returns 0
+// when no previous sample exists.
 func sampleCPULinux() float64 {
 	curIdle, curTotal := parseProcStat(runCmd("cat", "/proc/stat"))
 	if curTotal == 0 {
@@ -339,8 +375,8 @@ func sampleCPULinux() float64 {
 	return pct
 }
 
-// parseLoadAvg 解析 `sysctl -n vm.loadavg`（如 "1.23 0.98 0.76 2/345 12345"），
-// 返回第一个值（1 分钟平均负载）。
+// parseLoadAvg parses `sysctl -n vm.loadavg` (e.g. "1.23 0.98 0.76 2/345 12345"),
+// returning the first value (1-minute load average).
 func parseLoadAvg(out string) float64 {
 	fields := strings.Fields(strings.TrimSpace(out))
 	if len(fields) == 0 {
@@ -353,7 +389,7 @@ func parseLoadAvg(out string) float64 {
 	return v
 }
 
-// sampleCPUDarwin 用 loadavg / NumCPU * 100 估算 CPU 占用率（近似）。
+// sampleCPUDarwin estimates CPU usage (approximate) via loadavg / NumCPU * 100.
 func sampleCPUDarwin() float64 {
 	load := parseLoadAvg(runCmd("sysctl", "-n", "vm.loadavg"))
 	ncpu := runtime.NumCPU()
@@ -363,11 +399,12 @@ func sampleCPUDarwin() float64 {
 	return load * 100 / float64(ncpu)
 }
 
-// ─── 内存采样 ─────────────────────────────────────────────────────
+// ─── Memory Sampling ──────────────────────────────────────────────
 
-// parseMemWindowsKB 解析 PowerShell Win32_OperatingSystem 输出
-// （TotalVisibleMemorySize / FreePhysicalMemory，单位 KB）。期望输出两列数值，
-// 返回 (total, free) 字节（KB→bytes ×1024）。解析不到两列时按可解析数量尽力返回。
+// parseMemWindowsKB parses PowerShell Win32_OperatingSystem output
+// (TotalVisibleMemorySize / FreePhysicalMemory, unit KB). Expects two numeric
+// columns and returns (total, free) bytes (KB→bytes ×1024); when fewer than
+// two columns are parseable, returns as many as possible.
 func parseMemWindowsKB(out string) (total, free uint64) {
 	var nums []uint64
 	for _, line := range strings.Split(out, "\n") {
@@ -386,8 +423,8 @@ func parseMemWindowsKB(out string) (total, free uint64) {
 	return 0, 0
 }
 
-// sampleMemWindows 通过 PowerShell 读取总/空闲物理内存（KB），换算字节后
-// 返回 (total, used)。
+// sampleMemWindows reads total/free physical memory via PowerShell (KB),
+// converts to bytes, and returns (total, used).
 func sampleMemWindows() (total, used uint64) {
 	out := runCmd("powershell", "-NoProfile", "-Command",
 		"$os=Get-CimInstance Win32_OperatingSystem; \"$($os.TotalVisibleMemorySize) $($os.FreePhysicalMemory)\"")
@@ -398,8 +435,9 @@ func sampleMemWindows() (total, used uint64) {
 	return total, used
 }
 
-// parseMemLinux 解析 /proc/meminfo 中的 MemTotal 与 MemAvailable（KB→bytes），
-// 返回 (total, avail) 字节。MemAvailable 缺失时回退 MemFree。
+// parseMemLinux parses MemTotal and MemAvailable (KB→bytes) from
+// /proc/meminfo, returning (total, avail) bytes. Falls back to MemFree when
+// MemAvailable is missing.
 func parseMemLinux(out string) (total, avail uint64) {
 	total = parseMemInfo(out, "MemTotal") * 1024
 	if a := parseMemInfo(out, "MemAvailable"); a > 0 {
@@ -410,7 +448,7 @@ func parseMemLinux(out string) (total, avail uint64) {
 	return
 }
 
-// sampleMemLinux 读取 /proc/meminfo 计算 (total, used) 字节。
+// sampleMemLinux reads /proc/meminfo and computes (total, used) bytes.
 func sampleMemLinux() (total, used uint64) {
 	total, avail := parseMemLinux(runCmd("cat", "/proc/meminfo"))
 	if avail <= total {
@@ -419,8 +457,9 @@ func sampleMemLinux() (total, used uint64) {
 	return total, used
 }
 
-// sampleMemDarwin 用 `sysctl -n hw.memsize`（总字节）+ `vm_stat`（空闲页数）
-// 计算 (total, used) 字节。hw.pagesize 解析失败回退 16384（arm64 默认页大小）。
+// sampleMemDarwin computes (total, used) bytes using `sysctl -n hw.memsize`
+// (total bytes) + `vm_stat` (free page count). Falls back to 16384 for
+// hw.pagesize on parse failure (arm64 default page size).
 func sampleMemDarwin() (total, used uint64) {
 	out := runCmd("sysctl", "-n", "hw.memsize")
 	total, _ = strconv.ParseUint(strings.TrimSpace(out), 10, 64)
@@ -443,12 +482,13 @@ func sampleMemDarwin() (total, used uint64) {
 	return total, used
 }
 
-// ─── GPU 采样 ─────────────────────────────────────────────────────
+// ─── GPU Sampling ─────────────────────────────────────────────────
 
-// parseNVLine 解析一行 nvidia-smi csv 输出
-// （`--query-gpu=index,name,utilization.gpu,memory.used,memory.total
-// --format=csv,noheader,nounits`）。返回 MonitorGPU；缺失列对应字段为 0，
-// 不报错（宽松解析）；列数不足 5 时尽力解析可用列。
+// parseNVLine parses one line of nvidia-smi csv output
+// (`--query-gpu=index,name,utilization.gpu,memory.used,memory.total
+// --format=csv,noheader,nounits`). Returns MonitorGPU; missing columns
+// default to 0 (lenient parsing); when fewer than 5 columns are present,
+// parses whatever is available.
 func parseNVLine(line string) MonitorGPU {
 	g := MonitorGPU{Index: -1}
 	parts := strings.Split(line, ",")
@@ -476,8 +516,9 @@ func parseNVLine(line string) MonitorGPU {
 	return g
 }
 
-// sampleGPUs 调用 nvidia-smi 采样所有 GPU；失败（无 nvidia-smi / 无 GPU）返回
-// 空列表不报错。内存单位 MiB→bytes 换算在 parseNVLine 完成。
+// sampleGPUs calls nvidia-smi to sample all GPUs; returns an empty list (no
+// error) on failure (no nvidia-smi / no GPU). Memory unit conversion from
+// MiB to bytes happens in parseNVLine.
 func sampleGPUs() []MonitorGPU {
 	out := runCmd("nvidia-smi",
 		"--query-gpu=index,name,utilization.gpu,memory.used,memory.total",

@@ -4,8 +4,8 @@ import "testing"
 
 // ─── formatBytes ─────────────────────────────────────────────────
 
-// TestFormatBytes 验证 formatBytes 的二进制单位换算：
-// 小于 1KB 输出 "N B"，KB/MB 级保留 1 位小数并带单位后缀。
+// TestFormatBytes verifies formatBytes binary-unit conversion:
+// values below 1KB output "N B"; KB/MB levels keep 1 decimal place with unit suffix.
 func TestFormatBytes(t *testing.T) {
 	cases := []struct {
 		in   int64
@@ -29,8 +29,8 @@ func TestFormatBytes(t *testing.T) {
 
 // ─── guessQuantFromName ──────────────────────────────────────────
 
-// TestGuessQuantFromName 验证从文件名推断量化格式：
-// 大小写不敏感，命中列表中的量化名；未命中返回 "-"。
+// TestGuessQuantFromName verifies quantization-format inference from filename:
+// case-insensitive, matches quantization names in the list; no match returns "-".
 func TestGuessQuantFromName(t *testing.T) {
 	cases := []struct {
 		name string
@@ -51,8 +51,9 @@ func TestGuessQuantFromName(t *testing.T) {
 
 // ─── sanitizeAlias ───────────────────────────────────────────────
 
-// TestSanitizeAlias 验证别名规范化：空格转连字符、非法字符替换、
-// 统一小写——生成的 alias 用于 llama-server 预设的 INI 节名。
+// TestSanitizeAlias verifies alias normalization: spaces become hyphens, illegal
+// characters are replaced, and everything is lowercased — the generated alias is used
+// for llama-server preset INI section names.
 func TestSanitizeAlias(t *testing.T) {
 	cases := []struct {
 		in   string
@@ -71,15 +72,15 @@ func TestSanitizeAlias(t *testing.T) {
 
 // ─── isEmbeddingModel ────────────────────────────────────────────
 
-// TestIsEmbeddingModel 验证 embedding 模型识别：名称或架构包含
-// embedding/bge/gte/e5 等特征即判定为 embedding 模型。
+// TestIsEmbeddingModel verifies embedding-model identification: a model is classified
+// as embedding if its name or architecture contains features like embedding/bge/gte/e5.
 func TestIsEmbeddingModel(t *testing.T) {
 	embed := ModelInfo{Name: "bge-small-zh-v1.5", Architecture: "Bert"}
 	if !isEmbeddingModel(embed) {
-		t.Error("bge 命名模型应被识别为 embedding 模型")
+		t.Error("bge-named model should be identified as an embedding model")
 	}
 	instruct := ModelInfo{Name: "Qwen2.5-7B-Instruct", Architecture: "Qwen"}
 	if isEmbeddingModel(instruct) {
-		t.Error("对话模型不应被识别为 embedding 模型")
+		t.Error("chat model should not be identified as an embedding model")
 	}
 }

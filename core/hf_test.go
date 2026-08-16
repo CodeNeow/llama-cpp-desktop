@@ -8,8 +8,8 @@ import (
 	"testing"
 )
 
-// hfModelsPayload 是 searchHFMirrorAt 的模拟响应：两个模型，一个有 GGUF
-// sibling 且为 sentence-similarity（embedding 过滤命中），另一个无 GGUF。
+// hfModelsPayload is a mock response for searchHFMirrorAt: two models, one with a GGUF
+// sibling and pipeline_tag sentence-similarity (embedding filter hit), the other without GGUF.
 const hfModelsPayload = `[
   {
     "id": "Xorbits/bge-small-zh-v1.5",
@@ -36,7 +36,8 @@ const hfModelsPayload = `[
   }
 ]`
 
-// newHFServer 起一个模拟 HF API 的本地服务，baseURL 可注入到 *At 函数。
+// newHFServer starts a local server simulating the HF API; baseURL can be injected into
+// *At functions.
 func newHFServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -57,8 +58,8 @@ func newHFServer(t *testing.T) *httptest.Server {
 	}))
 }
 
-// TestSearchHFMirrorAt 验证 HF 搜索：过滤掉无 GGUF 的模型（hasGGUF 过滤），
-// filter 参数已不再按 pipeline_tag 类型过滤。
+// TestSearchHFMirrorAt verifies HF search: models without GGUF are filtered out
+// (hasGGUF filter), and the filter parameter no longer filters by pipeline_tag type.
 func TestSearchHFMirrorAt(t *testing.T) {
 	srv := newHFServer(t)
 	defer srv.Close()
@@ -68,7 +69,7 @@ func TestSearchHFMirrorAt(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(results) != 1 {
-		t.Fatalf("搜索到 %d 条结果, want 1", len(results))
+		t.Fatalf("search returned %d results, want 1", len(results))
 	}
 	if results[0].ID != "Xorbits/bge-small-zh-v1.5" {
 		t.Errorf("ID = %q", results[0].ID)
@@ -78,7 +79,7 @@ func TestSearchHFMirrorAt(t *testing.T) {
 	}
 }
 
-// TestSearchHFMirrorAtAllFilter 验证 filter=all 不应用类型过滤。
+// TestSearchHFMirrorAtAllFilter verifies filter=all does not apply type filtering.
 func TestSearchHFMirrorAtAllFilter(t *testing.T) {
 	srv := newHFServer(t)
 	defer srv.Close()
@@ -88,11 +89,11 @@ func TestSearchHFMirrorAtAllFilter(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(results) != 1 {
-		t.Fatalf("filter=all 结果数 = %d, want 1", len(results))
+		t.Fatalf("filter=all result count = %d, want 1", len(results))
 	}
 }
 
-// TestSearchHFMirrorAtHTTPError 验证非 200 响应返回错误。
+// TestSearchHFMirrorAtHTTPError verifies a non-200 response returns an error.
 func TestSearchHFMirrorAtHTTPError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -100,14 +101,15 @@ func TestSearchHFMirrorAtHTTPError(t *testing.T) {
 	defer srv.Close()
 
 	if _, err := searchHFMirrorAt(srv.URL, "q", "all"); err == nil {
-		t.Error("503 响应应返回错误")
+		t.Error("503 response should return error")
 	}
 }
 
-// TestSearchHFMirrorAtFilterIgnored 验证 filter="llm" 时不再按 pipeline_tag
-// 类型过滤：sentence-similarity（有 GGUF）与 text-generation（无 GGUF）都保留
-// 在过滤范围内，但无 GGUF 的模型仍被 hasGGUF 过滤排除，故仍只返回一个有 GGUF
-// 的结果。这验证了类型过滤分支已移除、hasGGUF 过滤保留。
+// TestSearchHFMirrorAtFilterIgnored verifies that when filter="llm", pipeline_tag type
+// filtering is no longer applied: both sentence-similarity (has GGUF) and
+// text-generation (no GGUF) are retained within the filter range, but models without
+// GGUF are still excluded by hasGGUF filtering, so only one model with GGUF is returned.
+// This verifies the type-filter branch has been removed while hasGGUF filtering is retained.
 func TestSearchHFMirrorAtFilterIgnored(t *testing.T) {
 	srv := newHFServer(t)
 	defer srv.Close()
@@ -117,16 +119,16 @@ func TestSearchHFMirrorAtFilterIgnored(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(results) != 1 {
-		t.Fatalf("filter=llm 结果数 = %d, want 1（类型过滤应被忽略，仅 hasGGUF 过滤生效）", len(results))
+		t.Fatalf("filter=llm result count = %d, want 1 (type filtering should be ignored, only hasGGUF filtering active)", len(results))
 	}
 	if results[0].ID != "Xorbits/bge-small-zh-v1.5" {
-		t.Errorf("ID = %q, want %q（无 GGUF 的 text-generation 模型应被过滤）",
+		t.Errorf("ID = %q, want %q (text-generation model without GGUF should be filtered)",
 			results[0].ID, "Xorbits/bge-small-zh-v1.5")
 	}
 }
 
-// hfModelJSON 构造一个 HF /api/models 列表项 JSON，id 即 modelId，按 hasGGUF
-// 决定 siblings 里是 gguf 还是 safetensors 文件。
+// hfModelJSON constructs an HF /api/models list-item JSON; id is modelId; whether siblings
+// contain gguf or safetensors files is determined by hasGGUF.
 func hfModelJSON(id string, hasGGUF bool) string {
 	file := `{"rfilename":"model.safetensors","size":999}`
 	if hasGGUF {
@@ -136,11 +138,11 @@ func hfModelJSON(id string, hasGGUF bool) string {
 		id, id, file)
 }
 
-// TestSearchHFMirrorAtMultiSortMerge 验证三路排序（downloads / likes /
-// lastModified）并行拉取后按 downloads → likes → lastModified 顺序合并去重：
-// 不同排序的 mock 返回不同集合，downloads 无 GGUF 的 C 与 lastModified 无 GGUF
-// 的 E 被过滤，likes/lastModified 重复出现的 B、D 只保留 downloads 路或最先出现
-// 的一次。断言合并 = [A,B,D]。
+// TestSearchHFMirrorAtMultiSortMerge verifies three-way sort (downloads / likes /
+// lastModified) parallel fetch then merge/dedup in downloads → likes → lastModified order:
+// different sort mocks return different sets; C without GGUF from downloads and E without
+// GGUF from lastModified are filtered; B and D appearing in both likes and lastModified
+// are kept only from the downloads path or first appearance. Assertion: merged = [A,B,D].
 func TestSearchHFMirrorAtMultiSortMerge(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -170,13 +172,14 @@ func TestSearchHFMirrorAtMultiSortMerge(t *testing.T) {
 	}
 	want := []string{"A", "B", "D"}
 	if strings.Join(ids, ",") != strings.Join(want, ",") {
-		t.Errorf("合并结果 = %v, want %v（downloads 主序、按 modelId 去重、无 GGUF 排除）", ids, want)
+		t.Errorf("merged result = %v, want %v (downloads primary order, dedup by modelId, no-GGUF excluded)", ids, want)
 	}
 }
 
-// TestSearchHFMirrorAtPartialSortFailure 验证单路排序失败时整体不报错：likes 路
-// 返回 500 被跳过，downloads / lastModified 路的正常结果保留且按 modelId 去重后
-// 仍为 [A]。
+// TestSearchHFMirrorAtPartialSortFailure verifies that when a single sort path fails,
+// the overall operation does not error: the likes path returning 500 is skipped, normal
+// results from downloads / lastModified paths are retained and deduped by modelId,
+// remaining [A].
 func TestSearchHFMirrorAtPartialSortFailure(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -193,13 +196,13 @@ func TestSearchHFMirrorAtPartialSortFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(results) != 1 || results[0].ModelID != "A" {
-		t.Errorf("单路失败时应保留正常路结果, got %+v", results)
+		t.Errorf("single-path failure should retain normal-path results, got %+v", results)
 	}
 }
 
-// newReadmeServer 起一个模拟 README 的本地服务，供 getModelDescriptionAt 测试
-// 注入 baseURL。返回值按 path 区分：正常 README、超长段落 README、无描述段落
-// README、以及不存在的路径（404）。
+// newReadmeServer starts a local server simulating README, used by getModelDescriptionAt
+// tests to inject baseURL. Return values are distinguished by path: normal README,
+// overlong paragraph README, no-description-paragraph README, and non-existent path (404).
 func newReadmeServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -207,11 +210,11 @@ func newReadmeServer(t *testing.T) *httptest.Server {
 		case "/author/model/raw/main/README.md":
 			w.Write([]byte("---\nlicense: apache-2.0\n---\n\n# 标题\n\n第一段自然语言描述，用于验证 front-matter 跳过与段落提取。\n\n## 子标题\n\n第二段属于子标题之下，不应被返回。\n"))
 		case "/author/longmodel/raw/main/README.md":
-			// 构造一段超过 200 个 rune 的段落（70×3=210 rune），验证截断与省略号
-			para := strings.Repeat("长描述", 70) // 210 个 rune
+			// construct a paragraph exceeding 200 runes (70×3=210 runes), verify truncation and ellipsis
+			para := strings.Repeat("长描述", 70) // 210 runes
 			w.Write([]byte("---\ntags: test\n---\n\n# 标题\n\n" + para + "\n"))
 		case "/author/nodesc/raw/main/README.md":
-			// README 存在但没有可用的描述段落（全为标题）
+			// README exists but has no usable description paragraph (all headings)
 			w.Write([]byte("---\nlicense: mit\n---\n\n# 只有标题\n\n## 另一个标题\n"))
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -219,8 +222,8 @@ func newReadmeServer(t *testing.T) *httptest.Server {
 	}))
 }
 
-// TestGetModelDescriptionAt 验证 README 描述提取：跳过 YAML front-matter 与
-// 标题行，返回首个自然语言段落。
+// TestGetModelDescriptionAt verifies README description extraction: skips YAML
+// front-matter and heading lines, returns the first natural-language paragraph.
 func TestGetModelDescriptionAt(t *testing.T) {
 	srv := newReadmeServer(t)
 	defer srv.Close()
@@ -230,17 +233,18 @@ func TestGetModelDescriptionAt(t *testing.T) {
 		t.Fatal(err)
 	}
 	if desc != "第一段自然语言描述，用于验证 front-matter 跳过与段落提取。" {
-		t.Errorf("描述 = %q，不应包含 front-matter 或标题行", desc)
+		t.Errorf("desc = %q, must not contain front-matter or heading lines", desc)
 	}
 	if strings.Contains(desc, "---") || strings.Contains(desc, "license") {
-		t.Errorf("描述不应包含 front-matter 内容: %q", desc)
+		t.Errorf("desc must not contain front-matter content: %q", desc)
 	}
 	if strings.Contains(desc, "#") {
-		t.Errorf("描述不应包含标题行: %q", desc)
+		t.Errorf("desc must not contain heading lines: %q", desc)
 	}
 }
 
-// TestGetModelDescriptionAtTruncate 验证超长段落按 200 个 rune 截断并追加省略号。
+// TestGetModelDescriptionAtTruncate verifies overlong paragraphs are truncated at 200
+// runes with an ellipsis appended.
 func TestGetModelDescriptionAtTruncate(t *testing.T) {
 	srv := newReadmeServer(t)
 	defer srv.Close()
@@ -250,28 +254,29 @@ func TestGetModelDescriptionAtTruncate(t *testing.T) {
 		t.Fatal(err)
 	}
 	runes := []rune(desc)
-	if len(runes) != 203 { // 200 rune + "..."
-		t.Fatalf("截断后长度 = %d rune, want 203", len(runes))
+	if len(runes) != 203 { // 200 runes + "..."
+		t.Fatalf("truncated length = %d runes, want 203", len(runes))
 	}
 	if !strings.HasSuffix(desc, "...") {
-		t.Errorf("截断后的描述应以 ... 结尾: %q", desc)
+		t.Errorf("truncated description should end with ...: %q", desc)
 	}
 }
 
-// TestGetModelDescriptionAtNotFound 验证 README 返回 404 时返回错误。
+// TestGetModelDescriptionAtNotFound verifies a 404 README response returns an error.
 func TestGetModelDescriptionAtNotFound(t *testing.T) {
 	srv := newReadmeServer(t)
 	defer srv.Close()
 
 	if _, err := getModelDescriptionAt(srv.URL, "author/missing"); err == nil {
-		t.Error("404 响应应返回错误")
+		t.Error("404 response should return error")
 	} else if !strings.Contains(err.Error(), "HTTP 404") {
-		t.Errorf("错误信息应包含 HTTP 状态码: %v", err)
+		t.Errorf("error message should contain HTTP status code: %v", err)
 	}
 }
 
-// TestGetModelDescriptionAtNoDescription 验证 README 存在但无描述段落时
-// 返回空串与 nil 错误（静默处理，不视为失败）。
+// TestGetModelDescriptionAtNoDescription verifies that when a README exists but has no
+// description paragraph, an empty string and nil error are returned (silent handling,
+// not treated as failure).
 func TestGetModelDescriptionAtNoDescription(t *testing.T) {
 	srv := newReadmeServer(t)
 	defer srv.Close()
@@ -281,12 +286,12 @@ func TestGetModelDescriptionAtNoDescription(t *testing.T) {
 		t.Fatal(err)
 	}
 	if desc != "" {
-		t.Errorf("无描述段落时应返回空串, got %q", desc)
+		t.Errorf("no description paragraph should return empty string, got %q", desc)
 	}
 }
 
-// TestGetHFModelFilesAt 验证模型文件列表：只返回顶层 .gguf 文件，
-// 去掉多余前导斜杠，忽略目录与隐藏文件。
+// TestGetHFModelFilesAt verifies the model file list: only top-level .gguf files are
+// returned, excess leading slashes are stripped, and directories and hidden files are ignored.
 func TestGetHFModelFilesAt(t *testing.T) {
 	srv := newHFServer(t)
 	defer srv.Close()
@@ -296,14 +301,14 @@ func TestGetHFModelFilesAt(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(files) != 2 {
-		t.Fatalf("文件数 = %d, want 2（应排除隐藏文件与 README）", len(files))
+		t.Fatalf("file count = %d, want 2 (should exclude hidden files and README)", len(files))
 	}
 	for _, f := range files {
 		if f.Filename == ".hidden.gguf" || f.Filename == "README.md" {
-			t.Errorf("不应包含 %q", f.Filename)
+			t.Errorf("must not contain %q", f.Filename)
 		}
 	}
-	// "/model-f16.gguf" 应被去斜杠为 "model-f16.gguf"
+	// "/model-f16.gguf" should be stripped to "model-f16.gguf"
 	hasTrimmed := false
 	for _, f := range files {
 		if f.Filename == "model-f16.gguf" {
@@ -311,14 +316,14 @@ func TestGetHFModelFilesAt(t *testing.T) {
 		}
 	}
 	if !hasTrimmed {
-		t.Errorf("未找到去斜杠后的 model-f16.gguf: %+v", files)
+		t.Errorf("stripped model-f16.gguf not found: %+v", files)
 	}
 }
 
-// TestGetHFModelMaxGGUFSizeAt 验证模型最大 GGUF 大小汇总：搜索卡片的大小需要
-// 走详情接口（blobs=true 才有真实 size），取最大的 .gguf 文件（排除隐藏文件
-// 与非 gguf）。mock 的 siblings：bge q8_0(1024)、/model-f16.gguf(2048)、
-// .hidden.gguf(1)、README.md(10) → 最大应为 2048。
+// TestGetHFModelMaxGGUFSizeAt verifies model maximum GGUF size aggregation: search card
+// size requires the details endpoint (blobs=true for real size), takes the largest .gguf
+// file (excluding hidden files and non-gguf). mock siblings: bge q8_0(1024),
+// /model-f16.gguf(2048), .hidden.gguf(1), README.md(10) → maximum should be 2048.
 func TestGetHFModelMaxGGUFSizeAt(t *testing.T) {
 	srv := newHFServer(t)
 	defer srv.Close()
@@ -328,12 +333,12 @@ func TestGetHFModelMaxGGUFSizeAt(t *testing.T) {
 		t.Fatal(err)
 	}
 	if size != 2048 {
-		t.Errorf("最大 GGUF 大小 = %d, want 2048（应排除隐藏文件与 README，取 model-f16.gguf）", size)
+		t.Errorf("max GGUF size = %d, want 2048 (should exclude hidden files and README, take model-f16.gguf)", size)
 	}
 }
 
-// TestGetHFModelMaxGGUFSizeAtNoGGUF 验证模型没有 GGUF 文件时返回 0 与 nil（不视为
-// 错误，由前端静默不显示大小）。
+// TestGetHFModelMaxGGUFSizeAtNoGGUF verifies that when a model has no GGUF files,
+// 0 and nil are returned (not treated as error; frontend silently does not display size).
 func TestGetHFModelMaxGGUFSizeAtNoGGUF(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -349,11 +354,12 @@ func TestGetHFModelMaxGGUFSizeAtNoGGUF(t *testing.T) {
 		t.Fatal(err)
 	}
 	if size != 0 {
-		t.Errorf("无 GGUF 时大小 = %d, want 0", size)
+		t.Errorf("no GGUF size = %d, want 0", size)
 	}
 }
 
-// TestGetHFModelMaxGGUFSizeAtHTTPError 验证详情接口非 200 时返回错误。
+// TestGetHFModelMaxGGUFSizeAtHTTPError verifies a non-200 details endpoint response
+// returns an error.
 func TestGetHFModelMaxGGUFSizeAtHTTPError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
@@ -361,6 +367,6 @@ func TestGetHFModelMaxGGUFSizeAtHTTPError(t *testing.T) {
 	defer srv.Close()
 
 	if _, err := getHFModelMaxGGUFSizeAt(srv.URL, "org/missing"); err == nil {
-		t.Error("404 响应应返回错误")
+		t.Error("404 response should return error")
 	}
 }

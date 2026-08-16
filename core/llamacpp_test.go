@@ -14,8 +14,8 @@ import (
 	"testing"
 )
 
-// llamaServerBinName 返回当前平台的 llama-server 二进制文件名
-// （Windows 带 .exe 后缀），供测试构造 stub 使用。
+// llamaServerBinName returns the llama-server binary filename for the current platform
+// (Windows includes .exe suffix), used by tests to construct stubs.
 func llamaServerBinName() string {
 	if runtime.GOOS == "windows" {
 		return "llama-server.exe"
@@ -23,9 +23,11 @@ func llamaServerBinName() string {
 	return "llama-server"
 }
 
-// saveDownloadState 记录 llama.cpp 下载相关全局状态并在测试结束后恢复，
-// 避免 downloadLlamaCpp 全链路测试污染其他用例（与 saveServerState 同风格）。
-// llamaCacheValid 是独立于 downloadMu 的 atomic，直接读取并在 cleanup 恢复。
+// saveDownloadState snapshots llama.cpp download-related globals and restores them
+// after the test, preventing full-chain downloadLlamaCpp tests from polluting other
+// test cases (same style as saveServerState).
+// llamaCacheValid is an atomic independent of downloadMu; read directly and restored
+// in cleanup.
 func saveDownloadState(t *testing.T) {
 	t.Helper()
 	downloadMu.Lock()
@@ -42,16 +44,17 @@ func saveDownloadState(t *testing.T) {
 	})
 }
 
-// TestGetLlamaCppInfoDetectsDownloadDir 验证 getLlamaCppInfo 能识别
-// llama-cpp/ 下载目录中的 llama-server（下载解压后的默认落点）：切到临时
-// 目录后建空 stub → Installed=true 且 Path 为绝对路径；对照组（无 llama-cpp/
-// 目录）→ Installed=false。此前检测只查 PATH 与自定义目录，解压成功的
-// 二进制永远无法被识别为已安装（主页显示"未找到"）。
+// TestGetLlamaCppInfoDetectsDownloadDir verifies getLlamaCppInfo can detect llama-server
+// in the llama-cpp/ download directory (the default landing path after download+extract):
+// after switching to a temp directory and creating an empty stub, Installed=true and
+// Path is an absolute path; the control group (no llama-cpp/ directory) → Installed=false.
+// Previously detection only checked PATH and custom directories; a successfully extracted
+// binary could never be recognized as installed (home page showed "not found").
 func TestGetLlamaCppInfoDetectsDownloadDir(t *testing.T) {
-	// PATH 上存在 llama 相关二进制会干扰对照组（被误判为已安装），跳过
+	// llama-related binaries on PATH would interfere with the control group (misdetected as installed), skip
 	for _, bin := range []string{"llama-server", "llama-cli", "llama.cpp", "llama"} {
 		if _, err := exec.LookPath(bin); err == nil {
-			t.Skipf("PATH 中存在 %s，无法验证未安装场景，跳过", bin)
+			t.Skipf("PATH contains %s, cannot verify not-installed scenario, skipping", bin)
 		}
 	}
 	saveServerState(t)
@@ -67,23 +70,24 @@ func TestGetLlamaCppInfoDetectsDownloadDir(t *testing.T) {
 
 	info := getLlamaCppInfo()
 	if !info.Installed {
-		t.Fatal("存在 llama-cpp/llama-server stub 时 Installed 应为 true")
+		t.Fatal("Installed should be true when llama-cpp/llama-server stub exists")
 	}
 	wantPath := filepath.Join(tmp, "llama-cpp", binName)
 	if info.Path != wantPath {
-		t.Errorf("Path = %q, want 绝对路径 %q", info.Path, wantPath)
+		t.Errorf("Path = %q, want absolute path %q", info.Path, wantPath)
 	}
 
-	// 对照组：无 llama-cpp/ 目录时应判定未安装
+	// control group: no llama-cpp/ directory should be judged as not installed
 	withTempCwd(t)
 	if info := getLlamaCppInfo(); info.Installed {
-		t.Error("无 llama-cpp/ 目录时 Installed 应为 false")
+		t.Error("Installed should be false when no llama-cpp/ directory exists")
 	}
 }
 
-// TestGetLlamaCppInfoDetectsDownloadDirSubdir 验证下载 zip 带顶层文件夹
-// 时（解压后二进制位于 llama-cpp/<一层子目录>/ 下）同样能被检测到，且
-// Path 精确指向子目录内的 stub（断言绝对路径相等，PATH 命中不会误判）。
+// TestGetLlamaCppInfoDetectsDownloadDirSubdir verifies that when the downloaded zip
+// contains a top-level folder (after extraction the binary is under llama-cpp/<one-subdir>/),
+// it is still detected, and Path points precisely to the stub inside the subdirectory
+// (assert absolute path equality; PATH matches must not misclassify).
 func TestGetLlamaCppInfoDetectsDownloadDirSubdir(t *testing.T) {
 	saveServerState(t)
 	tmp := withTempCwd(t)
@@ -98,7 +102,7 @@ func TestGetLlamaCppInfoDetectsDownloadDirSubdir(t *testing.T) {
 
 	info := getLlamaCppInfo()
 	if !info.Installed {
-		t.Fatal("llama-cpp/<子目录>/llama-server stub 时 Installed 应为 true")
+		t.Fatal("Installed should be true when llama-cpp/<subdir>/llama-server stub exists")
 	}
 	wantPath := filepath.Join(tmp, subdir, binName)
 	if info.Path != wantPath {
@@ -106,9 +110,10 @@ func TestGetLlamaCppInfoDetectsDownloadDirSubdir(t *testing.T) {
 	}
 }
 
-// TestBuildServerCommandDetectsDownloadDir 验证 buildServerCommand 能命中
-// llama-cpp/ 下载目录中的 llama-server（此前只查 PATH 与自定义目录，下载
-// 完成后 API 页无法启动服务）。下载目录优先级高于 PATH，命中返回绝对路径。
+// TestBuildServerCommandDetectsDownloadDir verifies buildServerCommand can hit the
+// llama-server in the llama-cpp/ download directory (previously only checked PATH
+// and custom directories; after download the API page could not start the service).
+// Download directory has higher priority than PATH; returns absolute path on hit.
 func TestBuildServerCommandDetectsDownloadDir(t *testing.T) {
 	saveServerState(t)
 	tmp := withTempCwd(t)
@@ -125,21 +130,23 @@ func TestBuildServerCommandDetectsDownloadDir(t *testing.T) {
 
 	want := filepath.Join(tmp, "llama-cpp", binName)
 	if bin != want {
-		t.Errorf("bin = %q, want 下载目录绝对路径 %q", bin, want)
+		t.Errorf("bin = %q, want download-dir absolute path %q", bin, want)
 	}
 }
 
-// TestDownloadLlamaCppInvalidatesLlamaCache 验证 downloadLlamaCpp 解压成功
-// 置 done 后 llamaCacheValid 被失效（此前只失效模型缓存，GetLlamaCpp 仍
-// 返回挂载时缓存的 false，主页一直显示"未找到"）。全链路走通：httptest
-// 返回含平台匹配 zip 资产的 release JSON，zip 内为 llama-server stub；
-// githubReleasesAPI 注入本地服务器，避免真实网络。
+// TestDownloadLlamaCppInvalidatesLlamaCache verifies that after downloadLlamaCpp
+// successfully extracts and sets status to done, llamaCacheValid is invalidated
+// (previously only model cache was invalidated; GetLlamaCpp still returned the
+// mounted-cached false, home page always showed "not found"). Full chain end-to-end:
+// httptest returns release JSON containing platform-matching zip assets, zip contains
+// llama-server stub; githubReleasesAPI is injected with a local server to avoid
+// real network.
 func TestDownloadLlamaCppInvalidatesLlamaCache(t *testing.T) {
 	saveDownloadState(t)
 	saveServerState(t)
 	withTempCwd(t)
 
-	// 构造含 llama-server stub 的最小 zip
+	// build a minimal zip containing a llama-server stub
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
 	w, err := zw.Create(llamaServerBinName())
@@ -154,8 +161,8 @@ func TestDownloadLlamaCppInvalidatesLlamaCache(t *testing.T) {
 	}
 	zipBytes := buf.Bytes()
 
-	// 按当前平台构造资产名（需含平台关键字才能被 pickBestAsset 选中；
-	// Windows 命名如 llama-b9999-bin-win-cpu-x64.zip）
+	// construct asset name for current platform (must contain platform keyword to be picked by pickBestAsset;
+	// Windows names like llama-b9999-bin-win-cpu-x64.zip)
 	platformKey := map[string]string{"windows": "win", "darwin": "macos", "linux": "linux"}[runtime.GOOS]
 	archKey := map[string]string{"amd64": "x64", "arm64": "arm64"}[runtime.GOARCH]
 	assetName := fmt.Sprintf("llama-b9999-bin-%s-%s.zip", platformKey, archKey)
@@ -185,34 +192,36 @@ func TestDownloadLlamaCppInvalidatesLlamaCache(t *testing.T) {
 	githubReleasesAPI = srv.URL + "/release"
 	defer func() { githubReleasesAPI = origAPI }()
 
-	// 预置缓存有效，验证下载完成后被失效
+	// pre-populate cache as valid; verify it is invalidated after download completes
 	llamaCacheValid.Store(true)
 
 	downloadLlamaCpp()
 
 	if llamaCacheValid.Load() {
-		t.Error("downloadLlamaCpp 完成后 llamaCacheValid 应为 false")
+		t.Error("llamaCacheValid should be false after downloadLlamaCpp completes")
 	}
 	downloadMu.Lock()
 	status := downloadState.Status
 	downloadMu.Unlock()
 	if status != "done" {
-		t.Errorf("下载状态 = %q, want done", status)
+		t.Errorf("download status = %q, want done", status)
 	}
 	if _, err := os.Stat(filepath.Join("llama-cpp", llamaServerBinName())); err != nil {
-		t.Errorf("解压产物缺失: %v", err)
+		t.Errorf("extracted artifact missing: %v", err)
 	}
 }
 
-// TestDownloadLlamaCppUsesCustomDir 验证设置了自定义 llama.cpp 目录后，
-// downloadLlamaCpp 将下载产物解压到该自定义目录而非默认的 llama-cpp/
-// （此前固定解压到 llama-cpp/，自定义目录场景下产物落点与检测位置不一致）。
-// 全链路走通：httptest 返回含平台匹配 zip 资产的 release JSON，zip 内为
-// llama-server stub；customLlamaCppDir 指向另一个临时目录。
+// TestDownloadLlamaCppUsesCustomDir verifies that after setting a custom llama.cpp
+// directory, downloadLlamaCpp extracts download artifacts into that custom directory
+// instead of the default llama-cpp/ (previously extraction was fixed to llama-cpp/,
+// causing product landing and detection positions to mismatch in custom-dir scenarios).
+// Full chain end-to-end: httptest returns release JSON containing platform-matching
+// zip assets, zip contains llama-server stub; customLlamaCppDir points to another
+// temp directory.
 func TestDownloadLlamaCppUsesCustomDir(t *testing.T) {
 	saveDownloadState(t)
 	saveServerState(t)
-	// customLlamaCppDir 保存/恢复由 saveServerState 负责，此处直接设置
+	// customLlamaCppDir save/restore is handled by saveServerState, set it directly here
 	customDir := t.TempDir()
 	withTempCwd(t)
 
@@ -220,7 +229,7 @@ func TestDownloadLlamaCppUsesCustomDir(t *testing.T) {
 	customLlamaCppDir = customDir
 	customLlamaCppMu.Unlock()
 
-	// 构造含 llama-server stub 的最小 zip
+	// build a minimal zip containing a llama-server stub
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
 	w, err := zw.Create(llamaServerBinName())
@@ -235,7 +244,7 @@ func TestDownloadLlamaCppUsesCustomDir(t *testing.T) {
 	}
 	zipBytes := buf.Bytes()
 
-	// 按当前平台构造资产名（与 TestDownloadLlamaCppInvalidatesLlamaCache 同风格）
+	// construct asset name for current platform (same style as TestDownloadLlamaCppInvalidatesLlamaCache)
 	platformKey := map[string]string{"windows": "win", "darwin": "macos", "linux": "linux"}[runtime.GOOS]
 	archKey := map[string]string{"amd64": "x64", "arm64": "arm64"}[runtime.GOARCH]
 	assetName := fmt.Sprintf("llama-b9999-bin-%s-%s.zip", platformKey, archKey)
@@ -265,33 +274,33 @@ func TestDownloadLlamaCppUsesCustomDir(t *testing.T) {
 	githubReleasesAPI = srv.URL + "/release"
 	defer func() { githubReleasesAPI = origAPI }()
 
-	// 预置缓存有效，验证下载完成后被失效（与对照组一致）
+	// pre-populate cache as valid; verify it is invalidated after download completes (same as control group)
 	llamaCacheValid.Store(true)
 
 	downloadLlamaCpp()
 
 	if llamaCacheValid.Load() {
-		t.Error("downloadLlamaCpp 完成后 llamaCacheValid 应为 false")
+		t.Error("llamaCacheValid should be false after downloadLlamaCpp completes")
 	}
 	downloadMu.Lock()
 	status := downloadState.Status
 	downloadMu.Unlock()
 	if status != "done" {
-		t.Fatalf("下载状态 = %q, want done", status)
+		t.Fatalf("download status = %q, want done", status)
 	}
 
-	// 解压产物应落在自定义目录（llama-server stub 直接位于 zip 根级）
+	// extracted artifact should land in the custom directory (llama-server stub directly at zip root)
 	if _, err := os.Stat(filepath.Join(customDir, llamaServerBinName())); err != nil {
-		t.Errorf("自定义目录中解压产物缺失: %v", err)
+		t.Errorf("extracted artifact missing in custom directory: %v", err)
 	}
-	// 默认 llama-cpp/ 目录不应存在该产物（未装到默认目录）
+	// the default llama-cpp/ directory should not contain the artifact (not installed to default dir)
 	if _, err := os.Stat(filepath.Join("llama-cpp", llamaServerBinName())); err == nil {
-		t.Error("llama-cpp/ 下不应存在解压产物（应只安装到自定义目录）")
+		t.Error("extracted artifact should not exist under llama-cpp/ (should install to custom dir only)")
 	}
 }
 
-// makeZip 构造包含 files（文件名 → 内容）的最小 zip 并返回字节流，
-// 供 downloadLlamaCpp 全链路测试模拟 release 资产。
+// makeZip constructs a minimal zip containing files (filename → content) and returns
+// the byte stream, used by downloadLlamaCpp full-chain tests to simulate release assets.
 func makeZip(t *testing.T, files map[string]string) []byte {
 	t.Helper()
 	var buf bytes.Buffer
@@ -311,27 +320,30 @@ func makeZip(t *testing.T, files map[string]string) []byte {
 	return buf.Bytes()
 }
 
-// TestDownloadLlamaCppDownloadsCudartOnWindows 验证 Windows 下 llama.cpp CUDA
-// 构建（b10342 起主程序与 cudart 运行库拆为两个 zip 资产）会顺序下载主程序
-// 与 cudart 资产并解压到同一目录：目标目录同时存在 llama-server 与
-// cublas64_12.dll stub（此前只选中最靠前的 cudart 资产，解压产物只有运行库、
-// 没有主程序）；downloadState.Total 为两资产大小之和、FileName 随循环停在
-// 最后下载的资产名。资产名版本用本机 toolkit 推导（cudaVersionFromToolkit），
-// 无 nvcc 的主机走空版本回退分支，两种环境均确定性触发附加下载；非 Windows
-// 平台不附加 win 专属的 cudart 资产（匹配逻辑由单元测试覆盖），跳过。
+// TestDownloadLlamaCppDownloadsCudartOnWindows verifies that on Windows, llama.cpp CUDA
+// builds (since b10342, main program and cudart runtime are split into two zip assets)
+// download both the main program and cudart assets and extract them to the same directory:
+// the target directory contains both llama-server and cublas64_12.dll stub (previously
+// only the first-matched cudart asset was selected, extraction artifacts only contained
+// the runtime library with no main program); downloadState.Total is the sum of both
+// asset sizes, FileName stops at the last downloaded asset name. Asset name version
+// is derived from the host toolkit (cudaVersionFromToolkit); hosts without nvcc take
+// the empty-version fallback branch; both environments deterministically trigger the
+// additional download. Non-Windows platforms do not attach the Windows-exclusive cudart
+// asset (matching logic is covered by unit tests), skipped.
 func TestDownloadLlamaCppDownloadsCudartOnWindows(t *testing.T) {
 	if runtime.GOOS != "windows" {
-		t.Skip("cudart 附加下载仅在 Windows 生效，非 Windows 跳过（匹配逻辑由单元测试覆盖）")
+		t.Skip("cudart co-download is Windows-only; skipped on non-Windows (matching logic covered by unit tests)")
 	}
 	saveDownloadState(t)
 	saveServerState(t)
 	withTempCwd(t)
 
-	// 构造主程序 zip（llama-server stub）与 cudart zip（cublas64_12.dll stub）
+	// build the main-program zip (llama-server stub) and the cudart zip (cublas64_12.dll stub)
 	mainZip := makeZip(t, map[string]string{llamaServerBinName(): "stub"})
 	cudartZip := makeZip(t, map[string]string{"cublas64_12.dll": "stub"})
 
-	// 版本标签与本机 toolkit 保持一致（无 toolkit 时固定 12.4 并走空版本回退分支）
+	// version label follows the host toolkit (fixed 12.4 without a toolkit, taking the empty-version fallback branch)
 	ver := cudaVersionFromToolkit()
 	if ver == "" {
 		ver = "12.4"
@@ -346,7 +358,7 @@ func TestDownloadLlamaCppDownloadsCudartOnWindows(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(GitHubRelease{
 				TagName: "b9999",
-				// 按真实 release 顺序：cudart 排在前，验证主程序仍被选中
+				// mimic real release order: cudart listed first, verifying the main program is still selected
 				Assets: []GitHubAsset{
 					{Name: cudartName, Size: int64(len(cudartZip)), BrowserDownloadURL: srv.URL + "/cudart.zip"},
 					{Name: mainName, Size: int64(len(mainZip)), BrowserDownloadURL: srv.URL + "/main.zip"},
@@ -376,21 +388,21 @@ func TestDownloadLlamaCppDownloadsCudartOnWindows(t *testing.T) {
 	downloadMu.Unlock()
 
 	if status != "done" {
-		t.Fatalf("下载状态 = %q, want done（错误: %s）", status, errMsg)
+		t.Fatalf("download status = %q, want done (error: %s)", status, errMsg)
 	}
-	// 先主程序后 cudart 的顺序下，FileName 应停在最后下载的 cudart 资产名
+	// with main program first then cudart, FileName should stop at the last downloaded cudart asset name
 	if fileName != cudartName {
-		t.Errorf("FileName = %q, want 最后下载的 cudart 资产 %q", fileName, cudartName)
+		t.Errorf("FileName = %q, want last downloaded cudart asset %q", fileName, cudartName)
 	}
-	// 进度 Total 应为两资产大小之和
+	// progress Total should be the sum of both asset sizes
 	wantTotal := int64(len(mainZip) + len(cudartZip))
 	if total != wantTotal {
-		t.Errorf("Total = %d, want 两资产大小和 %d", total, wantTotal)
+		t.Errorf("Total = %d, want sum of both assets %d", total, wantTotal)
 	}
 	if _, err := os.Stat(filepath.Join("llama-cpp", llamaServerBinName())); err != nil {
-		t.Errorf("主程序解压产物缺失: %v", err)
+		t.Errorf("main program artifact missing after extraction: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join("llama-cpp", "cublas64_12.dll")); err != nil {
-		t.Errorf("cudart 运行库解压产物缺失: %v", err)
+		t.Errorf("cudart runtime artifact missing after extraction: %v", err)
 	}
 }

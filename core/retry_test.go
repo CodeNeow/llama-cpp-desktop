@@ -11,11 +11,11 @@ import (
 	"time"
 )
 
-// TestCancelDownloadTaskMarksErrorTaskCancelled 验证对 error 终态任务调用
-// CancelDownloadTask 立即置 cancelled（bug 根因：error 任务 goroutine 已退出，
-// 旧实现只调 cancel() 无任何效果，UI 永远停留在「下载失败」且取消无反应）。
-// 修复后锁内先置 Status="cancelled" 再 cancel()，前端轮询立即可见。任务直接
-// 构造为 error 终态模拟 goroutine 已死的任务，不启动 downloadTask goroutine。
+// TestCancelDownloadTaskMarksErrorTaskCancelled verifies that calling CancelDownloadTask on an error-terminal task
+// immediately sets Status to "cancelled" (bug root cause: error-task goroutine has already exited; the old implementation
+// only called cancel() with no visible effect, so the UI stayed on "download failed" and cancel was unresponsive).
+// After the fix, the lock sets Status="cancelled" before cancel(), so the frontend polling becomes visible immediately.
+// The task is directly constructed as an error-terminal task simulating a dead goroutine; the downloadTask goroutine is not started.
 func TestCancelDownloadTaskMarksErrorTaskCancelled(t *testing.T) {
 	dlTasksMu.Lock()
 	dlTasks = nil
@@ -53,17 +53,17 @@ func TestCancelDownloadTaskMarksErrorTaskCancelled(t *testing.T) {
 		t.Error("取消后 ctx 应已结束")
 	}
 
-	// 找不到 id 时静默返回 nil，与既有语义一致
+	// unknown id returns nil silently, consistent with existing semantics
 	if err := app.CancelDownloadTask("dl-999"); err != nil {
 		t.Errorf("未知 id 取消应返回 nil, got %v", err)
 	}
 }
 
-// TestRetryDownloadTaskCompletesAfterError 验证对 error 终态任务调用
-// RetryDownloadTask：重建 ctx、清空错误、Status 恢复为 queued 并重新启动
-// downloadTask goroutine，.part 断点续传自动生效；httptest 返回固定内容，
-// 任务最终 done 且文件落盘。同时验证 downloading 中的任务不允许重试
-// （存在活跃 goroutine，避免并发写同一 .part 文件）与未知 id 静默返回 nil。
+// TestRetryDownloadTaskCompletesAfterError verifies that calling RetryDownloadTask on an error-terminal task
+// reconstructs ctx, clears the error, restores Status to queued, and restarts the downloadTask goroutine;
+// the .part resume transfer is automatically effective; httptest returns fixed content, the task eventually reaches
+// done and the file is written to disk. It also verifies that a task in downloading state cannot be retried
+// (an active goroutine exists, preventing concurrent writes to the same .part file) and that unknown ids return nil silently.
 func TestRetryDownloadTaskCompletesAfterError(t *testing.T) {
 	withTempCwd(t)
 	dlTasksMu.Lock()
@@ -84,7 +84,7 @@ func TestRetryDownloadTaskCompletesAfterError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// 构造 error 终态任务（模拟下载失败、goroutine 已退出）
+	// construct error-terminal task (simulating download failure with goroutine exited)
 	task := &DlTask{
 		ID:       "dl-1",
 		ModelID:  "author/model",
@@ -102,8 +102,8 @@ func TestRetryDownloadTaskCompletesAfterError(t *testing.T) {
 		t.Fatalf("RetryDownloadTask 返回错误: %v", err)
 	}
 
-	// 立即检查：任务应离开 error 终态（goroutine 未及启动时为 queued，
-	// 已启动则为 downloading）
+	// immediate check: task should leave error-terminal state (queued if goroutine hasn't started yet,
+	// downloading if it has)
 	dlTasksMu.Lock()
 	status := task.Status
 	errMsg := task.Error
@@ -115,7 +115,7 @@ func TestRetryDownloadTaskCompletesAfterError(t *testing.T) {
 		t.Errorf("重试后应清空旧错误信息: %q", errMsg)
 	}
 
-	// 轮询等待 done
+	// poll until done
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		dlTasksMu.Lock()
@@ -147,7 +147,7 @@ func TestRetryDownloadTaskCompletesAfterError(t *testing.T) {
 		t.Errorf("文件内容 = %q, want %q", got, payload)
 	}
 
-	// downloading 中的任务不允许重试（存在活跃 goroutine）
+	// tasks in downloading state are not allowed to retry (active goroutine exists)
 	active := &DlTask{
 		ID:       "dl-2",
 		ModelID:  "author/model",
@@ -168,7 +168,7 @@ func TestRetryDownloadTaskCompletesAfterError(t *testing.T) {
 		t.Errorf("downloading 任务重试后状态 = %q, want 保持 downloading", status)
 	}
 
-	// 未知 id 静默返回 nil，与 CancelDownloadTask 语义一致
+	// unknown id silently returns nil, consistent with CancelDownloadTask semantics
 	if err := app.RetryDownloadTask("dl-999"); err != nil {
 		t.Errorf("未知 id 重试应返回 nil, got %v", err)
 	}

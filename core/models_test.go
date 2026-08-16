@@ -7,8 +7,8 @@ import (
 	"testing"
 )
 
-// saveModelsState 记录 cachedModels/modelsCacheValid 全局状态并在测试
-// 结束后恢复。
+// saveModelsState snapshots cachedModels/modelsCacheValid globals and restores them
+// after the test.
 func saveModelsState(t *testing.T) {
 	t.Helper()
 	modelsMu.Lock()
@@ -23,11 +23,14 @@ func saveModelsState(t *testing.T) {
 	})
 }
 
-// TestConcurrentGetRefreshModels 验证并发 GetModels/RefreshModels 多轮
-// 不 panic 且结果一致（#4）。此前 modelsOnce 重置后 cachedModels 无锁
-// 读写，RefreshModels 重扫写入与 GetModels 返回同一底层数组并发会数据
-// 竞争；重构后写与读都在 modelsMu 内完成，GetModels 返回拷贝副本。
-// 使用空 LLM-Models 目录，扫描结果恒为空数组，便于断言一致性。
+// TestConcurrentGetRefreshModels verifies concurrent GetModels/RefreshModels across
+// many rounds do not panic and produce consistent results (#4). Previously, after
+// modelsOnce reset, cachedModels was read/written without a lock: RefreshModels'
+// rescan write and GetModels' return of the same underlying array could race
+// concurrently. After refactoring, both write and read happen under modelsMu, and
+// GetModels returns a copy.
+// Uses an empty LLM-Models directory so scan results are always an empty slice, making
+// consistency easy to assert.
 func TestConcurrentGetRefreshModels(t *testing.T) {
 	withTempCwd(t)
 	saveModelsState(t)
@@ -47,15 +50,15 @@ func TestConcurrentGetRefreshModels(t *testing.T) {
 	}
 	wg.Wait()
 
-	// 空目录下每次扫描都应得到空列表，且 GetModels 返回副本
+	// empty directory should always yield an empty list, and GetModels returns a copy
 	models := app.GetModels()
 	if len(models) != 0 {
-		t.Errorf("空 LLM-Models 目录应返回 0 个模型, 实际 %d", len(models))
+		t.Errorf("empty LLM-Models directory should return 0 models, got %d", len(models))
 	}
 }
 
-// makeVariant 在 base/author/variant 下创建模型目录并写入 gguf 文件，
-// size 用于控制文件大小（排序断言依据）。
+// makeVariant creates a model directory at base/author/variant and writes a gguf file;
+// size controls the file size (used as the sorting assertion basis).
 func makeVariant(t *testing.T, base, author, variant string, ggufName string, size int) {
 	t.Helper()
 	dir := filepath.Join(base, author, variant)
@@ -67,8 +70,9 @@ func makeVariant(t *testing.T, base, author, variant string, ggufName string, si
 	}
 }
 
-// TestScanModelsDir 验证目录扫描：<author>/<variant>/.gguf 结构被识别为
-// 一个模型，名称取 variant 目录名，并按大小降序排列。
+// TestScanModelsDir verifies directory scanning: <author>/<variant>/.gguf layout is
+// recognized as one model, the name is taken from the variant directory name, and models
+// are sorted by size descending.
 func TestScanModelsDir(t *testing.T) {
 	base := t.TempDir()
 	makeVariant(t, base, "author1", "big-model", "big.gguf", 2048)
@@ -77,24 +81,25 @@ func TestScanModelsDir(t *testing.T) {
 
 	models := scanModelsDir(base)
 	if len(models) != 3 {
-		t.Fatalf("扫描到 %d 个模型, want 3", len(models))
+		t.Fatalf("scanned %d models, want 3", len(models))
 	}
-	// 按大小降序：2048 > 1024 > 512
+	// sorted by size descending: 2048 > 1024 > 512
 	if models[0].Name != "big-model" || models[1].Name != "third-model" || models[2].Name != "small-model" {
-		t.Errorf("排序错误: %v", []string{models[0].Name, models[1].Name, models[2].Name})
+		t.Errorf("sort error: %v", []string{models[0].Name, models[1].Name, models[2].Name})
 	}
 	if models[0].Author != "author1" {
 		t.Errorf("author = %q, want author1", models[0].Author)
 	}
 	if models[0].SizeHuman == "" {
-		t.Error("SizeHuman 不应为空")
+		t.Error("SizeHuman must not be empty")
 	}
 	if models[0].Path == "" || filepath.Dir(models[0].Path) == "" {
-		t.Error("Path 应为完整路径")
+		t.Error("Path must be a full path")
 	}
 }
 
-// TestScanModelsDirMMProj 验证 mmproj 文件标记多模态支持且不被当作主模型。
+// TestScanModelsDirMMProj verifies an mmproj file marks multimodal support and is not
+// treated as a primary model.
 func TestScanModelsDirMMProj(t *testing.T) {
 	base := t.TempDir()
 	dir := filepath.Join(base, "llava", "llava-v1.6")
@@ -110,26 +115,28 @@ func TestScanModelsDirMMProj(t *testing.T) {
 
 	models := scanModelsDir(base)
 	if len(models) != 1 {
-		t.Fatalf("扫描到 %d 个模型, want 1", len(models))
+		t.Fatalf("scanned %d models, want 1", len(models))
 	}
 	if !models[0].HasMMProj {
-		t.Error("含 mmproj 文件的模型应标记 HasMMProj")
+		t.Error("model with mmproj file should be marked HasMMProj")
 	}
 }
 
-// TestScanModelsDirEmpty 验证空目录与无 GGUF 文件的目录返回空列表。
+// TestScanModelsDirEmpty verifies empty directories and directories without GGUF files
+// return an empty list.
 func TestScanModelsDirEmpty(t *testing.T) {
 	base := t.TempDir()
 	if models := scanModelsDir(base); len(models) != 0 {
-		t.Errorf("空目录应返回 0 个模型, 实际 %d", len(models))
+		t.Errorf("empty directory should return 0 models, got %d", len(models))
 	}
-	makeVariant(t, base, "a", "v", "readme.txt", 100) // 非 gguf
+	makeVariant(t, base, "a", "v", "readme.txt", 100) // non-gguf
 	if models := scanModelsDir(base); len(models) != 0 {
-		t.Errorf("无 gguf 文件的目录应返回 0 个模型, 实际 %d", len(models))
+		t.Errorf("directory without gguf files should return 0 models, got %d", len(models))
 	}
 }
 
-// TestScanModelsDirGGUFMeta 验证扫描时读取 GGUF 头部元数据覆盖名称与量化。
+// TestScanModelsDirGGUFMeta verifies scanning reads GGUF header metadata to override
+// the model name and quantization.
 func TestScanModelsDirGGUFMeta(t *testing.T) {
 	base := t.TempDir()
 	dir := filepath.Join(base, "qwen", "qwen2.5-7b")
@@ -144,10 +151,10 @@ func TestScanModelsDirGGUFMeta(t *testing.T) {
 
 	models := scanModelsDir(base)
 	if len(models) != 1 {
-		t.Fatalf("扫描到 %d 个模型, want 1", len(models))
+		t.Fatalf("scanned %d models, want 1", len(models))
 	}
 	if models[0].Name != "Qwen2.5-7B-Instruct" {
-		t.Errorf("Name = %q, want Qwen2.5-7B-Instruct（应取 GGUF 元数据）", models[0].Name)
+		t.Errorf("Name = %q, want Qwen2.5-7B-Instruct (should use GGUF metadata)", models[0].Name)
 	}
 	if models[0].Architecture != "Qwen" {
 		t.Errorf("Architecture = %q, want Qwen", models[0].Architecture)
@@ -157,26 +164,27 @@ func TestScanModelsDirGGUFMeta(t *testing.T) {
 	}
 }
 
-// TestScanModelsDirQuantFallback 验证无 GGUF 元数据时从目录名/文件名推断量化。
+// TestScanModelsDirQuantFallback verifies quantization is inferred from the directory
+// name or filename when GGUF metadata is absent.
 func TestScanModelsDirQuantFallback(t *testing.T) {
 	base := t.TempDir()
 	makeVariant(t, base, "bge", "bge-small-zh-v1.5", "model-q8_0.gguf", 100)
 
 	models := scanModelsDir(base)
 	if len(models) != 1 {
-		t.Fatalf("扫描到 %d 个模型, want 1", len(models))
+		t.Fatalf("scanned %d models, want 1", len(models))
 	}
 	if models[0].Name != "bge-small-zh-v1.5" {
 		t.Errorf("Name = %q, want bge-small-zh-v1.5", models[0].Name)
 	}
-	// 目录名不含量化，回退到文件名 model-q8_0.gguf
+	// directory name has no quantization info, fallback to filename model-q8_0.gguf
 	if models[0].Quantization != "Q8_0" {
-		t.Errorf("Quantization = %q, want Q8_0（文件名回退）", models[0].Quantization)
+		t.Errorf("Quantization = %q, want Q8_0 (filename fallback)", models[0].Quantization)
 	}
 }
 
-// makeLooseGGUF 在 base/author 下直接写入一个散 .gguf 文件（两级结构，
-// 对应旧版下载器落地路径 <author>/<file>.gguf）。
+// makeLooseGGUF writes a loose .gguf file directly under base/author (two-level layout,
+// matching the old downloader landing path <author>/<file>.gguf).
 func makeLooseGGUF(t *testing.T, base, author, ggufName string, size int) {
 	t.Helper()
 	dir := filepath.Join(base, author)
@@ -188,33 +196,34 @@ func makeLooseGGUF(t *testing.T, base, author, ggufName string, size int) {
 	}
 }
 
-// TestScanModelsDirTwoLevel 验证 <author>/<file>.gguf 两级结构被识别为模型：
-// 无 GGUF 元数据时名称回退为文件名去掉 .gguf 扩展名，路径指向散文件本身。
+// TestScanModelsDirTwoLevel verifies <author>/<file>.gguf two-level layout is recognized
+// as a model: when GGUF metadata is absent, the name falls back to the filename without
+// the .gguf extension, and the path points to the loose file itself.
 func TestScanModelsDirTwoLevel(t *testing.T) {
 	base := t.TempDir()
 	makeLooseGGUF(t, base, "unsloth", "Qwen3.5-4B-UD-IQ2_XXS.gguf", 100)
 
 	models := scanModelsDir(base)
 	if len(models) != 1 {
-		t.Fatalf("扫描到 %d 个模型, want 1", len(models))
+		t.Fatalf("scanned %d models, want 1", len(models))
 	}
 	if models[0].Name != "Qwen3.5-4B-UD-IQ2_XXS" {
-		t.Errorf("Name = %q, want Qwen3.5-4B-UD-IQ2_XXS（文件名去 .gguf）", models[0].Name)
+		t.Errorf("Name = %q, want Qwen3.5-4B-UD-IQ2_XXS (filename without .gguf)", models[0].Name)
 	}
 	if models[0].Author != "unsloth" {
 		t.Errorf("Author = %q, want unsloth", models[0].Author)
 	}
 	if models[0].Path != filepath.Join(base, "unsloth", "Qwen3.5-4B-UD-IQ2_XXS.gguf") {
-		t.Errorf("Path = %q, want 两级完整路径", models[0].Path)
+		t.Errorf("Path = %q, want full two-level path", models[0].Path)
 	}
 	if models[0].SizeHuman == "" {
-		t.Error("SizeHuman 不应为空")
+		t.Error("SizeHuman must not be empty")
 	}
 }
 
-// TestScanModelsDirTwoLevelGGUFMeta 验证两级结构下读取 GGUF 头部元数据
-// 覆盖名称/架构/量化（与三级 TestScanModelsDirGGUFMeta 共用 buildModelInfo，
-// 行为一致）。
+// TestScanModelsDirTwoLevelGGUFMeta verifies that in a two-level layout, reading GGUF
+// header metadata overrides name/architecture/quantization (shared buildModelInfo behavior
+// is the same as the three-level TestScanModelsDirGGUFMeta).
 func TestScanModelsDirTwoLevelGGUFMeta(t *testing.T) {
 	base := t.TempDir()
 	authorDir := filepath.Join(base, "qwen")
@@ -229,10 +238,10 @@ func TestScanModelsDirTwoLevelGGUFMeta(t *testing.T) {
 
 	models := scanModelsDir(base)
 	if len(models) != 1 {
-		t.Fatalf("扫描到 %d 个模型, want 1", len(models))
+		t.Fatalf("scanned %d models, want 1", len(models))
 	}
 	if models[0].Name != "Qwen2.5-7B-Instruct" {
-		t.Errorf("Name = %q, want Qwen2.5-7B-Instruct（应取 GGUF 元数据）", models[0].Name)
+		t.Errorf("Name = %q, want Qwen2.5-7B-Instruct (should use GGUF metadata)", models[0].Name)
 	}
 	if models[0].Architecture != "Qwen" {
 		t.Errorf("Architecture = %q, want Qwen", models[0].Architecture)
@@ -242,9 +251,10 @@ func TestScanModelsDirTwoLevelGGUFMeta(t *testing.T) {
 	}
 }
 
-// TestScanModelsDirTwoLevelMMProj 验证两级结构下 author 目录中的
-// mmproj-*.gguf 散文件不算主模型（与三级 variant 目录内 mmproj 不充当
-// 主模型一致；两级下 mmproj 散文件无法关联到模型，直接跳过）。
+// TestScanModelsDirTwoLevelMMProj verifies that in a two-level layout, mmproj-*.gguf
+// loose files in the author directory are not treated as primary models (consistent with
+// three-level variant-directory mmproj not acting as primary model; in two-level layout
+// mmproj loose files cannot be associated with a model and are skipped outright).
 func TestScanModelsDirTwoLevelMMProj(t *testing.T) {
 	base := t.TempDir()
 	authorDir := filepath.Join(base, "llava")
@@ -257,26 +267,27 @@ func TestScanModelsDirTwoLevelMMProj(t *testing.T) {
 
 	models := scanModelsDir(base)
 	if len(models) != 0 {
-		t.Errorf("仅 mmproj 散文件应扫到 0 个模型, 实际 %d", len(models))
+		t.Errorf("only mmproj loose files should scan to 0 models, got %d", len(models))
 	}
 }
 
-// TestScanModelsDirMixedLayout 验证两级散 .gguf 与三级 variant 子目录在同一
-// author 目录下共存时都被识别，合并后统一按 SizeBytes 降序排序。
+// TestScanModelsDirMixedLayout verifies that two-level loose .gguf files and three-level
+// variant subdirectories coexist under the same author directory and are both recognized,
+// then uniformly sorted by SizeBytes descending after merging.
 func TestScanModelsDirMixedLayout(t *testing.T) {
 	base := t.TempDir()
-	// 两级散文件（大）
+	// two-level loose file (large)
 	makeLooseGGUF(t, base, "author1", "loose-big.gguf", 2048)
-	// 三级 variant 目录（小）
+	// three-level variant directory (small)
 	makeVariant(t, base, "author1", "variant-small", "small.gguf", 512)
 
 	models := scanModelsDir(base)
 	if len(models) != 2 {
-		t.Fatalf("扫描到 %d 个模型, want 2", len(models))
+		t.Fatalf("scanned %d models, want 2", len(models))
 	}
-	// 按大小降序：2048 > 512，两级与三级产物统一排序
+	// sorted by size descending: 2048 > 512, two-level and three-level outputs sorted uniformly
 	if models[0].Name != "loose-big" {
-		t.Errorf("models[0].Name = %q, want loose-big（两级散文件按大小应排首位）", models[0].Name)
+		t.Errorf("models[0].Name = %q, want loose-big (two-level loose file should rank first by size)", models[0].Name)
 	}
 	if models[1].Name != "variant-small" {
 		t.Errorf("models[1].Name = %q, want variant-small", models[1].Name)

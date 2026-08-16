@@ -12,19 +12,23 @@ import (
 	"time"
 )
 
-// ─── ModelScope API 客户端 ─────────────────────────────────────────
+// ─── ModelScope API Client ─────────────────────────────────────────
 //
-// ModelScope 有两套端点：
-//   - OpenAPI（modelscope.ai/openapi/v1）：模型搜索，返回 {success, data:{models}}；
-//   - Legacy API（modelscope.cn/api/v1/models）：文件列表与文件下载（repo 端点）。
-// 两处 Base 均声明为包级 var 供测试通过替换注入本地 httptest 服务器（与
-// hfMirrorBase 经 *At 参数注入同风格，但 ModelScope 走 var 注入以贴合
-// buildModelDownloadURL 等不传 Base 的调用面）。
+// ModelScope exposes two endpoint sets:
+//   - OpenAPI (modelscope.ai/openapi/v1): model search, returns
+//     {success, data:{models}};
+//   - Legacy API (modelscope.cn/api/v1/models): file listing and file download
+//     (repo endpoint).
+// Both bases are declared as package-level vars so tests can swap in a local
+// httptest server (same style as hfMirrorBase via *At parameters, but
+// ModelScope uses var injection because buildModelDownloadURL and friends do
+// not take a base parameter).
 
 var modelscopeOpenAPIBase = "https://modelscope.ai/openapi/v1"
 var modelscopeLegacyBase = "https://modelscope.cn/api/v1/models"
 
-// modelscopeSearchResponse 是 ModelScope OpenAPI 搜索的顶层响应结构。
+// modelscopeSearchResponse is the top-level response structure for ModelScope
+// OpenAPI search.
 type modelscopeSearchResponse struct {
 	Success bool `json:"success"`
 	Data    struct {
@@ -32,9 +36,10 @@ type modelscopeSearchResponse struct {
 	} `json:"data"`
 }
 
-// modelscopeModel 是 OpenAPI 搜索返回的单个模型项。downloads / likes 在
-// ModelScope 实际响应里可能是数字也可能是数字字符串，用 json.RawMessage 走
-// parseLenientInt 宽松解析，避免类型不匹配导致整条结果丢弃。
+// modelscopeModel is a single model item returned by OpenAPI search.
+// downloads / likes may be numbers or numeric strings in real ModelScope
+// responses, so json.RawMessage is used with parseLenientInt for loose parsing;
+// this avoids discarding entire results due to type mismatches.
 type modelscopeModel struct {
 	Path      string          `json:"Path"`
 	Downloads json.RawMessage `json:"downloads"`
@@ -42,8 +47,10 @@ type modelscopeModel struct {
 	Tags      []string        `json:"tags"`
 }
 
-// parseLenientInt 宽松解析整数：数字直接取值，字符串按 ParseInt 解析，缺失或
-// 非法返回 0。ModelScope 的 downloads/likes 字段类型不稳定，不能依赖 JSON 数值。
+// parseLenientInt loosely parses an integer: takes the number directly, parses
+// strings via ParseInt, and returns 0 when missing or invalid. ModelScope's
+// downloads/likes fields have unstable types, so JSON numerics cannot be
+// relied upon.
 func parseLenientInt(raw json.RawMessage) int {
 	if len(raw) == 0 || string(raw) == "null" {
 		return 0
@@ -62,17 +69,19 @@ func parseLenientInt(raw json.RawMessage) int {
 	return 0
 }
 
-// searchModelScope 使用默认 OpenAPI Base 搜索 ModelScope 模型。
+// searchModelScope searches ModelScope models using the default OpenAPI base.
 func searchModelScope(q string) ([]HFSearchResult, error) {
 	return searchModelScopeAt(modelscopeOpenAPIBase, q)
 }
 
-// searchModelScopeAt 向 ModelScope OpenAPI 搜索接口拉取模型列表
-// （page_number=1&page_size=50）。响应 {success, data:{models:[...]}}：
-// success!=true 返回错误；每个模型映射 modelId=id=Path、author=Path 第一段、
-// downloads/likes 宽松解析、tags 原样映射。**不做 hasGGUF 过滤**：ModelScope
-// 搜索响应不带文件列表，按 hasGGUF 过滤会把结果清空；GGUF 过滤在文件列表
-// 阶段（listModelScopeFilesAt）完成。
+// searchModelScopeAt fetches the model list from the ModelScope OpenAPI search
+// endpoint (page_number=1&page_size=50). Response
+// {success, data:{models:[...]}}: success!=true returns error; each model maps
+// modelId=id=Path, author=first segment of Path, downloads/likes are parsed
+// loosely, tags are passed through. **No hasGGUF filtering here**: ModelScope
+// search responses do not include file lists, so hasGGUF filtering would empty
+// the results; GGUF filtering happens at the file-list stage
+// (listModelScopeFilesAt).
 func searchModelScopeAt(openAPIBase, q string) ([]HFSearchResult, error) {
 	apiURL := fmt.Sprintf("%s/models?search=%s&page_number=1&page_size=50",
 		openAPIBase, url.QueryEscape(q))
@@ -124,16 +133,18 @@ func searchModelScopeAt(openAPIBase, q string) ([]HFSearchResult, error) {
 	return results, nil
 }
 
-// listModelScopeFiles 使用默认 Legacy Base 列出模型仓库文件（仅 GGUF blob）。
+// listModelScopeFiles lists model repo files (GGUF blobs only) using the
+// default Legacy base.
 func listModelScopeFiles(modelID string) ([]HFFileOut, error) {
 	return listModelScopeFilesAt(modelscopeLegacyBase, modelID)
 }
 
-// listModelScopeFilesAt 调用 ModelScope Legacy 文件列表接口
-// `{legacyBase}/{modelID}/repo/files?Recursive=True`。响应
-// {Code: int, Data: {Files: [{Path, Size, Type}]}}；Code!=200 返回错误；
-// 仅保留 Type=="blob" 且小写 .gguf 结尾的条目（GGUF 过滤在文件列表阶段做）；
-// Size 可能是数字或字符串，宽松转 int64。
+// listModelScopeFilesAt calls the ModelScope Legacy file-list endpoint
+// `{legacyBase}/{modelID}/repo/files?Recursive=True`. Response
+// {Code: int, Data: {Files: [{Path, Size, Type}]}}: Code!=200 returns error;
+// only Type=="blob" entries ending with lowercase .gguf are kept (GGUF
+// filtering happens at the file-list stage); Size may be a number or string,
+// loosely converted to int64.
 func listModelScopeFilesAt(legacyBase, modelID string) ([]HFFileOut, error) {
 	apiURL := fmt.Sprintf("%s/%s/repo/files?Recursive=True",
 		legacyBase, url.PathEscape(modelID))
@@ -185,8 +196,9 @@ func listModelScopeFilesAt(legacyBase, modelID string) ([]HFFileOut, error) {
 	return files, nil
 }
 
-// parseLenientInt64 宽松解析 int64：数字直接取值，字符串按 ParseInt 解析，
-// 缺失或非法返回 0（与 parseLenientInt 同一策略，覆盖 Size 字段类型不稳定）。
+// parseLenientInt64 loosely parses an int64: takes the number directly, parses
+// strings via ParseInt, and returns 0 when missing or invalid (same strategy
+// as parseLenientInt, covering unstable Size field types).
 func parseLenientInt64(raw json.RawMessage) int64 {
 	if len(raw) == 0 || string(raw) == "null" {
 		return 0
@@ -205,22 +217,25 @@ func parseLenientInt64(raw json.RawMessage) int64 {
 	return 0
 }
 
-// buildModelScopeDownloadURL 拼接 ModelScope 文件下载 URL：
-// `{legacyBase}/{PathEscape(modelID)}/repo?Revision=master&FilePath={PathEscape(fileName)}`。
+// buildModelScopeDownloadURL builds a ModelScope file download URL:
+// `{legacyBase}/{PathEscape(modelID)}/repo?Revision=master&FilePath={PathEscape(fileName)}`.
 func buildModelScopeDownloadURL(legacyBase, modelID, fileName string) string {
 	return fmt.Sprintf("%s/%s/repo?Revision=master&FilePath=%s",
 		legacyBase, url.PathEscape(modelID), url.PathEscape(fileName))
 }
 
-// getModelScopeDescription 使用默认 Legacy Base 获取模型 README 描述。
+// getModelScopeDescription fetches a model README description using the
+// default Legacy base.
 func getModelScopeDescription(modelID string) (string, error) {
 	return getModelScopeDescriptionAt(modelscopeLegacyBase, modelID)
 }
 
-// getModelScopeDescriptionAt 通过 repo 端点（FilePath=README.md）获取模型
-// README 正文，交给共享的 extractDescription 提取自然语言描述（跳过 YAML
-// front-matter + 取首个非空非 # 段落 + 200 rune 截断，与 HF 一致）。
-// 非 200 返回错误；README 存在但没有描述段落时返回空串与 nil（静默）。
+// getModelScopeDescriptionAt fetches the README of a model via the repo
+// endpoint (FilePath=README.md), then passes it to the shared
+// extractDescription to extract natural-language description (skips YAML
+// front-matter + takes first non-empty non-# paragraph + 200 rune truncation,
+// matching HF behavior). Non-200 returns error; README present but without a
+// description paragraph returns empty string and nil (silent).
 func getModelScopeDescriptionAt(legacyBase, modelID string) (string, error) {
 	apiURL := buildModelScopeDownloadURL(legacyBase, modelID, "README.md")
 
