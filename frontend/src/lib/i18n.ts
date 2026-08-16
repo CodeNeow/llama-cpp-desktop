@@ -155,6 +155,13 @@ const messages: Record<Locale, Record<string, string>> = {
     'downloads.statusCancelled': '已取消',
     'downloads.sourceHf': 'HF 镜像',
     'downloads.sourceModelScope': 'ModelScope',
+    'downloads.back': '返回',
+    'downloads.deselectAll': '取消全选',
+    'downloads.descTitle': '模型说明',
+    'downloads.noDesc': '暂无说明',
+    'downloads.selectedCount': '已选 {n} 个文件',
+    'downloads.viewDetail': '查看详情',
+    'downloads.fileCount': '{n} 个文件',
 
     // ─── 监控（Api.vue 内嵌） ───
     'monitor.title': '监控',
@@ -488,6 +495,13 @@ const messages: Record<Locale, Record<string, string>> = {
     'downloads.statusCancelled': 'Cancelled',
     'downloads.sourceHf': 'HF Mirror',
     'downloads.sourceModelScope': 'ModelScope',
+    'downloads.back': 'Back',
+    'downloads.deselectAll': 'Deselect all',
+    'downloads.descTitle': 'Description',
+    'downloads.noDesc': 'No description',
+    'downloads.selectedCount': '{n} files selected',
+    'downloads.viewDetail': 'View detail',
+    'downloads.fileCount': '{n} files',
 
     // ─── Monitor (embedded in Api.vue) ───
     'monitor.title': 'Monitor',

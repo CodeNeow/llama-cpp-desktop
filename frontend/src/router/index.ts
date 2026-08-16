@@ -4,6 +4,7 @@ import Models from '../views/Models.vue'
 import Api from '../views/Api.vue'
 import Downloads from '../views/Downloads.vue'
 import Settings from '../views/Settings.vue'
+import ModelDetail from '../views/ModelDetail.vue'
 
 const routes = [
   {
@@ -17,6 +18,14 @@ const routes = [
     name: 'Downloads',
     component: Downloads,
     meta: { title: '下载', icon: 'download' }
+  },
+  {
+    // 下载页子页面：搜索结果 → 模型详情（文件列表 + 描述），不添加到侧边栏导航。
+    // modelId 可能含斜杠（如 org/name），用 encodeURIComponent 导航，此处自动解码。
+    path: '/downloads/model/:modelId',
+    name: 'ModelDetail',
+    component: ModelDetail,
+    meta: { title: '模型详情' }
   },
   {
     path: '/models',

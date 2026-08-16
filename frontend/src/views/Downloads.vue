@@ -37,8 +37,8 @@
           v-for="r in searchResults"
           :key="r.modelId"
           class="result-card"
-          :class="{ expanded: expandedModel === r.modelId }"
-          @click="toggleModel(r)"
+          @click="goToDetail(r.modelId)"
+          :title="t('downloads.viewDetail')"
         >
           <div class="result-main">
             <div class="result-icon">
@@ -56,40 +56,7 @@
                 <span v-if="modelSizes[r.modelId]" class="result-size">💾 {{ formatBytes(modelSizes[r.modelId]) }}</span>
               </div>
             </div>
-            <span class="result-arrow" :class="{ open: expandedModel === r.modelId }">▾</span>
-          </div>
-
-          <!-- Expanded: description + file list -->
-          <div v-if="expandedModel === r.modelId" class="result-files" @click.stop>
-            <div v-if="descriptionsLoading[r.modelId]" class="result-desc">{{ t('downloads.loadingDesc') }}</div>
-            <div v-else-if="modelDescriptions[r.modelId]" class="result-desc">{{ modelDescriptions[r.modelId] }}</div>
-            <div v-if="modelFilesLoading[r.modelId]" class="files-loading">{{ t('downloads.loadingFiles') }}</div>
-            <div v-else-if="modelFiles[r.modelId] && modelFiles[r.modelId].length > 0" class="files-list">
-              <label
-                v-for="f in sortedFiles(modelFiles[r.modelId])"
-                :key="f.filename"
-                class="file-item"
-                :class="{ selected: selectedFiles[r.modelId]?.includes(f.filename) }"
-              >
-                <input
-                  type="checkbox"
-                  :checked="selectedFiles[r.modelId]?.includes(f.filename)"
-                  @change="toggleFile(r.modelId, f.filename)"
-                />
-                <span class="file-name">{{ f.filename }}</span>
-                <span v-if="guessQuant(f.filename)" class="file-quant">{{ guessQuant(f.filename) }}</span>
-                <span class="file-size" v-if="f.size">{{ formatBytes(f.size) }}</span>
-              </label>
-              <div class="files-actions">
-                <button class="select-all-btn" @click="selectAllFiles(r.modelId)">{{ t('downloads.selectAll') }}</button>
-                <button
-                  class="download-files-btn"
-                  :disabled="!selectedFiles[r.modelId]?.length"
-                  @click="startDownload(r.modelId)"
-                >{{ t('downloads.downloadSelected') }}</button>
-              </div>
-            </div>
-            <div v-else class="files-empty">{{ t('downloads.noFiles') }}</div>
+            <span class="result-arrow">›</span>
           </div>
         </div>
       </div>
@@ -168,8 +135,9 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import {
-  searchDownloads, getModelFiles, getModelDescription, getModelMaxFileSize, startDownload as startHFDownload, getDownloadTasks,
+  searchDownloads, getModelMaxFileSize, getDownloadTasks,
   cancelDownloadTask, retryDownloadTask, pauseDownloadTask, resumeDownloadTask, refreshModels, getDownloadSource
 } from '../wails'
 import { formatSpeed, formatBytes } from '../lib/format'
@@ -187,11 +155,6 @@ interface HFResult {
   tags?: string[]
 }
 
-interface HFFile {
-  filename: string
-  size?: number
-}
-
 interface DlTask {
   id: string
   modelId: string
@@ -206,6 +169,8 @@ interface DlTask {
   speed: number
 }
 
+const router = useRouter()
+
 const searchQuery = ref('')
 const searching = ref(false)
 const searched = ref(false)
@@ -213,32 +178,20 @@ const searchResults = ref<HFResult[]>([])
 // 当前下载源（"hf" | "modelscope"），挂载时从后端读取，切换由设置页完成
 const downloadSource = ref('')
 const sourceLabel = computed(() => downloadSource.value === 'modelscope' ? t('downloads.sourceModelScope') : t('downloads.sourceHf'))
-// 模型大小缓存：值为最大 GGUF 文件字节数，0 表示已尝试查询（无 GGUF 或失败），
-// 用于避免重复请求；按 modelId 缓存，跨搜索复用
+// 模型大小缓存：值为最大 GGUF 文件字节数，0 表示已尝试查询（无 GGUF 或失败）
 const modelSizes = reactive<Record<string, number>>({})
-// 搜索卡片大小批量请求的并发受限队列：每轮搜索重建实例，避免旧任务堆积
+// 搜索卡片大小批量请求的并发受限队列
 let sizeQueue = new LimitedQueue(4)
-const expandedModel = ref('')
-const modelFiles = reactive<Record<string, HFFile[]>>({})
-const modelFilesLoading = reactive<Record<string, boolean>>({})
-const selectedFiles = reactive<Record<string, string[]>>({})
-// 模型描述懒加载缓存：描述文本与加载中标记按 modelId 记录，避免展开时重复请求
-const modelDescriptions = reactive<Record<string, string>>({})
-const descriptionsLoading = reactive<Record<string, boolean>>({})
 
 const tasks = ref<DlTask[]>([])
 let taskPollTimer: ReturnType<typeof setInterval> | null = null
 let lastDoneCount = 0
 
-// 下载任务 Modal：仅控制面板显示/隐藏，不影响后台 1 秒轮询
+// 下载任务 Modal
 const showTasksModal = ref(false)
-// 活跃任务数（downloading/paused/queued），驱动下载按钮角标；fetchTasks 更新 tasks 后自动刷新
 const activeTaskCount = computed(() => countActiveTasks(tasks.value))
-// 弹窗展示用任务列表：过滤掉已取消任务，用户主动取消后不再展示（重试入口保留给 error/done）
 const visibleTaskList = computed(() => visibleTasks(tasks.value))
 
-// 下载任务状态 → 文案映射：用 computed 包裹使 t() 在 locale 切换后重新求值，
-// 保证切语言时状态标签即时更新（computed ref 在模板中自动解包，无需改模板）
 const statusMap = computed<Record<string, string>>(() => ({
   queued: t('downloads.statusQueued'),
   downloading: t('downloads.statusDownloading'),
@@ -261,23 +214,8 @@ function taskBarClass(status: string): string {
   return ''
 }
 
-function sortedFiles(files: HFFile[]): HFFile[] {
-  // ModelScope 源的文件可能缺 size，按 0 兜底排序避免 NaN
-  return [...files].sort((a, b) => (b.size || 0) - (a.size || 0))
-}
-
-function guessQuant(filename: string): string {
-  const name = filename.toLowerCase()
-  const quants = [
-    'Q8_K', 'Q8_0', 'Q6_K', 'Q5_K_M', 'Q5_K_S', 'Q5_1', 'Q5_0',
-    'Q4_K_M', 'Q4_K_S', 'Q4_1', 'Q4_0', 'Q3_K_L', 'Q3_K_M', 'Q3_K_S',
-    'Q2_K', 'IQ4_NL', 'IQ4_XS', 'IQ3_M', 'IQ3_S', 'IQ3_XXS', 'IQ2_XS', 'IQ2_XXS',
-    'F16', 'F32', 'BF16',
-  ]
-  for (const q of quants) {
-    if (name.includes(q.toLowerCase())) return q
-  }
-  return ''
+function goToDetail(modelId: string) {
+  router.push('/downloads/model/' + encodeURIComponent(modelId))
 }
 
 const searchGate = new LatestOnly()
@@ -288,9 +226,8 @@ async function doSearch() {
   searched.value = true
   try {
     const results = await searchDownloads(searchQuery.value, 'all')
-    if (!searchGate.isLatest(seq)) return  // 过期结果丢弃（#15）
+    if (!searchGate.isLatest(seq)) return
     searchResults.value = results || []
-    // 新搜索重建大小队列：旧队列任务让其在缓存保护下自然结束
     sizeQueue = new LimitedQueue(4)
     for (const r of searchResults.value) loadModelSize(r.modelId)
   } catch {} finally {
@@ -298,88 +235,27 @@ async function doSearch() {
   }
 }
 
-// loadModelSize 惰性获取模型最大 GGUF 大小并写入缓存：并发受限队列控制
-// 请求峰值（搜索可返回 200 个模型，不能全部同时请求）；modelSizes 缓存
-// 保证同一模型只查询一次，失败或为 0 不再重试（卡片不显示大小）。
 function loadModelSize(modelId: string) {
   if (modelId in modelSizes) return
-  modelSizes[modelId] = 0 // 占位：标记已尝试，避免重复入队
+  modelSizes[modelId] = 0
   sizeQueue.push(async () => {
     try {
       const size = await getModelMaxFileSize(modelId)
       if (size > 0) modelSizes[modelId] = size
     } catch {
-      // 查询失败静默忽略，卡片不显示大小
+      // 查询失败静默忽略
     }
   })
-}
-
-async function toggleModel(r: HFResult) {
-  if (expandedModel.value === r.modelId) {
-    expandedModel.value = ''
-    return
-  }
-  expandedModel.value = r.modelId
-
-  // 模型描述懒加载：已加载过则跳过；失败/为空静默忽略，不阻塞文件列表
-  if (!modelDescriptions[r.modelId] && !descriptionsLoading[r.modelId]) {
-    descriptionsLoading[r.modelId] = true
-    getModelDescription(r.modelId)
-      .then(desc => {
-        if (desc) modelDescriptions[r.modelId] = desc
-      })
-      .catch(() => {})
-      .finally(() => { descriptionsLoading[r.modelId] = false })
-  }
-
-  if (!modelFiles[r.modelId]) {
-    modelFilesLoading[r.modelId] = true
-    try {
-      const files = await getModelFiles(r.modelId)
-      modelFiles[r.modelId] = files || []
-      selectedFiles[r.modelId] = []
-    } catch {} finally {
-      modelFilesLoading[r.modelId] = false
-    }
-  }
-}
-
-function toggleFile(modelId: string, filename: string) {
-  const arr = selectedFiles[modelId] || []
-  const idx = arr.indexOf(filename)
-  if (idx >= 0) {
-    selectedFiles[modelId] = arr.filter(f => f !== filename)
-  } else {
-    selectedFiles[modelId] = [...arr, filename]
-  }
-}
-
-function selectAllFiles(modelId: string) {
-  const files = modelFiles[modelId]
-  if (!files) return
-  selectedFiles[modelId] = files.map(f => f.filename)
-}
-
-async function startDownload(modelId: string) {
-  const sel = selectedFiles[modelId]
-  if (!sel || sel.length === 0) return
-  try {
-    await startHFDownload(modelId, sel)
-    expandedModel.value = ''
-    ensurePolling()
-  } catch {}
 }
 
 async function fetchTasks() {
   try {
     tasks.value = await getDownloadTasks() || []
-    // 检测到新增完成任务时强制重扫模型列表（#18）
     const doneCount = tasks.value.filter(t => t.status === 'done').length
     if (doneCount > lastDoneCount) {
       lastDoneCount = doneCount
       refreshModels().catch(() => {})
     }
-    // 全部任务进入终态后停止轮询（#16）
     if (!hasActiveTask(tasks.value) && taskPollTimer) {
       clearInterval(taskPollTimer)
       taskPollTimer = null
@@ -415,7 +291,6 @@ async function resumeTask(id: string) {
   } catch {}
 }
 
-/** 启动新下载或手动操作后：轮询已停止则重启，否则立即刷新一次（#16） */
 function ensurePolling() {
   if (taskPollTimer) {
     fetchTasks()
@@ -429,7 +304,6 @@ function startTaskPolling() {
   fetchTasks()
 }
 
-/** 挂载时读取当前下载源；失败时静默保持默认 "hf"（HF 镜像） */
 async function loadDownloadSource() {
   try {
     const source = await getDownloadSource()
@@ -446,12 +320,10 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
 
 <style scoped>
 .page {
-  /* 无顶部内边距：页头贴内容区顶，标题顶部与侧边栏 logo 图标平齐（见 global.css .page-header） */
   padding: 0 48px 60px;
 }
 
 .page-header {
-  /* 用 padding 而非 margin：页头背景覆盖该间距，内容滚过时不留缝 */
   padding-bottom: 28px;
 }
 
@@ -578,10 +450,6 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
   border-color: var(--overlay-10);
 }
 
-.result-card.expanded {
-  border-color: rgba(99, 102, 241, 0.2);
-}
-
 .result-main {
   display: flex;
   align-items: center;
@@ -642,134 +510,9 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
 
 .result-arrow {
   color: var(--text-dim);
-  font-size: 14px;
-  transition: transform 0.2s;
+  font-size: 18px;
   flex-shrink: 0;
-}
-
-.result-arrow.open {
-  transform: rotate(180deg);
-}
-
-/* ─── File list ─── */
-.result-files {
-  border-top: 1px solid var(--border);
-  padding: 14px 18px;
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.result-desc {
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--text-dim);
-  margin-bottom: 12px;
-  padding: 10px 12px;
-  background: var(--bg-card);
-  border-radius: 8px;
-}
-
-.files-loading, .files-empty {
-  font-size: 13px;
-  color: var(--text-dim);
-  padding: 8px 0;
-}
-
-.files-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.file-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 10px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.15s;
-  font-size: 13px;
-}
-
-.file-item:hover {
-  background: var(--bg-card);
-}
-
-.file-item.selected {
-  background: rgba(99, 102, 241, 0.08);
-}
-
-.file-item input {
-  accent-color: #6366f1;
-  flex-shrink: 0;
-}
-
-.file-name {
-  flex: 1;
-  color: var(--text-secondary);
-  word-break: break-all;
-}
-
-.file-size {
-  color: var(--text-dim);
-  font-size: 11px;
-  flex-shrink: 0;
-}
-
-.file-quant {
-  background: rgba(34, 197, 94, 0.1);
-  color: #4ade80;
-  padding: 1px 7px;
-  border-radius: 4px;
-  font-size: 10px;
-  font-weight: 600;
-  flex-shrink: 0;
-  letter-spacing: 0.3px;
-}
-
-.files-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--border-light);
-}
-
-.select-all-btn {
-  padding: 6px 14px;
-  background: transparent;
-  border: 1px solid var(--overlay-10);
-  border-radius: 6px;
-  color: var(--text-muted);
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.select-all-btn:hover {
-  border-color: var(--overlay-20);
-  color: var(--text-primary);
-}
-
-.download-files-btn {
-  padding: 6px 18px;
-  background: rgba(99, 102, 241, 0.15);
-  color: #a78bfa;
-  border: 1px solid rgba(99, 102, 241, 0.25);
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.download-files-btn:hover:not(:disabled) {
-  background: rgba(99, 102, 241, 0.25);
-}
-
-.download-files-btn:disabled {
-  opacity: 0.4;
-  cursor: default;
+  line-height: 1;
 }
 
 /* ─── Tasks ─── */
