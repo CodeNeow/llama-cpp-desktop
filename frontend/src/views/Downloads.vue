@@ -1,12 +1,13 @@
 <template>
   <div class="page">
-    <div class="page-header">
-      <h1 class="page-title">{{ t('downloads.title') }}</h1>
-      <p class="page-subtitle">{{ t('downloads.subtitle', { source: sourceLabel }) }}</p>
-    </div>
+    <div class="sticky-top">
+      <div class="page-header">
+        <h1 class="page-title">{{ t('downloads.title') }}</h1>
+        <p class="page-subtitle">{{ t('downloads.subtitle', { source: sourceLabel }) }}</p>
+      </div>
 
-    <!-- Search bar -->
-    <div class="search-bar">
+      <!-- Search bar -->
+      <div class="search-bar">
       <div class="search-input-wrap">
         <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -25,6 +26,7 @@
         {{ t('downloads.download') }}
         <span v-if="activeTaskCount > 0" class="task-badge">{{ activeTaskCount }}</span>
       </button>
+    </div>
     </div>
 
     <!-- Search results -->
@@ -104,13 +106,13 @@
       <div v-if="showTasksModal" class="modal-overlay" @click.self="showTasksModal = false">
         <div class="modal-panel">
           <div class="modal-header">
-            <h2 class="modal-title">{{ t('downloads.tasksTitle', { n: tasks.length }) }}</h2>
+            <h2 class="modal-title">{{ t('downloads.tasksTitle', { n: visibleTaskList.length }) }}</h2>
             <button class="modal-close" @click="showTasksModal = false" :title="t('downloads.close')">✕</button>
           </div>
           <div class="modal-body">
-            <div v-if="tasks.length === 0" class="tasks-empty">{{ t('downloads.noTasks') }}</div>
+            <div v-if="visibleTaskList.length === 0" class="tasks-empty">{{ t('downloads.noTasks') }}</div>
             <div v-else class="task-list">
-              <div v-for="task in tasks" :key="task.id" class="task-card">
+              <div v-for="task in visibleTaskList" :key="task.id" class="task-card">
                 <div class="task-info">
                   <span class="task-name">{{ task.fileName }}</span>
                   <span class="task-model">{{ task.modelId }}</span>
@@ -172,7 +174,7 @@ import {
 } from '../wails'
 import { formatSpeed, formatBytes } from '../lib/format'
 import { LatestOnly } from '../lib/latestOnly'
-import { hasActiveTask, countActiveTasks } from '../lib/taskStatus'
+import { hasActiveTask, countActiveTasks, visibleTasks } from '../lib/taskStatus'
 import { LimitedQueue } from '../lib/limitedQueue'
 import { t } from '../lib/i18n'
 
@@ -232,6 +234,8 @@ let lastDoneCount = 0
 const showTasksModal = ref(false)
 // 活跃任务数（downloading/paused/queued），驱动下载按钮角标；fetchTasks 更新 tasks 后自动刷新
 const activeTaskCount = computed(() => countActiveTasks(tasks.value))
+// 弹窗展示用任务列表：过滤掉已取消任务，用户主动取消后不再展示（重试入口保留给 error/done）
+const visibleTaskList = computed(() => visibleTasks(tasks.value))
 
 // 下载任务状态 → 文案映射：用 computed 包裹使 t() 在 locale 切换后重新求值，
 // 保证切语言时状态标签即时更新（computed ref 在模板中自动解包，无需改模板）

@@ -1,23 +1,25 @@
 <template>
   <div class="page">
-    <div class="page-header">
-      <div class="page-header-text">
-        <h1 class="page-title">{{ t('models.title') }}</h1>
-        <p class="page-subtitle">
-          <template v-if="models.length">{{ t('models.count', { n: models.length }) }}</template>
-          <template v-else>{{ t('models.hint') }}</template>
-        </p>
+    <div class="sticky-top">
+      <div class="page-header">
+        <div class="page-header-text">
+          <h1 class="page-title">{{ t('models.title') }}</h1>
+          <p class="page-subtitle">
+            <template v-if="models.length">{{ t('models.count', { n: models.length }) }}</template>
+            <template v-else>{{ t('models.hint') }}</template>
+          </p>
+        </div>
+        <button class="refresh-btn" :disabled="loading" :title="t('models.refreshTitle')" @click="fetchModels(true)">{{ t('models.refresh') }}</button>
       </div>
-      <button class="refresh-btn" :disabled="loading" :title="t('models.refreshTitle')" @click="fetchModels(true)">{{ t('models.refresh') }}</button>
-    </div>
 
-    <!-- 模型目录 -->
-    <div class="dir-bar">
+      <!-- 模型目录 -->
+      <div class="dir-bar">
       <div class="dir-info">
         <span class="dir-label">{{ t('models.dir') }}</span>
         <span class="dir-value">{{ modelsDir || t('models.dirNotSet') }}</span>
       </div>
       <button class="dir-btn" :title="t('models.chooseDirTitle')" @click="chooseModelsDir">{{ t('models.chooseDir') }}</button>
+    </div>
     </div>
 
     <!-- Loading skeleton -->

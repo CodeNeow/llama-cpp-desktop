@@ -7,3 +7,8 @@ export function hasActiveTask(tasks: { status: string }[]): boolean {
 export function countActiveTasks(tasks: { status: string }[]): number {
   return tasks.filter(t => t.status === 'downloading' || t.status === 'paused' || t.status === 'queued').length
 }
+
+/** 弹窗展示用任务列表：过滤掉已取消（用户主动取消，不再展示；重试入口保留给 error/done） */
+export function visibleTasks<T extends { status: string }>(tasks: T[]): T[] {
+  return tasks.filter(t => t.status !== 'cancelled')
+}

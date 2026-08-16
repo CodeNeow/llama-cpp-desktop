@@ -1,8 +1,10 @@
 <template>
   <div class="page">
-    <div class="page-header">
-      <h1 class="page-title">{{ t('settings.title') }}</h1>
-      <p class="page-subtitle">{{ t('settings.subtitle') }}</p>
+    <div class="sticky-top">
+      <div class="page-header">
+        <h1 class="page-title">{{ t('settings.title') }}</h1>
+        <p class="page-subtitle">{{ t('settings.subtitle') }}</p>
+      </div>
     </div>
 
     <!-- UI Style -->

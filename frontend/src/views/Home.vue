@@ -1,8 +1,10 @@
 <template>
   <div class="page">
-    <div class="page-header">
-      <h1 class="page-title">{{ t('home.title') }}</h1>
-      <p class="page-subtitle">{{ t('home.subtitle') }}</p>
+    <div class="sticky-top">
+      <div class="page-header">
+        <h1 class="page-title">{{ t('home.title') }}</h1>
+        <p class="page-subtitle">{{ t('home.subtitle') }}</p>
+      </div>
     </div>
 
     <!-- Loading skeleton -->

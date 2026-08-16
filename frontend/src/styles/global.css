@@ -123,12 +123,17 @@ code, pre {
   margin-right: auto;
 }
 
-/* 固定页头：内容滚动时从页头下方穿过，背景取页面底色避免透底 */
+/* 页头本身样式：sticky 职责由外层 .sticky-top 承担 */
 .page-header {
+  padding-top: 0;
+}
+
+/* 页头（及需要随页头固定的操作区）的外层容器：滚动时整体贴内容区顶。
+   display:flow-root 防止子元素 margin 塌陷出容器导致滚动内容透缝 */
+.sticky-top {
   position: sticky;
   top: 0;
   z-index: 20;
   background: var(--bg-primary);
-  /* 顶距为 0：标题文字顶部与侧边栏 logo 图标顶部平齐（36px 标题栏之下已是最上限）；sticky 零位移不变 */
-  padding-top: 0;
+  display: flow-root;
 }

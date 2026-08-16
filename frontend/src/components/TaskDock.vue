@@ -266,15 +266,15 @@ onUnmounted(() => {
 <style scoped>
 .task-dock {
   position: fixed;
-  right: 20px;
-  bottom: 20px;
-  width: 340px;
-  max-height: 60vh;
+  right: 16px;
+  bottom: 16px;
+  width: 300px;
+  max-height: 50vh;
   z-index: 50;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 14px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+  border-radius: 12px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -285,13 +285,13 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--border-light);
   flex-shrink: 0;
 }
 
 .dock-title {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--text-primary);
 }
@@ -300,9 +300,9 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
   border: none;
   background: transparent;
   color: var(--text-dim);
@@ -316,7 +316,7 @@ onUnmounted(() => {
 }
 
 .dock-section {
-  padding: 10px 14px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--border-light);
 }
 
@@ -325,18 +325,18 @@ onUnmounted(() => {
 }
 
 .dock-section-title {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.4px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .dock-task {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   padding: 6px 0;
 }
 
@@ -354,7 +354,7 @@ onUnmounted(() => {
 }
 
 .dock-task-name {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   color: var(--text-secondary);
   overflow: hidden;
@@ -364,7 +364,7 @@ onUnmounted(() => {
 }
 
 .dock-task-status {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 500;
   flex-shrink: 0;
 }
@@ -382,7 +382,7 @@ onUnmounted(() => {
 .dock-bar-wrap {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .dock-bar {
@@ -405,7 +405,7 @@ onUnmounted(() => {
 }
 
 .dock-percent {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   color: #a78bfa;
   min-width: 32px;
@@ -430,13 +430,13 @@ onUnmounted(() => {
 .dock-model-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .dock-model-badge {
   display: inline-flex;
   align-items: center;
-  padding: 1px 8px;
+  padding: 1px 6px;
   border-radius: 10px;
   font-size: 10px;
   font-weight: 700;
@@ -477,19 +477,19 @@ onUnmounted(() => {
   white-space: nowrap;
   min-width: 0;
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
-  font-size: 11px;
+  font-size: 10px;
 }
 
 .dock-model-status {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text-dim);
   flex-shrink: 0;
 }
 
 .dock-unload-btn {
-  padding: 3px 10px;
+  padding: 2px 8px;
   border-radius: 6px;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 500;
   cursor: pointer;
   border: 1px solid rgba(239, 68, 68, 0.2);
@@ -514,7 +514,7 @@ onUnmounted(() => {
   padding: 6px 10px;
   background: rgba(239, 68, 68, 0.06);
   border-radius: 6px;
-  font-size: 11px;
+  font-size: 10px;
   color: #ef4444;
 }
 </style>

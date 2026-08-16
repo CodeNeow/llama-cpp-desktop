@@ -1,12 +1,13 @@
 <template>
   <div class="page">
-    <div class="page-header">
-      <h1 class="page-title">{{ t('api.title') }}</h1>
-      <p class="page-subtitle">{{ t('api.subtitle') }}</p>
-    </div>
+    <div class="sticky-top">
+      <div class="page-header">
+        <h1 class="page-title">{{ t('api.title') }}</h1>
+        <p class="page-subtitle">{{ t('api.subtitle') }}</p>
+      </div>
 
-    <!-- 顶部操作栏：状态灯 + 状态文字 + URL + 按钮组 -->
-    <section class="status-card toolbar">
+      <!-- 顶部操作栏：状态灯 + 状态文字 + URL + 按钮组 -->
+      <section class="status-card toolbar">
       <div class="status-indicator">
         <span class="status-dot" :class="serverRunning ? 'running' : 'stopped'"></span>
         <span class="status-text">{{ serverRunning ? t('api.running') : t('api.stopped') }}</span>
@@ -27,7 +28,8 @@
           {{ t('api.restart') }}
         </button>
       </div>
-    </section>
+      </section>
+    </div>
 
     <!-- 主区两栏：左日志控制台 + 右监控卡片 -->
     <div class="monitor-grid">
