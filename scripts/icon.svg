@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Llama Desktop 应用图标源文件（512×512）
-  品牌元素与 frontend/src/components/Sidebar.vue 的 logo 一致：
-  紫色对角渐变圆角方块 + 白色 llama 脸线条。
-  重新生成构建资源：
-    1. 渲染为 512×512 PNG（如 sharp/Inkscape/Photoshop）
-    2. 覆盖 build/appicon.png 后运行 `wails generate icon`
+  Llama Desktop app icon source (512x512)
+  Brand elements match frontend/src/components/Sidebar.vue logo:
+  purple diagonal gradient rounded square + white llama face lines.
+  Regenerate build assets:
+    1. Render to 512x512 PNG (e.g. sharp/Inkscape/Photoshop)
+    2. Overwrite build/appicon.png then run `wails generate icon`
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
@@ -19,15 +19,15 @@
     </radialGradient>
   </defs>
 
-  <!-- 圆角背景 -->
+  <!-- rounded background -->
   <rect x="0" y="0" width="512" height="512" rx="112" fill="url(#bg)"/>
-  <!-- 顶部柔光，增加立体感 -->
+  <!-- top soft glow for depth -->
   <rect x="0" y="0" width="512" height="512" rx="112" fill="url(#glow)"/>
 
-  <!-- llama 脸（白色线条，圆头圆角） -->
+  <!-- llama face (white strokes, round head and corners) -->
   <g fill="none" stroke="#ffffff" stroke-width="36" stroke-linecap="round" stroke-linejoin="round">
     <path d="M160 318 L256 128 L352 318"/>
   </g>
-  <!-- 下颌 -->
+  <!-- jaw -->
   <circle cx="256" cy="372" r="30" fill="#ffffff"/>
 </svg>

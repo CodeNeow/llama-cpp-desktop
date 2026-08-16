@@ -85,8 +85,8 @@ jobs:
       - name: Add makensis to PATH
         shell: pwsh
         run: |
-          # choco 只更新注册表 PATH，当前 job 的进程环境不会自动刷新，
-          # 动态定位 makensis 并写入 $GITHUB_PATH 供后续步骤使用
+          # choco only updates registry PATH; the current job's process environment does not auto-refresh,
+          # dynamically locate makensis and write to $GITHUB_PATH for subsequent steps
           $mk = Get-ChildItem "$env:ProgramFiles", "${env:ProgramFiles(x86)}" `
             -Filter makensis.exe -Recurse -Depth 3 -ErrorAction SilentlyContinue |
             Select-Object -First 1
@@ -94,9 +94,9 @@ jobs:
           Write-Host "Found makensis: $($mk.FullName)"
           Add-Content $env:GITHUB_PATH $mk.DirectoryName
       - name: Sync version file from tag
-        # 发布版本以 git tag 为唯一来源：推送 v* tag 时把 tag 写入
-        # core/VERSION（编译时 embed），保证应用内版本号与发布版本一致。
-        # 非 tag 构建（普通 push / 手动触发）使用仓库中的 core/VERSION 默认值。
+        # Release version uses git tag as sole source: push v* tag writes tag to
+        # core/VERSION (embedded at compile time), ensuring in-app version matches release.
+        # Non-tag builds (regular push / manual trigger) use repo's core/VERSION default.
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
         run: echo "$GITHUB_REF_NAME" > core/VERSION
@@ -105,7 +105,7 @@ jobs:
       - name: Rename artifacts with version
         shell: bash
         run: |
-          # 版本号来源：tag 构建用 tag（如 v0.1.6）；非 tag 构建回退 core/VERSION
+          # version source matches windows job: tag build uses tag (e.g. v0.1.6);
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             VER="$GITHUB_REF_NAME"
           else
@@ -126,12 +126,11 @@ jobs:
             build/bin/llama-desktop-setup-*.exe
 
   build-linux:
-    # 构建 Ubuntu 20.04 / 22.04 / 24.04 的 .deb 安装包。
-    # 注意：GitHub 托管的 ubuntu-20.04 runner 已退役，三个发行版统一在各自
-    # 的 ubuntu 容器中构建，保证二进制与 glibc / 依赖版本一致；同时 20.04 仓库
-    # 只有 libwebkit2gtk-4.0-dev 且版本为 2.38（< 2.40），构建时需追加
-    # webkit2_36 tag（wails 用 Go 层兜底 http body）；22.04 / 24.04 使用
-    # libwebkit2gtk-4.1-dev，需追加 webkit2_41 tag。
+    # Build Ubuntu 20.04 / 22.04 / 24.04 .deb packages.
+    # Note: GitHub-hosted ubuntu-20.04 runner is retired; all three distros build in their respective
+    # ubuntu containers for consistent binary / glibc / dependency versions. 20.04 repo only has
+    # libwebkit2gtk-4.0-dev at 2.38 (< 2.40), requiring webkit2_36 tag (wails Go-layer fallback);
+    # 22.04 / 24.04 use libwebkit2gtk-4.1-dev, requiring webkit2_41 tag.
     runs-on: ubuntu-latest
     needs: frontend
     strategy:
@@ -158,9 +157,9 @@ jobs:
       TZ: Etc/UTC
     steps:
       - name: Bootstrap Node 20 in container
-        # 容器镜像不预装 node，而 actions/*（checkout / setup-go / artifact）都需要
-        # node 运行时；因此第一步必须是纯 run 的 Node bootstrap（NodeSource node 20），
-        # 之后才能使用各 actions。20.04 容器是 GitHub 托管 runner 退役后的替代方案。
+        # Container image does not preinstall node, but actions/* (checkout / setup-go / artifact) need
+        # node runtime; first step must be pure-run Node bootstrap (NodeSource node 20),
+        # then actions can be used. 20.04 container is replacement for retired GitHub-hosted runner.
         run: |
           apt-get update
           apt-get install -y ca-certificates curl gnupg
@@ -171,15 +170,15 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Download frontend build
-        # 复用 frontend job 的 frontend/dist（go:embed 编译依赖），Linux 构建不跑 npm
+          # Reuse frontend job's frontend/dist (go:embed compile dependency), Linux build skips npm
         uses: actions/download-artifact@v4
         with:
           name: frontend-dist
           path: frontend/dist
 
       - name: Install GTK and WebKit development packages
-        # Wails v2 Linux 依赖：build-essential / pkg-config / GTK3 开发包 + WebKit 开发包
-        # （webkit-dev 由 matrix 提供，20.04 为 4.0 系列，22.04 / 24.04 为 4.1 系列）
+        # Wails v2 Linux dependencies: build-essential / pkg-config / GTK3 dev packages + WebKit dev packages
+        # (webkit-dev provided by matrix; 20.04 is 4.0 series, 22.04 / 24.04 is 4.1 series)
         run: |
           apt-get update
           apt-get install -y build-essential pkg-config libgtk-3-dev ${{ matrix.webkit-dev }}
@@ -190,23 +189,23 @@ jobs:
           cache-dependency-path: go.sum
 
       - name: Sync version file from tag
-        # 与 windows job 同款逻辑：发布版本以 git tag 为唯一来源，推送 v* tag 时
-        # 写入 core/VERSION（编译时 embed）；非 tag 构建使用仓库中的默认值
+        # Same logic as windows job: release version uses git tag as sole source, push v* tag
+        # writes core/VERSION (embedded at compile time); non-tag build uses repo default
         if: startsWith(github.ref, 'refs/tags/v')
         run: echo "$GITHUB_REF_NAME" > core/VERSION
 
       - name: Build Linux app
-        # 直接 go build（go:embed 嵌入 frontend/dist），不用 wails CLI / npm；
-        # 20.04 需追加 webkit2_36（其 libwebkit2gtk-4.0-dev 为 2.38，< 2.40，
-        # 无 2.40 专有 C API，wails 用 Go 层 http.NoBody 兜底），
-        # 22.04 / 24.04 需追加 webkit2_41 匹配 libwebkit2gtk-4.1-dev
-        # （wails 的 #cgo 默认指向 webkit2gtk-4.0，4.1 必须显式 webkit2_41 tag）
+        # Direct go build (go:embed embeds frontend/dist), no wails CLI / npm;
+        # 20.04 needs webkit2_36 (libwebkit2gtk-4.0-dev is 2.38, < 2.40,
+        # no 2.40-specific C API, wails uses Go-layer http.NoBody fallback),
+        # 22.04 / 24.04 need webkit2_41 to match libwebkit2gtk-4.1-dev
+        # (wails default #cgo targets webkit2gtk-4.0, 4.1 must explicitly use webkit2_41 tag)
         run: go build -tags "${{ matrix.build-tags }}" -trimpath -o build/bin/llama-desktop .
 
       - name: Package .deb
         run: |
-          # 版本号来源与 windows job 一致：tag 构建用 tag（如 v0.1.6）；
-          # 非 tag 构建回退 core/VERSION。deb 的 Version 字段不能带 v 前缀。
+          # Version source matches windows job: tag build uses tag (e.g. v0.1.6);
+          # non-tag build falls back to core/VERSION. deb Version field must not have v prefix.
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             VER="$GITHUB_REF_NAME"
           else
@@ -214,11 +213,11 @@ jobs:
           fi
           DEBVER="${VER#v}"
 
-          # 组装 pkg/ 目录布局：DEBIAN/control + 二进制 + desktop 入口
+          # Assemble pkg/ directory layout: DEBIAN/control + binary + desktop entry
           mkdir -p pkg/DEBIAN pkg/usr/bin pkg/usr/share/applications
 
-          # Depends 用 alternatives 兼容 24.04 t64 过渡期 gtk3 更名
-          # （libgtk-3-0 -> libgtk-3-0t64）；WebKit 运行库按发行版 matrix 提供
+          # Depends uses alternatives to cover 24.04 t64 transition gtk3 rename
+          # (libgtk-3-0 -> libgtk-3-0t64); WebKit runtime per distro matrix
           cat > pkg/DEBIAN/control <<EOF
           Package: llama-desktop
           Version: ${DEBVER}
@@ -238,8 +237,7 @@ jobs:
           Categories=Utility;
           EOF
 
-          # 仓库存在 build/appicon.png 时附带应用图标并在 desktop 项声明 Icon；
-          # 不存在则省略（见下方条件判断）
+          # Include app icon when build/appicon.png exists; omit otherwise (see conditional below)
           if [[ -f build/appicon.png ]]; then
             mkdir -p pkg/usr/share/icons/hicolor/256x256/apps
             cp build/appicon.png pkg/usr/share/icons/hicolor/256x256/apps/llama-desktop.png
@@ -257,8 +255,8 @@ jobs:
           path: build/bin/llama-desktop-setup-*.deb
 
   release:
-    # 集中发布，避免 build-windows / build-linux 多 job 竞争创建同一 Release。
-    # tag 推送发布正式 Release，workflow_dispatch 发布草稿预览。
+    # Centralized release to avoid build-windows / build-linux jobs competing to create the same Release.
+    # Tag push publishes a formal Release, workflow_dispatch publishes a draft preview.
     runs-on: ubuntu-latest
     needs: [build-windows, build-linux]
     permissions:
@@ -266,8 +264,8 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     steps:
       - name: Download all build artifacts
-        # 用 pattern 排除 frontend-dist，只拉取发布产物并合并到同一目录：
-        # windows 2 个 exe + linux 3 个 deb 共 5 个文件
+        # Exclude frontend-dist by pattern, only pull release artifacts and merge into one directory:
+        # windows 2 exe + linux 3 deb = 5 files total
         uses: actions/download-artifact@v4
         with:
           pattern: llama-desktop-*
@@ -278,8 +276,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          # 校验下载产物数量必须为 5（windows 2 个 exe + linux 3 个 deb），
-          # 缺失即失败，避免发布不完整的 Release
+          # Validate artifact count must be 5 (windows 2 exe + linux 3 deb),
+          # fail if missing to avoid incomplete Release
           shopt -s nullglob
           files=(artifacts/*)
           shopt -u nullglob
@@ -288,11 +286,11 @@ jobs:
             [[ -f "$f" ]] || { echo "Missing artifact: $f"; exit 1; }
           done
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            # 推送 v* tag：发布正式 Release
+            # Push v* tag: publish formal Release
             gh release create "$GITHUB_REF_NAME" "${files[@]}" \
               --generate-notes --repo "$GITHUB_REPOSITORY"
           else
-            # 手动触发：创建草稿 Release（draft 不影响正式版本）
+            # Manual trigger: create draft Release (draft does not affect formal version)
             gh release create "preview-$GITHUB_RUN_ID" "${files[@]}" \
               --draft --generate-notes --repo "$GITHUB_REPOSITORY"
           fi

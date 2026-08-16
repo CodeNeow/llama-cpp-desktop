@@ -1,7 +1,7 @@
-# Llama Desktop 组合验证门（Windows PowerShell）
-# 用法：.\scripts\check.ps1                 # 全量（后端 + 前端）
-#       .\scripts\check.ps1 -Scope backend # 仅后端
-#       .\scripts\check.ps1 -Scope frontend# 仅前端
+# Llama Desktop combined validation gate (Windows PowerShell)
+# Usage: .\scripts\check.ps1                 # full (backend + frontend)
+#       .\scripts\check.ps1 -Scope backend  # backend only
+#       .\scripts\check.ps1 -Scope frontend # frontend only
 
 [CmdletBinding()]
 param(

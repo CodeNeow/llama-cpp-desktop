@@ -1,8 +1,8 @@
 /**
- * 格式化工具：字节速率与字节大小。全部为纯函数，便于单测。
+ * Formatting utilities: byte rates and byte sizes. All pure functions, easy to unit-test.
  */
 
-/** 使用率百分比：used/total 保留一位小数；total<=0 或 used<0 返回 0，>100 截断为 100。 */
+/** Usage percentage: used/total with one decimal; returns 0 when total<=0 or used<0, clamps >100 to 100. */
 export function usagePercent(used: number, total: number): number {
   if (total <= 0 || used < 0) return 0
   const pct = (used / total) * 100
@@ -10,7 +10,7 @@ export function usagePercent(used: number, total: number): number {
   return Math.round(pct * 10) / 10
 }
 
-/** 字节速率格式化：<1024 → "X B/s"，KB/s / MB/s / GB/s 一位小数；<=0 返回空串。 */
+/** Byte rate format: <1024 -> "X B/s", KB/s / MB/s / GB/s with one decimal; <=0 returns an empty string. */
 export function formatSpeed(bytesPerSec: number): string {
   if (!(bytesPerSec > 0)) return ''
   if (bytesPerSec < 1024) return `${bytesPerSec} B/s`
@@ -19,7 +19,7 @@ export function formatSpeed(bytesPerSec: number): string {
   return `${(bytesPerSec / (1024 * 1024 * 1024)).toFixed(1)} GB/s`
 }
 
-/** 字节大小格式化（与下载页原有 formatSize 行为一致）：<=0 返回空串。 */
+/** Byte size format (same behavior as the downloads page's original formatSize): <=0 returns an empty string. */
 export function formatBytes(bytes: number): string {
   if (!(bytes > 0)) return ''
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`

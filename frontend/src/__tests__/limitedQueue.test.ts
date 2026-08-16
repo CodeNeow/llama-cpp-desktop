@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { LimitedQueue } from '../lib/limitedQueue'
 
-// 并发受限队列是纯逻辑模块，直接断言调度行为，不 mock 任何依赖。
+// concurrency-limited queue is a pure logic module; assert scheduling behavior directly without mocking dependencies.
 function deferred<T>(): { promise: Promise<T>; resolve: (v: T) => void; reject: (e: unknown) => void } {
   let resolve!: (v: T) => void
   let reject!: (e: unknown) => void
@@ -10,7 +10,7 @@ function deferred<T>(): { promise: Promise<T>; resolve: (v: T) => void; reject: 
 }
 
 describe('LimitedQueue', () => {
-  it('并发不超过上限，且任务按入队顺序执行', async () => {
+  it('concurrency does not exceed limit, tasks execute in enqueue order', async () => {
     const queue = new LimitedQueue(2)
     let active = 0
     let maxActive = 0
@@ -28,13 +28,13 @@ describe('LimitedQueue', () => {
       })
     }
 
-    // 前两个任务应已开始执行（并发上限 2），其余排队
+    // first two tasks should have started (concurrency limit 2), rest queued
     await new Promise(r => setTimeout(r, 0))
     expect(active).toBe(2)
     expect(maxActive).toBe(2)
     expect(queue.pending()).toBe(5)
 
-    // 依次放行，任务应逐个补位并按序完成
+    // release in order, tasks should backfill and complete sequentially
     for (let i = 0; i < gates.length; i++) {
       gates[i].resolve()
       await new Promise(r => setTimeout(r, 0))
@@ -44,7 +44,7 @@ describe('LimitedQueue', () => {
     expect(queue.pending()).toBe(0)
   })
 
-  it('任务失败不影响后续任务执行', async () => {
+  it('task failure does not affect subsequent task execution', async () => {
     const queue = new LimitedQueue(1)
     const done: string[] = []
     const d1 = deferred<void>()
@@ -53,14 +53,14 @@ describe('LimitedQueue', () => {
     queue.push(async () => { done.push('second'); await Promise.resolve() })
 
     await new Promise(r => setTimeout(r, 0))
-    expect(done).toEqual([]) // 第二个还在排队
+    expect(done).toEqual([]) // second still queued
 
     d1.resolve()
     await new Promise(r => setTimeout(r, 0))
-    expect(done).toEqual(['second']) // 第一个失败后第二个照常执行
+    expect(done).toEqual(['second']) // second runs normally after first fails
   })
 
-  it('max 非法时抛错', () => {
+  it('invalid max throws error', () => {
     expect(() => new LimitedQueue(0)).toThrow()
   })
 })

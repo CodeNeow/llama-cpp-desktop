@@ -6,11 +6,12 @@ import {
 } from '../wails'
 import { t } from './i18n'
 
-// 自动检查节流：距上次检查不足 48 小时不再自动检查（本地时间）。
-// 手动检查不受此限制。
+// Auto-check throttle: skip auto-check within 48 hours of the last check (local time).
+// Manual checks are not throttled.
 export const CHECK_INTERVAL_MS = 48 * 60 * 60 * 1000
 const CHECK_KEY = 'llama-desktop-last-update-check'
-// llama-gui → llama-desktop 更名前的旧键：仅作读取回退，保留老安装的节流时间戳
+// Legacy key from before the llama-gui → llama-desktop rename: read-only fallback
+// preserving the throttle timestamp of older installs
 const LEGACY_CHECK_KEY = 'llama-gui-last-update-check'
 
 export interface UpdateResult {
@@ -28,7 +29,7 @@ export interface UpdateDownloadState {
   version: string
   filePath: string
   error: string
-  kind: string // 本次下载产物类型：setup（安装器） / portable（便携版）
+  kind: string // Artifact kind of this download: setup (installer) / portable
 }
 
 export const updateState = reactive({
@@ -41,9 +42,10 @@ export const updateState = reactive({
 
 let downloadTimer: ReturnType<typeof setInterval> | null = null
 
-/** 距上次检查是否已超过 48 小时（或从未检查过）。 */
+/** Whether more than 48 hours have passed since the last check (or it never happened). */
 export function shouldAutoCheck(now = Date.now()): boolean {
-  // 新键缺失时回退旧键（更名迁移），避免老安装重置节流窗口重复弹检查
+  // Fall back to the legacy key when the new key is missing (rename migration), so
+  // older installs do not get their throttle window reset into a duplicate check prompt
   const last = Number(localStorage.getItem(CHECK_KEY) || localStorage.getItem(LEGACY_CHECK_KEY) || 0)
   if (!last) return true
   return now - last > CHECK_INTERVAL_MS
@@ -54,8 +56,10 @@ function writeCheckTime(now = Date.now()) {
 }
 
 /**
- * 检查是否有新版本。检查完成（无论结果或失败）都刷新最近检查时间，
- * 避免「刚手动检查完，下次启动又自动检查」。发现新版本时弹出更新窗口。
+ * Check for a new version. The last-check time is refreshed once the check
+ * completes (regardless of outcome or failure), avoiding "just checked manually,
+ * auto-check fires again on next launch". Shows the update modal when a new
+ * version is found.
  */
 export async function checkForUpdate(): Promise<void> {
   updateState.checking = true
@@ -69,7 +73,7 @@ export async function checkForUpdate(): Promise<void> {
       notes: result.notes || '',
       published: result.published || '',
     }
-    // 版本比较以后端 currentVersion 为准，这里仅弹窗展示
+    // Version comparison is authoritative on the backend currentVersion; here it is display only
     updateState.showModal = result.hasUpdate
   } catch {
     writeCheckTime()
@@ -79,7 +83,7 @@ export async function checkForUpdate(): Promise<void> {
   }
 }
 
-/** 用户同意更新，开始下载新版本并轮询进度。 */
+/** User accepted the update: start downloading the new version and poll progress. */
 export function startUpdateDownload(): void {
   const version = updateState.result?.version
   if (!version) return
@@ -91,7 +95,7 @@ export function startUpdateDownload(): void {
     version,
     filePath: '',
     error: '',
-    kind: '', // 下载启动前未知产物类型，轮询到后端状态后由 kind 字段填充
+    kind: '', // Artifact kind unknown before the download starts; filled from the backend status once polled
   }
   startUpdateDownloadBackend(version).catch(() => {
     if (updateState.download) {
@@ -104,7 +108,7 @@ export function startUpdateDownload(): void {
   downloadTimer = setInterval(() => pollUpdateDownload(), 1000)
 }
 
-/** 拉取一次下载状态；结束后停止轮询。 */
+/** Fetch the download status once; stop polling when finished. */
 export async function pollUpdateDownload(): Promise<void> {
   try {
     const st = await getUpdateDownloadStatus()

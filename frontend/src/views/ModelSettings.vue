@@ -57,7 +57,7 @@
 
     <!-- Tab panels -->
     <div v-else class="settings-body">
-      <!-- 基础 -->
+      <!-- Basic -->
       <div id="tab-base" role="tabpanel" aria-labelledby="tab-base-tab" v-show="activeTab === 0">
         <div class="param-group">
           <h3 class="group-title">{{ t('modelSettings.groupBase') }}</h3>
@@ -111,7 +111,7 @@
         </div>
       </div>
 
-      <!-- 推理 -->
+      <!-- Inference -->
       <div id="tab-infer" role="tabpanel" aria-labelledby="tab-infer-tab" v-show="activeTab === 1">
         <div class="param-group">
           <h3 class="group-title">{{ t('modelSettings.groupInfer') }}</h3>
@@ -153,7 +153,7 @@
         </div>
       </div>
 
-      <!-- 内存 / 加载 -->
+      <!-- Memory / Loading -->
       <div id="tab-memory" role="tabpanel" aria-labelledby="tab-memory-tab" v-show="activeTab === 2">
         <div class="param-group">
           <h3 class="group-title">{{ t('modelSettings.groupMemory') }}</h3>
@@ -212,7 +212,7 @@
         </div>
       </div>
 
-      <!-- 多 GPU -->
+      <!-- Multi-GPU -->
       <div id="tab-gpu" role="tabpanel" aria-labelledby="tab-gpu-tab" v-show="activeTab === 3">
         <div class="param-group">
           <h3 class="group-title">{{ t('modelSettings.groupGpu') }}</h3>
@@ -248,7 +248,7 @@
         </div>
       </div>
 
-      <!-- 长上下文 -->
+      <!-- Long context -->
       <div id="tab-context" role="tabpanel" aria-labelledby="tab-context-tab" v-show="activeTab === 4">
         <div class="param-group">
           <h3 class="group-title">{{ t('modelSettings.groupContext') }}</h3>
@@ -276,7 +276,7 @@
         </div>
       </div>
 
-      <!-- 高级 -->
+      <!-- Advanced -->
       <div id="tab-advanced" role="tabpanel" aria-labelledby="tab-advanced-tab" v-show="activeTab === 5">
         <div class="param-group">
           <h3 class="group-title">{{ t('modelSettings.groupAdvanced') }}</h3>
@@ -331,7 +331,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { getModelConfig, saveModelConfig } from '../wails'
 import { t } from '../lib/i18n'
 
-// ─── ModelConfig interface（由 Models.vue 等 import） ───────────────────────
+// ─── ModelConfig interface (imported by Models.vue etc.) ───────────────────────
 export interface ModelConfig {
   threads: number
   gpuLayers: string
@@ -355,7 +355,7 @@ export interface ModelConfig {
   specDraftNMax: number
 }
 
-// ─── 默认值 ─────────────────────────────────────────────────────────────────
+// ─── Defaults ─────────────────────────────────────────────────────────────────
 const defaults: ModelConfig = {
   threads: -1,
   gpuLayers: 'auto',
@@ -379,32 +379,32 @@ const defaults: ModelConfig = {
   specDraftNMax: 0,
 }
 
-// ─── 路由参数 ───────────────────────────────────────────────────────────────
+// ─── Route params ───────────────────────────────────────────────────────────────
 const router = useRouter()
 const route = useRoute()
 
-// 模型名 URL 编码，需解码显示
+// Model name is URL-encoded in the route; decode it for display
 const decodedModelName = computed(() => decodeURIComponent(String(route.params.modelName || '')))
-// 原始编码值用于后端 API 调用
+// The raw encoded value is used for backend API calls
 const modelName = computed(() => String(route.params.modelName || ''))
 
-// ─── 本地状态 ───────────────────────────────────────────────────────────────
+// ─── Local state ───────────────────────────────────────────────────────────────
 const loading = ref(false)
 const loadError = ref('')
 
-// 配置加载成功后的快照（用于判断 isModified）
+// Snapshot taken after the config loads successfully (used to compute isModified)
 const initialConfig = ref<ModelConfig>({ ...defaults })
 const saving = ref(false)
 const saveError = ref('')
 const saveSuccess = ref(false)
 
-/** 当前激活 tab 索引 */
+/** Index of the currently active tab */
 const activeTab = ref(0)
 
-/** 当前配置（响应式），从 defaults + 初始值初始化 */
+/** Current config (reactive), initialized from defaults + loaded values */
 const cfg = reactive<ModelConfig>({ ...defaults })
 
-// ─── Tab 定义（6 个分类，图标为内联 stroke SVG） ────────────────────────────
+// ─── Tab definitions (6 categories, icons are inline stroke SVGs) ────────────────────────────
 const tabs = [
   {
     id: 'tab-base',
@@ -438,8 +438,8 @@ const tabs = [
   },
 ]
 
-// ─── 校验 ───────────────────────────────────────────────────────────────────
-/** 当前校验错误集合 */
+// ─── Validation ───────────────────────────────────────────────────────────────────
+/** Current set of validation errors */
 const errors = ref<Set<string>>(new Set())
 
 function validate(): boolean {
@@ -453,7 +453,7 @@ function validate(): boolean {
 
 const hasErrors = computed(() => errors.value.size > 0)
 
-/** 是否有字段与初始值不同 */
+/** Whether any field differs from its initial value */
 const isModified = computed(() => {
   for (const key of Object.keys(defaults) as (keyof ModelConfig)[]) {
     if (cfg[key] !== initialConfig.value[key]) return true
@@ -461,7 +461,7 @@ const isModified = computed(() => {
   return false
 })
 
-// 字段变化时重新校验
+// Re-validate whenever a field changes
 watch(
   () => ({ ...cfg }),
   () => {
@@ -471,12 +471,12 @@ watch(
   { deep: true }
 )
 
-// ─── 路由联动：modelName 变化时重新加载 ────────────────────────────────────
+// ─── Route linkage: reload when modelName changes ────────────────────────────────
 watch(modelName, () => {
   loadConfig()
 })
 
-// ─── 加载 / 重置 / 保存 ──────────────────────────────────────────────────────
+// ─── Load / Reset / Save ──────────────────────────────────────────────────────
 async function loadConfig() {
   loading.value = true
   loadError.value = ''
@@ -494,7 +494,7 @@ async function loadConfig() {
   try {
     const remote = await getModelConfig(name)
     const merged: ModelConfig = { ...defaults, ...(remote || {}) }
-    // 用合并后的值重置 reactive cfg（保留响应式引用）
+    // Reset the reactive cfg with the merged values (keeps the reactive reference)
     for (const key of Object.keys(defaults) as (keyof ModelConfig)[]) {
       ;(cfg as any)[key] = merged[key]
     }
@@ -508,7 +508,7 @@ async function loadConfig() {
 }
 
 function reset() {
-  // 回退到 initialConfig（上次加载/保存时的值），保留响应式引用
+  // Fall back to initialConfig (values from the last load/save), keeping the reactive reference
   for (const key of Object.keys(defaults) as (keyof ModelConfig)[]) {
     ;(cfg as any)[key] = initialConfig.value[key]
   }
@@ -524,7 +524,7 @@ async function save() {
   saveSuccess.value = false
   try {
     await saveModelConfig(modelName.value, { ...cfg })
-    // 保存成功后更新 initialConfig，此时 isModified 为 false 保存按钮禁用
+    // Update initialConfig after a successful save; isModified becomes false and the save button disables
     initialConfig.value = { ...cfg }
     saveSuccess.value = true
     setTimeout(() => {
@@ -537,7 +537,7 @@ async function save() {
   }
 }
 
-// ─── 生命周期 ────────────────────────────────────────────────────────────────
+// ─── Lifecycle ────────────────────────────────────────────────────────────────
 onMounted(() => {
   loadConfig()
 })
@@ -694,7 +694,7 @@ onMounted(() => {
 
 /* ─── Body ─── */
 .settings-body {
-  /* tabs 不丢已输入的值，无需额外容器 */
+  /* tabs preserve entered values; no extra container needed */
 }
 
 .loading-placeholder {
@@ -740,7 +740,7 @@ onMounted(() => {
   background: rgba(99, 102, 241, 0.2);
 }
 
-/* ─── 参数卡片（从原 modal 迁移，scoped 到本页） ─── */
+/* ─── Parameter cards (ported from original modal, scoped to this page) ─── */
 .param-group {
   background: var(--bg-card);
   border: 1px solid var(--border-light);
@@ -816,7 +816,7 @@ select.param-input {
   line-height: 1.5;
 }
 
-/* 胶囊开关（toggle switch） */
+/* Pill toggle switch */
 .toggle-row {
   display: flex;
   align-items: center;

@@ -28,8 +28,8 @@ const routes = [
     meta: { title: '模型下载', icon: 'download' }
   },
   {
-    // 下载页子页面：搜索结果 → 模型详情（文件列表 + 描述），不添加到侧边栏导航。
-    // modelId 可能含斜杠（如 org/name），用 encodeURIComponent 导航，此处自动解码。
+    // Downloads subpage: search results -> model detail (file list + description); not added to sidebar navigation.
+    // modelId may contain slashes (e.g. org/name); navigate with encodeURIComponent, decoded automatically here.
     path: '/downloads/model/:modelId',
     name: 'ModelDetail',
     component: ModelDetail,
@@ -42,8 +42,8 @@ const routes = [
     meta: { title: '模型管理', icon: 'cube' }
   },
   {
-    // 模型设置子页面（独立路由页，非弹窗）：不添加到侧边栏导航。
-    // modelName 可能含特殊字符，用 encodeURIComponent 编码，此处自动解码。
+    // Model settings subpage (standalone route page, not a modal): not added to sidebar navigation.
+    // modelName may contain special characters; encode it with encodeURIComponent, decoded automatically here.
     path: '/models/settings/:modelName',
     name: 'ModelSettings',
     component: ModelSettings,
@@ -57,7 +57,7 @@ const routes = [
   },
   {
     path: '/monitor',
-    // 监控已并入 API 页：保留旧链接兼容，重定向到 /api
+    // Monitoring merged into the API page: keep old links working via redirect to /api
     redirect: '/api'
   },
   {

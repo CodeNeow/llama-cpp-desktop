@@ -25,19 +25,21 @@ export async function setTheme(theme: string): Promise<void> {
   return app().SetTheme(theme)
 }
 
-// 设置侧边栏收起/展开偏好（纯 UI 状态，无窗口背景等副作用）
+// Set the sidebar collapsed/expanded preference (pure UI state, no window-related side effects)
 export async function setSidebarCollapsed(collapsed: boolean): Promise<void> {
   return app().SetSidebarCollapsed(collapsed)
 }
 
-// 设置 Windows 系统托盘开关（仅 Windows 渲染设置项；非 Windows 平台后端仅
-// 持久化不启停）。systray 同进程不可二次启动：关闭托盘后在重启应用前保持禁用。
+// Set the Windows system tray toggle (settings item rendered on Windows only; on other
+// platforms the backend just persists without starting/stopping anything). systray cannot
+// be started twice in one process: once disabled it stays disabled until the app restarts.
 export async function setTrayEnabled(enabled: boolean): Promise<void> {
   return app().SetTrayEnabled(enabled)
 }
 
-// 设置界面语言偏好（"zh" | "en" | "auto"）；后端返回生效语言 resolvedLanguage
-// （zh/en，auto 按系统检测结果解析），由 store 据此刷新界面文案
+// Set the UI language preference ("zh" | "en" | "auto"); the backend returns the effective
+// resolvedLanguage (zh/en; auto is resolved from system detection), which store uses to
+// refresh the UI copy
 export async function setLanguage(language: string): Promise<string> {
   return app().SetLanguage(language)
 }
@@ -74,7 +76,8 @@ export async function getOS(): Promise<{ os: string; arch: string }> {
 
 // ─── Monitor ─────────────────────────────────────────────────────
 
-// 实时监控（CPU / 内存 / GPU / 推理提示词处理与生成解码速度），返回结构与 lib/monitor.ts 的 MonitorStatus 对应
+// Real-time monitoring (CPU / memory / GPU / inference prompt processing and generation
+// decode speed); return shape matches MonitorStatus in lib/monitor.ts
 export async function getMonitorStatus(): Promise<MonitorStatus> {
   return app().GetMonitorStatus()
 }
@@ -99,8 +102,8 @@ export async function saveModelConfig(modelID: string, config: any): Promise<voi
 
 // ─── Server ──────────────────────────────────────────────────────
 
-// ServerConfig 对应后端 core.ServerConfig：accessMode 为服务访问范围
-// （"local" | "lan"），host 为按 accessMode 派生后的实际监听地址。
+// ServerConfig mirrors the backend core.ServerConfig: accessMode is the service access
+// scope ("local" | "lan"), host is the actual listen address derived from accessMode.
 export interface ServerConfig {
   accessMode: string
   host: string
@@ -155,7 +158,8 @@ export async function browseLlamaCppDir(): Promise<string> {
   return app().BrowseLlamaCppDir()
 }
 
-// 选择模型目录：弹出系统文件夹选择框，返回所选目录字符串（对话框取消返回空串）
+// Choose the models directory: opens the system folder picker and returns the selected
+// directory string (empty string when the dialog is cancelled)
 export async function browseModelsDir(): Promise<string> {
   return app().BrowseModelsDir()
 }
@@ -192,13 +196,14 @@ export async function getModelFiles(modelID: string): Promise<any[]> {
   return app().GetModelFiles(modelID)
 }
 
-// 获取模型最大的 GGUF 文件大小（字节数），供搜索卡片展示模型大小；
-// 返回 0 表示无 GGUF 或查询失败，由调用方静默处理
+// Get the model's largest GGUF file size (bytes) for the search card display;
+// 0 means no GGUF or query failure, handled silently by the caller
 export async function getModelMaxFileSize(modelID: string): Promise<number> {
   return app().GetModelMaxFileSize(modelID)
 }
 
-// 获取模型 README 首段描述（≤200 字）；无 README/读取失败时返回错误，由调用方静默兜底
+// Get the first paragraph of the model README (<=200 chars); returns an error when
+// there is no README or the read fails, handled silently by the caller
 export async function getModelDescription(modelID: string): Promise<string> {
   return app().GetModelDescription(modelID)
 }
@@ -229,7 +234,7 @@ export async function resumeDownloadTask(id: string): Promise<void> {
 
 // ─── Download Source ─────────────────────────────────────────────
 
-// 当前模型下载源（"hf" | "modelscope"），决定搜索与下载走哪个镜像后端
+// Current model download source ("hf" | "modelscope"); decides which mirror backend search and download use
 export async function getDownloadSource(): Promise<string> {
   return app().GetDownloadSource()
 }
@@ -238,18 +243,19 @@ export async function setDownloadSource(source: string): Promise<void> {
   return app().SetDownloadSource(source)
 }
 
-// ─── Router Models（TaskDock 内存模型列表 + 卸载） ─────────────────
+// ─── Router Models (TaskDock in-memory model list + unload) ─────────────────
 
-// LoadedModel 对应后端 core.LoadedModel：id / type（chat|audio|image|video）/ status（loaded|loading|sleeping）
+// LoadedModel mirrors the backend core.LoadedModel: id / type (chat|audio|image|video) / status (loaded|loading|sleeping)
 export interface LoadedModel { id: string; type: string; status: string }
 
-// getLoadedModels 查询 llama-server 路由器当前加载/加载中/休眠的模型列表；
-// 服务未运行或查询失败返回空数组（前端轮询重试）。
+// getLoadedModels queries the llama-server router for models currently loaded /
+// loading / sleeping; returns an empty array when the service is not running or the
+// query fails (the frontend polls and retries).
 export async function getLoadedModels(): Promise<LoadedModel[]> {
   return (await app().GetLoadedModels()) ?? []
 }
 
-// unloadModel 向 llama-server 发送模型卸载请求；失败时前端行内显示错误。
+// unloadModel sends a model unload request to llama-server; on failure the frontend shows the error inline.
 export async function unloadModel(id: string): Promise<void> {
   return app().UnloadModel(id)
 }

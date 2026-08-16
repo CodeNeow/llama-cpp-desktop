@@ -1,11 +1,11 @@
 /**
- * TaskDock 纯函数：判断下载/模型相关 UI 的显示条件与任务过滤。
- * - 无外部依赖，纯输入输出，便于 vitest 覆盖。
+ * TaskDock pure functions: display conditions for download/model-related UI and task filtering.
+ * - No external dependencies, pure input/output, easy to cover with vitest.
  */
 
 /**
- * activeLlamaCppDownload 判断 llama.cpp 下载是否处于「活跃」状态：
- * fetching / downloading / paused / extracting / error 均算活跃（idle / done 隐藏）。
+ * activeLlamaCppDownload: whether the llama.cpp download is "active":
+ * fetching / downloading / paused / extracting / error all count (idle / done hidden).
  */
 export function activeLlamaCppDownload(status: string): boolean {
   switch (status) {
@@ -21,9 +21,9 @@ export function activeLlamaCppDownload(status: string): boolean {
 }
 
 /**
- * activeModelTasks 过滤下载任务列表中需要展示的「活跃」任务：
- * queued / fetching / downloading / paused / extracting 展示；
- * done / error / cancelled 隐藏。
+ * activeModelTasks filters the download task list down to the "active" tasks to show:
+ * queued / fetching / downloading / paused / extracting are shown;
+ * done / error / cancelled are hidden.
  */
 export function activeModelTasks<T extends { status: string }>(tasks: T[]): T[] {
   const out: T[] = []
@@ -41,8 +41,9 @@ export function activeModelTasks<T extends { status: string }>(tasks: T[]): T[] 
 }
 
 /**
- * shouldShowDock 判断 TaskDock 卡片是否需要显示：
- * llama.cpp 下载活跃、或有模型下载任务、或有内存中的模型时显示。
+ * shouldShowDock: whether the TaskDock card needs to be shown:
+ * shown when the llama.cpp download is active, or there are model download tasks,
+ * or there are in-memory models.
  */
 export function shouldShowDock(
   llamaActive: boolean,

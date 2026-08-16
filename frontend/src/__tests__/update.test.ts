@@ -13,7 +13,7 @@ import {
   getUpdateDownloadStatus,
 } from '../wails'
 
-// mock Wails 桥接层：window.go 仅由 Wails 运行时注入，单测环境不可用
+// mock Wails bridge: window.go is injected by Wails runtime only, unavailable in test env
 vi.mock('../wails', () => ({
   checkForUpdate: vi.fn(),
   startUpdateDownload: vi.fn(),
@@ -41,30 +41,30 @@ describe('lib/update', () => {
   })
 
   afterEach(() => {
-    closeUpdateModal() // 清理轮询定时器
+    closeUpdateModal() // cleanup polling timer
     vi.useRealTimers()
   })
 
-  it('shouldAutoCheck：从未检查过返回 true', () => {
+  it('shouldAutoCheck: never checked returns true', () => {
     expect(shouldAutoCheck()).toBe(true)
   })
 
-  it('shouldAutoCheck：距上次检查不足 48 小时返回 false', () => {
+  it('shouldAutoCheck: less than 48h since last check returns false', () => {
     localStorage.setItem('llama-desktop-last-update-check', String(Date.now() - 60 * 60 * 1000))
     expect(shouldAutoCheck()).toBe(false)
   })
 
-  it('shouldAutoCheck：距上次检查超过 48 小时返回 true', () => {
+  it('shouldAutoCheck: more than 48h since last check returns true', () => {
     localStorage.setItem('llama-desktop-last-update-check', String(Date.now() - CHECK_INTERVAL_MS - 1000))
     expect(shouldAutoCheck()).toBe(true)
   })
 
-  it('shouldAutoCheck：新键缺失时回退旧键（llama-gui 更名迁移），老安装节流不重置', () => {
+  it('shouldAutoCheck: falls back to old key when new key missing (llama-gui rename migration); old install throttle not reset', () => {
     localStorage.setItem('llama-gui-last-update-check', String(Date.now() - 60 * 60 * 1000))
     expect(shouldAutoCheck()).toBe(false)
   })
 
-  it('checkForUpdate 发现新版本时写入检查时间并弹出更新窗口', async () => {
+  it('checkForUpdate discovers new version, writes check time, and opens update modal', async () => {
     mockCheckForUpdate.mockResolvedValue({
       hasUpdate: true,
       version: 'v0.2.0',
@@ -78,11 +78,11 @@ describe('lib/update', () => {
     expect(updateState.result?.version).toBe('v0.2.0')
     expect(updateState.showModal).toBe(true)
     expect(updateState.checking).toBe(false)
-    // 检查完成后刷新最近检查时间，避免下次启动重复自动检查
+    // refresh last check time after completion to avoid repeated auto-check on next launch
     expect(localStorage.getItem('llama-desktop-last-update-check')).not.toBeNull()
   })
 
-  it('checkForUpdate 无新版本时不弹窗但记录检查时间', async () => {
+  it('checkForUpdate no new version: no modal but records check time', async () => {
     mockCheckForUpdate.mockResolvedValue({ hasUpdate: false, version: 'v0.1.0', notes: '', published: '' })
 
     await checkForUpdate()
@@ -91,7 +91,7 @@ describe('lib/update', () => {
     expect(localStorage.getItem('llama-desktop-last-update-check')).not.toBeNull()
   })
 
-  it('checkForUpdate 失败时静默置错误，不弹窗', async () => {
+  it('checkForUpdate failure sets error silently, no modal', async () => {
     mockCheckForUpdate.mockRejectedValue(new Error('network down'))
 
     await checkForUpdate()
@@ -101,7 +101,7 @@ describe('lib/update', () => {
     expect(updateState.checking).toBe(false)
   })
 
-  it('startUpdateDownload 启动下载并轮询进度，完成后停止轮询', async () => {
+  it('startUpdateDownload starts download and polls progress, stops after completion', async () => {
     vi.useFakeTimers()
     mockCheckForUpdate.mockResolvedValue({ hasUpdate: true, version: 'v0.2.0', notes: '', published: '' })
     mockStartUpdateDownload.mockResolvedValue(undefined)
@@ -116,17 +116,17 @@ describe('lib/update', () => {
     expect(mockStartUpdateDownload).toHaveBeenCalledWith('v0.2.0')
     expect(updateState.download?.status).toBe('downloading')
 
-    await vi.advanceTimersByTimeAsync(1100) // 触发一次轮询
+    await vi.advanceTimersByTimeAsync(1100) // trigger one poll
     expect(updateState.download?.status).toBe('done')
     expect(updateState.download?.filePath).toContain('llama-desktop-portable-v0.2.0.exe')
 
-    // 完成后轮询应停止（再推进时间不应重复拉取）
+    // polling should stop after completion (advancing time should not repeat fetches)
     const callsAfterDone = mockGetStatus.mock.calls.length
     await vi.advanceTimersByTimeAsync(2200)
     expect(mockGetStatus.mock.calls.length).toBe(callsAfterDone)
   })
 
-  it('closeUpdateModal 关闭窗口并停止轮询', () => {
+  it('closeUpdateModal closes modal and stops polling', () => {
     updateState.showModal = true
     closeUpdateModal()
     expect(updateState.showModal).toBe(false)

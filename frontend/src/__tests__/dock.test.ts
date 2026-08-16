@@ -2,12 +2,12 @@ import { describe, it, expect } from 'vitest'
 import { activeLlamaCppDownload, activeModelTasks, shouldShowDock } from '../lib/dock'
 
 describe('activeLlamaCppDownload', () => {
-  it('idle/done 返回 false', () => {
+  it('idle/done returns false', () => {
     expect(activeLlamaCppDownload('idle')).toBe(false)
     expect(activeLlamaCppDownload('done')).toBe(false)
   })
 
-  it('fetching/downloading/paused/extracting/error 返回 true', () => {
+  it('fetching/downloading/paused/extracting/error returns true', () => {
     expect(activeLlamaCppDownload('fetching')).toBe(true)
     expect(activeLlamaCppDownload('downloading')).toBe(true)
     expect(activeLlamaCppDownload('paused')).toBe(true)
@@ -26,30 +26,30 @@ describe('activeModelTasks', () => {
     { id: '6', status: 'cancelled' },
   ]
 
-  it('过滤出活跃任务（queued/fetching/downloading/paused/extracting）', () => {
+  it('filter active tasks (queued/fetching/downloading/paused/extracting)', () => {
     const out = activeModelTasks(tasks)
     expect(out.map(t => t.id)).toEqual(['1', '2', '3'])
   })
 
-  it('空数组返回空数组', () => {
+  it('empty array returns empty array', () => {
     expect(activeModelTasks([])).toEqual([])
   })
 })
 
 describe('shouldShowDock', () => {
-  it('全部为零时不显示', () => {
+  it('do not show when all zero', () => {
     expect(shouldShowDock(false, 0, 0)).toBe(false)
   })
 
-  it('llamaActive=true 时显示', () => {
+  it('show when llamaActive is true', () => {
     expect(shouldShowDock(true, 0, 0)).toBe(true)
   })
 
-  it('activeTaskCount>0 时显示', () => {
+  it('show when activeTaskCount > 0', () => {
     expect(shouldShowDock(false, 1, 0)).toBe(true)
   })
 
-  it('loadedCount>0 时显示', () => {
+  it('show when loadedCount > 0', () => {
     expect(shouldShowDock(false, 0, 1)).toBe(true)
   })
 })

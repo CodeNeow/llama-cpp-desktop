@@ -6,29 +6,29 @@ describe('lib/i18n', () => {
     setLocale('zh')
   })
 
-  it('t 取当前语言字典的值（zh）', () => {
+  it('t gets current locale dict value (zh)', () => {
     expect(t('nav.home')).toBe('系统信息')
     expect(t('settings.themeMode')).toBe('主题模式')
   })
 
-  it('t 缺失 key 时原样返回 key', () => {
+  it('t returns key as-is when missing', () => {
     expect(t('no.such.key')).toBe('no.such.key')
   })
 
-  it('t 支持 {name} 占位符插值', () => {
+  it('t supports {name} placeholder interpolation', () => {
     expect(t('home.cpu.coresValue', { n: 8 })).toBe('8 核')
     expect(t('models.saveFailed', { msg: 'boom' })).toBe('保存失败: boom')
   })
 
-  it('setLocale 切换语言后 t 返回对应语言', () => {
+  it('after setLocale, t returns corresponding language', () => {
     setLocale('en')
     expect(t('nav.home')).toBe('System Info')
     expect(t('settings.themeMode')).toBe('Theme Mode')
-    // 英文插值
+    // English interpolation
     expect(t('home.cpu.coresValue', { n: 8 })).toBe('8 cores')
   })
 
-  it('locale 默认 zh，setLocale 更新 locale.value', () => {
+  it('locale defaults to zh, setLocale updates locale.value', () => {
     expect(locale.value).toBe('zh')
     setLocale('en')
     expect(locale.value).toBe('en')

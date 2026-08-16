@@ -1,7 +1,7 @@
 <template>
   <div class="page">
     <div class="sticky-top">
-      <!-- 返回 + 页头 -->
+      <!-- Back + header -->
       <div class="page-header">
         <button class="back-btn" @click="router.back()">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -13,7 +13,7 @@
         <p class="page-subtitle">{{ fileCountLabel }}</p>
       </div>
 
-      <!-- Sticky 操作栏 -->
+      <!-- Sticky action bar -->
       <div v-if="files.length > 0 || filesLoading" class="action-bar">
         <span class="selected-count">{{ selectedCountLabel }}</span>
         <div class="action-actions">
@@ -35,13 +35,13 @@
       </div>
     </div>
 
-    <!-- 错误态 -->
+    <!-- Error state -->
     <div v-if="loadError" class="error-card">
       <p class="error-text">{{ t('home.errorTitle') }}：{{ loadError }}</p>
       <button class="retry-btn" @click="retry">{{ t('home.retry') }}</button>
     </div>
 
-    <!-- 模型说明区 -->
+    <!-- Model description area -->
     <section class="desc-section">
       <h2 class="section-title">{{ t('downloads.descTitle') }}</h2>
       <div v-if="descLoading" class="desc-loading">{{ t('downloads.loadingDesc') }}</div>
@@ -49,7 +49,7 @@
       <div v-else class="desc-empty">{{ t('downloads.noDesc') }}</div>
     </section>
 
-    <!-- 文件列表 -->
+    <!-- File list -->
     <section class="files-section">
       <h2 class="section-title">{{ t('downloads.fileCount', { n: files.length }) }}</h2>
       <div v-if="filesLoading" class="files-loading">{{ t('downloads.loadingFiles') }}</div>
@@ -86,11 +86,11 @@ import { t } from '../lib/i18n'
 const router = useRouter()
 const route = useRoute()
 
-// modelId 可能含斜杠（org/name），URL 中用 encodeURIComponent 编码
+  // modelId may contain slashes (org/name), encoded with encodeURIComponent in URL
 const decodedModelId = computed(() => decodeURIComponent(String(route.params.modelId || '')))
 const modelId = computed(() => String(route.params.modelId || ''))
 
-// 文件列表（接口字段用 any，与 wails.ts 返回结构对齐）
+  // File list (interface fields use any to align with wails.ts return shape)
 interface ModelFile {
   filename: string
   size?: number
@@ -100,24 +100,24 @@ const files = ref<ModelFile[]>([])
 const filesLoading = ref(false)
 const loadError = ref('')
 
-// 勾选状态
+  // Selection state
 const selectedFiles = reactive<string[]>([])
 
-// 描述
+  // Description
 const description = ref('')
 const descLoading = ref(false)
 
-// 文件数标签
+// File count label
 const fileCountLabel = computed(() => {
   const n = files.value.length
   return n > 0 ? t('downloads.fileCount', { n }) : ''
 })
 
-// 已选数量标签
+// Selected count label
 const selectedCount = computed(() => selectedFiles.length)
 const selectedCountLabel = computed(() => t('downloads.selectedCount', { n: selectedCount.value }))
 
-// 是否全部已选
+// Whether all files are selected
 const allSelected = computed(() => files.value.length > 0 && selectedFiles.length === files.value.length)
 
 const sortedFilesList = computed(() => sortModelFiles(files.value))
@@ -129,7 +129,7 @@ async function loadData() {
     return
   }
 
-  // 并行加载文件列表与描述，各自独立错误处理
+  // Load file list and description in parallel, each with independent error handling
   filesLoading.value = true
   loadError.value = ''
 
@@ -171,7 +171,7 @@ async function handleDownload() {
     await startDownload(modelId.value, [...selectedFiles])
     router.push('/downloads')
   } catch {
-    // 失败静默留在本页，与现有页行为一致
+    // On failure, silently stay on this page (consistent with existing page behavior)
   }
 }
 

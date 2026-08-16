@@ -2,21 +2,21 @@ import { describe, it, expect } from 'vitest'
 import { isSystemReady } from '../lib/systemReady'
 
 describe('isSystemReady', () => {
-  // 两条件都满足时才返回 true
-  it('llama.cpp 已安装且至少有一个模型时返回 true', () => {
+  // returns true only when both conditions are met
+  it('llama.cpp installed and at least one model present returns true', () => {
     expect(isSystemReady(true, 1)).toBe(true)
     expect(isSystemReady(true, 3)).toBe(true)
   })
 
-  // llama.cpp 未安装时返回 false（无论模型数量）
-  it('llama.cpp 未安装时返回 false', () => {
+  // llama.cpp not installed returns false (regardless of model count)
+  it('llama.cpp not installed returns false', () => {
     expect(isSystemReady(false, 0)).toBe(false)
     expect(isSystemReady(false, 1)).toBe(false)
     expect(isSystemReady(false, 100)).toBe(false)
   })
 
-  // 模型数量为零时返回 false（无论 llama.cpp 是否安装）
-  it('模型数量为零时返回 false', () => {
+  // zero model count returns false (regardless of llama.cpp install status)
+  it('zero model count returns false', () => {
     expect(isSystemReady(true, 0)).toBe(false)
     expect(isSystemReady(false, 0)).toBe(false)
   })

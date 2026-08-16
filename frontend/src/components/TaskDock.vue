@@ -101,8 +101,8 @@ const expanded = ref(true)
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
 // Llama.cpp download
-// 初始化 idle 状态而非 null，避免模板类型检查报 "possibly null"；
-// 首次轮询前显示为 idle，不进入活跃展示区。
+// Initialize idle status instead of null to avoid template "possibly null" type error;
+// shows idle before first poll, so it doesn't enter the active display area.
 const llamaStatus = ref<{ status: string; progress: number }>({ status: 'idle', progress: 0 })
 
 // Model download tasks
@@ -122,8 +122,8 @@ const unloadErrors = reactive<Record<string, string>>({})
 
 const activeTasks = computed(() => activeModelTasks(allTasks.value))
 
-// llama.cpp 是否处于「活跃」状态：fetching/downloading/paused/extracting/error
-// 均算活跃；idle/done 隐藏。避免没有进度信息的 llama.cpp 行常驻卡片。
+// llama.cpp is "active" when status is fetching/downloading/paused/extracting/error;
+// idle/done hidden. Avoids a permanent llama.cpp row without progress info.
 const llamaActive = computed(() =>
   llamaStatus.value ? activeLlamaCppDownload(llamaStatus.value.status) : false
 )

@@ -6,7 +6,7 @@
         <p class="page-subtitle">{{ t('api.subtitle') }}</p>
       </div>
 
-      <!-- 顶部操作栏：状态灯 + 状态文字 + URL + 按钮组 + 参数弹层 + 可用模型 -->
+      <!-- Top action bar: status light + status text + URL + button group + params popover + available models -->
       <section class="status-card toolbar">
         <div class="toolbar-row">
           <div class="status-indicator">
@@ -37,7 +37,7 @@
           </div>
         </div>
 
-        <!-- 服务器参数弹层 -->
+        <!-- Server parameters popover -->
         <div v-if="showCfg" class="cfg-popover" @click.stop>
           <div class="cfg-popover-title">{{ t('api.settings') }}</div>
           <div class="cfg-item">
@@ -55,7 +55,7 @@
           <div v-if="serverRunning" class="cfg-locked-hint">{{ t('api.cfgLockedHint') }}</div>
         </div>
 
-        <!-- 可用模型（第二行） -->
+        <!-- Available models (second row) -->
         <div class="toolbar-models">
           <span class="toolbar-models-title">{{ t('api.modelsTitle', { n: modelCount }) }}</span>
           <div class="model-tags">
@@ -66,9 +66,9 @@
       </section>
     </div>
 
-    <!-- 主区两栏：左日志控制台 + 右监控卡片 -->
+    <!-- Main area two-column: left log console + right monitor cards -->
     <div class="monitor-grid">
-      <!-- 左栏：服务日志控制台（深浅主题下均呈深色控制台观感） -->
+      <!-- Left column: service log console (dark console look in both themes) -->
       <section class="log-panel">
         <div class="panel-header">
           <span class="panel-title">{{ t('api.logTitle') }}</span>
@@ -80,9 +80,9 @@
         <div v-else class="console-empty">{{ t('api.logEmpty') }}</div>
       </section>
 
-      <!-- 右栏：两张卡片自上而下 -->
+      <!-- Right column: two cards top to bottom -->
       <div class="monitor-side">
-        <!-- a. 系统监控：CPU / 内存 / GPU -->
+        <!-- a. System monitor: CPU / Memory / GPU -->
         <section class="info-section monitor-card">
           <h2 class="section-title">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -120,7 +120,7 @@
           </div>
         </div>
 
-        <!-- GPU（原独立卡片，现并入系统监控） -->
+        <!-- GPU (formerly separate card, now merged into system monitor) -->
         <div class="metric-block">
           <div class="metric-head">
             <span class="metric-name">{{ t('monitor.gpu') }}</span>
@@ -144,7 +144,7 @@
         </div>
       </section>
 
-      <!-- c. Token 速度 -->
+        <!-- c. Token speed -->
         <section class="info-section monitor-card">
           <div class="token-card-head">
             <h2 class="section-title">
@@ -205,12 +205,12 @@ import { locale, t } from '../lib/i18n'
 const serverRunning = ref(false)
 const serverLog = ref<string[]>([])
 const logEl = ref<HTMLElement | null>(null)
-// 启停/重启执行期间禁用全部按钮，防止连点
+// Disable all buttons during start/stop/restart to prevent double-clicks
 const busy = ref(false)
 
 const cfg = reactive({
   host: '127.0.0.1',
-  accessMode: 'local', // 服务访问范围来自后端配置（设置页修改），此处仅随保存透传
+  accessMode: 'local', // Access scope comes from backend config (changed on Settings page); here it is only passed through on save
   port: 8080,
   maxModels: 1,
   cacheRam: 8192,
@@ -219,10 +219,10 @@ const cfg = reactive({
 const availableModels = ref<string[]>([])
 const modelCount = ref(0)
 
-/** 是否展开服务器参数面板 */
+/** Whether the server parameters panel is expanded */
 const showCfg = ref(false)
 
-// ─── 监控（原 Monitor.vue 合并，1s 轮询）：推理指标与系统负载，与上方 getServerStatus 轻量轮询相互独立 ───
+// ─── Monitoring (merged from Monitor.vue, 1s polling): inference metrics and system load, independent from the lightweight getServerStatus polling above ───
 const status = ref<MonitorStatus>({
   cpuPercent: 0,
   memUsed: 0,
@@ -234,7 +234,7 @@ const status = ref<MonitorStatus>({
   uptimeSeconds: 0,
 })
 
-// 生成速度折线图历史：1s 轮询追加，保留最近 60 个采样（appendHistory 默认 cap=60）
+// Decode speed line chart history: appended on 1s polling, keeps latest 60 samples (appendHistory default cap=60)
 const decodeHistory = ref<number[]>([])
 const chartWidth = 560
 const chartHeight = 120
@@ -254,7 +254,7 @@ const decodeTpsText = computed(() => status.value.decodeTps.toFixed(1))
 
 const decodePoints = computed(() => chartPoints(decodeHistory.value, chartWidth, chartHeight))
 
-// 显存/内存可能为 0（如数据未到），formatBytes(0) 返回空串，此处兜底为 "0 B"
+// VRAM/memory may be 0 (e.g. data not yet arrived); formatBytes(0) returns empty string, fallback to "0 B"
 function memText(bytes: number): string {
   return formatBytes(bytes) || '0 B'
 }
@@ -263,11 +263,11 @@ async function fetchMonitorStatus() {
   try {
     const s = await getMonitorStatus()
     status.value = s
-    // 轮询联动刷新，覆盖 llama-server 被外部终止的场景（进程退出后后端置 false，前端 1 秒内自动纠正按钮态与参数锁定）
+    // Polling linkage also handles llama-server being killed externally: backend sets false, frontend corrects button state and param lock within 1s
     serverRunning.value = s.serverRunning
     decodeHistory.value = appendHistory(decodeHistory.value, s.decodeTps)
   } catch {
-    // 轮询失败静默保持上次数据，不打断监控展示
+    // Polling failure: silently keep previous data, don't disrupt monitor display
   }
 }
 
@@ -289,7 +289,7 @@ watch(serverLog, async () => {
   if (logEl.value) logEl.value.scrollTop = logEl.value.scrollHeight
 })
 
-// 配置实时保存（#13）：修改后 debounce 500ms 静默保存；后端拒绝非法值（如 0.0.0.0）由后端兜底
+// Real-time config save (#13): debounce 500ms silent save; backend rejects illegal values (e.g. 0.0.0.0) as fallback
 let configLoaded = false
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 watch(cfg, () => {
@@ -308,7 +308,7 @@ watch(cfg, () => {
   }, 500)
 })
 
-/** 点击面板外部区域关闭参数面板 */
+/** Close the params panel when clicking outside it */
 function onDocClick() {
   showCfg.value = false
 }
@@ -320,7 +320,7 @@ onUnmounted(() => {
 })
 
 onMounted(async () => {
-  // 监控轮询：每秒拉取监控状态（并入监控区块，周期与原有 Monitor.vue 一致）
+  // Monitoring polling: fetch monitor status every 1s (merged into monitor block, period matches original Monitor.vue)
   startPolling()
 
   // Load server config
@@ -328,8 +328,9 @@ onMounted(async () => {
     const scfg = await getServerConfig()
     Object.assign(cfg, scfg)
   } catch {}
-  // 初始配置加载触发的 watch 回调会在下一次 flush 中执行（此时 configLoaded 仍为 false，
-  // 直接跳过保存），await nextTick() 等待该次 flush 完成后才启用自动保存，避免加载即保存。
+// Initial config load's watch callback runs on next flush (configLoaded is still false here,
+// so saving is skipped). await nextTick() waits for that flush to complete before enabling
+// auto-save, preventing save-on-load.
   await nextTick()
   configLoaded = true
 
@@ -356,13 +357,14 @@ async function checkServerStatus() {
   } catch {}
 }
 
-// 按钮三态由 serverRunning + busy 驱动：启动（stopped 可用）、停止/重启（running 可用）；
-// 执行期间 busy=true 全禁用防连点。状态统一由 checkServerStatus 延迟刷新真实值，不做乐观翻转（#14）
+// Button tri-state driven by serverRunning + busy: start (stopped enabled), stop/restart (running enabled);
+// busy=true disables all during execution. Status is refreshed asynchronously by checkServerStatus;
+// no optimistic local flipping (#14)
 async function doStart() {
   if (busy.value || serverRunning.value) return
   busy.value = true
   try {
-    await refreshModels() // 启动前强制重扫模型，确保预设基于最新模型列表（#18）
+    await refreshModels() // Force a model rescan before start so presets use the latest model list (#18)
     await startServer()
   } catch (e) {
     serverLog.value.push(t('api.toggleFailed', { msg: e instanceof Error ? e.message : String(e) }))
@@ -385,7 +387,7 @@ async function doStop() {
   }
 }
 
-// 重启 = 顺序 stop → start（执行期间 busy 防连点）
+// Restart = sequential stop → start (busy prevents double-clicks during execution)
 async function doRestart() {
   if (busy.value || !serverRunning.value) return
   busy.value = true
@@ -400,7 +402,7 @@ async function doRestart() {
   }
 }
 
-// 清空日志：仅清空前端展示数组，后端环形缓冲保留（checkServerStatus 会重新带回后端日志）
+// Clear log: only clears the frontend display array; backend ring buffer is preserved (checkServerStatus will reload backend logs)
 function clearLog() {
   serverLog.value = []
 }
@@ -408,12 +410,12 @@ function clearLog() {
 
 <style scoped>
 .page {
-  /* 无顶部内边距：页头贴内容区顶，标题顶部与侧边栏 logo 图标平齐（见 global.css .page-header） */
+  /* No top padding: header flush with content top, title aligns with sidebar logo (see global.css .page-header) */
   padding: 0 48px 60px;
 }
 
 .page-header {
-  /* 用 padding 而非 margin：页头背景覆盖该间距，内容滚过时不留缝 */
+  /* Use padding instead of margin: header background covers this gap so content scrolls without leaving a seam */
   padding-bottom: 28px;
 }
 
@@ -431,7 +433,7 @@ function clearLog() {
   margin: 0;
 }
 
-/* ─── 顶部操作栏 ─── */
+/* ─── Top action bar ─── */
 .toolbar {
   display: flex;
   flex-direction: column;
@@ -441,7 +443,7 @@ function clearLog() {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 14px;
-  position: relative; /* 参数弹层定位基准 */
+  position: relative; /* Positioning context for the params popover */
 }
 
 .toolbar-row {
@@ -494,7 +496,7 @@ function clearLog() {
   border-radius: 4px;
 }
 
-/* 运行时长并入顶部状态栏（原「推理服务」区块取消后信息不丢失） */
+/* Uptime moved into the top status bar (so info survives the removal of the old "Inference Service" block) */
 .toolbar-uptime {
   display: flex;
   align-items: baseline;
@@ -518,7 +520,7 @@ function clearLog() {
   color: #fff;
 }
 
-/* 禁用态沿用 cfg-input 的弱化惯例 */
+/* Disabled state follows the cfg-input dimming convention */
 .server-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -556,7 +558,7 @@ function clearLog() {
   color: var(--text-primary);
 }
 
-/* ─── 服务器参数弹层 ─── */
+/* ─── Server parameters popover ─── */
 .cfg-popover {
   position: absolute;
   right: 0;
@@ -617,7 +619,7 @@ function clearLog() {
   text-align: center;
 }
 
-/* ─── 可用模型（工具栏第二行） ─── */
+/* ─── Available models (toolbar second row) ─── */
 .toolbar-models {
   display: flex;
   align-items: flex-start;
@@ -651,23 +653,25 @@ function clearLog() {
   font-size: 12px;
 }
 
-/* ─── 主区两栏：左日志控制台 + 右监控卡片 ─── */
+/* ─── Main area two-column: left log console + right monitor cards ─── */
 .monitor-grid {
   display: grid;
   grid-template-columns: 6fr 4fr;
-  /* 行高严格等于容器高度：启动日志行数不受限，必须由 minmax(0, 1fr) 与子项 min-height: 0
-     锁死容器高度，超出的日志在控制台内部滚动，避免撑开布局顶走下方配置区块 */
+  /* Row height must strictly equal the container height: startup log lines are
+     unbounded, so minmax(0, 1fr) plus min-height: 0 on children must lock the
+     container height; excess logs scroll inside the console instead of stretching
+     the layout and pushing the config block below away */
   grid-template-rows: minmax(0, 1fr);
   gap: 16px;
-  /* 两栏等高；高度随窗口缩放收缩（min(440px, 55vh)） */
+  /* Both columns equal height; shrinks with the window (min(440px, 55vh)) */
   height: min(440px, 55vh);
   margin-bottom: 20px;
 }
 
-/* ─── 左栏：日志面板 ─── */
+/* ─── Left column: log panel ─── */
 .log-panel {
   height: 100%;
-  /* 解除 grid 子项默认 min-height:auto，内容超高时允许收缩，交由内部滚动 */
+  /* Release the grid child default min-height:auto so oversized content shrinks and scrolls internally */
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -706,10 +710,10 @@ function clearLog() {
   background: var(--active-bg);
 }
 
-/* 深色控制台：深浅主题下均为固定深色底（终端观感），浅色主题下亦然 */
+  /* Dark console: fixed dark background in both themes for a terminal look */
 .console-log {
   flex: 1;
-  /* 解除 flex 子项默认 min-height:auto，日志行数再多也收缩在面板内滚动 */
+  /* Release the flex child default min-height:auto so any number of log lines shrinks and scrolls within the panel */
   min-height: 0;
   overflow-y: auto;
   background: #0b0b10;
@@ -737,13 +741,14 @@ function clearLog() {
   font-size: 12px;
 }
 
-/* ─── 右栏：监控卡片 ─── */
+/* ─── Right column: monitor cards ─── */
 .monitor-side {
   display: flex;
   flex-direction: column;
   gap: 12px;
   height: 100%;
-  /* 解除 grid 子项默认 min-height:auto，右栏高度锁定，卡片超高时由自身 overflow-y 滚动 */
+  /* Release the grid child default min-height:auto: the right column height stays
+     locked and oversized cards scroll via their own overflow-y */
   min-height: 0;
   overflow-y: auto;
 }
@@ -754,7 +759,7 @@ function clearLog() {
   padding: 16px 20px;
 }
 
-/* 系统监控内的指标块间距 */
+/* Spacing between metric blocks inside system monitor */
 .metric-block {
   margin-bottom: 14px;
 }
@@ -763,7 +768,7 @@ function clearLog() {
   margin-bottom: 0;
 }
 
-/* ─── 模型 ─── */
+/* ─── Models ─── */
 .model-tags {
   display: flex;
   flex-wrap: wrap;
@@ -785,7 +790,7 @@ function clearLog() {
   color: var(--text-dim);
 }
 
-/* ─── 监控区块（自 Monitor.vue 移植） ─── */
+/* ─── Monitor block (ported from Monitor.vue) ─── */
 
 /* ─── Info section card ─── */
 .info-section {
@@ -881,7 +886,7 @@ function clearLog() {
   color: var(--text-dim);
 }
 
-/* ─── Token 卡头部（含运行时长小字） ─── */
+/* ─── Token card header (includes uptime subtext) ─── */
 .token-card-head {
   display: flex;
   align-items: center;

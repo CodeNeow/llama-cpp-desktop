@@ -1,7 +1,9 @@
 /**
- * 监控数据纯函数工具：供 Api.vue 维护生成速度折线图历史、计算 SVG polyline
- * 坐标与格式化运行时长（原独立 Monitor.vue 页已并入 Api.vue）。全部为纯函数，
- * 便于单测；MonitorStatus 接口与后端 GetMonitorStatus 的 JSON 契约一一对应。
+ * Monitor data pure-function utilities: used by Api.vue to maintain generation-speed
+ * chart history, compute SVG polyline coordinates, and format uptime (the former
+ * standalone Monitor.vue page was merged into Api.vue). All pure functions for easy
+ * unit testing; the MonitorStatus interface maps one-to-one to the backend
+ * GetMonitorStatus JSON contract.
  */
 
 import type { Locale } from './i18n'
@@ -12,16 +14,16 @@ export interface MonitorStatus {
   memTotal: number
   gpus: { index: number; name: string; utilPercent: number; memUsed: number; memTotal: number }[]
   serverRunning: boolean
-  /** 提示词处理速度 tokens/s（提示词预填充 prefill）：预填充期间按批实时刷新（prompt processing 行，新 llama.cpp），请求结束时更新为最终值（prompt eval time 行） */
+  /** Prompt processing speed in tokens/s (prefill): refreshed per batch during prefill (prompt processing line, newer llama.cpp), set to the final value when the request ends (prompt eval time line) */
   promptTps: number
-  /** 生成速度 tokens/s（实时解码 decode）：生成期间由 tg_3s 日志行每约 3 秒刷新，请求结束时以 eval time 行兜底 */
+  /** Generation speed in tokens/s (live decode): during generation refreshed roughly every 3s by tg_3s log lines, with the eval time line as fallback when the request ends */
   decodeTps: number
   uptimeSeconds: number
-  /** 模型目录所在卷的磁盘用量；采样失败/不可用时为 null，前端隐藏磁盘行 */
+  /** Disk usage of the volume holding the models directory; null when sampling fails/is unavailable and the frontend hides the disk row */
   disk?: { path: string; used: number; total: number } | null
 }
 
-/** 追加一个采样值到历史数组；超出 cap 时丢弃最旧值，返回新数组（不修改入参）。 */
+/** Append one sample to the history array; drop the oldest beyond cap, return a new array (input not mutated). */
 export function appendHistory(history: number[], value: number, cap = 60): number[] {
   const next = [...history, value]
   if (next.length > cap) next.splice(0, next.length - cap)
@@ -29,10 +31,10 @@ export function appendHistory(history: number[], value: number, cap = 60): numbe
 }
 
 /**
- * 将历史序列转换为 SVG polyline 的 points 串：
- * - x 均匀分布（单点水平居中）；
- * - y 底部对齐并留 2px 边距，值越大越靠上；
- * - max 缺省取历史最大值，且下限为 1，全 0 序列也不会除零。
+ * Convert a history sequence into an SVG polyline points string:
+ * - x evenly distributed (single point horizontally centered);
+ * - y bottom-aligned with a 2px margin, larger values higher;
+ * - max defaults to the history maximum with a floor of 1, so an all-zero sequence never divides by zero.
  */
 export function chartPoints(history: number[], width: number, height: number, max?: number): string {
   if (history.length === 0) return ''
@@ -50,17 +52,18 @@ export function chartPoints(history: number[], width: number, height: number, ma
 }
 
 /**
- * 提示词处理速度的显示规则：服务运行中但尚无测量值（tps <= 0，含 NaN）时
- * 显示「—」占位，有测量值时保留 1 位小数。区别于生成速度（实时 0.0 仍显示 0.0）。
+ * Display rule for prompt processing speed: while the service is running but no
+ * measurement exists yet (tps <= 0, including NaN), show the "—" placeholder; once
+ * measured, keep one decimal. Distinct from generation speed (a live 0.0 still shows 0.0).
  */
 export function formatPromptTps(tps: number): string {
   return tps > 0 ? tps.toFixed(1) : '—'
 }
 
 /**
- * 把秒数格式化为运行时长：中文 "45 秒" / "1 小时 23 分"，英文
- * "45s" / "1h 23m"（0 秒两语均显示 0）。locale 参数显式传入，保持纯函数、
- * 便于按当前界面语言单测。
+ * Format seconds as an uptime string in the given locale (zh/en); 0 seconds
+ * shows 0 in both languages. The locale parameter is passed explicitly, keeping
+ * the function pure and easy to unit-test per UI language.
  */
 export function formatUptime(seconds: number, locale: Locale): string {
   const s = Math.max(0, Math.floor(seconds))

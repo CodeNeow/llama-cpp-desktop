@@ -114,8 +114,9 @@ code, pre {
   font-family: var(--font-mono);
 }
 
-/* 流式布局：填满内容区，仅保留 48px 侧距（由各视图 .page 的 padding 提供）；
-   1280px 上限防止超宽窗口下内容行拉得过长 */
+/* Flow layout: fill the content area, keeping only the 48px side margins
+   (provided by each view's .page padding); the 1280px cap keeps content lines
+   from stretching too wide on ultra-wide windows */
 .page {
   width: 100%;
   max-width: 1280px;
@@ -123,15 +124,17 @@ code, pre {
   margin-right: auto;
 }
 
-/* 页头本身样式：sticky 职责由外层 .sticky-top 承担；
-   页头标题/副标题不允许鼠标选中 */
+/* Page header styles: the sticky duty is delegated to the outer .sticky-top
+   wrapper; header title/subtitle must not be mouse-selectable */
 .page-header {
   padding-top: 0;
   user-select: none;
 }
 
-/* 页头（及需要随页头固定的操作区）的外层容器：滚动时整体贴内容区顶。
-   display:flow-root 防止子元素 margin 塌陷出容器导致滚动内容透缝 */
+/* Outer wrapper for the page header (and action areas that must stay fixed
+   with it): pins to the top of the content area while scrolling.
+   display:flow-root contains child margin collapse so scrolled content cannot
+   show through a gap above the wrapper */
 .sticky-top {
   position: sticky;
   top: 0;

@@ -8,7 +8,7 @@
       </div>
 
       <div class="modal-body">
-        <!-- 下载中 -->
+        <!-- Downloading -->
         <template v-if="download && (download.status === 'downloading' || download.status === 'done' || download.status === 'error')">
           <div class="dl-status">
             <template v-if="download.status === 'downloading'">
@@ -28,7 +28,7 @@
                   <p class="done-title">{{ t('updateModal.doneTitle') }}</p>
                   <p class="done-detail">{{ t('updateModal.doneDetail') }}</p>
                   <code class="done-path">{{ download.filePath }}</code>
-                  <!-- setup 安装版：提示运行安装器；portable 或旧状态（kind 为空）：保持替换 exe 提示 -->
+                  <!-- setup installer: prompt to run the installer; portable or legacy state (kind empty): keep the replace-exe hint -->
                   <p class="done-tip">{{ download.kind === 'setup' ? t('updateModal.doneTipSetup') : t('updateModal.doneTip') }}</p>
                 </div>
               </div>
@@ -40,7 +40,7 @@
           </div>
         </template>
 
-        <!-- 待确认 -->
+        <!-- Awaiting confirmation -->
         <template v-else>
           <p class="new-version-tip">{{ t('updateModal.newVersionTip') }}</p>
           <div class="meta">
@@ -218,7 +218,7 @@ function close() {
   font-family: inherit;
 }
 
-/* ─── 下载区 ─── */
+/* ─── Downloads area ─── */
 .dl-status {
   min-height: 120px;
   display: flex;

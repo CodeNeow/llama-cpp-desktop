@@ -2,23 +2,24 @@ import { reactive } from 'vue'
 import { getConfig, setTheme as setThemeBackend, setSidebarCollapsed as setSidebarCollapsedBackend, setDownloadSource as setDownloadSourceBackend, setLanguage as setLanguageBackend, setTrayEnabled as setTrayEnabledBackend, getServerConfig, saveServerConfig as saveServerConfigBackend } from './wails'
 import { setLocale } from './lib/i18n'
 
-// 主题 localStorage 键：llama-gui → llama-desktop 更名后旧键仅作读取回退
-// （老安装的主题偏好无损接续），写入一律走新键，不删除旧键。
+// Theme localStorage key: after the llama-gui → llama-desktop rename the legacy key is read-only fallback
+// (preserving theme preference of old installs); writes always use the new key and never delete the old one.
 const THEME_KEY = 'llama-desktop-theme'
 const LEGACY_THEME_KEY = 'llama-gui-theme'
 
-// 侧边栏收起状态 localStorage 键：'0' 显式展开、'1'/缺省 收起。
-// 主题/托盘偏好双轨模式一致：UI 先读 localStorage 首帧即正确，后端 config 仅
-// 作持久化来源（loadConfig 覆盖并同步写回 localStorage）。
+// Sidebar collapsed-state localStorage key: '0' explicitly expanded, '1'/missing collapsed.
+// Same dual-track pattern as theme/tray preferences: UI reads localStorage for a correct
+// first frame, while the backend config is only the persistence source (loadConfig
+// overwrites it and syncs back to localStorage).
 const SIDEBAR_KEY = 'llama-desktop-sidebar-collapsed'
 
-/** 读取持久化主题：新键优先，缺失时回退更名前旧键，均无则 light。 */
+/** Read the persisted theme: prefer the new key, fall back to the pre-rename legacy key, else 'light'. */
 export function readStoredTheme(): string {
   return localStorage.getItem(THEME_KEY) || localStorage.getItem(LEGACY_THEME_KEY) || 'light'
 }
 
-/** 读取持久化侧边栏收起状态：'0' 为显式展开，其余（'1'/键缺失）一律收起。
- * 首次运行（键缺失）默认收起，避免首帧按展开宽度渲染后再收缩的布局跳动。 */
+/** Read the persisted sidebar collapsed state: '0' means explicitly expanded, anything else ('1'/missing) collapsed.
+ * First run (key missing) defaults to collapsed to avoid the layout jump of rendering expanded then shrinking. */
 export function readStoredSidebarCollapsed(): boolean {
   return localStorage.getItem(SIDEBAR_KEY) !== '0'
 }
@@ -31,12 +32,13 @@ export const appConfig = reactive({
   serverAccessMode: 'local',
   language: 'auto',
   resolvedLanguage: 'zh' as 'zh' | 'en',
-  // Windows 系统托盘开关：默认 true（与后端 loadConfig 兜底一致）；仅在
-  // loadConfig 拉取到后端持久化值后覆盖。
+  // Windows system tray toggle: default true (matches the backend loadConfig fallback);
+  // only overridden once loadConfig fetches the persisted backend value.
   trayEnabled: true,
-  // 侧边栏收起状态：启动首帧从 localStorage 读取（'0' 展开、其余收起），
-  // 避免异步 loadConfig 返回前侧边栏按错误宽度渲染造成布局跳动；键缺失时
-  // 默认收起（与后端预置 true 兜底一致）。
+  // Sidebar collapsed state: read from localStorage for the first frame ('0' expanded,
+  // otherwise collapsed) so the sidebar does not render at the wrong width before the
+  // async loadConfig returns; defaults to collapsed when the key is missing (matching
+  // the backend's preset true fallback).
   sidebarCollapsed: readStoredSidebarCollapsed(),
   loaded: false,
 })
@@ -50,11 +52,12 @@ export async function loadConfig() {
     appConfig.downloadSource = config.downloadSource || 'hf'
     appConfig.language = config.language || 'auto'
     appConfig.resolvedLanguage = config.resolvedLanguage === 'en' ? 'en' : 'zh'
-    // 后端缺省/未返回 trayEnabled 时保持默认 true（与后端 loadConfig 兜底一致）
+    // Keep the default true when the backend omits/does not return trayEnabled (matches the backend loadConfig fallback)
     appConfig.trayEnabled = config.trayEnabled !== false
-    // 后端缺字段/旧后端未返回 → undefined → 默认收起（与后端 loadConfig 预置
-    // true 兜底一致）；显式 false（用户展开偏好）才为 false；成功后同步写回
-    // localStorage，保证「后端持久化值」与「本机 UI 缓存」双轨一致。
+    // Backend field missing / old backend not returning it → undefined → default collapsed
+    // (matching the backend loadConfig preset true fallback); only an explicit false
+    // (user's expanded preference) yields false; on success sync back to localStorage
+    // so the "persisted backend value" and the "local UI cache" stay consistent.
     appConfig.sidebarCollapsed = config.sidebarCollapsed !== false
     setLocale(appConfig.resolvedLanguage)
     localStorage.setItem(THEME_KEY, appConfig.theme)
@@ -74,9 +77,11 @@ export async function setTheme(theme: string) {
   } catch {}
 }
 
-/** 切换侧边栏收起/展开：先乐观更新本地状态并写 localStorage，后端调用失败
- * 时吞错不回滚——纯 UI 偏好，切换视觉状态立即回滚会闪烁，失败仅影响下次
- * 启动的恢复值（回滚模式见 setTrayEnabled，那里回滚不会造成视觉抖动）。
+/** Toggle sidebar collapsed/expanded: optimistically update local state and write
+ * localStorage first; swallow backend errors without rollback — it is a pure UI
+ * preference, and an immediate visual rollback would flicker; failure only affects
+ * the value restored on next launch (for the rollback pattern see setTrayEnabled,
+ * where rolling back causes no visual jitter).
  */
 export async function setSidebarCollapsed(collapsed: boolean) {
   appConfig.sidebarCollapsed = collapsed
@@ -86,7 +91,7 @@ export async function setSidebarCollapsed(collapsed: boolean) {
   } catch {}
 }
 
-/** 切换模型下载源（"hf" | "modelscope"）：先更新本地状态，后端失败时回滚并向上抛错供 UI 提示。 */
+/** Switch model download source ("hf" | "modelscope"): update local state first; on backend failure roll back and rethrow for UI feedback. */
 export async function setDownloadSource(source: string) {
   const previous = appConfig.downloadSource
   appConfig.downloadSource = source
@@ -98,10 +103,11 @@ export async function setDownloadSource(source: string) {
   }
 }
 
-/** 切换服务访问范围（"local" | "lan"）：先乐观更新本地状态，再取后端最新
- * 完整 serverConfig 修改 accessMode 后整体保存（避免覆盖用户在同一页设置的
- * 其他字段）；后端失败时回滚本地状态并向上抛错供 UI 提示。saveServerConfig
- * 返回 void，成功后后端已持久化派生 host，无需再刷新。 */
+/** Switch service access scope ("local" | "lan"): optimistically update local state,
+ * then fetch the latest full serverConfig from the backend, change accessMode, and save
+ * it whole (avoiding clobbering other fields the user set on the same page); on backend
+ * failure roll back local state and rethrow for UI feedback. saveServerConfig returns
+ * void; after success the backend has persisted the derived host, no refresh needed. */
 export async function setServerAccessMode(mode: string) {
   const previous = appConfig.serverAccessMode
   appConfig.serverAccessMode = mode
@@ -115,9 +121,10 @@ export async function setServerAccessMode(mode: string) {
   }
 }
 
-/** 切换界面语言（"zh" | "en" | "auto"）：本地乐观更新偏好，后端成功后用
- * 返回的生效语言 resolvedLanguage（auto 时按系统检测结果解析）刷新 locale
- * 即时生效；后端失败回滚偏好并向上抛错供 UI 提示。 */
+/** Switch UI language ("zh" | "en" | "auto"): optimistically update the preference
+ * locally; on backend success refresh the locale with the returned effective
+ * resolvedLanguage (for auto, resolved from the system detection) so it applies
+ * immediately; on backend failure roll back the preference and rethrow for UI feedback. */
 export async function setLanguage(language: string) {
   const previous = appConfig.language
   appConfig.language = language
@@ -132,9 +139,10 @@ export async function setLanguage(language: string) {
   }
 }
 
-/** 切换 Windows 系统托盘开关：本地乐观更新，后端持久化成功即生效
- * （禁用时立即摘托盘图标；再次启用需重启应用，见 wails.ts 注释）。
- * 后端失败回滚本地状态并向上抛错供 UI 提示。 */
+/** Toggle the Windows system tray switch: optimistic local update, takes effect once
+ * the backend persists it (disabling removes the tray icon immediately; re-enabling
+ * requires an app restart, see the comment in wails.ts).
+ * On backend failure roll back local state and rethrow for UI feedback. */
 export async function setTrayEnabled(enabled: boolean) {
   const previous = appConfig.trayEnabled
   appConfig.trayEnabled = enabled

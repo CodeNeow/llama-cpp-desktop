@@ -5,7 +5,7 @@
       <!-- Custom title bar -->
       <div class="title-bar" v-if="isDesktop">
         <div></div>
-        <!-- macOS 保留彩色圆点（与现有风格一致）；Windows / Linux / 未知使用原生扁平按钮 -->
+        <!-- macOS keeps the colorful dots (matches existing style); Windows / Linux / unknown use native flat buttons -->
         <template v-if="platform === 'darwin'">
           <div class="window-controls">
             <button class="win-btn win-min" @click="minimize" :title="t('title.minimize')">
@@ -19,13 +19,13 @@
             </button>
           </div>
         </template>
-        <!-- Windows / Linux / 未知：原生扁平按钮，宽 46×高 36px 填满标题栏 -->
+        <!-- Windows / Linux / unknown: native flat buttons, 46x36 px filling the title bar -->
         <div v-else class="window-controls native">
           <button class="native-btn" @click="minimize" :title="t('title.minimize')">
             <svg width="10" height="10" viewBox="0 0 10 10"><line x1="1" y1="5" x2="9" y2="5" stroke="currentColor" stroke-width="1"/></svg>
           </button>
           <button class="native-btn" @click="maximize" :title="isMax ? t('title.restore') : t('title.maximize')">
-            <!-- 最大化：空心方框；还原：两个叠加方框（后框偏移 3,3 半透明 + 前框 0.5,0.5） -->
+            <!-- Maximize: hollow square; restore: two overlapping squares (rear offset 3,3 semi-transparent + front 0.5,0.5) -->
             <svg v-if="!isMax" width="10" height="10" viewBox="0 0 10 10"><rect x="1" y="1" width="8" height="8" stroke="currentColor" stroke-width="1" fill="none"/></svg>
             <svg v-else width="10" height="10" viewBox="0 0 10 10">
               <rect x="3" y="3" width="7" height="7" stroke="currentColor" stroke-width="1" fill="none" opacity="0.35"/>
@@ -63,20 +63,20 @@ import { getOS } from './wails'
 const w = window as any
 const isDesktop = !!(w.go || w.electronAPI)  // Wails or Electron
 
-// 当前操作系统：darwin（macOS）/ windows / linux / 空字符串（未知或后端不可用）
-// 用于窗口控制按钮平台适配：macOS 保留彩色圆点，其余平台使用原生扁平按钮
+// Current OS: 'darwin' (macOS) / 'windows' / 'linux' / empty string (unknown or backend unavailable)
+// Drives window-control button platform adaptation: macOS keeps the colorful dots, other platforms use native flat buttons
 const platform = ref('')
-const isMax = ref(false)  // 最大化状态：优先通过 Wails API 查询，回退本地翻转
+const isMax = ref(false)  // Maximized state: query the Wails API when possible, fall back to a local toggle
 
-// 初始化时检测操作系统，失败静默保持空字符串（与现有 getOS 可选链风格一致）
+// Detect the OS on startup; on failure silently keep the empty string (same style as existing getOS optional chaining)
 onMounted(async () => {
   try {
     const info = await getOS()
     platform.value = (info as { os?: string }).os ?? ''
   } catch {
-    // 后端不可用（vite 单独运行）或解析失败：保持默认空字符串
+    // Backend unavailable (standalone vite) or parse failure: keep the default empty string
   }
-  // 原有静默检查更新逻辑保持不变
+  // Existing silent update check logic unchanged
   if (shouldAutoCheck()) {
     checkForUpdate()
   }
@@ -86,9 +86,9 @@ function minimize() {
   w.runtime?.WindowMinimise()
 }
 
-// 最大化/还原：执行窗口切换；图标状态先本地翻转给即时反馈，
-// 若运行时提供 WindowIsMaximised 查询 API 则延迟校正为真实状态
-// （Toggle 生效是异步的，立即查询可能拿到旧值）。
+// Maximize/restore: toggle the window; flip the icon state locally first for instant feedback,
+// then correct it later against the real state if the runtime exposes WindowIsMaximised
+// (Toggle is asynchronous, so an immediate query could read a stale value).
 function maximize() {
   w.runtime?.WindowToggleMaximise()
   isMax.value = !isMax.value
@@ -97,24 +97,26 @@ function maximize() {
       try {
         isMax.value = await w.runtime.WindowIsMaximised()
       } catch {
-        // 查询失败保持本地翻转值
+        // On query failure keep the locally flipped value
       }
     }, 150)
   }
 }
 
-// 关闭按钮：仅当 Windows 且系统托盘已启用（设置页开关）时缩到托盘
-// （llama-server 可后台继续运行）；否则直接退出。托盘启用状态优先读 store
-// 缓存——main.ts 在 mount 前已 loadConfig，后端配置（含持久化 trayEnabled）
-// 在用户点击关闭按钮时必然已加载完成，无需再调 getConfig。getOS 失败
-// （如 vite 单独运行）时静默回退直接退出，与既有 w.runtime?. 可选链风格一致。
+// Close button: only minimize to tray when on Windows with the system tray enabled
+// (Settings page toggle; llama-server keeps running in the background); otherwise quit.
+// Tray state is read from the store cache — main.ts already ran loadConfig before
+// mount, so the backend config (including persisted trayEnabled) is guaranteed to be
+// loaded by the time the user clicks close; no extra getConfig call needed. If getOS
+// fails (e.g. standalone vite), silently fall back to a direct quit, matching the
+// existing w.runtime?. optional-chaining style.
 async function closeWindow() {
   let onWindows = false
   try {
     const info = await getOS()
     onWindows = info.os === 'windows'
   } catch {
-    // 后端不可用（vite 单独运行）：保持默认行为
+    // Backend unavailable (standalone vite): keep default behavior
   }
   if (onWindows && appConfig.trayEnabled) {
     w.runtime?.WindowHide()
@@ -152,12 +154,12 @@ async function closeWindow() {
   flex-shrink: 0;
 }
 
-/* ─── 两套窗口控制按钮风格 ───
- * darwin（macOS）：.win-btn 彩色圆点（黄/绿/红），与系统视觉一致；
- * windows / linux / 未知：.window-controls.native 扁平无圆角按钮，
- *   高 36px 填满标题栏，hover 背景 var(--overlay-20)，关闭按钮 hover 红底白字。
- * 触发条件：platform === 'darwin' 时渲染圆点，否则渲染原生扁平组。
- * --wails-draggable: no-drag 保持：.window-controls 现有设置沿用到新按钮组。
+/* ─── Two window-control button styles ───
+ * darwin (macOS): .win-btn colorful dots (yellow/green/red), matching the system look;
+ * windows / linux / unknown: .window-controls.native flat square-corner buttons,
+ *   36px tall filling the title bar, hover background var(--overlay-20), close button hover red with white glyph.
+ * Trigger: render the dots when platform === 'darwin', otherwise the native flat group.
+ * --wails-draggable: no-drag preserved: .window-controls existing setting carries over to the new button group.
  */
 .window-controls {
   display: flex;
@@ -166,7 +168,7 @@ async function closeWindow() {
 }
 
 .window-controls.native {
-  gap: 0;  /* 原生按钮紧贴，无间距 */
+  gap: 0;  /* Native buttons sit flush together, no spacing */
 }
 
 .native-btn {
@@ -188,7 +190,7 @@ async function closeWindow() {
   background: var(--overlay-20);
 }
 
-/* 关闭按钮 hover：红底白字 */
+/* Close button hover: red background, white glyph */
 .native-btn.close:hover {
   background: #e81123;
   color: #fff;
@@ -249,7 +251,7 @@ async function closeWindow() {
   background: var(--scrollbar-thumb-hover);
 }
 
-/* Route transitions — 纯透明度过渡，避免位移动画引发合成层与布局渲染切换时的亚像素水平跳变（修复聊天页离线提示居中文字抖动） */
+/* Route transitions — opacity-only, avoiding sub-pixel horizontal jumps from composited-layer/layout switches during translate animations (fixes centered-text jitter of the chat page offline hint) */
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.2s ease;

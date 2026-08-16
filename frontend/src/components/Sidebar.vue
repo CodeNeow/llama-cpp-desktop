@@ -59,26 +59,26 @@ import { appConfig, setSidebarCollapsed } from '../store'
 
 const route = useRoute()
 
-// 系统就绪状态：llama.cpp 已安装且本地至少有一个模型
+// System ready state: llama.cpp is installed and at least one local model exists
 const ready = ref(false)
 
-/** 刷新就绪状态：并行查询 llama.cpp 与模型列表，失败时静默降级为未就绪 */
+/** Refresh ready state: queries llama.cpp and model list in parallel; fails silently degrade to not-ready */
 async function refreshReady(): Promise<void> {
   let installed = false
   let models: Awaited<ReturnType<typeof getModels>> = []
 
-  // 并行查询，互不阻塞；vite 单独运行时后端不可用，静默 catch
+  // Parallel queries, non-blocking; backend unavailable under standalone vite, silently caught
   try {
     const llamaInfo = await getLlamaCpp()
     installed = !!llamaInfo?.installed
   } catch {
-    // 后端不可用时保持默认 false
+    // Keep the default false when the backend is unavailable
   }
 
   try {
     models = await getModels()
   } catch {
-    // 后端不可用时保持默认空数组
+    // Keep the default empty array when the backend is unavailable
   }
 
   ready.value = isSystemReady(installed, models.length)
@@ -86,7 +86,7 @@ async function refreshReady(): Promise<void> {
 
 onMounted(() => {
   refreshReady()
-  // 每 15 秒刷新一次：llama.cpp 下载完成或模型下载完成后至多 15 秒自动更新
+  // Refresh every 15s: after a llama.cpp or model download finishes, auto-updates within at most 15 seconds
   const timer = setInterval(refreshReady, 15000)
   onUnmounted(() => clearInterval(timer))
 })
@@ -142,13 +142,11 @@ function isActive(path: string): boolean {
   --wails-draggable: drag;
   user-select: none;
   backdrop-filter: blur(20px);
-  /* 展开 240px ↔ 收起 64px 之间的宽度过渡，曲线与 nav-item 的
-     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) 保持一致 */
+  /* Expand 240px ↔ collapse 64px width transition, curve matches nav-item's transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) */
   transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* 收起态：64px 纯图标栏；文字全部 display:none 隐藏（不引入 v-if，
-   避免与宽度过渡打架），图标经 justify-content:center 居中 */
+/* Collapsed state: 64px icon-only bar; all text display:none (no v-if to avoid conflicting with width transition) */
 .sidebar.collapsed {
   width: 64px;
   min-width: 64px;
@@ -182,7 +180,7 @@ function isActive(path: string): boolean {
   letter-spacing: -0.3px;
 }
 
-/* 收起态 header：只显示 logo 图标，水平内边距收窄到 16px 使 32px 图标居中 */
+/* Collapsed header: only show logo icon; horizontal padding narrowed to 16px to center 32px icon */
 .sidebar.collapsed .sidebar-header {
   padding: 28px 16px 20px;
 }
@@ -250,7 +248,7 @@ function isActive(path: string): boolean {
   line-height: 1;
 }
 
-/* 收起态 nav：label 隐藏、图标居中；active-indicator 保持 left:0 */
+/* Collapsed nav: label hidden, icon centered; active-indicator keeps left:0 */
 .sidebar.collapsed .nav-label {
   display: none;
 }
@@ -291,14 +289,14 @@ function isActive(path: string): boolean {
   animation: pulse 2s infinite;
 }
 
-/* 就绪：绿色呼吸 */
+/* Ready: green breathing */
 .status-dot.ok {
   background: #22c55e;
   box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
   animation: pulse 2s infinite;
 }
 
-/* 未就绪：灰色静止 */
+/* Not ready: gray static */
 .status-dot.bad {
   background: var(--text-dim);
   box-shadow: none;
@@ -315,9 +313,9 @@ function isActive(path: string): boolean {
   color: var(--text-dim);
 }
 
-/* 收起态 footer：整个状态区（状态点 + 「系统就绪/未就绪」文字）隐藏，footer 仅剩
-   切换按钮作为唯一 flex 子项居中显示。按钮绝对定位在收起态被解除（position:
-   static），转为普通 flex 子项后由 justify-content:center 居中 */
+/* Collapsed footer: entire status area (dot + text) hidden, footer only has toggle button
+   as the single flex child centered. Button absolute positioning removed (position: static)
+   so it centers via justify-content */
 .sidebar.collapsed .sidebar-footer {
   justify-content: center;
   padding: 12px 8px;
@@ -328,7 +326,7 @@ function isActive(path: string): boolean {
   display: none;
 }
 
-/* 收起态按钮脱离 absolute 定位，作为 footer 的 flex 子项居中 */
+/* Collapsed-state button leaves absolute positioning and centers as a flex child of the footer */
 .sidebar.collapsed .collapse-toggle {
   position: static;
   transform: none;

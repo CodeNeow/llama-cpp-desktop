@@ -63,7 +63,7 @@
             </svg>
             {{ t('home.memory') }}
           </h2>
-          <!-- 使用率进度条 -->
+          <!-- Usage progress bar -->
           <div class="memory-usage">
             <div class="memory-usage-header">
               <span class="memory-usage-label">{{ t('home.memory.usageLabel', { used: formatGB(info.memory.totalGb - info.memory.freeGb), total: formatGB(info.memory.totalGb) }) }}</span>
@@ -169,8 +169,8 @@
             </div>
           </div>
 
-          <!-- Download section：三个区块各自独立 v-if（互不绑定），显示条件统一
-               由 downloadVisibility 派生，避免 v-if/v-else-if 互斥把进度区吞掉 -->
+          <!-- Download section: three blocks render independently via v-if (not mutually bound); display conditions unified
+                by downloadVisibility, avoiding v-if/v-else-if mutual exclusion that would swallow the progress area -->
           <div v-if="!info.llamaCpp.installed && dlStatus.status !== 'done'" class="download-area">
             <!-- Idle/error: show download + custom buttons -->
             <div v-if="dlVisibility.showButtons" class="download-btns">
@@ -189,14 +189,14 @@
                 {{ t('home.custom') }}
               </button>
             </div>
-            <!-- Custom path info：独立 v-if，与进度区互不绑定 -->
+            <!-- Custom path info: independent v-if, not bound to progress area -->
             <div v-if="customPath" class="custom-path-info">
               <span class="custom-path-label">{{ t('home.customPath') }}</span>
               <span class="custom-path-value">{{ customPath }}</span>
             </div>
 
-            <!-- Downloading / Paused / Extracting / Error：显示只依赖下载状态，
-                  与是否设置自定义路径无关 -->
+            <!-- Downloading / Paused / Extracting / Error: display depends only on download status,
+                   independent of whether a custom path is set -->
             <div v-if="dlVisibility.showProgress" class="download-progress">
               <div class="dl-info">
                 <span class="dl-label">{{ statusLabel[dlStatus.status] }}</span>
@@ -315,7 +315,7 @@ const dlStatus = ref<DlStatus>({ status: 'idle', progress: 0, total: 0, download
 const customPath = ref('')
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
-// 下载区显示条件：按钮组 / 自定义路径信息 / 进度区各自独立渲染（见 lib/llamaDownload）
+// Download area visibility: button group / custom path info / progress area render independently (see lib/llamaDownload)
 const dlVisibility = computed(() => downloadVisibility(dlStatus.value.status))
 
 const osLabel = computed(() => {
@@ -345,8 +345,8 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
 }
 
-// 下载状态 → 文案映射：用 computed 包裹使 t() 在 locale 切换后重新求值，
-// 保证切语言时状态标签即时更新（computed ref 在模板中自动解包，无需改模板）
+// Download status → text mapping: wrapped in computed so t() re-evaluates on locale switch,
+// ensuring status labels update instantly when language changes (computed ref auto-unwraps in template, no template change needed)
 const statusLabel = computed<Record<string, string>>(() => ({
   idle: '',
   fetching: t('home.dlFetching'),
@@ -423,7 +423,7 @@ async function browseCustomDir() {
   } catch {}
 }
 
-// onMounted 时从后端配置恢复自定义 llama.cpp 目录，避免切页回来显示为空（#恢复原样）
+// Restore custom llama.cpp dir from backend config on mount, so returning to the page shows the path (#restore-original)
 async function restoreCustomPath() {
   try {
     const cfg = await getConfig()
@@ -438,18 +438,18 @@ function checkInitialDownloadStatus() {
       const s = data as DlStatus
       const action = initialDownloadAction(s.status, info.value.llamaCpp.installed)
       if (action === 'poll') {
-        // 下载仍在进行，恢复轮询持续更新进度
+        // Download still in progress; resume polling to keep updating progress
         dlStatus.value = s
         startPolling()
       } else if (action === 'refresh') {
-        // 下载已完成但未检测到安装，刷新系统信息
+        // Download completed but install not detected; refresh system info
         fetchSystemInfo()
       } else if (action === 'showError') {
-        // 切页期间下载失败：恢复 error 状态，UI 自动显示错误信息与重试按钮
-        //（downloadVisibility 的 showButtons / showProgress 均覆盖 error）
+        // Download failed while away: restore error state; UI auto-shows error info and retry button
+        // (downloadVisibility's showButtons / showProgress both cover error)
         dlStatus.value = s
       }
-      // 'none'：无需处理
+      // 'none': no action needed
     })
     .catch(() => {})
 }
@@ -489,8 +489,8 @@ onMounted(() => {
   fetchSystemInfo().then(checkInitialDownloadStatus)
 })
 
-// 切页卸载时停止轮询，避免 interval 空转到下载结束；
-// 返回主页时 onMounted 重新 startPolling 恢复（下载由后端 goroutine 持续执行）
+// Stop polling on unmount to avoid interval spinning until download finishes;
+// returning to Home remounts and restarts polling (download continues in backend goroutine)
 onUnmounted(() => {
   stopPolling()
 })
@@ -498,12 +498,12 @@ onUnmounted(() => {
 
 <style scoped>
 .page {
-  /* 无顶部内边距：页头贴内容区顶，标题顶部与侧边栏 logo 图标平齐（见 global.css .page-header） */
+  /* No top padding: header flush with content top, title aligns with sidebar logo (see global.css .page-header) */
   padding: 0 48px 60px;
 }
 
 .page-header {
-  /* 用 padding 而非 margin：页头背景覆盖该间距，内容滚过时不留缝 */
+  /* Use padding instead of margin: header background covers this gap so content scrolls without leaving a seam */
   padding-bottom: 36px;
 }
 

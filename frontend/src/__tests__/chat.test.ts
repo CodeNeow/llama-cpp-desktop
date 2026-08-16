@@ -2,15 +2,15 @@ import { describe, it, expect } from 'vitest'
 import { parseSSEChunks, buildChatBody, buildMessageContent, type ChatParams } from '../lib/chat'
 
 describe('parseSSEChunks', () => {
-  // 完整单行 JSON
-  it('提取单条 delta', () => {
+  // complete single-line JSON
+  it('extract single delta', () => {
     const { deltas, rest } = parseSSEChunks('data: {"choices":[{"delta":{"content":"Hello"}}]}\n')
     expect(deltas).toEqual(['Hello'])
     expect(rest).toBe('')
   })
 
-  // 多条 data 行一次到达
-  it('多条 data 行一次到达', () => {
+  // multiple data lines arrive at once
+  it('multiple data lines arrive at once', () => {
     const buf =
       'data: {"choices":[{"delta":{"content":"Hel"}}]}\n' +
       'data: {"choices":[{"delta":{"content":"lo"}}]}\n' +
@@ -20,44 +20,44 @@ describe('parseSSEChunks', () => {
     expect(rest).toBe('')
   })
 
-  // data: [DONE] 忽略
-  it('data: [DONE] 忽略', () => {
+  // ignore data: [DONE]
+  it('data: [DONE] ignored', () => {
     const { deltas, rest } = parseSSEChunks('data: [DONE]\n')
     expect(deltas).toEqual([])
     expect(rest).toBe('')
   })
 
-  // 无 delta 行跳过
-  it('无 delta 的 data 行跳过', () => {
+  // skip lines with no delta
+  it('skip lines with no delta', () => {
     const { deltas, rest } = parseSSEChunks('data: {"choices":[{"delta":{}}]}\n')
     expect(deltas).toEqual([])
     expect(rest).toBe('')
   })
 
-  // 非 data 行忽略
-  it('非 data 行忽略', () => {
+  // ignore non-data lines
+  it('ignore non-data lines', () => {
     const { deltas, rest } = parseSSEChunks('keep-alive\ndata: {"choices":[{"delta":{"content":"x"}}]}\n')
     expect(deltas).toEqual(['x'])
     expect(rest).toBe('')
   })
 
-  // 跨块拆分：JSON 被截断在两块之间
-  it('跨块拆分：JSON 被截断在两块之间', () => {
-    // 第一块无换行，整段为 rest
+  // split across chunks: JSON truncated between two chunks
+  it('split across chunks: JSON truncated between two chunks', () => {
+    // first chunk has no newline, entire buffer becomes rest
     const part1 = 'data: {"choices":[{"delta":{"content":"He'
     const { deltas: d1, rest: r1 } = parseSSEChunks(part1)
     expect(d1).toEqual([])
     expect(r1).toBe('data: {"choices":[{"delta":{"content":"He')
 
-    // 第二块续上并含换行
+    // second chunk continues and includes a newline
     const part2 = 'llo"}}]}\n'
     const { deltas: d2, rest: r2 } = parseSSEChunks(r1 + part2)
     expect(d2).toEqual(['Hello'])
     expect(r2).toBe('')
   })
 
-  // 跨块拆分：JSON 对象跨两行且刚好断在中间
-  it('跨块拆分：JSON 对象跨两行且刚好断在中间', () => {
+  // split across chunks: JSON spans two lines and breaks mid-object
+  it('split across chunks: JSON spans two lines and breaks mid-object', () => {
     const part1 = 'data: {"choices":[{"delta":{"content":"Hel'
     const { deltas: d1, rest: r1 } = parseSSEChunks(part1)
     expect(d1).toEqual([])
@@ -69,16 +69,16 @@ describe('parseSSEChunks', () => {
     expect(r2).toBe('')
   })
 
-  // 尾残片保留
-  it('尾残片保留到 rest', () => {
+  // trailing fragment preserved
+  it('trailing fragment preserved in rest', () => {
     const buf = 'data: {"choices":[{"delta":{"content":"ok"}}]}\ndata: {"cho'
     const { deltas, rest } = parseSSEChunks(buf)
     expect(deltas).toEqual(['ok'])
     expect(rest).toBe('data: {"cho')
   })
 
-  // 空输入
-  it('空输入返回空增量与空残片', () => {
+  // empty input
+  it('empty input returns empty deltas and empty rest', () => {
     const { deltas, rest } = parseSSEChunks('')
     expect(deltas).toEqual([])
     expect(rest).toBe('')
@@ -86,7 +86,7 @@ describe('parseSSEChunks', () => {
 })
 
 describe('buildChatBody', () => {
-  it('无 params 时仅含 model / messages / stream，不含采样参数键', () => {
+  it('without params only contains model/messages/stream, no sampling keys', () => {
     const body = buildChatBody('m1', [
       { role: 'user', content: 'hi' },
       { role: 'assistant', content: 'hey' },
@@ -101,7 +101,7 @@ describe('buildChatBody', () => {
     })
   })
 
-  it('带 params 时顶层携带 temperature / top_p / top_k / repeat_penalty / max_tokens', () => {
+  it('with params includes temperature/top_p/top_k/repeat_penalty/max_tokens at top level', () => {
     const params: ChatParams = {
       temperature: 0.7,
       topP: 0.9,
@@ -122,7 +122,7 @@ describe('buildChatBody', () => {
     })
   })
 
-  it('systemPrompt 非空时在 messages 最前插入 system 消息', () => {
+  it('when systemPrompt is non-empty, prepend system message to messages', () => {
     const params: ChatParams = {
       temperature: 0.8,
       topP: 0.95,
@@ -137,7 +137,7 @@ describe('buildChatBody', () => {
     expect(msgs[1]).toEqual({ role: 'user', content: 'hi' })
   })
 
-  it('systemPrompt 为空时不注入 system 消息', () => {
+  it('when systemPrompt is empty, do not inject system message', () => {
     const params: ChatParams = {
       temperature: 0.8,
       topP: 0.95,
@@ -153,12 +153,12 @@ describe('buildChatBody', () => {
 })
 
 describe('buildMessageContent', () => {
-  it('无图片时返回纯文本字符串', () => {
+  it('without images returns plain text string', () => {
     expect(buildMessageContent('hello')).toBe('hello')
     expect(buildMessageContent('')).toBe('')
   })
 
-  it('有图片时返回数组且顺序为 text 在前图片在后', () => {
+  it('with images returns array with text first, images after', () => {
     const result = buildMessageContent('describe this', ['data:image/png;base64,abc', 'data:image/png;base64,def'])
     expect(result).toEqual([
       { type: 'text', text: 'describe this' },
@@ -167,7 +167,7 @@ describe('buildMessageContent', () => {
     ])
   })
 
-  it('text 为空且有图片时不含 text part', () => {
+  it('when text is empty and images present, omit text part', () => {
     const result = buildMessageContent('', ['data:image/png;base64,abc'])
     expect(result).toEqual([
       { type: 'image_url', image_url: { url: 'data:image/png;base64,abc' } },

@@ -1,26 +1,27 @@
 /**
- * 下载页搜索状态共享模块。
+ * Downloads page shared search-state module.
  *
- * 将原本定义在 Downloads.vue 组件内的搜索相关状态提升到模块级，
- * 使组件卸载（如进入模型详情页再返回）后上下文不丢失——输入词、结果
- * 列表、模型大小缓存原样呈现，无需重新请求。
+ * Hoists the search-related state previously defined inside the Downloads.vue
+ * component to module level, so unmounting the component (e.g. entering the model
+ * detail page and coming back) does not lose context — the input, result list and
+ * model-size cache re-render as-is without new requests.
  */
 
 import { ref, reactive } from 'vue'
 
-/** 当前搜索输入词 */
+/** Current search input */
 export const searchQuery = ref('')
 
-/** 是否已执行过搜索（用于空状态显示） */
+/** Whether a search has been performed (drives the empty-state display) */
 export const searched = ref(false)
 
-/** 搜索结果列表 */
+/** Search result list */
 export const searchResults = ref<HFResult[]>([])
 
-/** 模型最大 GGUF 文件大小缓存（字节），0 表示已尝试查询但无结果或失败 */
+/** Cache of each model's largest GGUF file size (bytes); 0 means a query was attempted but yielded nothing or failed */
 export const modelSizes = reactive<Record<string, number>>({})
 
-/** 搜索结果条目类型（与 Downloads.vue 中原来一致） */
+/** Search result entry type (unchanged from the original in Downloads.vue) */
 export interface HFResult {
   modelId: string
   author: string

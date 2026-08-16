@@ -35,7 +35,7 @@
           </svg>
         </button>
 
-        <!-- 聊天参数面板 -->
+        <!-- Chat parameters panel -->
         <div v-if="showParams" class="params-popover" @click.stop>
           <div class="params-header">{{ t('chat.settings') }}</div>
           <div class="params-row">
@@ -69,7 +69,7 @@
       </div>
     </div>
 
-    <!-- 服务未运行提示 -->
+    <!-- Server offline notice -->
     <div v-if="!serverRunning" class="offline-card">
       <div class="offline-icon">
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -80,7 +80,7 @@
       <button class="offline-btn" @click="goToApi">{{ t('chat.goApi') }}</button>
     </div>
 
-    <!-- 消息区 -->
+    <!-- Messages area -->
     <div v-else ref="messagesContainer" class="messages-area">
       <div v-if="routerModels.length === 0" class="empty-hint">{{ t('chat.noModels') }}</div>
       <template v-else>
@@ -93,7 +93,7 @@
         >
           <div class="message-bubble">
             <span class="message-role">{{ msg.role === 'user' ? t('chat.you') : t('chat.assistant') }}</span>
-            <!-- 图片（用户消息附带） -->
+            <!-- Images (attached to user messages) -->
             <div v-if="msg.images && msg.images.length" class="message-images">
               <img v-for="(img, i) in msg.images" :key="i" :src="img" class="message-image" alt="" />
             </div>
@@ -104,9 +104,9 @@
       </template>
     </div>
 
-    <!-- 输入区 -->
+    <!-- Input area -->
     <div v-if="serverRunning && routerModels.length > 0" class="input-area">
-      <!-- 待发送附件预览条 -->
+      <!-- Pending attachment preview bar -->
       <div v-if="pendingImages.length" class="pending-bar">
         <div class="pending-item" v-for="(img, i) in pendingImages" :key="i">
           <img :src="img" class="pending-thumb" alt="" />
@@ -166,21 +166,21 @@ const router = useRouter()
 const serverRunning = ref(false)
 const routerModels = ref<{ id: string; status: string }[]>([])
 
-/** 是否展开聊天参数面板 */
+/** Whether the chat parameters panel is expanded */
 const showParams = ref(false)
 
 const messagesContainer = ref<HTMLDivElement | null>(null)
 const inputBox = ref<HTMLTextAreaElement | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 
-/** 待发送图片预览（data URL），发送后清空 */
+/** Pending images to send (data URLs), cleared after sending */
 const pendingImages = ref<string[]>([])
 
 function goToApi() {
   router.push('/api')
 }
 
-/** 点击面板外部区域关闭参数面板 */
+/** Close the params panel when clicking outside it */
 function onDocClick() {
   showParams.value = false
 }
@@ -190,7 +190,7 @@ function onModelChange(e: Event) {
   persistChat()
 }
 
-/** 清空对话消息（保留当前选中模型偏好），并持久化。 */
+/** Clear conversation messages (preserves selected model preference) and persist. */
 function clearChat() {
   messages.value = []
   persistChat()
@@ -198,7 +198,7 @@ function clearChat() {
   resetInputHeight()
 }
 
-/** 恢复聊天参数默认值（当前进行中的请求不受影响，下次发送生效）。 */
+/** Reset chat params to defaults (in-flight requests unaffected; takes effect on next send). */
 function resetParams() {
   Object.assign(chatParams, {
     temperature: 0.8,
@@ -211,7 +211,7 @@ function resetParams() {
   persistChatParams()
 }
 
-/** 输入框自适应 1-6 行高度：由 @input 触发，发送/清空后重置。 */
+/** Input auto-resizes to 1-6 rows: triggered by @input, reset after send/clear. */
 function onInputResize() {
   const el = inputBox.value
   if (!el) return
@@ -236,7 +236,7 @@ function appendAssistant(content: string) {
   messages.value.push({ role: 'assistant', content })
 }
 
-/** 读取文件为 data URL，仅支持图片类型；失败或非图片静默忽略 */
+/** Read file as data URL; only image types; silently ignore failures or non-images */
 async function readFileAsDataUrl(file: File): Promise<string | null> {
   if (!file.type.startsWith('image/')) {
     return null
@@ -263,11 +263,11 @@ async function onFileSelected(e: Event) {
       pendingImages.value.push(dataUrl)
     }
   }
-  // 重置 input 以便重复选择同一文件
+  // Reset input so the same file can be selected again
   input.value = ''
 }
 
-/** 粘贴处理：从 clipboardData 中提取 image/* 文件 */
+/** Paste handler: extract image/* files from clipboardData */
 async function onInputPaste(e: ClipboardEvent) {
   const items = e.clipboardData?.items
   if (!items) return
@@ -327,7 +327,7 @@ async function send() {
       { ...chatParams }
     )
   } catch (e: any) {
-    // 停止生成（AbortError）：保留已生成内容；若一停止就没生成任何内容，移除空气泡
+    // Stop generation (AbortError): keep generated content; if nothing was generated, remove the empty bubble
     if (e?.name === 'AbortError') {
       const last = messages.value[messages.value.length - 1]
       if (last && last.role === 'assistant' && !last.content) {
@@ -348,12 +348,13 @@ async function send() {
 }
 
 /**
- * 停止生成：调用方手动触发，组件卸载时**不 abort**——切页后流式继续写入
- * 模块级状态，切回来即可看到完整回复（scrollToBottom 的容器判空已在下方
- * scrollToBottom() 中处理，卸载后 ref 为 null 不会抛错）。
+ * Stop generation: triggered manually by the caller; does NOT abort on component unmount—
+ * the stream continues writing to module-level state after navigation, so returning
+ * to the page shows the complete reply (scrollToBottom's null check on the ref
+ * prevents errors after unmount).
  *
- * chatAbortController 上移到模块级，保证切页重挂后新实例的 stop() 仍能
- * 中断正在进行的流式请求。
+ * chatAbortController lifted to module scope ensures the new instance's stop() after
+ * navigation remount can still interrupt the in-flight streaming request.
  */
 function stop() {
   chatAbortController.current?.abort()
@@ -395,7 +396,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   padding: 0 48px;
-  /* 聊天页不随页面滚动：布局占满视口剩余高度，内部消息区独立滚动 */
+  /* Chat page does not scroll with page: layout fills remaining viewport height, messages area scrolls independently */
 }
 
 .chat-page .page-title {
@@ -414,7 +415,7 @@ onUnmounted(() => {
   margin: 0;
 }
 
-/* 与 Downloads 等页面对齐，统一顶部标题到底部内容的间距 */
+  /* Align with Downloads and other pages: unified spacing from top title to bottom content */
 .chat-page .page-header {
   padding-bottom: 28px;
 }
@@ -424,7 +425,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 10px;
   padding-bottom: 16px;
-  position: relative; /* 参数面板定位基准 */
+  position: relative; /* Anchor for params popover positioning */
 }
 
 .chat-model-select {
@@ -802,7 +803,7 @@ onUnmounted(() => {
   line-height: 1.5;
   outline: none;
   transition: border-color 0.2s;
-  /* 自适应 1-6 行 */
+  /* Auto-resize 1-6 rows */
   min-height: 42px;
   max-height: calc(1.5em * 6 + 20px);
   overflow-y: auto;

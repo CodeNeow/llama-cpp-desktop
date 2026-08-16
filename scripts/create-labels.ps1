@@ -1,46 +1,46 @@
-# Issue 标签一键创建脚本（GitHub CLI）
-# 用法：
-#   1. 安装 gh CLI 并登录：gh auth login
-#   2. 在仓库根目录执行：.\scripts\create-labels.ps1
-# 幂等：已存在的标签会被 --force 更新描述与颜色。
+# Issue label one-click creation script (GitHub CLI)
+# Usage:
+#   1. Install gh CLI and log in: gh auth login
+#   2. Run from repo root: .\scripts\create-labels.ps1
+# Idempotent: existing labels are --force updated with description and color.
 
 $ErrorActionPreference = "Stop"
 
 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-    Write-Error "未找到 gh CLI，请先安装 https://cli.github.com/ 并执行 gh auth login"
+    Write-Error "gh CLI not found. Install https://cli.github.com/ and run gh auth login"
     exit 1
 }
 
 $repo = gh repo view --json nameWithOwner --jq .nameWithOwner
 if (-not $repo) {
-    Write-Error "无法识别当前 GitHub 仓库，请确认在仓库目录内运行"
+    Write-Error "Cannot detect GitHub repo. Confirm you are in the repo directory."
     exit 1
 }
 
 $labels = @(
-    # 优先级（发现类 issue 恰好打一个）
-    @{ Name = "P0-critical"; Color = "B60205"; Desc = "阻断核心功能或安全漏洞，必须立即修" }
-    @{ Name = "P1-high";     Color = "D93F0B"; Desc = "高优先级，明显影响体验或安全" }
-    @{ Name = "P2-medium";   Color = "FBCA04"; Desc = "中等，体验/一致性问题" }
-    @{ Name = "P3-low";      Color = "0E8A16"; Desc = "低优先级，打磨项" }
-    # 类型
-    @{ Name = "bug";          Color = "D73A4A"; Desc = "非预期行为 / 缺陷" }
-    @{ Name = "enhancement";  Color = "A2EEEF"; Desc = "新功能 / 改进" }
-    @{ Name = "documentation"; Color = "0075CA"; Desc = "文档相关" }
-    # 区域
-    @{ Name = "frontend"; Color = "1D76DB"; Desc = "前端 (Vue 3 / Vite)" }
-    @{ Name = "backend";  Color = "5319E7"; Desc = "后端 (Go / Wails)" }
-    @{ Name = "models";   Color = "C5DEF5"; Desc = "模型扫描 / 参数配置" }
-    @{ Name = "downloads"; Color = "7057FF"; Desc = "模型下载 (HF Mirror) / llama.cpp 安装" }
-    @{ Name = "server";   Color = "008672"; Desc = "API 服务 / llama-server" }
-    @{ Name = "config";   Color = "6F42C1"; Desc = "配置持久化 / 主题" }
-    # 安全
-    @{ Name = "security"; Color = "8B0000"; Desc = "安全相关（敏感漏洞请走 Security Advisory）" }
+    # Priority (exactly one per issue)
+    @{ Name = "P0-critical"; Color = "B60205"; Desc = "Blocks core functionality or security vulnerability, must fix immediately" }
+    @{ Name = "P1-high";     Color = "D93F0B"; Desc = "High priority, noticeably affects experience or security" }
+    @{ Name = "P2-medium";   Color = "FBCA04"; Desc = "Medium, experience/consistency issue" }
+    @{ Name = "P3-low";      Color = "0E8A16"; Desc = "Low priority, polish item" }
+    # Type
+    @{ Name = "bug";          Color = "D73A4A"; Desc = "Unexpected behavior / defect" }
+    @{ Name = "enhancement";  Color = "A2EEEF"; Desc = "New feature / improvement" }
+    @{ Name = "documentation"; Color = "0075CA"; Desc = "Documentation" }
+    # Area
+    @{ Name = "frontend"; Color = "1D76DB"; Desc = "Frontend (Vue 3 / Vite)" }
+    @{ Name = "backend";  Color = "5319E7"; Desc = "Backend (Go / Wails)" }
+    @{ Name = "models";   Color = "C5DEF5"; Desc = "Model scan / parameter config" }
+    @{ Name = "downloads"; Color = "7057FF"; Desc = "Model download (HF Mirror) / llama.cpp install" }
+    @{ Name = "server";   Color = "008672"; Desc = "API service / llama-server" }
+    @{ Name = "config";   Color = "6F42C1"; Desc = "Config persistence / theme" }
+    # Security
+    @{ Name = "security"; Color = "8B0000"; Desc = "Security (sensitive vulnerabilities go via Security Advisory)" }
 )
 
 foreach ($l in $labels) {
-    Write-Host "创建/更新标签 [$($l.Name)] ..." -ForegroundColor Cyan
+    Write-Host "Creating/updating label [$($l.Name)] ..." -ForegroundColor Cyan
     gh label create $l.Name --repo $repo --color $l.Color --description $l.Desc --force
 }
 
-Write-Host "`n完成！共 $($labels.Count) 个标签已就绪。" -ForegroundColor Green
+    Write-Host "`nDone! $($labels.Count) labels ready." -ForegroundColor Green

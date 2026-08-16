@@ -1,10 +1,10 @@
 /**
- * 前端界面语言（i18n）：极简字典实现，不引入第三方依赖。
- * - Locale 取值 zh / en，与后端 GetConfig 的 resolvedLanguage 保持一致；
- * - 全局 locale ref 默认 zh，启动加载配置后由 store.loadConfig 用
- *   resolvedLanguage 覆盖（auto 模式的检测结果来自后端）；
- * - t(key, params) 从当前语言的字典取值，缺失 key 原样返回 key；
- *   params 用 {name} 占位符替换。
+ * Frontend locale (i18n): minimal dictionary implementation, no external deps.
+ * - Locale values zh / en, matching backend GetConfig's resolvedLanguage;
+ * - Global locale ref defaults to zh; after startup config loads, store.loadConfig
+ *   overwrites with resolvedLanguage (auto mode result from backend);
+ * - t(key, params) looks up current language dictionary; missing key returns key as-is;
+ *   params substitute {name} placeholders.
  */
 
 import { ref } from 'vue'
@@ -13,7 +13,7 @@ export type Locale = 'zh' | 'en'
 
 const messages: Record<Locale, Record<string, string>> = {
   zh: {
-    // ─── Sidebar 导航 ───
+    // ─── Sidebar navigation ───
     'nav.home': '系统信息',
     'nav.chat': '本地聊天',
     'nav.downloads': '模型下载',
@@ -25,13 +25,13 @@ const messages: Record<Locale, Record<string, string>> = {
     'nav.collapse': '收起侧边栏',
     'nav.expand': '展开侧边栏',
 
-    // ─── 标题栏（App.vue） ───
+    // ─── Title bar (App.vue) ───
     'title.minimize': '最小化',
     'title.maximize': '最大化',
     'title.restore': '还原',
     'title.close': '关闭到托盘',
 
-    // ─── 主页（Home.vue） ───
+    // ─── Home page (Home.vue) ───
     'home.title': '系统信息',
     'home.subtitle': '系统状态概览',
     'home.errorTitle': '无法获取系统信息',
@@ -83,7 +83,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'home.dlDone': '下载完成',
     'home.dlError': '下载失败',
 
-    // ─── 模型页（Models.vue） ───
+    // ─── Models page (Models.vue) ───
     'models.title': '模型管理',
     'models.count': '{n} 个模型',
     'models.hint': '将 GGUF 模型文件放入模型目录',
@@ -104,7 +104,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'models.unknownError': '未知错误',
     'models.backendError': '无法连接后端服务：{msg}',
 
-    // ─── API 页（Api.vue） ───
+    // ─── API page (Api.vue) ───
     'api.title': 'API 路由',
     'api.subtitle': 'llama-server 服务启停与实时监控',
     'api.running': '运行中',
@@ -128,7 +128,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'api.settings': '参数设置',
     'api.cfgLockedHint': '服务运行中，停止后可修改',
 
-    // ─── 下载页（Downloads.vue） ───
+    // ─── Downloads page (Downloads.vue) ───
     'downloads.title': '模型下载',
     'downloads.subtitle': '从 {source} 搜索和下载模型',
     'downloads.searchPlaceholder': '搜索模型... (如 bge, all-MiniLM, gte)',
@@ -167,7 +167,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'downloads.viewDetail': '查看详情',
     'downloads.fileCount': '{n} 个文件',
 
-    // ─── 聊天页（Chat.vue） ───
+    // ─── Chat page (Chat.vue) ───
     'chat.title': '本地聊天',
     'chat.subtitle': '与本地模型对话',
     'chat.model': '模型',
@@ -194,7 +194,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'chat.systemPromptPh': '留空则不注入系统提示',
     'chat.resetDefaults': '恢复默认',
 
-    // ─── 监控（Api.vue 内嵌） ───
+    // ─── Monitoring (embedded in Api.vue) ───
     'monitor.title': '监控',
     'monitor.subtitle': '推理服务与系统资源实时状态（每 1 秒刷新）',
     'monitor.inference': '推理服务',
@@ -216,7 +216,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'monitor.gpuMem': '显存 {used} / {total}',
     'monitor.noGpu': '未检测到 NVIDIA GPU',
 
-    // ─── 设置页（Settings.vue） ───
+    // ─── Settings page (Settings.vue) ───
     'settings.title': '偏好设置',
     'settings.subtitle': '应用程序配置与偏好',
     'settings.uiStyle': 'UI 样式',
@@ -252,7 +252,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'settings.on': '开',
     'settings.off': '关',
 
-    // ─── 模型设置弹窗（ModelSettings.vue） ───
+    // ─── Model settings modal (ModelSettings.vue) ───
     'modelSettings.title': '模型设置',
     'modelSettings.close': '关闭',
     'modelSettings.subtitle': '推理参数配置',
@@ -345,7 +345,7 @@ const messages: Record<Locale, Record<string, string>> = {
     'modelSettings.loadFailed': '加载失败',
     'modelSettings.retry': '重试',
 
-    // ─── 更新弹窗（UpdateModal.vue） ───
+    // ─── Update modal (UpdateModal.vue) ───
     'updateModal.title': '发现新版本',
     'updateModal.close': '关闭',
     'updateModal.downloading': '正在下载 {version} ...',
@@ -760,20 +760,22 @@ const messages: Record<Locale, Record<string, string>> = {
 }
 
 /**
- * 当前生效语言（zh/en）。默认 zh；启动加载配置后由 store.loadConfig 用后端
- * resolvedLanguage 覆盖（auto 模式由后端按系统检测结果解析）。使用 Vue ref
- * 保证 t() 在模板中被读取后，切换语言会触发依赖组件重新渲染。
+ * Current effective locale (zh/en). Defaults to zh; after startup config loads,
+ * store.loadConfig overwrites it with the backend resolvedLanguage (auto mode is
+ * resolved by the backend from system detection). Uses a Vue ref so that once
+ * t() is read in a template, switching the locale re-renders dependent components.
  */
 export const locale = ref<Locale>('zh')
 
-/** 切换当前语言。 */
+/** Switch the current locale. */
 export function setLocale(l: Locale) {
   locale.value = l
 }
 
 /**
- * 取当前语言下的文案：字典无该 key 时原样返回 key（便于尽早发现缺词条）；
- * params 存在时用 {name} 占位符替换（{n}、{msg} 等）。
+ * Look up the copy for the current locale: returns the key as-is when the
+ * dictionary lacks it (so missing entries surface early); when params is
+ * provided, substitutes {name} placeholders ({n}, {msg}, etc.).
  */
 export function t(key: string, params?: Record<string, string | number>): string {
   const msg = messages[locale.value][key]
@@ -781,7 +783,7 @@ export function t(key: string, params?: Record<string, string | number>): string
   if (!params) return msg
   let out = msg
   for (const [k, v] of Object.entries(params)) {
-    // 目标 lib 未启用 es2021，不用 replaceAll，用 split/join 全量替换。
+    // Target lib does not enable es2021, so use split/join instead of replaceAll.
     out = out.split(`{${k}}`).join(String(v))
   }
   return out

@@ -1,19 +1,20 @@
 /**
- * 聊天页纯函数与薄 fetch 封装。
+ * Chat page pure functions and a thin fetch wrapper.
  *
- * 约定：
- * - 纯函数（parseSSEChunks、buildChatBody）便于单测，不依赖网络/IO；
- * - fetch 封装直连本地 llama-server，不走 Wails 绑定，因为需要流式读取；
- * - 端口与运行态由调用方（Chat.vue）通过 getServerConfig / getServerStatus 获取。
+ * Conventions:
+ * - Pure functions (parseSSEChunks, buildChatBody) are unit-test friendly, no network/IO;
+ * - The fetch wrapper talks to the local llama-server directly instead of going through
+ *   Wails bindings, because streaming reads are required;
+ * - Port and running state are obtained by the caller (Chat.vue) via getServerConfig / getServerStatus.
  */
 
-/** 路由器模型条目（仅取前端关心的字段） */
+/** Router model entry (only the fields the frontend cares about) */
 export interface RouterModel {
   id: string
   status: string
 }
 
-/** 聊天采样参数（与 chatState.ChatParams 保持一致，避免 chat 库对 chatState 的硬依赖） */
+/** Chat sampling parameters (kept in sync with chatState.ChatParams to avoid a hard dependency of this lib on chatState) */
 export interface ChatParams {
   temperature: number
   topP: number
@@ -24,17 +25,18 @@ export interface ChatParams {
 }
 
 /**
- * 增量解析 SSE 响应文本块。
+ * Incrementally parse a chunk of SSE response text.
  *
- * 输入为累计收到的原始响应文本（可能含半截 JSON 行），按 `\n` 切出完整行，
- * 仅处理 `data: ` 前缀行：提取 `choices[0].delta.content`，`[DONE]` 忽略；
- * 非 data 行、格式异常行均静默跳过。
+ * Input is the raw response text accumulated so far (may contain a half-finished
+ * JSON line); split on `\n` to get complete lines and only process lines with the
+ * `data: ` prefix: extract `choices[0].delta.content`, ignore `[DONE]`;
+ * non-data lines and malformed lines are silently skipped.
  *
- * @returns { deltas: 本次提取到的内容增量数组, rest: 未完成尾行残片 }
+ * @returns { deltas: content deltas extracted this round, rest: unfinished trailing line fragment }
  */
 export function parseSSEChunks(buffer: string): { deltas: string[]; rest: string } {
   const deltas: string[] = []
-  // 找到最后一个换行，之前的部分可完整切行，最后一个换行之后为残片
+  // Find the last newline: everything before it can be split into complete lines; what follows is the fragment
   const lastNewline = buffer.lastIndexOf('\n')
   const processPart = lastNewline >= 0 ? buffer.slice(0, lastNewline) : ''
   const rest = lastNewline >= 0 ? buffer.slice(lastNewline + 1) : buffer
@@ -53,21 +55,21 @@ export function parseSSEChunks(buffer: string): { deltas: string[]; rest: string
         deltas.push(content)
       }
     } catch {
-      // 非 JSON data 行静默忽略
+      // Silently ignore non-JSON data lines
     }
   }
   return { deltas, rest }
 }
 
 /**
- * 构造聊天补全请求体。
+ * Build the chat completion request body.
  *
- * messages 的每一项可选带 images 数组（data URL），有图片时走 OpenAI 兼容
- * 多模态格式：content 变为 parts 数组，text 在前、图片在后，对齐 llama.cpp
- * webui 的发送方式。
+ * Each messages entry may carry an optional images array (data URLs); with images
+ * present it uses the OpenAI-compatible multimodal format: content becomes a parts
+ * array with text first and images after, matching how the llama.cpp webui sends.
  *
- * params 存在时，将采样参数注入请求体顶层；systemPrompt 非空时在 messages
- * 最前插入 system 消息。
+ * When params is provided, sampling parameters are injected at the top level of
+ * the body; a non-empty systemPrompt is inserted as the first system message.
  */
 export function buildChatBody(
   model: string,
@@ -101,11 +103,12 @@ export function buildChatBody(
 }
 
 /**
- * 将文本与可选图片构造成 OpenAI 兼容的消息 content。
+ * Build an OpenAI-compatible message content from text and optional images.
  *
- * - 无图片：返回纯文本字符串（保持对不支持多模态后端的兼容）。
- * - 有图片：返回 parts 数组，text part 仅在文本非空时包含，图片各一个 image_url part，
- *   顺序为 text 在前、图片在后，对齐 llama.cpp webui 的 image_url 多模态格式。
+ * - No images: return the plain text string (stays compatible with non-multimodal backends).
+ * - With images: return a parts array; the text part is included only when the text is
+ *   non-empty, and each image becomes one image_url part, text first and images after,
+ *   matching the llama.cpp webui image_url multimodal format.
  */
 export function buildMessageContent(text: string, images?: string[]): string | Array<{ type: string; text?: string; image_url?: { url: string } }> {
   if (!images || images.length === 0) {
@@ -122,7 +125,7 @@ export function buildMessageContent(text: string, images?: string[]): string | A
 }
 
 /**
- * 获取路由器当前可用模型列表（排除 failed 状态）。
+ * Fetch the router's currently available model list (excluding failed entries).
  */
 export async function fetchRouterModels(port: number): Promise<RouterModel[]> {
   const res = await fetch(`http://127.0.0.1:${port}/models`)
@@ -138,9 +141,9 @@ export async function fetchRouterModels(port: number): Promise<RouterModel[]> {
 }
 
 /**
- * 流式聊天补全：POST /v1/chat/completions，逐 token 回调 onDelta。
+ * Streaming chat completion: POST /v1/chat/completions, invoking onDelta per token.
  *
- * @throws 非 2xx 时读取 body 中的 error.message 抛出。
+ * @throws On non-2xx, reads error.message from the body and throws it.
  */
 export async function streamChatCompletion(
   port: number,
@@ -163,7 +166,7 @@ export async function streamChatCompletion(
       const err = await res.json()
       if (typeof err?.error?.message === 'string') msg = err.error.message
     } catch {
-      // 忽略 body 解析失败
+      // Ignore body parse failures
     }
     throw new Error(msg)
   }
@@ -182,7 +185,7 @@ export async function streamChatCompletion(
       buffer = rest
       for (const d of deltas) onDelta(d)
     }
-    // 处理最后残片
+    // Process the final fragment
     const { deltas } = parseSSEChunks(buffer)
     for (const d of deltas) onDelta(d)
   } finally {

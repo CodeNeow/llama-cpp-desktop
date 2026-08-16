@@ -36,7 +36,7 @@
       </div>
     </section>
 
-    <!-- 界面语言 -->
+    <!-- Interface Language -->
     <section class="settings-section">
       <h2 class="section-title">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -86,7 +86,7 @@
       <p v-if="languageError" class="source-error">{{ languageError }}</p>
     </section>
 
-    <!-- 下载 -->
+    <!-- Downloads -->
     <section class="settings-section">
       <h2 class="section-title">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -124,7 +124,7 @@
       <p v-if="sourceError" class="source-error">{{ sourceError }}</p>
     </section>
 
-    <!-- 服务访问范围 -->
+    <!-- Server access scope -->
     <section class="settings-section">
       <h2 class="section-title">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -162,7 +162,7 @@
       <p v-if="accessError" class="source-error">{{ accessError }}</p>
     </section>
 
-    <!-- 系统托盘（仅 Windows 渲染；其他平台无托盘需求，关闭按钮直接退出） -->
+    <!-- System tray (Windows only; other platforms exit directly on close) -->
     <section v-if="isWindows" class="settings-section">
       <h2 class="section-title">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -189,12 +189,12 @@
           <span class="toggle-label">{{ appConfig.trayEnabled ? t('settings.on') : t('settings.off') }}</span>
         </div>
       </div>
-      <!-- systray 同进程不可二次启动：关闭托盘后再次启用须重启应用 -->
+      <!-- systray cannot restart in same process: after disabling, re-enable requires app restart -->
       <p class="source-hint">{{ t('settings.trayHint') }}</p>
       <p v-if="trayError" class="source-error">{{ trayError }}</p>
     </section>
 
-    <!-- 更新 -->
+    <!-- Updates -->
     <section class="settings-section">
       <h2 class="section-title">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -267,8 +267,8 @@ async function setLanguagePref(lang: string) {
   }
 }
 
-// 服务访问范围（服务监听地址，见后端 SaveServerConfig）：挂载时从后端
-// 配置刷新，避免与 API 页/其他来源的持久化值脱节。
+// Server access scope (listen address, see backend SaveServerConfig): refreshed from backend on mount
+// to stay in sync with persisted values from the API page and other sources.
 const accessError = ref('')
 const accessSwitching = ref(false)
 
@@ -285,8 +285,8 @@ async function setAccessScope(mode: string) {
   }
 }
 
-// 系统托盘开关：仅 Windows 显示设置项。关闭托盘时立即生效（后端摘图标并
-// 持久化）；systray 同进程不可二次启动，再次启用须重启应用（开关下有提示）。
+// System tray toggle: rendered on Windows only. Disabling takes effect immediately (backend removes icon and
+// persists); systray cannot restart in same process, so re-enabling requires app restart (hint shown below toggle).
 const isWindows = ref(false)
 const trayError = ref('')
 const traySwitching = ref(false)
@@ -312,9 +312,9 @@ const showUpdateModal = computed(() => updateState.showModal)
 
 onMounted(async () => {
   if (!appConfig.loaded) await loadConfig()
-  // 系统托盘设置项仅 Windows 渲染（其他平台后端持久化但无托盘行为）
+  // The system tray setting is rendered on Windows only (other platforms persist it in the backend but have no tray behavior)
   getOS().then((info) => { isWindows.value = info.os === 'windows' }).catch(() => {})
-  // 从后端读取当前服务访问范围（默认 local），保证页面选中态与持久化值一致
+  // Read the current service access scope from the backend (default local) so the page selection matches the persisted value
   getServerConfig().then((scfg) => {
     if (scfg.accessMode === 'local' || scfg.accessMode === 'lan') {
       appConfig.serverAccessMode = scfg.accessMode
@@ -330,12 +330,12 @@ async function manualCheck() {
 
 <style scoped>
 .page {
-  /* 无顶部内边距：页头贴内容区顶，标题顶部与侧边栏 logo 图标平齐（见 global.css .page-header） */
+  /* No top padding: header flush with content top, title aligns with sidebar logo (see global.css .page-header) */
   padding: 0 48px 60px;
 }
 
 .page-header {
-  /* 用 padding 而非 margin：页头背景覆盖该间距，内容滚过时不留缝 */
+  /* Use padding instead of margin: header background covers this gap so content scrolls without leaving a seam */
   padding-bottom: 36px;
 }
 
@@ -455,7 +455,7 @@ async function manualCheck() {
   min-width: 28px;
 }
 
-/* ─── 模型下载源 ─── */
+/* ─── Model download source ─── */
 .source-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -518,7 +518,7 @@ async function manualCheck() {
   color: #ef4444;
 }
 
-/* ─── 更新 ─── */
+/* ─── Updates ─── */
 .update-actions {
   display: flex;
   align-items: center;

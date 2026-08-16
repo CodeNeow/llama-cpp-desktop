@@ -12,7 +12,7 @@
         <button class="refresh-btn" :disabled="loading" :title="t('models.refreshTitle')" @click="fetchModels(true)">{{ t('models.refresh') }}</button>
       </div>
 
-      <!-- 模型目录 -->
+      <!-- Models directory -->
       <div class="dir-bar">
       <div class="dir-info">
         <span class="dir-label">{{ t('models.dir') }}</span>
@@ -111,7 +111,7 @@ const models = ref<ModelInfo[]>([])
 const loading = ref(true)
 const error = ref('')
 
-// 当前生效的模型目录（来自后端配置，可由「选择文件夹」更新）
+// Currently active models directory (from backend config, updatable via "Choose Folder")
 const modelsDir = ref('')
 
 async function loadModelsDir() {
@@ -124,7 +124,7 @@ async function loadModelsDir() {
 async function chooseModelsDir() {
   try {
     const dir = await browseModelsDir()
-    // 仅当用户实际选择了目录（返回非空）才更新显示并重扫；取消（空串）不影响现有目录
+    // Only update display and rescan when user actually picks a dir (non-empty); cancel (empty string) leaves existing dir unchanged
     if (dir) {
       modelsDir.value = dir
       await fetchModels(true)
@@ -141,7 +141,7 @@ async function fetchModels(force = false) {
   loading.value = true
   error.value = ''
   try {
-    // force=true 时强制重扫 LLM-Models（refreshModels），否则走缓存（getModels）（#18）
+    // force=true forces a rescan (refreshModels); otherwise uses cache (getModels) (#18)
     models.value = (force ? await refreshModels() : await getModels()) as ModelInfo[]
   } catch (e) {
     error.value = t('models.backendError', { msg: e instanceof Error ? e.message : String(e) })
@@ -158,7 +158,7 @@ onMounted(() => {
 
 <style scoped>
 .page {
-  /* 无顶部内边距：页头贴内容区顶，标题顶部与侧边栏 logo 图标平齐（见 global.css .page-header） */
+  /* No top padding: header flush with content top, title aligns with sidebar logo (see global.css .page-header) */
   padding: 0 48px 60px;
 }
 
@@ -167,7 +167,7 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  /* 用 padding 而非 margin：页头背景覆盖该间距，内容滚过时不留缝 */
+  /* Use padding instead of margin: header background covers this gap so content scrolls without leaving a seam */
   padding-bottom: 36px;
 }
 
@@ -199,7 +199,7 @@ onMounted(() => {
   cursor: not-allowed;
 }
 
-/* ─── 模型目录 ─── */
+/* ─── Models directory bar ─── */
 .dir-bar {
   display: flex;
   align-items: center;

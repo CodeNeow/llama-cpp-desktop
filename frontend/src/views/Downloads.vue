@@ -161,17 +161,17 @@ interface DlTask {
 const router = useRouter()
 
 const searching = ref(false)
-// 当前下载源（"hf" | "modelscope"），挂载时从后端读取，切换由设置页完成
+// Current download source ("hf" | "modelscope"), read from backend on mount; switching done in Settings
 const downloadSource = ref('')
 const sourceLabel = computed(() => downloadSource.value === 'modelscope' ? t('downloads.sourceModelScope') : t('downloads.sourceHf'))
-// 搜索卡片大小批量请求的并发受限队列
+// Concurrency-limited queue for search cards' batched size requests
 let sizeQueue = new LimitedQueue(4)
 
 const tasks = ref<DlTask[]>([])
 let taskPollTimer: ReturnType<typeof setInterval> | null = null
 let lastDoneCount = 0
 
-// 下载任务 Modal
+// Download tasks modal
 const showTasksModal = ref(false)
 const activeTaskCount = computed(() => countActiveTasks(tasks.value))
 const visibleTaskList = computed(() => visibleTasks(tasks.value))
@@ -220,7 +220,7 @@ function loadModelSize(modelId: string) {
       const size = await getModelMaxFileSize(modelId)
       if (size > 0) modelSizes[modelId] = size
     } catch {
-      // 查询失败静默忽略
+      // Silently ignore query failures
     }
   })
 }

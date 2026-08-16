@@ -1,10 +1,10 @@
-# Llama Desktop 组合验证门（POSIX）
-# 用法：make check           # 全量（后端 + 前端）
-#       make check-backend  # 仅后端
-#       make check-frontend # 仅前端
+# Llama Desktop combined validation gate (POSIX)
+# Usage: make check           # full (backend + frontend)
+#       make check-backend   # backend only
+#       make check-frontend  # frontend only
 #
-# 前端产物 frontend/dist 是 go:embed 的编译依赖（已 gitignore）。
-# 本机前端未构建时，先执行 make check-frontend 或 npm run build。
+# Frontend artifact frontend/dist is a go:embed compile dependency (gitignored).
+# If frontend is not yet built locally, run make check-frontend or npm run build first.
 
 .PHONY: check check-backend check-frontend
 
@@ -13,7 +13,7 @@ check: check-backend check-frontend
 check-backend:
 	go build ./...
 	go test ./...
-	@test -z "$$(gofmt -l .)" || (gofmt -l .; echo "gofmt: 存在未格式化文件"; exit 1)
+	@test -z "$$(gofmt -l .)" || (gofmt -l .; echo "gofmt: unformatted files found"; exit 1)
 	golangci-lint run
 
 check-frontend:
