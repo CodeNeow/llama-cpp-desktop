@@ -2,10 +2,10 @@
 
 [简体中文](README_zh.md)
 
-[![Windows](https://img.shields.io/badge/Windows-10%2F11-00a98f?style=flat-square)](https://github.com/CodeNeow/llama-cpp-desktop/releases)
-[![License](https://img.shields.io/badge/license-MIT-00a98f?style=flat-square)](LICENSE)
-[![GitHub release](https://img.shields.io/github/v/release/CodeNeow/llama-cpp-desktop?style=flat-square&color=00a98f)](https://github.com/CodeNeow/llama-cpp-desktop/releases)
-[![CI/CD](https://img.shields.io/github/actions/workflow/status/CodeNeow/llama-cpp-desktop/.github/workflows/ci.yml?style=flat-square&color=00a98f)](https://github.com/CodeNeow/llama-cpp-desktop/actions)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Ubuntu-0078D6?logo=windows&logoColor=white)](https://github.com/CodeNeow/llama-cpp-desktop/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![GitHub release](https://img.shields.io/github/v/release/CodeNeow/llama-cpp-desktop?logo=github&color=blue)](https://github.com/CodeNeow/llama-cpp-desktop/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/CodeNeow/llama-cpp-desktop/.github/workflows/ci.yml?branch=main&logo=githubactions&logoColor=white)](https://github.com/CodeNeow/llama-cpp-desktop/actions)
 
 A local LLM desktop manager for [llama.cpp](https://github.com/ggml-org/llama.cpp): discover, download and configure GGUF models, serve them all behind one OpenAI-compatible endpoint, and monitor inference in real time — without touching a command line. Built with Wails v2 (Go backend + Vue 3 frontend, no third-party UI framework).
 

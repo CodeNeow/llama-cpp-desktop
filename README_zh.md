@@ -2,10 +2,10 @@
 
 [English](README.md)
 
-[![Windows](https://img.shields.io/badge/Windows-10%2F11-00a98f?style=flat-square)](https://github.com/CodeNeow/llama-cpp-desktop/releases)
-[![License](https://img.shields.io/badge/license-MIT-00a98f?style=flat-square)](LICENSE)
-[![GitHub release](https://img.shields.io/github/v/release/CodeNeow/llama-cpp-desktop?style=flat-square&color=00a98f)](https://github.com/CodeNeow/llama-cpp-desktop/releases)
-[![CI/CD](https://img.shields.io/github/actions/workflow/status/CodeNeow/llama-cpp-desktop/.github/workflows/ci.yml?style=flat-square&color=00a98f)](https://github.com/CodeNeow/llama-cpp-desktop/actions)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Ubuntu-0078D6?logo=windows&logoColor=white)](https://github.com/CodeNeow/llama-cpp-desktop/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![GitHub release](https://img.shields.io/github/v/release/CodeNeow/llama-cpp-desktop?logo=github&color=blue)](https://github.com/CodeNeow/llama-cpp-desktop/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/CodeNeow/llama-cpp-desktop/.github/workflows/ci.yml?branch=main&logo=githubactions&logoColor=white)](https://github.com/CodeNeow/llama-cpp-desktop/actions)
 
 本地大模型桌面管理工具，基于 [llama.cpp](https://github.com/ggml-org/llama.cpp)：在一个窗口里完成 GGUF 模型的搜索、下载与参数配置，通过单一 OpenAI 兼容端点对外服务，并实时监控推理状态，全程无需命令行。桌面端基于 Wails v2（Go 后端 + Vue 3 前端，无第三方 UI 框架）。
 
