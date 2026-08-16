@@ -16,7 +16,7 @@
         <div class="dock-section-title">{{ t('dock.downloads') }}</div>
 
         <!-- Llama.cpp download -->
-        <div v-if="llamaStatus" class="dock-task">
+        <div v-if="llamaActive" class="dock-task">
           <div class="dock-task-header">
             <span class="dock-task-name">llama.cpp</span>
             <span class="dock-task-status" :class="'status-' + llamaStatus.status">{{ statusLabel(llamaStatus.status) }}</span>
@@ -101,7 +101,9 @@ const expanded = ref(true)
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
 // Llama.cpp download
-const llamaStatus = ref<{ status: string; progress: number } | null>(null)
+// 初始化 idle 状态而非 null，避免模板类型检查报 "possibly null"；
+// 首次轮询前显示为 idle，不进入活跃展示区。
+const llamaStatus = ref<{ status: string; progress: number }>({ status: 'idle', progress: 0 })
 
 // Model download tasks
 const allTasks = ref<{ id: string; fileName: string; status: string; progress: number }[]>([])
@@ -120,13 +122,19 @@ const unloadErrors = reactive<Record<string, string>>({})
 
 const activeTasks = computed(() => activeModelTasks(allTasks.value))
 
+// llama.cpp 是否处于「活跃」状态：fetching/downloading/paused/extracting/error
+// 均算活跃；idle/done 隐藏。避免没有进度信息的 llama.cpp 行常驻卡片。
+const llamaActive = computed(() =>
+  llamaStatus.value ? activeLlamaCppDownload(llamaStatus.value.status) : false
+)
+
 const hasDownloads = computed(() => {
-  return (llamaStatus.value && activeLlamaCppDownload(llamaStatus.value.status)) || activeTasks.value.length > 0
+  return llamaActive.value || activeTasks.value.length > 0
 })
 
 const visible = computed(() =>
   shouldShowDock(
-    llamaStatus.value ? activeLlamaCppDownload(llamaStatus.value.status) : false,
+    llamaActive.value,
     activeTasks.value.length,
     loadedModels.value.length
   )
@@ -263,7 +271,7 @@ onUnmounted(() => {
   width: 340px;
   max-height: 60vh;
   z-index: 50;
-  background: var(--surface);
+  background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: 14px;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
