@@ -292,6 +292,8 @@ async function fetchMonitorStatus() {
   try {
     const s = await getMonitorStatus()
     status.value = s
+    // 轮询联动刷新，覆盖 llama-server 被外部终止的场景（进程退出后后端置 false，前端 1 秒内自动纠正按钮态与参数锁定）
+    serverRunning.value = s.serverRunning
     decodeHistory.value = appendHistory(decodeHistory.value, s.decodeTps)
   } catch {
     // 轮询失败静默保持上次数据，不打断监控展示
