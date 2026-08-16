@@ -129,6 +129,6 @@ code, pre {
   top: 0;
   z-index: 20;
   background: var(--bg-primary);
-  /* padding-top 承接页面顶距，页头零位移贴顶 */
-  padding-top: 36px;
+  /* 顶距为 0：标题文字顶部与侧边栏 logo 图标顶部平齐（36px 标题栏之下已是最上限）；sticky 零位移不变 */
+  padding-top: 0;
 }

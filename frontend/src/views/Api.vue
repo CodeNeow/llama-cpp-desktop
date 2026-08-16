@@ -418,7 +418,7 @@ function clearLog() {
 
 <style scoped>
 .page {
-  /* 顶部内边距已由页头 padding-top 承接（见 global.css .page-header） */
+  /* 无顶部内边距：页头贴内容区顶，标题顶部与侧边栏 logo 图标平齐（见 global.css .page-header） */
   padding: 0 48px 60px;
 }
 
@@ -432,6 +432,7 @@ function clearLog() {
   font-weight: 700;
   color: var(--text-primary);
   margin: 0 0 4px;
+  line-height: 1.2;
 }
 
 .page-subtitle {
