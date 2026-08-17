@@ -2236,7 +2236,7 @@ func detectInstallKind() string {
 // pickUpdateAsset picks the update-download asset by install kind, matching
 // by keyword (independent of artifact prefix), compatible with three naming
 // generations:
-//   - Current naming: setup installer llama-desktop-setup-vX.Y.Z-amd64.exe
+//   - Current naming: setup installer llama-desktop-setup-vX.Y.Z-windows-amd64.exe
 //     (portable builds are no longer published);
 //   - Old naming (since v0.1.7): llama-gui-setup- / llama-gui-portable- prefixes;
 //   - Oldest naming (v0.1.6): installer llama-gui-amd64-installer.exe,

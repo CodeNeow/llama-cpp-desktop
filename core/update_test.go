@@ -67,8 +67,8 @@ func TestPickUpdateAsset(t *testing.T) {
 		t.Errorf("setup should pick llama-gui-amd64-installer.exe, got %v", got)
 	}
 	// setup: new setup name matches (name does not contain "installer" but still matches)
-	if got := pickUpdateAsset([]GitHubAsset{{Name: "llama-desktop-setup-v0.2.0-amd64.exe"}}, installKindSetup); got == nil || got.Name != "llama-desktop-setup-v0.2.0-amd64.exe" {
-		t.Errorf("setup should pick llama-desktop-setup-v0.2.0-amd64.exe, got %v", got)
+	if got := pickUpdateAsset([]GitHubAsset{{Name: "llama-desktop-setup-v0.2.0-windows-amd64.exe"}}, installKindSetup); got == nil || got.Name != "llama-desktop-setup-v0.2.0-windows-amd64.exe" {
+		t.Errorf("setup should pick llama-desktop-setup-v0.2.0-windows-amd64.exe, got %v", got)
 	}
 	// setup: only portable asset available → nil (must not pick portable by mistake)
 	if got := pickUpdateAsset([]GitHubAsset{{Name: "llama-desktop-portable-v0.2.0-amd64.exe"}}, installKindSetup); got != nil {
@@ -89,13 +89,13 @@ func TestPickUpdateAsset(t *testing.T) {
 	}
 	// portable: only a setup installer is published (portable builds retired) →
 	// fall back to the installer so existing portable installs keep updating
-	if got := pickUpdateAsset([]GitHubAsset{{Name: "llama-desktop-setup-v0.2.0-amd64.exe"}}, installKindPortable); got == nil || got.Name != "llama-desktop-setup-v0.2.0-amd64.exe" {
+	if got := pickUpdateAsset([]GitHubAsset{{Name: "llama-desktop-setup-v0.2.0-windows-amd64.exe"}}, installKindPortable); got == nil || got.Name != "llama-desktop-setup-v0.2.0-windows-amd64.exe" {
 		t.Errorf("portable with only a setup installer should fall back to it, got %v", got)
 	}
 	// portable: only installer assets (setup + old installer) → fall back to the first
 	// installer seen (replaces the old nil expectation: portable builds are no longer
 	// published, so portable installs must update via the setup installer)
-	if got := pickUpdateAsset([]GitHubAsset{{Name: "llama-desktop-setup-v0.2.0-amd64.exe"}, {Name: "llama-gui-amd64-installer.exe"}}, installKindPortable); got == nil || got.Name != "llama-desktop-setup-v0.2.0-amd64.exe" {
+	if got := pickUpdateAsset([]GitHubAsset{{Name: "llama-desktop-setup-v0.2.0-windows-amd64.exe"}, {Name: "llama-gui-amd64-installer.exe"}}, installKindPortable); got == nil || got.Name != "llama-desktop-setup-v0.2.0-windows-amd64.exe" {
 		t.Errorf("portable with only installer assets should fall back to the first installer, got %v", got)
 	}
 
@@ -269,14 +269,14 @@ func TestDownloadUpdateReleaseSetup(t *testing.T) {
 
 	payload := []byte("MZ fake setup payload")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/dl/llama-desktop-setup-v0.2.0-amd64.exe" {
+		if r.URL.Path == "/dl/llama-desktop-setup-v0.2.0-windows-amd64.exe" {
 			w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
 			w.Write(payload)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		dlURL := "http://" + r.Host + "/dl/llama-desktop-setup-v0.2.0-amd64.exe"
-		w.Write([]byte(`{"tag_name":"v0.2.0","name":"Release","assets":[{"name":"llama-desktop-setup-v0.2.0-amd64.exe","size":` + strconv.Itoa(len(payload)) + `,"browser_download_url":"` + dlURL + `"},{"name":"llama-desktop-portable-v0.2.0-amd64.exe","size":10,"browser_download_url":"https://x/p.exe"}]}`))
+		dlURL := "http://" + r.Host + "/dl/llama-desktop-setup-v0.2.0-windows-amd64.exe"
+		w.Write([]byte(`{"tag_name":"v0.2.0","name":"Release","assets":[{"name":"llama-desktop-setup-v0.2.0-windows-amd64.exe","size":` + strconv.Itoa(len(payload)) + `,"browser_download_url":"` + dlURL + `"},{"name":"llama-desktop-portable-v0.2.0-amd64.exe","size":10,"browser_download_url":"https://x/p.exe"}]}`))
 	}))
 	defer srv.Close()
 	updateRepoAPI = srv.URL
@@ -325,14 +325,14 @@ func TestDownloadUpdateReleasePortableFallbackSetup(t *testing.T) {
 
 	payload := []byte("MZ fake setup payload for portable fallback")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/dl/llama-desktop-setup-v0.2.1-amd64.exe" {
+		if r.URL.Path == "/dl/llama-desktop-setup-v0.2.1-windows-amd64.exe" {
 			w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
 			w.Write(payload)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		dlURL := "http://" + r.Host + "/dl/llama-desktop-setup-v0.2.1-amd64.exe"
-		w.Write([]byte(`{"tag_name":"v0.2.1","name":"Release","assets":[{"name":"llama-desktop-setup-v0.2.1-amd64.exe","size":` + strconv.Itoa(len(payload)) + `,"browser_download_url":"` + dlURL + `"}]}`))
+		dlURL := "http://" + r.Host + "/dl/llama-desktop-setup-v0.2.1-windows-amd64.exe"
+		w.Write([]byte(`{"tag_name":"v0.2.1","name":"Release","assets":[{"name":"llama-desktop-setup-v0.2.1-windows-amd64.exe","size":` + strconv.Itoa(len(payload)) + `,"browser_download_url":"` + dlURL + `"}]}`))
 	}))
 	defer srv.Close()
 	updateRepoAPI = srv.URL

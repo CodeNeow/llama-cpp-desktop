@@ -111,7 +111,7 @@ jobs:
           else
             VER="$(cat core/VERSION)"
           fi
-          mv build/bin/llama-desktop-amd64-installer.exe "build/bin/llama-desktop-setup-${VER}-amd64.exe"
+          mv build/bin/llama-desktop-amd64-installer.exe "build/bin/llama-desktop-setup-${VER}-windows-amd64.exe"
           ls -la build/bin/
       - name: List build outputs
         shell: bash
