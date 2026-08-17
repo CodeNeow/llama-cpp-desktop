@@ -40,6 +40,10 @@
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SF Mono', monospace;
 }
 
+/* Native control theming: adapt select options / scrollbars to the active theme */
+html[data-theme='light'] { color-scheme: light; }
+html[data-theme='dark'] { color-scheme: dark; }
+
 /* Light theme */
 [data-theme="light"] {
   --bg-primary: #f8fafc;

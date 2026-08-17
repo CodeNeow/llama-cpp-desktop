@@ -6,6 +6,10 @@ export interface ChatMessage {
   content: string
   /** Image data URLs attached to this message (in-memory only; stripped on persist to keep localStorage small) */
   images?: string[]
+  /** Accumulated thinking text (assistant only; small enough to persist alongside content) */
+  reasoning?: string
+  /** Per-phase token rates of the streamed reply (assistant only; persisted for history) */
+  stats?: { reasoningTps?: number; answerTps?: number }
 }
 
 /** Chat sampling parameters and system prompt. */
@@ -140,7 +144,7 @@ loadChatParams()
  */
 export function persistChat(): void {
   try {
-    // Strip images on persist (base64 payloads would bloat localStorage); after restart only text is kept
+    // Strip images on persist (base64 payloads would bloat localStorage); text, reasoning and stats survive restarts
     const toStore = capMessages(messages.value).map(({ images: _images, ...rest }) => rest)
     localStorage.setItem(MESSAGES_KEY, JSON.stringify(toStore))
   } catch {

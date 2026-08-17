@@ -2,7 +2,7 @@
  * Chat page pure functions and a thin fetch wrapper.
  *
  * Conventions:
- * - Pure functions (parseSSEChunks, buildChatBody) are unit-test friendly, no network/IO;
+ * - Pure functions (parseSSEChunks, buildChatBody, tokenRates) are unit-test friendly, no network/IO;
  * - The fetch wrapper talks to the local llama-server directly instead of going through
  *   Wails bindings, because streaming reads are required;
  * - Port and running state are obtained by the caller (Chat.vue) via getServerConfig / getServerStatus.
@@ -29,13 +29,17 @@ export interface ChatParams {
  *
  * Input is the raw response text accumulated so far (may contain a half-finished
  * JSON line); split on `\n` to get complete lines and only process lines with the
- * `data: ` prefix: extract `choices[0].delta.content`, ignore `[DONE]`;
+ * `data: ` prefix: extract `choices[0].delta.content` and
+ * `choices[0].delta.reasoning_content` (thinking stream, emitted separately by
+ * llama-server's default deepseek reasoning format), ignore `[DONE]`;
  * non-data lines and malformed lines are silently skipped.
  *
- * @returns { deltas: content deltas extracted this round, rest: unfinished trailing line fragment }
+ * @returns { deltas: content deltas extracted this round, reasoningDeltas: reasoning deltas
+ *            extracted this round, rest: unfinished trailing line fragment }
  */
-export function parseSSEChunks(buffer: string): { deltas: string[]; rest: string } {
+export function parseSSEChunks(buffer: string): { deltas: string[]; reasoningDeltas: string[]; rest: string } {
   const deltas: string[] = []
+  const reasoningDeltas: string[] = []
   // Find the last newline: everything before it can be split into complete lines; what follows is the fragment
   const lastNewline = buffer.lastIndexOf('\n')
   const processPart = lastNewline >= 0 ? buffer.slice(0, lastNewline) : ''
@@ -50,15 +54,43 @@ export function parseSSEChunks(buffer: string): { deltas: string[]; rest: string
     if (!payload) continue
     try {
       const json = JSON.parse(payload)
-      const content = json?.choices?.[0]?.delta?.content
+      const delta = json?.choices?.[0]?.delta
+      const content = delta?.content
       if (typeof content === 'string' && content) {
         deltas.push(content)
+      }
+      const reasoning = delta?.reasoning_content
+      if (typeof reasoning === 'string' && reasoning) {
+        reasoningDeltas.push(reasoning)
       }
     } catch {
       // Silently ignore non-JSON data lines
     }
   }
-  return { deltas, rest }
+  return { deltas, reasoningDeltas, rest }
+}
+
+/**
+ * Compute per-phase token rates from chunk counts and phase durations (ms).
+ * Returns null inputs as undefined.
+ *
+ * llama-server streams one token per data chunk, so delta counts are exact token
+ * counts; callers round to 1 decimal only at the display layer.
+ */
+export function tokenRates(
+  reasoningTokens: number,
+  reasoningMs: number,
+  answerTokens: number,
+  answerMs: number
+): { reasoningTps?: number; answerTps?: number } {
+  const result: { reasoningTps?: number; answerTps?: number } = {}
+  if (reasoningTokens > 0 && reasoningMs > 0) {
+    result.reasoningTps = reasoningTokens / (reasoningMs / 1000)
+  }
+  if (answerTokens > 0 && answerMs > 0) {
+    result.answerTps = answerTokens / (answerMs / 1000)
+  }
+  return result
 }
 
 /**
@@ -141,7 +173,8 @@ export async function fetchRouterModels(port: number): Promise<RouterModel[]> {
 }
 
 /**
- * Streaming chat completion: POST /v1/chat/completions, invoking onDelta per token.
+ * Streaming chat completion: POST /v1/chat/completions, invoking onDelta per
+ * answer token and onReasoningDelta per thinking token (reasoning_content).
  *
  * @throws On non-2xx, reads error.message from the body and throws it.
  */
@@ -150,6 +183,7 @@ export async function streamChatCompletion(
   model: string,
   messages: { role: string; content: string }[],
   onDelta: (text: string) => void,
+  onReasoningDelta: (text: string) => void,
   signal: AbortSignal,
   params?: ChatParams
 ): Promise<void> {
@@ -181,13 +215,15 @@ export async function streamChatCompletion(
       const { done, value } = await reader.read()
       if (done) break
       buffer += decoder.decode(value, { stream: true })
-      const { deltas, rest } = parseSSEChunks(buffer)
+      const { deltas, reasoningDeltas, rest } = parseSSEChunks(buffer)
       buffer = rest
       for (const d of deltas) onDelta(d)
+      for (const d of reasoningDeltas) onReasoningDelta(d)
     }
     // Process the final fragment
-    const { deltas } = parseSSEChunks(buffer)
+    const { deltas, reasoningDeltas } = parseSSEChunks(buffer)
     for (const d of deltas) onDelta(d)
+    for (const d of reasoningDeltas) onReasoningDelta(d)
   } finally {
     reader.releaseLock()
   }

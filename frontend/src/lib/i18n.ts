@@ -193,6 +193,9 @@ const messages: Record<Locale, Record<string, string>> = {
     'chat.systemPrompt': '系统提示词',
     'chat.systemPromptPh': '留空则不注入系统提示',
     'chat.resetDefaults': '恢复默认',
+    'chat.thinking': '思考过程',
+    'chat.statsThinking': '思考 {v} tok/s',
+    'chat.statsAnswer': '生成 {v} tok/s',
 
     // ─── Monitoring (embedded in Api.vue) ───
     'monitor.title': '监控',
@@ -569,6 +572,9 @@ const messages: Record<Locale, Record<string, string>> = {
     'chat.systemPrompt': 'System prompt',
     'chat.systemPromptPh': 'Leave empty to omit system prompt',
     'chat.resetDefaults': 'Reset defaults',
+    'chat.thinking': 'Thinking',
+    'chat.statsThinking': 'Thinking {v} tok/s',
+    'chat.statsAnswer': 'Generating {v} tok/s',
 
     // ─── Monitor (embedded in Api.vue) ───
     'monitor.title': 'Monitor',

@@ -99,6 +99,33 @@ describe('chatState module-level state and persistence', () => {
     expect(localStorage.getItem('llama-desktop-chat-model')).toBeNull()
   })
 
+  it('persistChat strips images but keeps reasoning and stats; load restores them', async () => {
+    const { messages: msgs, persistChat } = await import('../lib/chatState')
+    msgs.value = [
+      {
+        role: 'assistant',
+        content: 'hello',
+        images: ['data:image/png;base64,abc'],
+        reasoning: 'thinking...',
+        stats: { reasoningTps: 12.5, answerTps: 30.2 },
+      },
+    ]
+    persistChat()
+
+    // persisted JSON must not contain the image payload but must keep reasoning/stats
+    const raw = JSON.parse(localStorage.getItem('llama-desktop-chat-messages') || '[]')
+    expect(raw).toEqual([
+      { role: 'assistant', content: 'hello', reasoning: 'thinking...', stats: { reasoningTps: 12.5, answerTps: 30.2 } },
+    ])
+
+    // fresh module instance restores reasoning and stats
+    vi.resetModules()
+    const { messages: msgs2, loadChatHistory: lch2 } = await import('../lib/chatState')
+    lch2()
+    expect(msgs2.value[0].reasoning).toBe('thinking...')
+    expect(msgs2.value[0].stats).toEqual({ reasoningTps: 12.5, answerTps: 30.2 })
+  })
+
   it('module singleton isolation: vi.resetModules + dynamic import gives fresh state', async () => {
     // first import and mutate state
     const { messages: msgs1, persistChat: p1 } = await import('../lib/chatState')

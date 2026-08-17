@@ -29,6 +29,8 @@ export function GetLlamaCpp():Promise<core.LlamaCppInfo>;
 
 export function GetLlamaCppDownloadStatus():Promise<core.DownloadState>;
 
+export function GetLoadedModels():Promise<Array<core.LoadedModel>>;
+
 export function GetMemory():Promise<core.MemoryInfo>;
 
 export function GetModelConfig(arg1:string):Promise<core.ModelConfig>;
@@ -100,3 +102,5 @@ export function StopLlamaCppDownload():Promise<void>;
 export function StopServer():Promise<void>;
 
 export function StopUpdateDownload():Promise<void>;
+
+export function UnloadModel(arg1:string):Promise<void>;

@@ -93,12 +93,24 @@
         >
           <div class="message-bubble">
             <span class="message-role">{{ msg.role === 'user' ? t('chat.you') : t('chat.assistant') }}</span>
+            <!-- Reasoning (thinking) block, assistant messages with thinking output only -->
+            <div v-if="msg.reasoning" class="reasoning-block" :class="{ expanded: isReasoningExpanded(idx, msg) }">
+              <button class="reasoning-header" type="button" @click="toggleReasoning(idx)">
+                <span>{{ t('chat.thinking') }}</span>
+                <svg class="reasoning-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+              </button>
+              <div v-if="isReasoningExpanded(idx, msg)" class="reasoning-body">{{ msg.reasoning }}</div>
+            </div>
             <!-- Images (attached to user messages) -->
             <div v-if="msg.images && msg.images.length" class="message-images">
               <img v-for="(img, i) in msg.images" :key="i" :src="img" class="message-image" alt="" />
             </div>
             <p class="message-content">{{ msg.content }}</p>
             <span v-if="idx === messages.length - 1 && streaming" class="streaming-cursor" />
+            <!-- Per-phase token rates footer, present after streaming ends -->
+            <div v-if="statsLine(msg)" class="message-stats">{{ statsLine(msg) }}</div>
           </div>
         </div>
       </template>
@@ -157,7 +169,7 @@
 import { ref, computed, onMounted, nextTick, watch, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getServerStatus, getServerConfig } from '../wails'
-import { fetchRouterModels, streamChatCompletion, buildChatBody } from '../lib/chat'
+import { fetchRouterModels, streamChatCompletion, buildChatBody, tokenRates } from '../lib/chat'
 import { messages, selectedModel, streaming, chatAbortController, persistChat, chatParams, persistChatParams, type ChatMessage, type ChatParams } from '../lib/chatState'
 import { t } from '../lib/i18n'
 
@@ -176,6 +188,36 @@ const fileInput = ref<HTMLInputElement | null>(null)
 /** Pending images to send (data URLs), cleared after sending */
 const pendingImages = ref<string[]>([])
 
+/** Explicit user toggles of reasoning-block expansion, keyed by message index (component-local; never persisted) */
+const reasoningExpanded = ref<Record<number, boolean>>({})
+
+/**
+ * Effective reasoning-block expansion: an explicit user toggle wins; otherwise the
+ * block auto-expands only while streaming the last assistant message that has
+ * reasoning but no answer content yet, and auto-collapses once content starts
+ * arriving or streaming ends.
+ */
+function isReasoningExpanded(idx: number, msg: ChatMessage): boolean {
+  if (idx in reasoningExpanded.value) return reasoningExpanded.value[idx]
+  return idx === messages.value.length - 1 && streaming.value && !!msg.reasoning && !msg.content
+}
+
+/** Toggle the reasoning block, recording an explicit override for this message. */
+function toggleReasoning(idx: number) {
+  const msg = messages.value[idx]
+  if (!msg) return
+  reasoningExpanded.value[idx] = !isReasoningExpanded(idx, msg)
+}
+
+/** One-line stats footer, e.g. "思考 45.2 tok/s · 生成 38.6 tok/s"; each part shown only when defined. */
+function statsLine(msg: ChatMessage): string {
+  if (!msg.stats) return ''
+  const parts: string[] = []
+  if (msg.stats.reasoningTps !== undefined) parts.push(t('chat.statsThinking', { v: msg.stats.reasoningTps.toFixed(1) }))
+  if (msg.stats.answerTps !== undefined) parts.push(t('chat.statsAnswer', { v: msg.stats.answerTps.toFixed(1) }))
+  return parts.join(' · ')
+}
+
 function goToApi() {
   router.push('/api')
 }
@@ -193,6 +235,7 @@ function onModelChange(e: Event) {
 /** Clear conversation messages (preserves selected model preference) and persist. */
 function clearChat() {
   messages.value = []
+  reasoningExpanded.value = {}
   persistChat()
   inputBox.value?.focus()
   resetInputHeight()
@@ -311,15 +354,33 @@ async function send() {
   scrollToBottom()
 
   chatAbortController.current = new AbortController()
+  // Per-stream token counters and phase timestamps for tok/s stats; llama-server
+  // streams one token per data chunk, so delta counts are exact token counts
+  let reasoningTokens = 0
+  let answerTokens = 0
+  let firstReasoningAt: number | null = null
+  let firstAnswerAt: number | null = null
+  let requestFailed = false
   try {
     await streamChatCompletion(
       (await getServerConfig()).port,
       selectedModel.value,
       messages.value.filter(m => m.role !== 'assistant' || m.content).map(m => ({ role: m.role as 'user' | 'assistant', content: m.content, images: m.images })),
       (delta) => {
+        if (firstAnswerAt === null) firstAnswerAt = performance.now()
+        answerTokens++
         const last = messages.value[messages.value.length - 1]
         if (last && last.role === 'assistant') {
           last.content += delta
+          scrollToBottom()
+        }
+      },
+      (reasoning) => {
+        if (firstReasoningAt === null) firstReasoningAt = performance.now()
+        reasoningTokens++
+        const last = messages.value[messages.value.length - 1]
+        if (last && last.role === 'assistant') {
+          last.reasoning = (last.reasoning || '') + reasoning
           scrollToBottom()
         }
       },
@@ -335,6 +396,7 @@ async function send() {
       }
       return
     }
+    requestFailed = true
     const last = messages.value[messages.value.length - 1]
     if (last && last.role === 'assistant') {
       last.content = t('chat.error', { msg: e?.message || String(e) })
@@ -342,6 +404,22 @@ async function send() {
   } finally {
     streaming.value = false
     chatAbortController.current = null
+    // Per-phase tok/s: reasoning phase spans first reasoning delta → first content
+    // delta (or stream end when there is no answer); answer phase first content
+    // delta → stream end. Skipped on error (the bubble then shows an error message).
+    const last = messages.value[messages.value.length - 1]
+    if (!requestFailed && last && last.role === 'assistant') {
+      const endAt = performance.now()
+      const rates = tokenRates(
+        reasoningTokens,
+        firstReasoningAt !== null ? (firstAnswerAt ?? endAt) - firstReasoningAt : 0,
+        answerTokens,
+        firstAnswerAt !== null ? endAt - firstAnswerAt : 0
+      )
+      if (rates.reasoningTps !== undefined || rates.answerTps !== undefined) {
+        last.stats = rates
+      }
+    }
     persistChat()
     scrollToBottom()
   }
@@ -437,6 +515,10 @@ onUnmounted(() => {
   font-size: 13px;
   font-weight: 500;
   outline: none;
+  /* Constrain width and truncate so long model names cannot blow up the toolbar */
+  min-width: 240px;
+  max-width: 380px;
+  text-overflow: ellipsis;
 }
 
 .chat-clear-btn {
@@ -692,6 +774,57 @@ onUnmounted(() => {
 
 .message-content {
   margin: 0;
+}
+
+/* ─── Reasoning (thinking) block ─── */
+.reasoning-block {
+  margin-bottom: 8px;
+}
+
+.reasoning-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+
+.reasoning-header:hover {
+  color: var(--text-secondary);
+}
+
+.reasoning-chevron {
+  transition: transform 0.2s;
+}
+
+.reasoning-block.expanded .reasoning-chevron {
+  transform: rotate(180deg);
+}
+
+.reasoning-body {
+  margin-top: 4px;
+  /* Slightly smaller and muted so long thinking stays secondary to the answer */
+  font-size: 12.5px;
+  line-height: 1.5;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+/* ─── Token rate stats footer ─── */
+.message-stats {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-dim);
+  user-select: none;
 }
 
 /* ─── Streaming cursor ─── */

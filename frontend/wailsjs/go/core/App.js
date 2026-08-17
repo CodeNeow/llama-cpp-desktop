@@ -54,6 +54,10 @@ export function GetLlamaCppDownloadStatus() {
   return window['go']['core']['App']['GetLlamaCppDownloadStatus']();
 }
 
+export function GetLoadedModels() {
+  return window['go']['core']['App']['GetLoadedModels']();
+}
+
 export function GetMemory() {
   return window['go']['core']['App']['GetMemory']();
 }
@@ -196,4 +200,8 @@ export function StopServer() {
 
 export function StopUpdateDownload() {
   return window['go']['core']['App']['StopUpdateDownload']();
+}
+
+export function UnloadModel(arg1) {
+  return window['go']['core']['App']['UnloadModel'](arg1);
 }

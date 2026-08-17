@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseSSEChunks, buildChatBody, buildMessageContent, type ChatParams } from '../lib/chat'
+import { parseSSEChunks, buildChatBody, buildMessageContent, tokenRates, type ChatParams } from '../lib/chat'
 
 describe('parseSSEChunks', () => {
   // complete single-line JSON
@@ -79,9 +79,87 @@ describe('parseSSEChunks', () => {
 
   // empty input
   it('empty input returns empty deltas and empty rest', () => {
-    const { deltas, rest } = parseSSEChunks('')
+    const { deltas, reasoningDeltas, rest } = parseSSEChunks('')
     expect(deltas).toEqual([])
+    expect(reasoningDeltas).toEqual([])
     expect(rest).toBe('')
+  })
+
+  // reasoning-only chunk: goes to reasoningDeltas, not deltas
+  it('chunk with only reasoning_content captured in reasoningDeltas, not deltas', () => {
+    const { deltas, reasoningDeltas, rest } = parseSSEChunks('data: {"choices":[{"delta":{"reasoning_content":"think"}}]}\n')
+    expect(deltas).toEqual([])
+    expect(reasoningDeltas).toEqual(['think'])
+    expect(rest).toBe('')
+  })
+
+  // both fields in one chunk: both captured
+  it('chunk with both content and reasoning_content captures both', () => {
+    const { deltas, reasoningDeltas } = parseSSEChunks('data: {"choices":[{"delta":{"content":"Hi","reasoning_content":"hm"}}]}\n')
+    expect(deltas).toEqual(['Hi'])
+    expect(reasoningDeltas).toEqual(['hm'])
+  })
+
+  // empty-string reasoning_content is ignored like empty content
+  it('empty reasoning_content ignored', () => {
+    const { deltas, reasoningDeltas } = parseSSEChunks('data: {"choices":[{"delta":{"content":"Hi","reasoning_content":""}}]}\n')
+    expect(deltas).toEqual(['Hi'])
+    expect(reasoningDeltas).toEqual([])
+  })
+
+  // reasoning JSON truncated between two chunks completes on the next round
+  it('split across chunks: reasoning JSON truncated then completed', () => {
+    const part1 = 'data: {"choices":[{"delta":{"reasoning_content":"thi'
+    const { deltas: d1, reasoningDeltas: r1, rest } = parseSSEChunks(part1)
+    expect(d1).toEqual([])
+    expect(r1).toEqual([])
+
+    const part2 = 'nk"}}]}\n'
+    const { deltas: d2, reasoningDeltas: r2 } = parseSSEChunks(rest + part2)
+    expect(d2).toEqual([])
+    expect(r2).toEqual(['think'])
+  })
+
+  // interleaved content and reasoning lines keep their streams separate
+  it('interleaved reasoning and content lines captured separately in order', () => {
+    const buf =
+      'data: {"choices":[{"delta":{"reasoning_content":"a"}}]}\n' +
+      'data: {"choices":[{"delta":{"reasoning_content":"b"}}]}\n' +
+      'data: {"choices":[{"delta":{"content":"A"}}]}\n'
+    const { deltas, reasoningDeltas } = parseSSEChunks(buf)
+    expect(deltas).toEqual(['A'])
+    expect(reasoningDeltas).toEqual(['a', 'b'])
+  })
+})
+
+describe('tokenRates', () => {
+  // happy path: both phases defined
+  it('computes both phase rates', () => {
+    expect(tokenRates(10, 1000, 25, 500)).toEqual({ reasoningTps: 10, answerTps: 50 })
+  })
+
+  // zero duration makes the rate undefined (not Infinity)
+  it('zero duration yields undefined rates', () => {
+    expect(tokenRates(10, 0, 25, 0)).toEqual({})
+  })
+
+  // zero tokens makes the rate undefined
+  it('zero tokens yields undefined rates', () => {
+    expect(tokenRates(0, 1000, 0, 500)).toEqual({})
+  })
+
+  // single-sided phases
+  it('zero reasoning phase omits reasoningTps only', () => {
+    expect(tokenRates(0, 0, 25, 500)).toEqual({ answerTps: 50 })
+  })
+
+  it('zero answer phase omits answerTps only', () => {
+    expect(tokenRates(10, 1000, 0, 0)).toEqual({ reasoningTps: 10 })
+  })
+
+  // raw fractional values: rounding to 1 decimal is a display-layer concern
+  it('keeps fractional rates raw without rounding', () => {
+    expect(tokenRates(1, 3000, 1, 1500)).toEqual({ reasoningTps: 1 / 3, answerTps: 2 / 3 })
   })
 })
 
