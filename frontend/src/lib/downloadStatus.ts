@@ -44,5 +44,5 @@ export const MODEL_TASK_STATUSES = [
 export type ModelTaskStatus = (typeof MODEL_TASK_STATUSES)[number]
 
 /** App self-update download statuses (frontend `UpdateDownloadState.status`). */
-export const UPDATE_DOWNLOAD_STATUSES = ['idle', 'downloading', 'done', 'error'] as const
+export const UPDATE_DOWNLOAD_STATUSES = ['idle', 'downloading', 'installing', 'done', 'error'] as const
 export type UpdateDownloadStatus = (typeof UPDATE_DOWNLOAD_STATUSES)[number]

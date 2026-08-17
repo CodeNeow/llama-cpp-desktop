@@ -4,6 +4,7 @@ import {
   checkForUpdate,
   startUpdateDownload,
   cancelUpdateDownload,
+  installUpdate,
   shouldAutoCheck,
   closeUpdateModal,
   stopPolling,
@@ -14,6 +15,7 @@ import {
   checkForUpdate as checkForUpdateBackend,
   startUpdateDownload as startUpdateDownloadBackend,
   stopUpdateDownload as stopUpdateDownloadBackend,
+  installUpdate as installUpdateBackend,
   getUpdateDownloadStatus,
 } from '../wails'
 
@@ -22,12 +24,14 @@ vi.mock('../wails', () => ({
   checkForUpdate: vi.fn(),
   startUpdateDownload: vi.fn(),
   stopUpdateDownload: vi.fn(),
+  installUpdate: vi.fn(),
   getUpdateDownloadStatus: vi.fn(),
 }))
 
 const mockCheckForUpdate = vi.mocked(checkForUpdateBackend)
 const mockStartUpdateDownload = vi.mocked(startUpdateDownloadBackend)
 const mockStopUpdateDownload = vi.mocked(stopUpdateDownloadBackend)
+const mockInstallUpdate = vi.mocked(installUpdateBackend)
 const mockGetStatus = vi.mocked(getUpdateDownloadStatus)
 
 function resetState() {
@@ -36,6 +40,8 @@ function resetState() {
   updateState.download = null
   updateState.showModal = false
   updateState.error = ''
+  updateState.installing = false
+  updateState.installError = ''
 }
 
 describe('lib/update', () => {
@@ -115,7 +121,7 @@ describe('lib/update', () => {
     mockStartUpdateDownload.mockResolvedValue(undefined)
     mockGetStatus.mockResolvedValue({
       status: 'done', progress: 100, total: 100, downloaded: 100,
-      version: 'v0.2.0', filePath: 'C:/app/llama-desktop-portable-v0.2.0.exe', error: '', kind: 'portable',
+      version: 'v0.2.0', filePath: 'C:/app/llama-desktop-portable-v0.2.0.exe', error: '', kind: 'portable', installer: false,
     })
 
     await checkForUpdate()
@@ -146,7 +152,7 @@ describe('lib/update', () => {
     mockStartUpdateDownload.mockResolvedValue(undefined)
     mockGetStatus.mockResolvedValue({
       status: 'downloading', progress: 40, total: 1000, downloaded: 400,
-      version: 'v0.2.0', filePath: '', error: '', kind: 'portable',
+      version: 'v0.2.0', filePath: '', error: '', kind: 'portable', installer: false,
     })
 
     await checkForUpdate()
@@ -171,7 +177,7 @@ describe('lib/update', () => {
     mockStartUpdateDownload.mockResolvedValue(undefined)
     mockGetStatus.mockResolvedValue({
       status: 'done', progress: 100, total: 100, downloaded: 100,
-      version: 'v0.2.0', filePath: 'C:/app/llama-desktop-portable-v0.2.0.exe', error: '', kind: 'portable',
+      version: 'v0.2.0', filePath: 'C:/app/llama-desktop-portable-v0.2.0.exe', error: '', kind: 'portable', installer: false,
     })
 
     await checkForUpdate()
@@ -196,7 +202,7 @@ describe('lib/update', () => {
     mockStartUpdateDownload.mockResolvedValue(undefined)
     mockGetStatus.mockResolvedValue({
       status: 'error', progress: 0, total: 0, downloaded: 0,
-      version: 'v0.2.0', filePath: '', error: 'network reset', kind: '',
+      version: 'v0.2.0', filePath: '', error: 'network reset', kind: '', installer: false,
     })
 
     await checkForUpdate()
@@ -218,7 +224,7 @@ describe('lib/update', () => {
     mockStartUpdateDownload.mockResolvedValue(undefined)
     mockGetStatus.mockResolvedValue({
       status: 'downloading', progress: 60, total: 1000, downloaded: 600,
-      version: 'v0.2.0', filePath: '', error: '', kind: 'portable',
+      version: 'v0.2.0', filePath: '', error: '', kind: 'portable', installer: false,
     })
     mockStopUpdateDownload.mockResolvedValue(undefined)
 
@@ -244,11 +250,39 @@ describe('lib/update', () => {
     mockStopUpdateDownload.mockRejectedValue(new Error('backend busy'))
     updateState.download = {
       status: 'downloading', progress: 10, total: 1000, downloaded: 100,
-      version: 'v0.2.0', filePath: '', error: '', kind: 'portable',
+      version: 'v0.2.0', filePath: '', error: '', kind: 'portable', installer: false,
     }
 
     await expect(cancelUpdateDownload()).resolves.toBeUndefined()
     expect(updateState.download).toBeNull()
+  })
+
+  it('installUpdate calls the backend and keeps installing state (app about to exit)', async () => {
+    updateState.download = {
+      status: 'done', progress: 100, total: 100, downloaded: 100,
+      version: 'v0.2.0', filePath: 'C:/app/llama-desktop-setup-v0.2.0.exe', error: '', kind: 'setup', installer: true,
+    }
+    mockInstallUpdate.mockResolvedValue(undefined)
+
+    await installUpdate()
+
+    expect(mockInstallUpdate).toHaveBeenCalledTimes(1)
+    // installing stays true: the backend launches the installer and the app exits
+    expect(updateState.installing).toBe(true)
+    expect(updateState.installError).toBe('')
+  })
+
+  it('installUpdate failure resets installing and records the error for retry', async () => {
+    updateState.download = {
+      status: 'done', progress: 100, total: 100, downloaded: 100,
+      version: 'v0.2.0', filePath: 'C:/app/llama-desktop-setup-v0.2.0.exe', error: '', kind: 'setup', installer: true,
+    }
+    mockInstallUpdate.mockRejectedValue(new Error('no such file'))
+
+    await installUpdate()
+
+    expect(updateState.installing).toBe(false)
+    expect(updateState.installError).toBe('启动安装器失败：no such file')
   })
 })
 

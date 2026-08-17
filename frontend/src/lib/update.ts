@@ -3,6 +3,7 @@ import {
   checkForUpdate as checkForUpdateBackend,
   startUpdateDownload as startUpdateDownloadBackend,
   stopUpdateDownload as stopUpdateDownloadBackend,
+  installUpdate as installUpdateBackend,
   getUpdateDownloadStatus,
 } from '../wails'
 import { t } from './i18n'
@@ -23,14 +24,15 @@ export interface UpdateResult {
 }
 
 export interface UpdateDownloadState {
-  status: string // idle / downloading / done / error
+  status: string // idle / downloading / installing / done / error
   progress: number
   total: number
   downloaded: number
   version: string
   filePath: string
   error: string
-  kind: string // Artifact kind of this download: setup (installer) / portable
+  kind: string // Install kind of the running app: setup (NSIS install) / portable
+  installer: boolean // Whether the downloaded artifact is the setup installer (install-now flow)
 }
 
 /** Markers delimiting the bilingual release-notes segments (v0.2.7+ bodies:
@@ -67,6 +69,8 @@ export const updateState = reactive({
   download: null as UpdateDownloadState | null,
   showModal: false,
   error: '',
+  installing: false, // install-now confirmed and accepted by the backend; the app is exiting
+  installError: '', // install-now launch failure shown in the modal (retry stays possible)
 })
 
 let downloadTimer: ReturnType<typeof setInterval> | null = null
@@ -125,6 +129,7 @@ export function startUpdateDownload(): void {
     filePath: '',
     error: '',
     kind: '', // Artifact kind unknown before the download starts; filled from the backend status once polled
+    installer: false, // Filled from the backend status once the asset has been picked
   }
   startUpdateDownloadBackend(version).catch(() => {
     if (updateState.download) {
@@ -166,6 +171,10 @@ export function closeUpdateModal(): void {
   stopPolling()
   const st = updateState.download?.status
   if (st === 'done' || st === 'error') updateState.download = null
+  // Also clear install-now leftovers (e.g. a launch failure) so a later
+  // download starts from a clean slate
+  updateState.installing = false
+  updateState.installError = ''
 }
 
 /**
@@ -181,5 +190,22 @@ export async function cancelUpdateDownload(): Promise<void> {
     await stopUpdateDownloadBackend()
   } catch {
     // backend already idle or unavailable: ignore
+  }
+}
+
+/**
+ * User confirmed "install now": the backend launches the downloaded setup
+ * installer and exits the app shortly after. On success `installing` stays
+ * true (the window is about to close); on rejection it resets and the error
+ * surfaces in the modal so the user can retry or update manually.
+ */
+export async function installUpdate(): Promise<void> {
+  updateState.installing = true
+  updateState.installError = ''
+  try {
+    await installUpdateBackend()
+  } catch (e) {
+    updateState.installing = false
+    updateState.installError = t('updateModal.installFailed', { msg: e instanceof Error ? e.message : String(e) })
   }
 }

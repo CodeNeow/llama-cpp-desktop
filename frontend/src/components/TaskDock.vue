@@ -262,6 +262,7 @@ function isProgressStatus(status: string): boolean {
 function updateStatusLabel(status: string): string {
   const map: Record<string, string> = {
     downloading: t('home.dlDownloading'),
+    installing: t('updateModal.installing'),
     done: t('downloads.statusDone'),
     error: t('downloads.statusError')
   }

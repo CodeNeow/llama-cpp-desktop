@@ -71,10 +71,11 @@ describe('activeModelTasks', () => {
 })
 
 describe('activeUpdateDownload', () => {
-  // downloading / done / error count; idle hidden.
+  // downloading / installing / done / error count; idle hidden.
   const updateActiveTable: Record<UpdateDownloadStatus, boolean> = {
     idle: false,
     downloading: true,
+    installing: true,
     done: true,
     error: true,
   }

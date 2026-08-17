@@ -42,13 +42,14 @@ export function activeModelTasks<T extends { status: string }>(tasks: T[]): T[] 
 
 /**
  * activeUpdateDownload: whether the app self-update download row is shown in the
- * dock: downloading / done / error count; idle / empty / unknown are hidden.
- * After backgrounding, the outcome stays visible until the user reopens the
- * modal and closes it (which clears the terminal state).
+ * dock: downloading / installing / done / error count; idle / empty / unknown
+ * are hidden. After backgrounding, the outcome stays visible until the user
+ * reopens the modal and closes it (which clears the terminal state).
  */
 export function activeUpdateDownload(status: string): boolean {
   switch (status) {
   case 'downloading':
+  case 'installing':
   case 'done':
   case 'error':
     return true

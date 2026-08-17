@@ -2167,7 +2167,9 @@ func CheckForUpdateAt(apiURL string) (*UpdateCheckResult, error) {
 }
 
 // updateDownloadState tracks the progress of the app update download
-// (updating the exe). State machine values: idle / downloading / done / error.
+// (updating the exe). State machine values: idle / downloading / installing /
+// done / error; "installing" means the downloaded setup installer has been
+// launched and the app is about to exit (installUpdateNow).
 type UpdateDownloadState struct {
 	Status     string `json:"status"`
 	Progress   int    `json:"progress"`
@@ -2176,7 +2178,11 @@ type UpdateDownloadState struct {
 	Version    string `json:"version"`
 	FilePath   string `json:"filePath"`
 	Error      string `json:"error"`
-	Kind       string `json:"kind"` // download artifact kind: setup (installer) / portable
+	Kind       string `json:"kind"` // install kind of the running app: setup (NSIS install) / portable
+	// Installer reports whether the downloaded artifact is the setup
+	// installer (a portable install may fall back to the installer asset);
+	// only installer artifacts support the install-now flow.
+	Installer bool `json:"installer"`
 }
 
 var updateDownloadState = &UpdateDownloadState{Status: "idle"}
@@ -2187,6 +2193,21 @@ var updateDownloadCancel context.CancelFunc
 // configFile) returning the current executable path, used to determine the
 // target directory for the update exe.
 var updateExePath = os.Executable
+
+// updateLauncher is a test injection point (same style as renameFile /
+// updateExePath) launching the downloaded setup installer as a detached child
+// process. hideWindow's CREATE_NO_WINDOW is harmless for the NSIS GUI
+// installer and keeps the project convention for child processes.
+var updateLauncher = func(path string) error {
+	cmd := exec.Command(path)
+	hideWindow(cmd)
+	return cmd.Start()
+}
+
+// updateQuitDelay is the pause between launching the installer and quitting
+// the app: it gives the frontend time to resolve the InstallUpdate call and
+// render the exiting state before the window closes. Var so tests can zero it.
+var updateQuitDelay = 500 * time.Millisecond
 
 // Install-kind constants: setup is the NSIS installer build (downloads the
 // setup installer), portable is the portable build (downloads the portable
@@ -2295,6 +2316,7 @@ func downloadUpdateRelease(version string) {
 	updateDownloadState.Version = version
 	updateDownloadState.Error = ""
 	updateDownloadState.Kind = kind
+	updateDownloadState.Installer = false
 	updateDownloadMu.Unlock()
 
 	release, err := fetchLatestReleaseAt(updateRepoAPI)
@@ -2308,8 +2330,15 @@ func downloadUpdateRelease(version string) {
 		return
 	}
 
+	// Whether the picked asset is the setup installer decides the saved
+	// filename (Step 2) and the Installer flag reported to the frontend (the
+	// install-now flow only applies to installer artifacts).
+	assetName := strings.ToLower(asset.Name)
+	isInstallerAsset := strings.Contains(assetName, "setup") || strings.Contains(assetName, "installer")
+
 	updateDownloadMu.Lock()
 	updateDownloadState.Total = asset.Size
+	updateDownloadState.Installer = isInstallerAsset
 	updateDownloadMu.Unlock()
 
 	// Step 2: download into the executable's directory, named by the selected
@@ -2324,8 +2353,6 @@ func downloadUpdateRelease(version string) {
 		return
 	}
 	dir := filepath.Dir(exePath)
-	assetName := strings.ToLower(asset.Name)
-	isInstallerAsset := strings.Contains(assetName, "setup") || strings.Contains(assetName, "installer")
 	var fileName string
 	if isInstallerAsset {
 		fileName = "llama-desktop-setup-" + release.TagName + ".exe"
@@ -2372,6 +2399,52 @@ func setUpdateDownloadError(msg string) {
 	updateDownloadState.Error = msg
 	updateDownloadMu.Unlock()
 	log.Printf("[ERROR] update download error: %s", msg)
+}
+
+// installUpdateNow launches the downloaded setup installer and then quits the
+// app (via quit) so the installer can replace the program files without the
+// user closing anything manually. Guards: only a completed download (status
+// done) whose artifact is the setup installer (Installer) and whose file still
+// exists can be installed. The status moves to "installing" before launching,
+// which both tells the frontend the app is exiting and rejects a double click
+// (this function requires status done). A launch failure restores status
+// "done" so the user can retry from the update modal.
+func installUpdateNow(quit func()) error {
+	updateDownloadMu.Lock()
+	status := updateDownloadState.Status
+	installer := updateDownloadState.Installer
+	filePath := updateDownloadState.FilePath
+	updateDownloadMu.Unlock()
+
+	if status != "done" {
+		return errors.New(tr("更新尚未完成，无法安装", "update download is not finished; cannot install"))
+	}
+	if !installer {
+		return errors.New(tr("下载的文件不是安装器，请手动完成更新", "the downloaded file is not the installer; finish the update manually"))
+	}
+	if _, err := os.Stat(filePath); err != nil {
+		return fmt.Errorf(tr("找不到安装器文件: %w", "cannot find the installer file: %w"), err)
+	}
+
+	updateDownloadMu.Lock()
+	updateDownloadState.Status = "installing"
+	updateDownloadMu.Unlock()
+
+	if err := updateLauncher(filePath); err != nil {
+		updateDownloadMu.Lock()
+		updateDownloadState.Status = "done"
+		updateDownloadMu.Unlock()
+		return fmt.Errorf(tr("启动安装器失败: %w", "failed to launch the installer: %w"), err)
+	}
+	log.Printf("[OK] update installer launched (%s), quitting app", filePath)
+
+	// Quit from a goroutine after a short delay so the InstallUpdate binding
+	// call resolves and the frontend can render the exiting state first.
+	go func() {
+		time.Sleep(updateQuitDelay)
+		quit()
+	}()
+	return nil
 }
 
 // downloadUpdateWithResume downloads the update file to a temp file and

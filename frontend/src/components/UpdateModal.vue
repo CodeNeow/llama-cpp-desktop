@@ -9,7 +9,7 @@
 
       <div class="modal-body">
         <!-- Download in progress / finished -->
-        <template v-if="download && (download.status === 'downloading' || download.status === 'done' || download.status === 'error')">
+        <template v-if="download && (download.status === 'downloading' || download.status === 'done' || download.status === 'installing' || download.status === 'error')">
           <div class="dl-status">
             <!-- Downloading: centered glyph + thick gradient bar + percent + transferred size -->
             <div v-if="download.status === 'downloading'" class="dl-downloading">
@@ -26,15 +26,18 @@
               <p v-if="download.total > 0" class="dl-size">{{ formatBytes(download.downloaded) }} / {{ formatBytes(download.total) }}</p>
             </div>
 
-            <template v-else-if="download.status === 'done'">
+            <template v-else-if="download.status === 'done' || download.status === 'installing'">
               <div class="done-msg">
                 <span class="ok-icon">✓</span>
                 <div>
                   <p class="done-title">{{ t('updateModal.doneTitle') }}</p>
                   <p class="done-detail">{{ t('updateModal.doneDetail') }}</p>
                   <code class="done-path">{{ download.filePath }}</code>
-                  <!-- setup installer: prompt to run the installer; portable or legacy state (kind empty): keep the replace-exe hint -->
-                  <p class="done-tip">{{ download.kind === 'setup' ? t('updateModal.doneTipSetup') : t('updateModal.doneTip') }}</p>
+                  <!-- installer artifact: offer the install-now flow (app exits and runs
+                       the installer); otherwise manual hints (setup: run the installer
+                       later; portable or legacy state (kind empty): replace the exe) -->
+                  <p class="done-tip">{{ installTip }}</p>
+                  <p v-if="installing" class="done-tip">{{ t('updateModal.installing') }}</p>
                 </div>
               </div>
             </template>
@@ -66,9 +69,11 @@
           <button class="btn-cancel" @click="cancelUpdateDownload">{{ t('updateModal.cancelDownload') }}</button>
           <button class="btn-save" @click="close">{{ t('updateModal.hideDownload') }}</button>
         </template>
-        <!-- Done: single acknowledge button -->
-        <template v-else-if="download && download.status === 'done'">
-          <button class="btn-save" @click="close">{{ t('updateModal.gotIt') }}</button>
+        <!-- Done: acknowledge (manual install later), or install now (installer artifact only) -->
+        <template v-else-if="download && (download.status === 'done' || download.status === 'installing')">
+          <span v-if="installError" class="footer-msg footer-err">{{ installError }}</span>
+          <button class="btn-cancel" :disabled="installing" @click="close">{{ t('updateModal.gotIt') }}</button>
+          <button v-if="download.installer" class="btn-save" :disabled="installing" @click="installNow">{{ t('updateModal.installNow') }}</button>
         </template>
         <!-- Confirm view and error view share the close / start(retry) actions -->
         <template v-else>
@@ -82,7 +87,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { updateState, startUpdateDownload, cancelUpdateDownload, extractReleaseNotes } from '../lib/update'
+import { updateState, startUpdateDownload, cancelUpdateDownload, installUpdate, extractReleaseNotes } from '../lib/update'
 import { locale, t } from '../lib/i18n'
 import { formatBytes } from '../lib/format'
 
@@ -96,6 +101,15 @@ const version = computed(() => updateState.result?.version || '')
 const published = computed(() => updateState.result?.published || '')
 const notes = computed(() => extractReleaseNotes(updateState.result?.notes || '', locale.value))
 const downloading = computed(() => download.value?.status === 'downloading')
+const installing = computed(() => updateState.installing)
+const installError = computed(() => updateState.installError)
+
+// Done-view tip: installer artifacts offer the install-now flow; others keep
+// the manual hint (setup: run the installer later; portable/legacy: replace exe)
+const installTip = computed(() => {
+  if (download.value?.installer) return t('updateModal.installAsk')
+  return download.value?.kind === 'setup' ? t('updateModal.doneTipSetup') : t('updateModal.doneTip')
+})
 
 watch(() => props.visible, (v) => {
   if (v) nextTick(() => closeBtn.value?.focus())
@@ -109,8 +123,13 @@ function formatDate(iso: string): string {
 function downloadNow() {
   startUpdateDownload()
 }
+async function installNow() {
+  await installUpdate()
+}
 
 function close() {
+  // The app is exiting to run the installer: keep the exiting state visible
+  if (updateState.installing) return
   emit('close')
 }
 </script>

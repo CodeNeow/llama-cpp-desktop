@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // saveUpdateState snapshots update-related globals (API URL, download state, executable-path
@@ -238,6 +239,9 @@ func TestDownloadUpdateRelease(t *testing.T) {
 	if ds.Kind != installKindPortable {
 		t.Errorf("download kind = %q, want %q", ds.Kind, installKindPortable)
 	}
+	if ds.Installer {
+		t.Error("portable asset download should report installer=false")
+	}
 	fi, err := os.Stat(wantPath)
 	if err != nil {
 		t.Fatalf("target file does not exist: %v", err)
@@ -293,6 +297,9 @@ func TestDownloadUpdateReleaseSetup(t *testing.T) {
 	if ds.Kind != installKindSetup {
 		t.Errorf("download kind = %q, want %q", ds.Kind, installKindSetup)
 	}
+	if !ds.Installer {
+		t.Error("setup installer download should report installer=true")
+	}
 	fi, err := os.Stat(wantPath)
 	if err != nil {
 		t.Fatalf("target file does not exist: %v", err)
@@ -346,6 +353,9 @@ func TestDownloadUpdateReleasePortableFallbackSetup(t *testing.T) {
 	}
 	if ds.Kind != installKindPortable {
 		t.Errorf("download kind = %q, want %q (local install kind unchanged)", ds.Kind, installKindPortable)
+	}
+	if !ds.Installer {
+		t.Error("portable fallback to the setup installer should report installer=true (flag follows the artifact)")
 	}
 	fi, err := os.Stat(wantPath)
 	if err != nil {
@@ -421,5 +431,162 @@ func TestDownloadUpdateReleaseCrossDeviceFallback(t *testing.T) {
 	}
 	if string(got) != string(payload) {
 		t.Errorf("target content = %q, want %q", got, payload)
+	}
+}
+
+// saveUpdateInstall snapshots the install-now injection points (installer
+// launcher / quit delay) and restores them after the test, preventing
+// cross-test pollution (same style as saveUpdateState).
+func saveUpdateInstall(t *testing.T) {
+	t.Helper()
+	origLauncher := updateLauncher
+	origDelay := updateQuitDelay
+	t.Cleanup(func() {
+		updateLauncher = origLauncher
+		updateQuitDelay = origDelay
+	})
+}
+
+// TestInstallUpdateNowRejectsNotDone verifies install-now requires a completed
+// download: idle / downloading / error statuses are all rejected without
+// touching the launcher or quitting.
+func TestInstallUpdateNowRejectsNotDone(t *testing.T) {
+	saveUpdateState(t)
+	saveUpdateInstall(t)
+
+	launched := false
+	updateLauncher = func(string) error { launched = true; return nil }
+
+	for _, status := range []string{"idle", "downloading", "error", "installing"} {
+		updateDownloadMu.Lock()
+		*updateDownloadState = UpdateDownloadState{Status: status, Installer: true, FilePath: "x.exe"}
+		updateDownloadMu.Unlock()
+		if err := installUpdateNow(func() { t.Error("quit must not run") }); err == nil {
+			t.Errorf("status %q should reject install-now", status)
+		}
+	}
+	if launched {
+		t.Error("launcher must not run when the download is not done")
+	}
+}
+
+// TestInstallUpdateNowRejectsNonInstaller verifies install-now only applies to
+// setup-installer artifacts: a portable artifact (Installer=false, e.g. a
+// legacy release that still shipped portable builds) is rejected with the
+// manual-update hint.
+func TestInstallUpdateNowRejectsNonInstaller(t *testing.T) {
+	saveUpdateState(t)
+	saveUpdateInstall(t)
+
+	path := filepath.Join(t.TempDir(), "llama-desktop-portable-v0.2.0.exe")
+	if err := os.WriteFile(path, []byte("MZ"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	updateDownloadMu.Lock()
+	*updateDownloadState = UpdateDownloadState{Status: "done", Installer: false, FilePath: path}
+	updateDownloadMu.Unlock()
+
+	launched := false
+	updateLauncher = func(string) error { launched = true; return nil }
+
+	if err := installUpdateNow(func() {}); err == nil {
+		t.Error("portable artifact should reject install-now")
+	}
+	if launched {
+		t.Error("launcher must not run for a portable artifact")
+	}
+}
+
+// TestInstallUpdateNowRejectsMissingFile verifies a done+installer state whose
+// file no longer exists on disk is rejected (launcher never runs).
+func TestInstallUpdateNowRejectsMissingFile(t *testing.T) {
+	saveUpdateState(t)
+	saveUpdateInstall(t)
+
+	updateDownloadMu.Lock()
+	*updateDownloadState = UpdateDownloadState{Status: "done", Installer: true, FilePath: filepath.Join(t.TempDir(), "missing.exe")}
+	updateDownloadMu.Unlock()
+
+	launched := false
+	updateLauncher = func(string) error { launched = true; return nil }
+
+	if err := installUpdateNow(func() {}); err == nil {
+		t.Error("missing installer file should reject install-now")
+	}
+	if launched {
+		t.Error("launcher must not run for a missing file")
+	}
+}
+
+// TestInstallUpdateNowLaunchFailureRestoresDone verifies a launcher error is
+// returned to the caller and the status returns to done, so the update modal
+// can surface the failure and the user can retry.
+func TestInstallUpdateNowLaunchFailureRestoresDone(t *testing.T) {
+	saveUpdateState(t)
+	saveUpdateInstall(t)
+
+	path := filepath.Join(t.TempDir(), "llama-desktop-setup-v0.2.0.exe")
+	if err := os.WriteFile(path, []byte("MZ"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	updateDownloadMu.Lock()
+	*updateDownloadState = UpdateDownloadState{Status: "done", Installer: true, FilePath: path}
+	updateDownloadMu.Unlock()
+
+	updateLauncher = func(string) error { return errors.New("exec failed") }
+
+	if err := installUpdateNow(func() { t.Error("quit must not run on launch failure") }); err == nil {
+		t.Fatal("launcher failure should return an error")
+	}
+	updateDownloadMu.Lock()
+	st := updateDownloadState.Status
+	updateDownloadMu.Unlock()
+	if st != "done" {
+		t.Errorf("status after launch failure = %q, want done (retryable)", st)
+	}
+}
+
+// TestInstallUpdateNowLaunchesAndQuits verifies the happy path: the downloaded
+// installer path is launched, the status moves to installing (which also
+// rejects a second install call — the double-click guard), and quit fires
+// after the configured delay.
+func TestInstallUpdateNowLaunchesAndQuits(t *testing.T) {
+	saveUpdateState(t)
+	saveUpdateInstall(t)
+
+	path := filepath.Join(t.TempDir(), "llama-desktop-setup-v0.2.0.exe")
+	if err := os.WriteFile(path, []byte("MZ"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	updateDownloadMu.Lock()
+	*updateDownloadState = UpdateDownloadState{Status: "done", Installer: true, FilePath: path}
+	updateDownloadMu.Unlock()
+
+	var gotPath string
+	updateLauncher = func(p string) error { gotPath = p; return nil }
+	updateQuitDelay = 0
+
+	quitCh := make(chan struct{})
+	if err := installUpdateNow(func() { close(quitCh) }); err != nil {
+		t.Fatalf("installUpdateNow error: %v", err)
+	}
+	if gotPath != path {
+		t.Errorf("launched path = %q, want %q", gotPath, path)
+	}
+	updateDownloadMu.Lock()
+	st := updateDownloadState.Status
+	updateDownloadMu.Unlock()
+	if st != "installing" {
+		t.Errorf("status = %q, want installing", st)
+	}
+	// double-click guard: a second install attempt is rejected while installing
+	if err := installUpdateNow(func() {}); err == nil {
+		t.Error("second install call while installing should be rejected")
+	}
+
+	select {
+	case <-quitCh:
+	case <-time.After(5 * time.Second):
+		t.Error("quit was not called after the delay")
 	}
 }

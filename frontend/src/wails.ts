@@ -178,12 +178,18 @@ export async function startUpdateDownload(version: string): Promise<void> {
   return app().StartUpdateDownload(version)
 }
 
-export async function getUpdateDownloadStatus(): Promise<{ status: string; progress: number; total: number; downloaded: number; version: string; filePath: string; error: string; kind: string }> {
+export async function getUpdateDownloadStatus(): Promise<{ status: string; progress: number; total: number; downloaded: number; version: string; filePath: string; error: string; kind: string; installer: boolean }> {
   return app().GetUpdateDownloadStatus()
 }
 
 export async function stopUpdateDownload(): Promise<void> {
   return app().StopUpdateDownload()
+}
+
+// Launch the downloaded setup installer and exit the app (user confirmed
+// "install now"); rejects when the download is not a finished installer
+export async function installUpdate(): Promise<void> {
+  return app().InstallUpdate()
 }
 
 // ─── Downloads (HF Mirror) ───────────────────────────────────────

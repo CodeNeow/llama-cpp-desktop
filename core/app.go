@@ -600,6 +600,14 @@ func (a *App) StopUpdateDownload() {
 	}
 }
 
+// InstallUpdate launches the downloaded setup installer and exits the app so
+// the installer can complete the update (user confirmed "install now" in the
+// update modal). Only valid for a completed download of the installer
+// artifact; see installUpdateNow for the guards.
+func (a *App) InstallUpdate() error {
+	return installUpdateNow(func() { wailsRuntime.Quit(a.ctx) })
+}
+
 // ─── Downloads (HF Mirror / ModelScope) ──────────────────────────
 
 // SearchDownloads routes the search by current download source: modelscope
