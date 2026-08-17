@@ -2,6 +2,85 @@
 
 更新日志的**权威来源**（见 `AGENTS.md`「版本发布」）：发版时先在此新增版本条目（含日期与逐提交核心改动），`git tag` 注解消息与 GitHub Release 正文均从该条目复制，保持一致。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本。
 
+## [v0.2.6] - 2026-08-17
+
+v0.2.6: 聊天思维链流式与图片附件、llama.cpp 资产选择修复、更新弹窗改版（v0.2.5 以来 11 个提交，按提交逐一说明核心改动）：
+
+1. `2e2e629` docs(readme): 新增徽章块与模型设置截图
+   - 核心：README 顶部加入徽章区块，补入模型设置页截图
+2. `7aad601` docs(readme): 徽章统一为 shields.io flat 风格
+   - 核心：替换徽章为通用 shields.io flat 样式，风格统一
+3. `bda6f5b` docs(readme): 一行简介 feature Qwen3.8-27B
+   - 核心：README 一句话简介改为主打 Qwen3.8-27B
+4. `17cad40` feat(build): 移除 portable 发布产物，x64-only 支持明确化
+   - 核心：CI Windows job 不再重命名/上传 portable exe，发布产物收敛为 4 个（setup exe + 3 个 Ubuntu deb）；更新路径 pickUpdateAsset 的 portable 分支回退到第一个 installer 资产（旧 portable 安装不再报 no-main-executable），按资产类型命名保存文件；README 前置条件明确 x64/amd64-only（llama.cpp 无 32 位 Windows 构建）
+5. `98616f1` docs(screenshots): 侧边栏收起态重拍双语截图
+   - 核心：全量重拍 Home/Downloads/Models/Settings 截图，反映默认的侧边栏收起态
+6. `ffabd38` feat(frontend): 更新下载弹窗改版 + Dock 后台进度
+   - 核心：UpdateModal 下载视图改为居中布局（渐变图标/版本行/粗进度条/大号百分比/已传大小行），确认视图用版本日期 chip + 可滚动更新说明区；下载中提供「取消」与「后台下载」（关闭弹窗后 dock 持续显示进度）；lib/update closeUpdateModal 在下载中保持轮询，关闭弹窗不再让后端下载失联
+7. `8187456` fix(frontend): 回主页恢复暂停的 llama.cpp 下载状态
+   - 核心：initialDownloadAction 对 paused 状态返回 poll 分支——暂停的下载仍在后台运行（goroutine 保活状态），主页轮询分支恢复暂停进度区与恢复/停止按钮，而非回退到空闲下载按钮
+8. `72417ea` test(frontend): 下载状态词汇集中管理与穷举映射表
+   - 核心：新增 lib/downloadStatus.ts 作为三套后端下载状态词汇（llama.cpp 下载 x7 / 模型任务 x8 / 应用自更新 x4）的权威前端镜像，const 断言数组 + 派生联合类型；llamaDownload / dock / taskStatus 测试改为表驱动，Record 表按联合类型穷举——漏状态即 vue-tsc TS2741 失败，多列状态运行时失败，杜绝丢失状态类回归
+9. `9ebe100` fix(frontend): 侧边栏展开动画顺滑
+   - 核心：过渡此前只覆盖 width 未覆盖 min-width，展开时 min-width 瞬间跳到 200px 掩盖 width 过渡（收起正常只因 64 低于动画宽度）；两者现在同时过渡；文字经 max-width:0 + opacity:0 隐藏（替代 display:none），展开时淡入且不会在 64px 窄轨内折行
+10. `c6e7017` fix(backend): 修正 llama.cpp 资产选择适配当前发布命名
+    - 核心：Linux 下载此前完全失效（上游资产名 ubuntu-* 不含 "linux" 子串导致匹配 nil），现同时接受 ubuntu 与历史 linux 关键词；架构过滤全平台强制（此前 Windows 豁免，x64 主机可能 tie-break 选中 arm64 zip）；无 NVIDIA GPU 的 Windows 明确选 -cpu- 构建；有 NVIDIA GPU 时按 compute capability 探测引入 CUDA 下限（Blackwell cc>=12.0 需 CUDA>=12.8，12.4 资产硬跳过），工具链精确匹配仍优先但受下限约束；cudart 运行库按所选主资产的版本/架构配对而非本地工具链；Linux+NVIDIA 选 ubuntu-vulkan；表驱动测试覆盖 b10453 资产清单 11 种主机画像
+11. `7843ae2` feat(frontend): 聊天思维链流式、图片附件与分阶段速率统计
+    - 核心：聊天页分轨渲染 deepseek reasoning_content 思维链（回答前独立区块），分阶段 token 速率按流式 chunk 精确计数并随消息持久化（思考文本与速率重启后保留）；支持内联图片附件——data URL 按 OpenAI 多模态 content 格式发送（text 在前 images 在后），持久化时剥离防 localStorage 膨胀；lib/chat.ts parseSSEChunks 兼取 reasoning_content，streamChatCompletion 新增 onReasoningDelta 回调，新增 tokenRates 纯函数，ChatMessage 新增 reasoning/stats 字段；wailsjs 绑定补全 GetLoadedModels/UnloadModel 导出（此前仅存在于 App.d.ts/models.ts，TaskDock 卸载流程缺运行时绑定）
+
+## [v0.2.5] - 2026-08-16
+
+v0.2.5: 页面重命名与系统就绪判定、模型设置独立页、聊天图片附件与采样参数、注释转英文（v0.2.3 以来 13 个提交，按提交逐一说明核心改动）：
+
+1. `5475a04` feat(frontend): 模型设置改独立页面，聊天样式修复与图片附件
+   - 核心：ModelSettings 从弹窗迁移为独立路由页 /models/settings/:modelName（sticky 页头 + tabs + 三重禁用保存按钮，保存成功返回模型页）；聊天页补齐缺失的 .page-title/.page-subtitle 样式（此前未定义渲染为浏览器默认大字）；支持图片选择（回形针按钮 + accept=image/* multiple）与粘贴（paste 读 clipboardData），预览条可移除，发送按 llama.cpp webui 同款多模态 content parts（text 前 image_url 后），气泡渲染图片，持久化剥离 images
+2. `c7cacc5` feat(frontend): 聊天页新增采样参数设置
+   - 核心：工具栏齿轮按钮弹出参数面板（温度/Top P/Top K/重复惩罚/最大 Token + 系统提示词），点外关闭、aria-expanded 联动、恢复默认一键重置；参数经 buildChatBody 注入请求体顶层（temperature/top_p/top_k/repeat_penalty/max_tokens），systemPrompt 非空时 messages 最前注入 system 消息；chatParams 模块级 reactive + watch deep 自动持久化（llama-desktop-chat-params）
+3. `e416a9a` refactor(frontend): API 页服务器参数收进齿轮弹层、可用模型移入顶部状态卡
+   - 核心：页面底部服务器参数区块收进 toolbar 齿轮「参数设置」弹层（对齐聊天页交互：点外关闭、aria-expanded、stop 冒泡），watch debounce 500ms 自动保存不变，服务运行中三输入禁用 + 锁定提示；可用模型列表移入状态卡第二行（标题 + 紧凑 tags，无模型空态）；删除底部 cfg-section/models-section 及死键
+4. `9327bab` fix(frontend): API 页监控轮询联动刷新服务运行状态
+   - 核心：1s 监控轮询同时刷新 serverRunning，llama-server 被外部终止时按钮态与参数锁定在 1s 内自动纠正（此前只在挂载与启停操作后刷新）
+5. `79c6550` fix(frontend): 路由过渡去位移，修复切换页面文字左右抖动
+   - 核心：路由过渡改为纯 opacity（.fade-enter/leave 无 translate），消除合成层/布局切换引起的居中文字亚像素抖动
+6. `ea25562` refactor(frontend): API 页监控区删除磁盘并将 GPU 并入系统监控卡
+   - 核心：监控区移除磁盘采样展示（disk 字段保留在后端契约），GPU 卡并入系统监控卡，字段同步精简
+7. `e17bfd2` feat(frontend): 页面重命名与侧边栏系统就绪真实判定
+   - 核心：六项统一重命名（主页→系统信息、聊天→本地聊天、下载→模型下载、模型→模型管理、API→API 路由、设置→偏好设置，i18n + router meta 同步）；系统就绪改为真实判定（lib/systemReady.ts：llama.cpp 已安装且本地至少一个模型，挂载即查 + 15s 轮询刷新），就绪=绿点呼吸、未就绪=灰点静止
+8. `05cc1ec` feat(frontend): 侧边栏缩宽与窗口控制按钮平台原生适配
+   - 核心：侧边栏展开宽度 240→200px；窗口控制按钮按平台适配——macOS 保持红黄绿圆点，Windows/Linux 改原生扁平按钮组（46×36px 贴标题栏，关闭 hover 红底白字），最大化支持还原双框图标切换（本地翻转 + WindowIsMaximised 150ms 校正）
+9. `563ccfb` style(frontend): 最小化图标横线居中，模型管理页刷新按钮垂直居中
+   - 核心：最小化按钮图标横线视觉居中；模型页刷新按钮与目录栏垂直对齐
+10. `19ec9ca` docs(rules): 项目语言策略切换为英文
+    - 核心：项目语言策略（文档/注释/提交信息）切换为英文，AGENTS.md 同步
+11. `8a5285c` refactor(backend): 后端注释翻译为英文
+    - 核心：core 包全部注释/文档串翻译为英文，行为零变化
+12. `2e51591` refactor(frontend): 前端代码与脚本注释翻译为英文
+    - 核心：frontend 源码注释翻译为英文，行为零变化
+13. `70f48ae` docs(readme): README 改为英文主文档 + 双语截图集
+    - 核心：README 重写为英文主文档（README_zh.md 为中文对照），截图按语言分目录 docs/screenshots/en|zh 并各引用本语言一套
+
+## [v0.2.3] - 2026-08-16
+
+v0.2.3: 聊天页直连 llama-server 与对话持久化、模型详情页、全局任务卡片（v0.2.2 以来 8 个提交，按提交逐一说明核心改动）：
+
+1. `cf4c89c` style(frontend): 页头标题上移与侧边栏 logo 图标顶部平齐
+   - 核心：全局 .page-header padding-top 36→0，页头标题顶部从 y≈82 上移到 y≈41（36px 标题栏 + 行高半距为物理下限），五页 .page-title 加 line-height:1.2；页头 sticky 零位移与侧边栏两态对齐不变量保持
+2. `441efab` style(frontend): 主页信息卡改两列网格，内存卡补可用容量与使用率条
+   - 核心：Home 六卡单列改两列网格（处理器｜内存、显卡｜CUDA、llama.cpp｜系统），卡内字段 auto-fit 自适应列；内存卡补使用率进度条 + 「已使用 X GB / Y GB」与百分比，首次展示后端已返回的 freeGb；format.ts 新增 usagePercent 纯函数
+3. `ed6dba2` feat(server): 全局右下角任务卡片：下载进度与内存模型卸载
+   - 核心：后端新增 core/router.go 封装 llama-server 路由 API（GET /models 过滤 loaded/loading/sleeping，POST /models/unload），classifyModelType 按 output_modalities 分类 chat/audio/image/video，serverPort（serverMu 保护）记录实际端口；app.go 新增 GetLoadedModels/UnloadModel 绑定；前端新增全局 TaskDock 组件（App.vue 挂载右下角 fixed 卡片，1s 轮询）：下载任务区显示 llama.cpp 与模型下载进度（活跃才显示），内存模型区按类型徽章 + 状态 + 卸载按钮，支持收起为小条；lib/dock.ts 纯函数 + 8 用例
+4. `6714cce` fix(frontend): 任务卡片不透明化并消除 llama.cpp 幽灵行
+   - 核心：TaskDock 卡片背景改 var(--bg-secondary)（不透明，浮在滚动内容上不再透底）；llama.cpp 行渲染条件改 llamaActive（仅活跃态显示），修复卡片因模型下载或内存模型可见时空状态幽灵行常驻；llamaStatus 初始值改 idle 态对象消除模板空值访问
+5. `8a47136` fix(frontend): 页面操作区随页头固定、隐藏已取消任务、任务卡片缩小
+   - 核心：sticky 职责上移至全局 .sticky-top 包装容器（top:0 z-index:20 flow-root），下载/模型/API 页操作栏随页头固定；任务弹窗经 lib/taskStatus.ts visibleTasks 纯函数过滤已取消任务；TaskDock 整体缩小一档（340→300px、圆角 14→12px、max-height 60→50vh）
+6. `248d7b1` feat(frontend): 下载页搜索结果改为模型详情页，全选与下载按钮提升为 sticky 操作栏
+   - 核心：新增 /downloads/model/:modelId 详情页（返回 + 模型说明 + 按大小降序文件列表 + 量化徽章），sticky 操作栏「已选 n 个文件 + 全选/取消全选 + 下载选中」；结果卡改纯导航删除原地展开逻辑（-275 行）；文件排序与量化识别抽为 lib/modelFiles.ts 纯函数 + 8 用例
+7. `72ccae8` feat(frontend): 新增聊天页直连 llama-server，搜索状态保留与结果卡简约化
+   - 核心：新增 /chat 页（侧边栏「主页」下方），原生界面直连本地 llama-server（主审实测其回显任意 Origin 的 CORS 头，前端 fetch 无需后端代理）：GET /models 拉取模型列表（排除 failed），POST /v1/chat/completions SSE 流式渲染（lib/chat.ts parseSSEChunks 纯函数处理跨块残片/[DONE]/异常行 + 10 用例），流式光标/停止保留已生成内容/输入框自适应，服务未运行显示离线卡；下载页搜索词/结果/大小缓存抽为 lib/downloadsState.ts 模块级状态
+8. `2715056` fix(frontend): 聊天对话与所选模型持久化（模块级状态 + localStorage）
+   - 核心：新增 lib/chatState.ts 模块级状态（messages/selectedModel/streaming/chatAbortController），切页往返不清空对话、流式中切页后台续写、返回可见完整内容；localStorage 持久化（重启恢复对话与所选模型，容量上限 200 条，流式高频期只改内存不落盘）；chatState.test.ts 新增 11 用例
+
 ## [v0.2.2] - 2026-08-16
 
 v0.2.2: Linux .deb 多发行版构建与前端布局优化（v0.2.1 以来 8 个提交，按提交逐一说明核心改动）：
