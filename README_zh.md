@@ -16,6 +16,7 @@
 - **模型搜索与下载** — 支持 HF Mirror（hf-mirror.com）与 ModelScope 双源搜索，仓库可展开为文件列表，批量下载走可断点续传的任务队列（暂停 / 继续 / 取消），队列重启后自动恢复。
 - **逐模型推理预设** — GPU 层数、KV 缓存类型、长上下文 RoPE、投机解码等参数按模型独立保存，保存后自动写入 llama-server 预设。
 - **实时服务监控** — 服务日志控制台、提示词处理与生成速度双指标及折线图、CPU / 内存 / GPU（利用率 + 显存）采样，每秒刷新。
+- **灵动任务卡片** — 右下角悬浮的可收起卡片，一眼看清下载进度（llama.cpp / 模型文件 / 应用更新），同时列出当前内存中已加载的模型，每个模型带一键卸载按钮。
 - **桌面体验** — Windows 系统托盘、应用内检查更新、深色 / 浅色主题、界面语言支持 zh / en / auto。
 
 ## 界面预览
@@ -26,6 +27,7 @@
 | :---: | :---: |
 | ![本地聊天](docs/screenshots/zh/chat.png) | ![模型管理](docs/screenshots/zh/models.png) |
 | ![模型下载](docs/screenshots/zh/downloads.png) | ![API 路由](docs/screenshots/zh/api.png) |
+| ![灵动任务卡片](docs/screenshots/zh/task-dock.png) | ![模型设置](docs/screenshots/zh/model-settings.png) |
 
 ## 快速开始
 
@@ -62,7 +64,6 @@ wails dev
 - **本地聊天** — 流式聊天，支持图片附件与采样参数；需要 API 路由服务处于运行状态。
 - **模型下载** — 双源搜索（HF Mirror / ModelScope，可在偏好设置中切换默认源），文件级选择，持久化的可断点续传下载队列。
 - **模型管理** — 扫描模型目录下的 GGUF 文件（解析架构、量化等级，识别多模态 / 嵌入模型），每个模型可进入设置页（基础 / 推理 / 内存 / 多 GPU / 长上下文 / 高级六个标签页）。
-![模型设置](docs/screenshots/zh/model-settings.png)
 - **API 路由** — 启动 / 停止 / 重启 llama-server，查看日志与实时监控，配置 Host / Port / 访问范围 / 最大并发模型数 / Prompt 缓存，并查看当前内存中的模型。
 - **偏好设置** — 主题、界面语言（zh / en / auto）、下载源、Windows 托盘开关、检查更新。
 

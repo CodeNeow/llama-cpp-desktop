@@ -16,6 +16,7 @@ A user-friendly desktop GUI for [llama.cpp](https://github.com/ggml-org/llama.cp
 - **Model discovery and downloads** — search HF Mirror (hf-mirror.com) or ModelScope, expand repositories into file lists, and batch-download through a resumable queue (pause / resume / cancel) that survives restarts.
 - **Per-model inference presets** — GPU layers, KV cache types, long-context RoPE settings, speculative decoding and more, persisted per model and written into the llama-server preset on save.
 - **Live service monitor** — server log console, prompt-processing and generation token speed with charts, and CPU / memory / GPU (utilization + VRAM) sampling, refreshed every second.
+- **Task dock** — a collapsible card floating at the bottom-right corner shows download progress at a glance (llama.cpp / model files / app updates) alongside the models currently loaded in memory, each with a one-click unload button.
 - **Desktop niceties** — Windows system tray, in-app update check, light / dark themes, and a zh / en / auto UI language.
 
 ## Screenshots
@@ -26,6 +27,7 @@ A user-friendly desktop GUI for [llama.cpp](https://github.com/ggml-org/llama.cp
 | :---: | :---: |
 | ![Local Chat](docs/screenshots/en/chat.png) | ![Model Manager](docs/screenshots/en/models.png) |
 | ![Model Downloads](docs/screenshots/en/downloads.png) | ![API Router](docs/screenshots/en/api.png) |
+| ![Task Dock](docs/screenshots/en/task-dock.png) | ![Model Settings](docs/screenshots/en/model-settings.png) |
 
 ## Getting Started
 
@@ -62,7 +64,6 @@ wails dev
 - **Local Chat** — streaming chat with image attachments and sampling parameters; requires the API router to be running.
 - **Model Downloads** — dual-source search (HF Mirror / ModelScope, switchable in Preferences) with file-level selection and a persistent, resumable download queue.
 - **Model Manager** — scans the models directory for GGUF files (architecture, quantization, multimodal / embedding detection) and links each model to its settings page (basic / inference / memory / multi-GPU / long-context / advanced tabs).
-![Model Settings](docs/screenshots/en/model-settings.png)
 - **API Router** — start / stop / restart llama-server, watch logs and live metrics, edit host / port / access mode / max concurrent models / prompt cache, and see which models are currently in memory.
 - **Preferences** — theme, UI language (zh / en / auto), download source, Windows tray toggle, and check for updates.
 
