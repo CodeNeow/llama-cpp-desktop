@@ -2,6 +2,15 @@
 
 更新日志的**权威来源**（见 `AGENTS.md`「版本发布」）：发版时先在此新增版本条目（含日期与逐提交核心改动），`git tag` 注解消息与 GitHub Release 正文均从该条目复制，保持一致。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本。
 
+## [v0.2.7] - 2026-08-17
+
+v0.2.7: 修复无独立显卡机器 API 页空白并回填发布记录（v0.2.6 以来 2 个提交，按提交逐一说明核心改动）：
+
+1. `07f5730` fix(frontend): API 页监控渲染对 null gpus 防御
+   - 核心：无 NVIDIA 独显 / nvidia-smi 不可用的机器上，后端 sampleGPUs 返回 nil slice，Go 序列化为 `"gpus": null`，Api.vue 模板 `status.gpus.length` 对 null 取值抛 TypeError 导致整页空白；后端 sampleGPUs 改为恒返回非 nil 空数组（两个出口均 make([]MonitorGPU,0)），前端 GPU 区块条件加固为 `status.gpus?.length` 双保险
+2. `38215e9` docs: 补录发布历史并刷新架构导航
+   - 核心：CHANGELOG 补录 v0.2.6 / v0.2.5 / v0.2.3 条目（v0.2.4 从未发布，跳过）；AGENTS.md 架构导航表同步 Chat 页、ModelDetail/ModelSettings 独立路由、core/router.go、core/i18n.go、tray/crossdevice 平台分支与 lib/ 模块清单
+
 ## [v0.2.6] - 2026-08-17
 
 v0.2.6: 聊天思维链流式与图片附件、llama.cpp 资产选择修复、更新弹窗改版（v0.2.5 以来 11 个提交，按提交逐一说明核心改动）：
