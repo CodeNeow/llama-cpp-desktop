@@ -4,6 +4,17 @@
 
 ## [v0.2.7] - 2026-08-17
 
+## English
+
+v0.2.7: Fix the blank API page on machines without a discrete GPU and backfill release history (2 commits since v0.2.6, per-commit core changes):
+
+1. `07f5730` fix(frontend): guard null gpus in API page monitor rendering
+   - Core: On machines without an NVIDIA GPU / nvidia-smi, sampleGPUs returned a nil slice which Go serialized as "gpus": null; Api.vue's status.gpus.length then threw a TypeError that blanked the whole page. The backend now always returns a non-nil empty slice (both exits use make([]MonitorGPU, 0)) and the frontend condition is hardened to status.gpus?.length as defense in depth.
+2. `38215e9` docs: backfill release changelog and refresh architecture navigation
+   - Core: CHANGELOG backfills the v0.2.6 / v0.2.5 / v0.2.3 entries (v0.2.4 was never released); AGENTS.md architecture navigation table syncs the Chat page, ModelDetail/ModelSettings standalone routes, core/router.go, core/i18n.go, tray/cross-device platform branches and the lib/ module list.
+
+## 中文
+
 v0.2.7: 修复无独立显卡机器 API 页空白并回填发布记录（v0.2.6 以来 2 个提交，按提交逐一说明核心改动）：
 
 1. `07f5730` fix(frontend): API 页监控渲染对 null gpus 防御

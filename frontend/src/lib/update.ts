@@ -33,6 +33,34 @@ export interface UpdateDownloadState {
   kind: string // Artifact kind of this download: setup (installer) / portable
 }
 
+/** Markers delimiting the bilingual release-notes segments (v0.2.7+ bodies:
+ *  English section first, Chinese section second). The UI shows only the
+ *  section matching the current locale. */
+const NOTES_EN_MARKER = '## English'
+const NOTES_ZH_MARKER = '## 中文'
+
+/**
+ * Extract the release-notes section matching the UI language.
+ *
+ * v0.2.7+ release bodies carry both an English and a Chinese section, each
+ * introduced by its marker. zh returns everything after the Chinese marker;
+ * en returns the English section (between the two markers). Bodies without
+ * markers (historical releases / unusual bodies) fall back to the full text,
+ * preserving the previous behavior.
+ */
+export function extractReleaseNotes(body: string, lang: 'zh' | 'en'): string {
+  const trimmed = body.trim()
+  const zhIdx = trimmed.indexOf(NOTES_ZH_MARKER)
+  if (lang === 'zh') {
+    if (zhIdx < 0) return trimmed
+    return trimmed.slice(zhIdx + NOTES_ZH_MARKER.length).trim()
+  }
+  const enIdx = trimmed.indexOf(NOTES_EN_MARKER)
+  if (enIdx < 0) return trimmed
+  const end = zhIdx > enIdx ? zhIdx : trimmed.length
+  return trimmed.slice(enIdx + NOTES_EN_MARKER.length, end).trim()
+}
+
 export const updateState = reactive({
   checking: false,
   result: null as UpdateResult | null,

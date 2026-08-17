@@ -176,6 +176,7 @@ Remaining gaps:
 ## Versioning and Releases
 
 - The authoritative source for changelogs is the root `CHANGELOG.md`: before a release, add the corresponding version entry (with date and per-commit core changes). **Tag annotation messages and GitHub Release bodies are copied from this entry** to keep them in sync; do not rely on GitHub "auto-generate release notes" (this repo commits directly to main with no PRs, so auto-generation only produces a compare link).
+- Entries are bilingual starting with **v0.2.7**: an `## English` section (top) followed by a `## 中文` section (bottom). The frontend update modal extracts the section matching the UI language (see `frontend/src/lib/update.ts` `extractReleaseNotes`); tag messages and Release bodies keep both sections so the in-app notes stay language-appropriate.
 - Version tags are annotated tags (`git tag -a vX.Y.Z`) with the message taken from the CHANGELOG entry. Before tagging, confirm quality gates pass. Pushing tags is a remote operation and requires user authorization.
 - GitHub Release bodies are not automatically synced from tag messages: when creating or updating a Release, paste the body from the corresponding CHANGELOG entry. This is a remote operation requiring explicit user authorization.
 

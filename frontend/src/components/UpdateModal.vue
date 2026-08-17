@@ -82,7 +82,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { updateState, startUpdateDownload, cancelUpdateDownload } from '../lib/update'
+import { updateState, startUpdateDownload, cancelUpdateDownload, extractReleaseNotes } from '../lib/update'
 import { locale, t } from '../lib/i18n'
 import { formatBytes } from '../lib/format'
 
@@ -94,7 +94,7 @@ const closeBtn = ref<HTMLButtonElement | null>(null)
 const download = computed(() => updateState.download)
 const version = computed(() => updateState.result?.version || '')
 const published = computed(() => updateState.result?.published || '')
-const notes = computed(() => updateState.result?.notes || '')
+const notes = computed(() => extractReleaseNotes(updateState.result?.notes || '', locale.value))
 const downloading = computed(() => download.value?.status === 'downloading')
 
 watch(() => props.visible, (v) => {

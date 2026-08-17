@@ -7,6 +7,7 @@ import {
   shouldAutoCheck,
   closeUpdateModal,
   stopPolling,
+  extractReleaseNotes,
   CHECK_INTERVAL_MS,
 } from '../lib/update'
 import {
@@ -248,5 +249,49 @@ describe('lib/update', () => {
 
     await expect(cancelUpdateDownload()).resolves.toBeUndefined()
     expect(updateState.download).toBeNull()
+  })
+})
+
+// ─── extractReleaseNotes (bilingual release notes) ─────────────────────────
+
+const BILINGUAL_BODY = `## English
+
+v0.2.7: Fix the blank API page. Core changes in English here.
+
+1. fix(frontend): guard null gpus
+   - Core: English detail.
+
+## 中文
+
+v0.2.7: 修复 API 页空白。核心改动中文说明。
+
+1. fix(frontend): API 页监控渲染对 null gpus 防御
+   - 核心：中文细节。`
+
+describe('extractReleaseNotes', () => {
+  it('zh locale returns only the Chinese section', () => {
+    const zh = extractReleaseNotes(BILINGUAL_BODY, 'zh')
+    expect(zh).toContain('修复 API 页空白')
+    expect(zh).toContain('中文细节')
+    expect(zh).not.toContain('English')
+  })
+
+  it('en locale returns only the English section (between the two markers)', () => {
+    const en = extractReleaseNotes(BILINGUAL_BODY, 'en')
+    expect(en).toContain('Fix the blank API page')
+    expect(en).toContain('English detail')
+    expect(en).not.toContain('中文')
+    expect(en).not.toContain('修复 API 页空白')
+  })
+
+  it('body without markers falls back to the full text (historical releases)', () => {
+    const legacy = 'Legacy single-language notes'
+    expect(extractReleaseNotes(legacy, 'zh')).toBe(legacy)
+    expect(extractReleaseNotes(legacy, 'en')).toBe(legacy)
+  })
+
+  it('empty body returns empty string', () => {
+    expect(extractReleaseNotes('', 'zh')).toBe('')
+    expect(extractReleaseNotes('', 'en')).toBe('')
   })
 })
