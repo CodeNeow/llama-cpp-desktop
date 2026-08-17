@@ -1,15 +1,19 @@
 package core
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 // TestPickBestAssetForWindowsCUDA verifies that in Windows+CUDA environments, the asset
@@ -620,5 +624,150 @@ func TestDownloadTaskRangeIgnoredRestart(t *testing.T) {
 	// server must not see another Range request
 	if rangeReqCount != 1 {
 		t.Errorf("Range request count = %d, want 1 (truncate-reconnect happens once; offset=0 sends no Range header)", rangeReqCount)
+	}
+}
+
+// TestDownloadTaskStalledStreamReconnects verifies that when the server stops
+// sending mid-stream (a half-open connection / proxy stall, which an httptest
+// handler cannot simulate — Go's HTTP server closes the connection after a
+// partial write, while a real CDN keeps the socket open), the read loop's idle
+// timeout fires and the download reconnects with a Range header at the current
+// .part size, completing with no lost or duplicated bytes. The stall is
+// simulated with a raw TCP server so the client read blocks exactly like it
+// does against a real stalled CDN.
+func TestDownloadTaskStalledStreamReconnects(t *testing.T) {
+	withTempCwd(t)
+	dlTasksMu.Lock()
+	dlTasks = nil
+	dlTaskCounter = 0
+	dlTasksMu.Unlock()
+	defer func() {
+		dlTasksMu.Lock()
+		dlTasks = nil
+		dlTaskCounter = 0
+		dlTasksMu.Unlock()
+	}()
+
+	oldTimeout := idleReadTimeout
+	idleReadTimeout = 150 * time.Millisecond
+	defer func() { idleReadTimeout = oldTimeout }()
+
+	payload := []byte("0123456789abcdef") // 16 bytes full content
+	var mu sync.Mutex
+	var reqCount int
+	var reqRanges []string
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				// Read the request head (headers end with a blank line).
+				head := make([]byte, 4096)
+				n := 0
+				for {
+					buf := make([]byte, 1024)
+					m, err := c.Read(buf)
+					if err != nil {
+						return
+					}
+					n += m
+					head = append(head[:n], buf[:m]...)
+					if bytes.Contains(head, []byte("\r\n\r\n")) {
+						break
+					}
+					if n >= len(head) {
+						return
+					}
+				}
+				var rangeHdr string
+				for _, line := range strings.Split(string(head), "\r\n") {
+					if strings.HasPrefix(line, "Range: ") {
+						rangeHdr = strings.TrimPrefix(line, "Range: ")
+					}
+				}
+				mu.Lock()
+				reqCount++
+				reqRanges = append(reqRanges, rangeHdr)
+				reqNum := reqCount
+				mu.Unlock()
+
+				if reqNum == 1 {
+					// First request: write half the payload, then stall without
+					// EOF — the connection stays open and the client read blocks
+					// (the half-open scenario behind stalled downloads).
+					resp := "HTTP/1.1 200 OK\r\nContent-Length: 16\r\n\r\n"
+					c.Write([]byte(resp))
+					c.Write(payload[:8])
+					// Keep the connection open and silent until the client
+					// closes it after its idle timeout.
+					<-make(chan struct{}) // blocked forever; connection closed by the client
+					return
+				}
+				// Second request: the reconnect must carry a Range header at
+				// exactly the stalled offset; answer 206 with the remainder.
+				mu.Lock()
+				want := "bytes=8-"
+				mu.Unlock()
+				if rangeHdr != want {
+					t.Errorf("reconnect Range header = %q, want %q", rangeHdr, want)
+				}
+				resp := "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 8-15/16\r\nContent-Length: 8\r\n\r\n"
+				c.Write([]byte(resp))
+				c.Write(payload[8:])
+			}(conn)
+		}
+	}()
+
+	destDir := filepath.Join(effectiveModelsDir(), "author")
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	task := &DlTask{
+		ID:       "dl-1",
+		ModelID:  "author/model",
+		FileName: "model.gguf",
+		DestDir:  destDir,
+		URL:      "http://" + ln.Addr().String(),
+		Status:   "queued",
+	}
+	task.ctx, task.cancel = context.WithCancel(context.Background())
+	defer task.cancel()
+
+	downloadTask(task)
+
+	dlTasksMu.Lock()
+	status := task.Status
+	errMsg := task.Error
+	dlTasksMu.Unlock()
+	if status != "done" {
+		t.Fatalf("task status = %q, want done (idle timeout must reconnect and finish the download); error = %q", status, errMsg)
+	}
+
+	got, err := os.ReadFile(filepath.Join(destDir, "model.gguf"))
+	if err != nil {
+		t.Fatalf("downloaded file not written to disk: %v", err)
+	}
+	// the resumed append must not duplicate the first half nor lose the second
+	if string(got) != string(payload) {
+		t.Errorf("file content = %q, want full %q (stall-reconnect must resume exactly at the .part size)", got, payload)
+	}
+
+	mu.Lock()
+	count := reqCount
+	ranges := strings.Join(reqRanges, "; ")
+	mu.Unlock()
+	if count != 2 {
+		t.Errorf("request count = %d, want 2 (initial stream + one Range reconnect); ranges: %s", count, ranges)
 	}
 }

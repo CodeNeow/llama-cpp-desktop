@@ -3648,6 +3648,13 @@ func retryDownloadTask(task *DlTask) {
 	go downloadTask(task)
 }
 
+// idleReadTimeout is how long the download loop waits for the next body chunk
+// before treating the stream as stalled (half-open TCP connection or a server
+// / proxy that stopped sending) and reconnecting via Range at the current
+// .part size. Injectable so tests can use a short value; the production window
+// is generous so slow-but-alive streams are never cut off.
+var idleReadTimeout = 60 * time.Second
+
 func downloadTask(task *DlTask) {
 	dlTasksMu.Lock()
 	task.Status = "downloading"
@@ -3808,6 +3815,7 @@ func downloadTask(task *DlTask) {
 		buf := make([]byte, 32*1024)
 		downloaded := offset
 
+	readLoop:
 		for {
 			// Check pause
 			dlTasksMu.Lock()
@@ -3847,8 +3855,10 @@ func downloadTask(task *DlTask) {
 			}()
 
 			var rr readRes
+			readTimer := time.NewTimer(idleReadTimeout)
 			select {
 			case <-task.ctx.Done():
+				readTimer.Stop()
 				resp.Body.Close()
 				out.Close()
 				dlTasksMu.Lock()
@@ -3858,6 +3868,30 @@ func downloadTask(task *DlTask) {
 				persistTasksNow()
 				return
 			case rr = <-ch:
+				readTimer.Stop()
+			case <-readTimer.C:
+				// No data arrived within the idle window: the stream has
+				// stalled (half-open connection / server or proxy stopped
+				// sending). Close this attempt and reconnect with a Range
+				// header at the current .part size — resuming from exactly
+				// where the stalled read left off. The outer loop reopens the
+				// .part file in append mode, so no bytes are lost or
+				// duplicated.
+				resp.Body.Close()
+				out.Close()
+				dlTasksMu.Lock()
+				task.Speed = 0
+				dlTasksMu.Unlock()
+				if fi, err := os.Stat(tmpPath); err == nil {
+					offset = fi.Size()
+				} else {
+					offset = downloaded
+				}
+				// Reset the speed sampling baseline: elapsed would otherwise
+				// be inflated by the stall duration.
+				lastSampleTime = time.Time{}
+				lastSampleBytes = 0
+				break readLoop
 			}
 
 			if rr.n > 0 {
