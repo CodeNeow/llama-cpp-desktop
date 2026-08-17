@@ -125,7 +125,7 @@
           <div class="metric-head">
             <span class="metric-name">{{ t('monitor.gpu') }}</span>
           </div>
-          <div v-if="status.gpus.length > 0">
+          <div v-if="status.gpus?.length">
             <div v-for="gpu in status.gpus" :key="gpu.index" class="gpu-row">
               <div class="gpu-head">
                 <span class="gpu-name">{{ gpu.name }}</span>

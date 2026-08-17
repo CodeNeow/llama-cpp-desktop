@@ -519,14 +519,19 @@ func parseNVLine(line string) MonitorGPU {
 // sampleGPUs calls nvidia-smi to sample all GPUs; returns an empty list (no
 // error) on failure (no nvidia-smi / no GPU). Memory unit conversion from
 // MiB to bytes happens in parseNVLine.
+//
+// Always returns a non-nil slice: json.Marshal serializes a nil slice as
+// null, while the frontend MonitorStatus contract declares gpus as an array
+// and Api.vue dereferences status.gpus.length — null would crash the page
+// render on machines without nvidia-smi / an NVIDIA GPU.
 func sampleGPUs() []MonitorGPU {
 	out := runCmd("nvidia-smi",
 		"--query-gpu=index,name,utilization.gpu,memory.used,memory.total",
 		"--format=csv,noheader,nounits")
 	if out == "" {
-		return nil
+		return make([]MonitorGPU, 0)
 	}
-	var gpus []MonitorGPU
+	gpus := make([]MonitorGPU, 0)
 	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
 		g := parseNVLine(line)
 		if g.Index < 0 {
