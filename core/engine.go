@@ -2294,12 +2294,10 @@ var updateExePath = os.Executable
 
 // updateLauncher is a test injection point (same style as renameFile /
 // updateExePath) launching the downloaded setup installer as a detached child
-// process. hideWindow's CREATE_NO_WINDOW is harmless for the NSIS GUI
-// installer and keeps the project convention for child processes.
+// process. On Windows the installer needs elevation (UAC), so launchInstaller
+// goes through ShellExecute runas instead of a plain exec.
 var updateLauncher = func(path string) error {
-	cmd := exec.Command(path)
-	hideWindow(cmd)
-	return cmd.Start()
+	return launchInstaller(path)
 }
 
 // updateQuitDelay is the pause between launching the installer and quitting
