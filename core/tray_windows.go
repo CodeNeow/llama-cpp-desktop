@@ -5,6 +5,7 @@ package core
 import (
 	"context"
 	"log"
+	"runtime"
 	"sync"
 
 	"fyne.io/systray"
@@ -68,6 +69,19 @@ func InitTray(ctx context.Context, icon []byte) {
 	trayMu.Unlock()
 
 	go func() {
+		// Pin the tray to one OS thread for its whole lifetime: systray
+		// creates the tray window on this goroutine's current thread and then
+		// blocks in GetMessage on the same goroutine, and Win32 delivers
+		// window messages (right-click, menu selection) to the queue of the
+		// thread that created the window. Without locking, the Go scheduler
+		// can resume this goroutine on a different thread after a blocking
+		// GetMessage returns (systray's package-level LockOSThread in init
+		// only pins the main goroutine); messages would then queue on the
+		// old thread while the loop blocks on the new one, leaving the tray
+		// icon permanently unresponsive — typically after the app has been
+		// running a while and scheduling pressure grows.
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
 		systray.Run(func() {
 			systray.SetIcon(icon)
 			systray.SetTooltip("Llama Desktop")
