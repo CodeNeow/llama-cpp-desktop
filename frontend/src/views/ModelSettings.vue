@@ -44,6 +44,10 @@
           {{ saving ? t('modelSettings.saving') : t('modelSettings.save') }}
         </button>
       </div>
+
+      <!-- Service running hint: the preset is generated at service start, so
+           saved parameters only apply after a restart -->
+      <div v-if="serverRunning" class="restart-note">{{ t('modelSettings.restartNote') }}</div>
     </div>
 
     <!-- Loading -->
@@ -303,7 +307,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { getModelConfig, saveModelConfig } from '../wails'
+import { getModelConfig, saveModelConfig, getServerStatus } from '../wails'
 import { t } from '../lib/i18n'
 import ThemedSelect, { type SelectOption } from '../components/ThemedSelect.vue'
 
@@ -379,6 +383,13 @@ const activeTab = ref(0)
 
 /** Current config (reactive), initialized from defaults + loaded values */
 const cfg = reactive<ModelConfig>({ ...defaults })
+
+/**
+ * Whether the llama-server is currently running: when true, saved parameters
+ * only take effect after the service is restarted (the preset is generated at
+ * service start), so the page shows a hint.
+ */
+const serverRunning = ref(false)
 
 // ─── ThemedSelect option lists (mirrors the former native <select> options) ───
 const gpuLayersOptions: SelectOption[] = [
@@ -564,8 +575,12 @@ async function save() {
 }
 
 // ─── Lifecycle ────────────────────────────────────────────────────────────────
-onMounted(() => {
+onMounted(async () => {
   loadConfig()
+  try {
+    const status = await getServerStatus()
+    serverRunning.value = status.running
+  } catch {}
 })
 </script>
 
@@ -677,6 +692,18 @@ onMounted(() => {
 
 .action-spacer {
   flex: 1;
+}
+
+/* Restart note shown while the service is running: saved params only apply on next start */
+.restart-note {
+  margin: -8px 0 20px;
+  padding: 8px 12px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: var(--radius-sm);
+  color: #fbbf24;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 .btn-secondary {
