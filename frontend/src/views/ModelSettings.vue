@@ -72,17 +72,11 @@
             <div class="param">
               <label class="param-field">
                 <span class="param-label">{{ t('modelSettings.gpuLayers') }}</span>
-                <select v-model="cfg.gpuLayers" class="param-input">
-                  <option value="auto">{{ t('modelSettings.gpuAuto') }}</option>
-                  <option value="all">{{ t('modelSettings.gpuAll') }}</option>
-                  <option value="0">{{ t('modelSettings.gpuCpuOnly') }}</option>
-                  <option value="10">10</option>
-                  <option value="20">20</option>
-                  <option value="30">30</option>
-                  <option value="40">40</option>
-                  <option value="50">50</option>
-                  <option value="99">99</option>
-                </select>
+                <ThemedSelect
+                  v-model="cfg.gpuLayers"
+                  :options="gpuLayersOptions"
+                  :label="t('modelSettings.gpuLayers')"
+                />
               </label>
               <p class="param-hint">{{ t('modelSettings.gpuLayersHint') }}</p>
             </div>
@@ -161,50 +155,33 @@
             <div class="param">
               <label class="param-field">
                 <span class="param-label">{{ t('modelSettings.cacheTypeK') }}</span>
-                <select v-model="cfg.cacheTypeK" class="param-input">
-                  <option value="">{{ t('modelSettings.defaultF16') }}</option>
-                  <option value="f32">f32</option>
-                  <option value="f16">f16</option>
-                  <option value="bf16">bf16</option>
-                  <option value="q8_0">{{ t('modelSettings.q8Recommended') }}</option>
-                  <option value="q4_0">q4_0</option>
-                  <option value="q4_1">q4_1</option>
-                  <option value="iq4_nl">iq4_nl</option>
-                  <option value="q5_0">q5_0</option>
-                  <option value="q5_1">q5_1</option>
-                </select>
+                <ThemedSelect
+                  v-model="cfg.cacheTypeK"
+                  :options="cacheTypeOptions"
+                  :label="t('modelSettings.cacheTypeK')"
+                />
               </label>
               <p class="param-hint">{{ t('modelSettings.cacheTypeKHint') }}</p>
             </div>
             <div class="param">
               <label class="param-field">
                 <span class="param-label">{{ t('modelSettings.cacheTypeV') }}</span>
-                <select v-model="cfg.cacheTypeV" class="param-input">
-                  <option value="">{{ t('modelSettings.defaultF16') }}</option>
-                  <option value="f32">f32</option>
-                  <option value="f16">f16</option>
-                  <option value="bf16">bf16</option>
-                  <option value="q8_0">{{ t('modelSettings.q8Recommended') }}</option>
-                  <option value="q4_0">q4_0</option>
-                  <option value="q4_1">q4_1</option>
-                  <option value="iq4_nl">iq4_nl</option>
-                  <option value="q5_0">q5_0</option>
-                  <option value="q5_1">q5_1</option>
-                </select>
+                <ThemedSelect
+                  v-model="cfg.cacheTypeV"
+                  :options="cacheTypeOptions"
+                  :label="t('modelSettings.cacheTypeV')"
+                />
               </label>
               <p class="param-hint">{{ t('modelSettings.cacheTypeVHint') }}</p>
             </div>
             <div class="param">
               <label class="param-field">
                 <span class="param-label">{{ t('modelSettings.loadMode') }}</span>
-                <select v-model="cfg.loadMode" class="param-input">
-                  <option value="">{{ t('modelSettings.loadDefaultMmap') }}</option>
-                  <option value="mmap">{{ t('modelSettings.loadMmap') }}</option>
-                  <option value="mlock">{{ t('modelSettings.loadMlock') }}</option>
-                  <option value="mmap+mlock">{{ t('modelSettings.loadMmapMlock') }}</option>
-                  <option value="none">{{ t('modelSettings.loadNone') }}</option>
-                  <option value="dio">{{ t('modelSettings.loadDio') }}</option>
-                </select>
+                <ThemedSelect
+                  v-model="cfg.loadMode"
+                  :options="loadModeOptions"
+                  :label="t('modelSettings.loadMode')"
+                />
               </label>
               <p class="param-hint">{{ t('modelSettings.loadModeHint') }}</p>
             </div>
@@ -220,13 +197,11 @@
             <div class="param">
               <label class="param-field">
                 <span class="param-label">{{ t('modelSettings.splitMode') }}</span>
-                <select v-model="cfg.splitMode" class="param-input">
-                  <option value="">{{ t('modelSettings.splitDefaultLayer') }}</option>
-                  <option value="layer">{{ t('modelSettings.splitLayer') }}</option>
-                  <option value="row">{{ t('modelSettings.splitRow') }}</option>
-                  <option value="tensor">{{ t('modelSettings.splitTensor') }}</option>
-                  <option value="none">{{ t('modelSettings.splitNone') }}</option>
-                </select>
+                <ThemedSelect
+                  v-model="cfg.splitMode"
+                  :options="splitModeOptions"
+                  :label="t('modelSettings.splitMode')"
+                />
               </label>
               <p class="param-hint">{{ t('modelSettings.splitModeHint') }}</p>
             </div>
@@ -256,12 +231,11 @@
             <div class="param">
               <label class="param-field">
                 <span class="param-label">{{ t('modelSettings.ropeScaling') }}</span>
-                <select v-model="cfg.ropeScaling" class="param-input">
-                  <option value="">{{ t('modelSettings.ropeDefaultNone') }}</option>
-                  <option value="none">none</option>
-                  <option value="linear">{{ t('modelSettings.ropeLinear') }}</option>
-                  <option value="yarn">{{ t('modelSettings.ropeYarn') }}</option>
-                </select>
+                <ThemedSelect
+                  v-model="cfg.ropeScaling"
+                  :options="ropeScalingOptions"
+                  :label="t('modelSettings.ropeScaling')"
+                />
               </label>
               <p class="param-hint">{{ t('modelSettings.ropeScalingHint') }}</p>
             </div>
@@ -304,10 +278,11 @@
             <div class="param">
               <label class="param-field">
                 <span class="param-label">{{ t('modelSettings.specType') }}</span>
-                <select v-model="cfg.specType" class="param-input">
-                  <option value="">{{ t('modelSettings.specOff') }}</option>
-                  <option value="draft-mtp">draft-mtp</option>
-                </select>
+                <ThemedSelect
+                  v-model="cfg.specType"
+                  :options="specTypeOptions"
+                  :label="t('modelSettings.specType')"
+                />
               </label>
               <p class="param-hint">{{ t('modelSettings.specTypeHint') }}</p>
             </div>
@@ -330,6 +305,7 @@ import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { getModelConfig, saveModelConfig } from '../wails'
 import { t } from '../lib/i18n'
+import ThemedSelect, { type SelectOption } from '../components/ThemedSelect.vue'
 
 // ─── ModelConfig interface (imported by Models.vue etc.) ───────────────────────
 export interface ModelConfig {
@@ -403,6 +379,56 @@ const activeTab = ref(0)
 
 /** Current config (reactive), initialized from defaults + loaded values */
 const cfg = reactive<ModelConfig>({ ...defaults })
+
+// ─── ThemedSelect option lists (mirrors the former native <select> options) ───
+const gpuLayersOptions: SelectOption[] = [
+  { value: 'auto', label: t('modelSettings.gpuAuto') },
+  { value: 'all', label: t('modelSettings.gpuAll') },
+  { value: '0', label: t('modelSettings.gpuCpuOnly') },
+  { value: '10', label: '10' },
+  { value: '20', label: '20' },
+  { value: '30', label: '30' },
+  { value: '40', label: '40' },
+  { value: '50', label: '50' },
+  { value: '99', label: '99' },
+]
+const cacheTypeOptions: SelectOption[] = [
+  { value: '', label: t('modelSettings.defaultF16') },
+  { value: 'f32', label: 'f32' },
+  { value: 'f16', label: 'f16' },
+  { value: 'bf16', label: 'bf16' },
+  { value: 'q8_0', label: t('modelSettings.q8Recommended') },
+  { value: 'q4_0', label: 'q4_0' },
+  { value: 'q4_1', label: 'q4_1' },
+  { value: 'iq4_nl', label: 'iq4_nl' },
+  { value: 'q5_0', label: 'q5_0' },
+  { value: 'q5_1', label: 'q5_1' },
+]
+const loadModeOptions: SelectOption[] = [
+  { value: '', label: t('modelSettings.loadDefaultMmap') },
+  { value: 'mmap', label: t('modelSettings.loadMmap') },
+  { value: 'mlock', label: t('modelSettings.loadMlock') },
+  { value: 'mmap+mlock', label: t('modelSettings.loadMmapMlock') },
+  { value: 'none', label: t('modelSettings.loadNone') },
+  { value: 'dio', label: t('modelSettings.loadDio') },
+]
+const splitModeOptions: SelectOption[] = [
+  { value: '', label: t('modelSettings.splitDefaultLayer') },
+  { value: 'layer', label: t('modelSettings.splitLayer') },
+  { value: 'row', label: t('modelSettings.splitRow') },
+  { value: 'tensor', label: t('modelSettings.splitTensor') },
+  { value: 'none', label: t('modelSettings.splitNone') },
+]
+const ropeScalingOptions: SelectOption[] = [
+  { value: '', label: t('modelSettings.ropeDefaultNone') },
+  { value: 'none', label: 'none' },
+  { value: 'linear', label: t('modelSettings.ropeLinear') },
+  { value: 'yarn', label: t('modelSettings.ropeYarn') },
+]
+const specTypeOptions: SelectOption[] = [
+  { value: '', label: t('modelSettings.specOff') },
+  { value: 'draft-mtp', label: 'draft-mtp' },
+]
 
 // ─── Tab definitions (6 categories, icons are inline stroke SVGs) ────────────────────────────
 const tabs = [
@@ -803,10 +829,6 @@ onMounted(() => {
 
 .param-input::placeholder {
   color: var(--text-dim);
-}
-
-select.param-input {
-  cursor: pointer;
 }
 
 .param-hint {
