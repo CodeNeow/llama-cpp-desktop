@@ -683,14 +683,31 @@ func getLlamaCppInfo() LlamaCppInfo {
 
 // ─── Command helpers ─────────────────────────────────────────────
 
+// cmdTimeout is the upper bound for runCmd child-process execution. System
+// collection queries (WMI/CIM via powershell, nvidia-smi, sysctl, ...) are
+// expected to return in well under a second; a hung query (e.g. the WMI
+// service stalling) must not freeze the whole info fetch, so the child is
+// killed and runCmd returns "" (callers fall back to their defaults). It is a
+// package-level var so tests can shorten it (same style as
+// llamaVersionProbeTimeout).
+var cmdTimeout = 8 * time.Second
+
 func runCmd(name string, args ...string) string {
-	cmd := exec.Command(name, args...)
+	ctx, cancel := context.WithTimeout(context.Background(), cmdTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, name, args...)
 	hideWindow(cmd)
 	var out, errOut bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errOut
-	if err := cmd.Run(); err != nil && errOut.Len() > 0 {
-		log.Printf("[CMD] %s %v stderr: %s", name, args, strings.TrimSpace(errOut.String()))
+	if err := cmd.Run(); err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			log.Printf("[WARN] runCmd timeout after %v: %s %v", cmdTimeout, name, args)
+			return "" // timed-out output may be truncated; treat as unavailable
+		}
+		if errOut.Len() > 0 {
+			log.Printf("[CMD] %s %v stderr: %s", name, args, strings.TrimSpace(errOut.String()))
+		}
 	}
 	return strings.TrimSpace(out.String())
 }
