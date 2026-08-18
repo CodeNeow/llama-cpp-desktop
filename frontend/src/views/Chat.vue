@@ -6,15 +6,41 @@
         <p class="page-subtitle">{{ t('chat.subtitle') }}</p>
       </div>
       <div class="chat-toolbar" v-if="serverRunning">
-        <select
-          class="chat-model-select"
-          :value="selectedModel"
-          @change="onModelChange"
-          :disabled="routerModels.length === 0 || streaming"
-        >
-          <option value="" disabled>{{ t('chat.model') }}</option>
-          <option v-for="m in routerModels" :key="m.id" :value="m.id">{{ m.id }}</option>
-        </select>
+        <!-- Model picker: custom dropdown so the popup list follows the theme
+             (a native select's popup is OS-rendered and stays light in dark themes) -->
+        <div class="chat-model-picker">
+          <button
+            type="button"
+            class="chat-model-select"
+            :disabled="routerModels.length === 0 || streaming"
+            @click.stop="modelMenuOpen = !modelMenuOpen"
+            :aria-expanded="modelMenuOpen"
+            aria-haspopup="listbox"
+          >
+            <span class="chat-model-value">{{ selectedModel || t('chat.model') }}</span>
+            <svg class="chat-model-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </button>
+          <div v-if="modelMenuOpen" class="chat-model-menu" role="listbox">
+            <button
+              v-for="m in routerModels"
+              :key="m.id"
+              type="button"
+              class="chat-model-option"
+              :class="{ selected: m.id === selectedModel }"
+              role="option"
+              :aria-selected="m.id === selectedModel"
+              @click="pickModel(m.id)"
+            >
+              <span class="chat-model-option-name">{{ m.id }}</span>
+              <svg v-if="m.id === selectedModel" class="chat-model-option-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+            </button>
+            <div v-if="routerModels.length === 0" class="chat-model-empty">{{ t('chat.noModels') }}</div>
+          </div>
+        </div>
         <button
           class="chat-clear-btn"
           @click="clearChat"
@@ -181,6 +207,9 @@ const routerModels = ref<{ id: string; status: string }[]>([])
 /** Whether the chat parameters panel is expanded */
 const showParams = ref(false)
 
+/** Whether the model picker dropdown menu is open */
+const modelMenuOpen = ref(false)
+
 const messagesContainer = ref<HTMLDivElement | null>(null)
 const inputBox = ref<HTMLTextAreaElement | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -222,13 +251,15 @@ function goToApi() {
   router.push('/api')
 }
 
-/** Close the params panel when clicking outside it */
+/** Close the params panel and model menu when clicking outside them */
 function onDocClick() {
   showParams.value = false
+  modelMenuOpen.value = false
 }
 
-function onModelChange(e: Event) {
-  selectedModel.value = (e.target as HTMLSelectElement).value
+function pickModel(id: string) {
+  selectedModel.value = id
+  modelMenuOpen.value = false
   persistChat()
 }
 
@@ -506,7 +537,14 @@ onUnmounted(() => {
   position: relative; /* Anchor for params popover positioning */
 }
 
+.chat-model-picker {
+  position: relative;
+}
+
 .chat-model-select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 8px 12px;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -515,10 +553,110 @@ onUnmounted(() => {
   font-size: 13px;
   font-weight: 500;
   outline: none;
-  /* Constrain width and truncate so long model names cannot blow up the toolbar */
+  cursor: pointer;
+  transition: all 0.2s;
+  /* Constrain width so long model names cannot blow up the toolbar */
   min-width: 240px;
   max-width: 380px;
+}
+
+.chat-model-select:hover:not(:disabled) {
+  background: var(--hover-bg);
+}
+
+.chat-model-select:focus-visible {
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+.chat-model-select[aria-expanded='true'] {
+  background: var(--hover-bg);
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+.chat-model-select:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.chat-model-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.chat-model-chevron {
+  flex-shrink: 0;
+  color: var(--text-dim);
+  transition: transform 0.2s;
+}
+
+.chat-model-select[aria-expanded='true'] .chat-model-chevron {
+  transform: rotate(180deg);
+}
+
+/* Popup option list, rendered in-app so it follows the theme in both light and dark */
+.chat-model-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 30;
+  min-width: 240px;
+  max-height: 300px;
+  overflow-y: auto;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  padding: 4px;
+}
+
+.chat-model-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.chat-model-option:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.chat-model-option.selected {
+  color: var(--accent-light);
+}
+
+.chat-model-option-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-model-option-check {
+  flex-shrink: 0;
+}
+
+.chat-model-empty {
+  padding: 10px;
+  color: var(--text-dim);
+  font-size: 13px;
+  text-align: center;
 }
 
 .chat-clear-btn {
