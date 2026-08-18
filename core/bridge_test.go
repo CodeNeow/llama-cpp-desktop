@@ -94,6 +94,28 @@ func waitTaskTerminal(t *testing.T, id string, timeout time.Duration) {
 	t.Fatalf("task %s did not reach terminal state in %v", id, timeout)
 }
 
+// cancelAllTasks cancels every non-terminal download task and waits for their
+// goroutines to exit. Queue tests enqueue real download goroutines; without
+// waiting, a goroutine can outlive its test and later call saveConfig (the
+// configFile path is cwd-relative) from a subsequent test's temp cwd,
+// truncating that test's config file and making its loadConfig read empty
+// JSON. Must be called before the test's defer resets dlTasks.
+func cancelAllTasks(t *testing.T) {
+	t.Helper()
+	dlTasksMu.Lock()
+	for _, tt := range dlTasks {
+		switch tt.Status {
+		case "error", "done", "cancelled":
+		default:
+			if tt.cancel != nil {
+				tt.cancel()
+			}
+		}
+	}
+	dlTasksMu.Unlock()
+	waitTasksTerminal(t, 5*time.Second)
+}
+
 // TestStartHFDownloadNoDeadlock is a #B1 deadlock regression test: startHFDownload
 // calls persistTasksNow → saveConfig after enqueue, and saveConfig re-acquires dlTasksMu
 // at its tail for snapshotting. If persistTasksNow is called while dlTasksMu is held
@@ -165,7 +187,6 @@ func TestStartHFDownloadQueue(t *testing.T) {
 	}
 
 	dlTasksMu.Lock()
-	defer dlTasksMu.Unlock()
 	if len(dlTasks) != 2 {
 		t.Fatalf("task count = %d, want 2", len(dlTasks))
 	}
@@ -189,6 +210,9 @@ func TestStartHFDownloadQueue(t *testing.T) {
 	if dlTasks[0].cancel == nil {
 		t.Error("task should hold cancel func (used by cancel / exit cleanup)")
 	}
+	dlTasksMu.Unlock()
+
+	cancelAllTasks(t) // stop the real download goroutine before it outlives this test
 }
 
 // TestStopHFDownload verifies cancelling a single task: cancel triggers context
@@ -218,6 +242,8 @@ func TestStopHFDownload(t *testing.T) {
 	if err := task.ctx.Err(); err == nil {
 		t.Error("context should be cancelled after cancel()")
 	}
+
+	cancelAllTasks(t) // wait for the goroutine to actually exit
 }
 
 // TestCancelDownloadTaskUnknownID verifies cancelling a non-existent task returns nil (idempotent).
@@ -326,6 +352,8 @@ func TestGetDownloadTasksSnapshot(t *testing.T) {
 	if realStatus == "hacked" {
 		t.Error("mutating snapshot must not affect internal task state")
 	}
+
+	cancelAllTasks(t) // stop the real download goroutine before it outlives this test
 }
 
 // TestStartHFDownloadRejectsPathTraversal verifies startHFDownload returns an error
