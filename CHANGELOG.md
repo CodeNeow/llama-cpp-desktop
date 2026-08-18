@@ -2,6 +2,50 @@
 
 更新日志的**权威来源**（见 `AGENTS.md`「版本发布」）：发版时先在此新增版本条目（含日期与逐提交核心改动），`git tag` 注解消息与 GitHub Release 正文均从该条目复制，保持一致。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本。
 
+## [v0.2.9] - 2026-08-18
+
+## English
+
+v0.2.9: Themed dropdowns everywhere, download-path vs external-directory separation, and model-source fixes (8 commits since v0.2.8, per-commit core changes):
+
+1. `931366a` feat(frontend): theme the chat model picker as a custom dropdown
+   - Core: Chat.vue's model picker replaced the native `<select>` with a custom dropdown (button + in-app option list). A native select's popup is OS-rendered and stays light in dark themes (WebView2 ignores option CSS / color-scheme); the new list renders inside the app with theme tokens (--bg-secondary / --text-secondary / --hover-bg / --accent-light), matching both light and dark themes. Adds hover / focus / expanded / disabled states, a rotating chevron, a selected-item checkmark, ARIA listbox/option semantics, and click-outside close.
+2. `f363eb9` feat(frontend): extract themed custom select and apply to all dropdowns
+   - Core: new reusable ThemedSelect.vue component (button trigger + in-app option list) with 'field' (matches .param-input form fields) and 'toolbar' (chat toolbar) variants; option display text resolved via the new pure helper lib/selectOptions.ts (selectDisplayLabel) for testability. ModelSettings replaces all 7 native selects (gpuLayers / cacheTypeK / cacheTypeV / loadMode / splitMode / ropeScaling / specType) and Chat switches to the shared component. Adds @vue/test-utils with the vue plugin wired into vitest; 13 ThemedSelect tests (selection, keyboard, click-outside, disabled, variants).
+3. `605ba0d` feat(config): separate download paths from imported directories
+   - Core: the two custom-directory settings split into four: imported directories (llamaCppDir / modelDir, reuse of existing installs) plus new user-chosen download paths (llamaCppDownloadDir / modelDownloadDir, default llama-cpp/ and LLM-Models). New effective-dir resolution (llamaCppDownloadDir / effectiveModelDownloadDir / modelScanDirs); new downloads land in the download paths; the llama.cpp detection chain is now download path > imported dir > PATH; model scanning merges both model sources, dedupes and annotates ModelInfo.SourceDir; --models-dir and disk sampling follow the model download path. Config persists the new fields (old configs fall back to defaults). Four new bindings Set/BrowseLlamaCppDownloadDir and Set/BrowseModelDownloadDir (empty rejected, matching cache invalidated, persisted). Frontend: Settings gains a Directories section; Models page shows both sources in the directory bar and labels each card with a source badge (download path vs imported); wails.ts wrappers added.
+4. `cad2063` fix(backend): bound runCmd with a timeout so hung system queries cannot freeze info
+   - Core: runCmd now runs the child under context.WithTimeout (cmdTimeout, 8s, package-level var injectable like llamaVersionProbeTimeout) and kills it on expiry, returning "" instead of blocking forever. System collection relies on short queries (WMI/CIM via powershell, nvidia-smi, sysctl, cat); a stalled query (e.g. the WMI service hanging, seen on Windows) previously froze the whole system-info fetch until the frontend's 600ms fallback, blanking CPU / memory fields. A timed-out run logs a WARN and returns empty, letting each caller fall back to its default. TestRunCmdTimeout injects a 300ms timeout and a sleeping child and asserts the call returns within ~5s.
+5. `0644bc2` feat(frontend): show restart hint on model settings when the service is running
+   - Core: ModelSettings.vue queries getServerStatus on mount; while the service is running, an amber note under the action bar explains that saved parameters take effect only after the service is restarted (the preset is generated at service start). i18n zh/en copy added; no backend change (preset regeneration already happens on service start).
+6. `a253280` fix(server): drop --models-dir to stop duplicate model registration
+   - Core: buildServerCommand no longer passes --models-dir; every model (download path + imported directory) is already registered through the generated preset, and llama-server's --models-dir auto-scan additionally registered each file under a directory-derived id (e.g. the same GGUF appeared both as the preset id "qwen3.5-4b" and as "unsloth" from LLM-Models/unsloth/...). The chat model picker then listed both ids. TestBuildServerCommand drops --models-dir from the expected args; TestBuildServerCommandOmitsModelsDir asserts the flag is never emitted even with a custom model download path configured.
+7. `eda828c` fix(models): report SourceDir as absolute path for source badge
+   - Core: modelScanDirs now resolves scan roots to absolute paths, so the SourceDir annotated on scanned models matches the absolute modelDownloadDir GetConfig returns to the frontend. Previously a default (cwd-relative LLM-Models) download path produced a relative SourceDir that never matched the frontend's absolute downloadDir, mislabeling every model as imported; relative+absolute duplicate roots also dedupe correctly now. scanModels' lazy-creation check matches the default dir in both relative and absolute form. New tests TestScanModelsSourceDirAbsolute and TestScanModelsDedupesRelativeAndAbsoluteRoots.
+8. `9707ee0` docs(frontend): rename import directory wording to external path
+   - Core: unify directory vocabulary across Settings, the Models page bar, model source badges and hint copy: the reuse-folder concept is now "external path" (外部路径) in both languages, and the badge previously labeled "download directory" (下载目录) now matches the settings term "download path" (下载路径).
+
+## 中文
+
+v0.2.9: 下拉框全面主题化、下载路径与外部目录分离、模型来源修复（v0.2.8 以来 8 个提交，按提交逐一说明核心改动）：
+
+1. `931366a` feat(frontend): 聊天模型选择框改为自定义下拉
+   - 核心：Chat.vue 的模型选择器由原生 `<select>` 替换为自定义下拉（按钮 + 应用内选项列表）。原生 select 的弹层由系统渲染，深色主题下保持浅色（WebView2 忽略 option 的 CSS / color-scheme）；新列表在应用内按主题变量（--bg-secondary / --text-secondary / --hover-bg / --accent-light）渲染，浅色深色主题均适配。含 hover / focus / 展开 / 禁用状态、旋转箭头、选中项对勾、ARIA listbox/option 语义与点击外部关闭
+2. `f363eb9` feat(frontend): 抽取主题化下拉组件并应用全部下拉框
+   - 核心：新增可复用组件 ThemedSelect.vue（按钮触发器 + 应用内选项列表），提供 field（贴合 .param-input 表单字段）与 toolbar（贴合聊天工具栏）两种变体；选项显示文本由新增纯函数 lib/selectOptions.ts（selectDisplayLabel）解析便于测试。ModelSettings 的 7 个原生 select（gpuLayers / cacheTypeK / cacheTypeV / loadMode / splitMode / ropeScaling / specType）全部替换，Chat 改用共享组件。新增 @vue/test-utils 并将 vue 插件接入 vitest；ThemedSelect 13 个测试（选中、键盘、点击外部、禁用、变体）
+3. `605ba0d` feat(config): 下载路径与引入目录分离
+   - 核心：两个自定义目录设置拆分为四个：引入目录（llamaCppDir / modelDir，复用已有安装）与新增的用户下载路径（llamaCppDownloadDir / modelDownloadDir，默认 llama-cpp/ 与 LLM-Models）。新增有效目录解析（llamaCppDownloadDir / effectiveModelDownloadDir / modelScanDirs）；新下载内容落入下载路径；llama.cpp 检测链改为下载路径 > 引入目录 > PATH；模型扫描合并两个模型来源、去重并标注 ModelInfo.SourceDir；--models-dir 与磁盘采样跟随模型下载路径。配置持久化新字段（老配置回退默认）。新增 4 个绑定 Set/BrowseLlamaCppDownloadDir 与 Set/BrowseModelDownloadDir（空路径拒绝、失效对应缓存、持久化）。前端：设置页新增「目录」分区；模型管理页目录栏显示两个来源并给每张卡片标注来源徽标（下载 vs 引入）；wails.ts 新增包装
+4. `cad2063` fix(backend): runCmd 加超时，卡死的系统查询不再冻结信息
+   - 核心：runCmd 改为在 context.WithTimeout（cmdTimeout，8s，包级变量可注入，类似 llamaVersionProbeTimeout）下运行子进程，超时即终止并返回 ""，不再无限阻塞。系统信息采集依赖短查询（powershell 的 WMI/CIM、nvidia-smi、sysctl、cat）；某个查询卡住（如 Windows 上 WMI 服务挂起）此前会冻结整个系统信息获取直到前端 600ms 兜底，导致 CPU / 内存字段空白。超时的命令记一条 WARN 并返回空，各调用方回退默认值。TestRunCmdTimeout 注入 300ms 超时与睡眠子进程，断言调用在 ~5s 内返回
+5. `0644bc2` feat(frontend): 模型设置页在服务运行时提示重启生效
+   - 核心：ModelSettings.vue 挂载时查询 getServerStatus；服务运行中时，操作栏下方显示琥珀色提示，说明保存的参数需重启服务后生效（预设于服务启动时生成）。中英文文案新增；后端无改动（预设生成本就在服务启动时发生）
+6. `a253280` fix(server): 移除 --models-dir 修复模型重复注册
+   - 核心：buildServerCommand 不再传 --models-dir；所有模型（下载路径 + 引入目录）本已通过生成的预设注册，而 llama-server 的 --models-dir 自动扫描还会按目录派生 id 重复注册每个文件（同一 GGUF 既以预设 id "qwen3.5-4b" 出现，又以 LLM-Models/unsloth/... 派生的 "unsloth" 出现），聊天模型选择框因此列出两个 id。TestBuildServerCommand 从期望参数中移除 --models-dir；新增 TestBuildServerCommandOmitsModelsDir 断言即使配置了自定义模型下载路径也绝不输出该参数
+7. `eda828c` fix(models): SourceDir 改为绝对路径修复来源徽标
+   - 核心：modelScanDirs 将扫描根解析为绝对路径，使模型标注的 SourceDir 与 GetConfig 返回给前端的绝对 modelDownloadDir 一致。此前默认（cwd 相对 LLM-Models）下载路径产生相对 SourceDir，与前端绝对 downloadDir 永不相等，所有模型被误标为引入；相对+绝对同目录现在也能正确去重。scanModels 的默认目录懒创建判断同时匹配相对与绝对形式。新增 TestScanModelsSourceDirAbsolute 与 TestScanModelsDedupesRelativeAndAbsoluteRoots
+8. `9707ee0` docs(frontend): 「引入目录」文案统一为「外部路径」
+   - 核心：设置页、模型管理页目录栏、模型来源徽标与提示语统一目录词汇：复用文件夹概念中英文改为「外部路径」（External Path），徽标原「下载目录」同步为与设置页一致的「下载路径」
+
 ## [v0.2.8] - 2026-08-18
 
 ## English
