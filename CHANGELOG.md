@@ -2,6 +2,38 @@
 
 更新日志的**权威来源**（见 `AGENTS.md`「版本发布」）：发版时先在此新增版本条目（含日期与逐提交核心改动），`git tag` 注解消息与 GitHub Release 正文均从该条目复制，保持一致。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本。
 
+## [v0.2.8] - 2026-08-18
+
+## English
+
+v0.2.8: Install now after the update download, stalled-download auto-reconnect, and release notes in the UI language (5 commits since v0.2.7, per-commit core changes):
+
+1. `801c801` feat(frontend): show release notes in the UI language; bilingual changelog
+   - Core: new extractReleaseNotes(body, lang) pure function in lib/update.ts — v0.2.7+ release bodies carry a "## English" section followed by a "## 中文" section; zh returns everything after the Chinese marker, en returns the English section between the markers, and marker-less historical bodies fall back to the full text. UpdateModal now renders the section matching the current UI locale, so users only see the release notes in their own language; the CHANGELOG v0.2.7 entry is rewritten bilingual and AGENTS.md's Versioning section records the convention and the marker contract; update.test.ts adds 4 extractReleaseNotes cases.
+2. `d7549ce` docs(readme): introduce the task dock with bilingual screenshots
+   - Core: README (en / zh) adds a "Task dock" / "灵动任务卡片" highlight — the collapsible bottom-right card showing download progress (llama.cpp / model files / app updates) and in-memory models with one-click unload; new bilingual screenshots docs/screenshots/{en,zh}/task-dock.png (1200x800, mock shows a 67% model download plus loaded/sleeping in-memory models); the screenshots table gains a third row and model-settings.png moved out of the inline Usage section into the table.
+3. `93a437a` fix(downloads): reconnect stalled downloads via idle-read timeout
+   - Core: the download read loop previously blocked indefinitely when the server / proxy stopped sending mid-stream (half-open TCP connection), freezing progress (e.g. stuck at 76%) until the 30-minute client total timeout; a new per-read idle timer (idleReadTimeout, 60s, injectable for tests) now closes the stalled attempt and reconnects with a Range header at the current .part size, resuming exactly where the stalled read left off, and the speed-sampling baseline resets so the stall does not drag down the displayed speed. TestDownloadTaskStalledStreamReconnects uses a raw TCP server (httptest cannot simulate a half-open stall — Go's HTTP server closes the connection after a partial write) to assert the idle timeout fires, the reconnect carries Range bytes=8-, the file is byte-identical and exactly two requests are made.
+4. `0e26695` feat(update): install now after download completes
+   - Core: backend adds the InstallUpdate binding — it launches the downloaded setup installer and quits the app via wailsRuntime.Quit; UpdateDownloadState gains the installing status and the installer flag; installUpdateNow guards on done + installer + file-exists, rejects double clicks and restores done on launch failure, with launcher and quit-delay injection points for tests. Frontend: the update modal asks to install once the download finishes, shows the exiting state while installing and surfaces launch failures for retry; the download-status vocabulary (downloadStatus / dock / TaskDock) and i18n extend with installing / install-now copy, plus the installUpdate() wrapper in lib/update.ts. Tests: backend installUpdateNow suite (guards, launch-failure restore, double-click guard, quit firing) plus Installer assertions on existing download tests; frontend installUpdate success / failure tests and the dock status table.
+5. `9c725dd` chore(build): mark windows artifact name in CI releases
+   - Core: the CI Windows job now renames the setup installer to llama-desktop-setup-v<ver>-windows-amd64.exe, aligning with the Ubuntu naming (llama-desktop-setup-v<ver>-ubuntu<os>-amd64.deb); pickUpdateAsset comments and tests update the asset-naming examples to the new windows-amd64 pattern, while the keyword-based setup / installer matching logic is unchanged and still covers both old and new names.
+
+## 中文
+
+v0.2.8: 更新下载完成即装、断流下载自动重连、更新说明按界面语言显示（v0.2.7 以来 5 个提交，按提交逐一说明核心改动）：
+
+1. `801c801` feat(frontend): 更新说明按界面语言显示；双语更新日志
+   - 核心：lib/update.ts 新增 extractReleaseNotes(body, lang) 纯函数——v0.2.7 起发布正文携带「## English」+「## 中文」两段，zh 返回中文标记之后全部内容，en 返回两标记之间的英文段，无标记的历史正文回退整段展示；UpdateModal 按当前界面语言渲染对应段落，用户只见自己语言版本的更新说明；CHANGELOG v0.2.7 条目改写为双语，AGENTS.md 版本发布章节记录该约定与标记契约；update.test.ts 新增 4 个 extractReleaseNotes 用例
+2. `d7549ce` docs(readme): README 新增灵动任务卡片介绍与双语截图
+   - 核心：README（en/zh）新增「灵动任务卡片」亮点介绍——右下角可折叠卡片展示下载进度（llama.cpp / 模型文件 / 应用更新）与内存中模型的一键卸载；新增双语截图 docs/screenshots/{en,zh}/task-dock.png（1200×800，模拟 67% 模型下载 + 已加载/休眠内存模型）；截图表格增加第三行，model-settings.png 由 Usage 段内联嵌入移入表格
+3. `93a437a` fix(downloads): 空闲读超时自动重连停滞下载
+   - 核心：服务端/代理在传输中途停发数据（半开 TCP 连接）时，下载读循环此前无限阻塞，进度冻结（如停在 76%）直至 30 分钟客户端总超时；新增每次读取的空闲计时器（idleReadTimeout，60s，可注入测试）——超时即关闭停滞请求，并按当前 .part 大小携带 Range 头重连，从断点精确续传，同时重置速率采样基线，避免停滞拖低显示速度。TestDownloadTaskStalledStreamReconnects 用裸 TCP 服务器（httptest 无法模拟半开停滞——Go HTTP 服务器部分写入后即关闭连接）验证空闲超时触发、重连携带 Range bytes=8-、文件逐字节一致且恰好发出两个请求
+4. `0e26695` feat(update): 更新下载完成后立即安装
+   - 核心：后端新增 InstallUpdate 绑定——启动下载好的 setup 安装程序并通过 wailsRuntime.Quit 退出应用；UpdateDownloadState 新增 installing 状态与 installer 标记；installUpdateNow 以 done + installer + 文件存在为守卫，拒绝双击重复触发，启动失败回退 done 状态，并提供启动器与退出延时注入点供测试。前端：下载完成后更新弹窗询问「立即安装」，安装中显示退出中状态，启动失败提示可重试；更新状态词汇（downloadStatus / dock / TaskDock）与 i18n 扩展 installing 与立即安装文案，lib/update.ts 新增 installUpdate() 包装。测试：后端 installUpdateNow 全套（守卫/启动失败回退/双击守卫/退出触发）+ 既有下载测试补充 Installer 断言；前端 installUpdate 成功/失败用例与 dock 状态表
+5. `9c725dd` chore(build): CI 发布产物标注 Windows 安装包名
+   - 核心：CI Windows 任务将安装包重命名为 llama-desktop-setup-v<ver>-windows-amd64.exe，与 Ubuntu 命名（llama-desktop-setup-v<ver>-ubuntu<os>-amd64.deb）对齐；pickUpdateAsset 注释与测试中的资产命名示例同步为 windows-amd64 模式，关键字 setup/installer 匹配逻辑不变，新旧命名均可命中
+
 ## [v0.2.7] - 2026-08-17
 
 ## English
