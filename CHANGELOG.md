@@ -6,7 +6,7 @@
 
 ## English
 
-v0.2.9: Themed dropdowns everywhere, download-path vs external-directory separation, model-source fixes, and a tray responsiveness fix (10 commits since v0.2.8, per-commit core changes):
+v0.2.9: Themed dropdowns everywhere, download-path vs external-directory separation, model-source fixes, a tray responsiveness fix, and elevated installer launch (11 commits since v0.2.8, per-commit core changes):
 
 1. `931366a` feat(frontend): theme the chat model picker as a custom dropdown
    - Core: Chat.vue's model picker replaced the native `<select>` with a custom dropdown (button + in-app option list). A native select's popup is OS-rendered and stays light in dark themes (WebView2 ignores option CSS / color-scheme); the new list renders inside the app with theme tokens (--bg-secondary / --text-secondary / --hover-bg / --accent-light), matching both light and dark themes. Adds hover / focus / expanded / disabled states, a rotating chevron, a selected-item checkmark, ARIA listbox/option semantics, and click-outside close.
@@ -28,10 +28,12 @@ v0.2.9: Themed dropdowns everywhere, download-path vs external-directory separat
    - Core: InitTray's goroutine now calls runtime.LockOSThread before systray.Run. systray creates the tray window on the current thread and then blocks in GetMessage on the same goroutine; Win32 only delivers window messages to the queue of the thread that created the window. systray's package-level LockOSThread in init pins only the main goroutine, so this goroutine's thread could drift after a blocking GetMessage returns, leaving the tray icon permanently unresponsive — the reported "right-click does nothing after the app has been running a while" symptom. Pinning the tray goroutine to one OS thread for its lifetime fixes it.
 10. `4c013eb` chore(build): sync package.json.md5 with current package.json
    - Core: frontend/package.json.md5 recorded the hash of an older package.json (wails build refreshes this file after install), which could make a later wails build misjudge frontend dependency changes; the stored value is now the exact md5 of the current package.json. go.mod/go.sum restored to the committed wails v2.14.0 after an external build downgraded the working tree to v2.12.0; build and tests verified against v2.14.0.
+11. `21e8f76` fix(update): launch the setup installer elevated via ShellExecute runas
+   - Core: install-now failed on Windows with "The requested operation requires elevation" because the launcher forked the NSIS installer directly, inheriting the app's non-elevated token. New platform-split launchInstaller: on Windows it calls ShellExecute with the runas verb so Windows shows the UAC prompt and starts the elevated installer detached; other platforms keep the plain exec. updateLauncher delegates to launchInstaller; tests cover the fail-fast missing-file path on both platforms (the successful branch pops a UAC dialog and is verified manually).
 
 ## 中文
 
-v0.2.9: 下拉框全面主题化、下载路径与外部目录分离、模型来源修复、托盘响应修复（v0.2.8 以来 10 个提交，按提交逐一说明核心改动）：
+v0.2.9: 下拉框全面主题化、下载路径与外部目录分离、模型来源修复、托盘响应修复、安装器提权启动（v0.2.8 以来 11 个提交，按提交逐一说明核心改动）：
 
 1. `931366a` feat(frontend): 聊天模型选择框改为自定义下拉
    - 核心：Chat.vue 的模型选择器由原生 `<select>` 替换为自定义下拉（按钮 + 应用内选项列表）。原生 select 的弹层由系统渲染，深色主题下保持浅色（WebView2 忽略 option 的 CSS / color-scheme）；新列表在应用内按主题变量（--bg-secondary / --text-secondary / --hover-bg / --accent-light）渲染，浅色深色主题均适配。含 hover / focus / 展开 / 禁用状态、旋转箭头、选中项对勾、ARIA listbox/option 语义与点击外部关闭
@@ -53,6 +55,8 @@ v0.2.9: 下拉框全面主题化、下载路径与外部目录分离、模型来
    - 核心：InitTray 的 goroutine 在进入 systray.Run 前调用 runtime.LockOSThread。systray 在当前线程创建托盘窗口，随后在同一 goroutine 阻塞于 GetMessage；Win32 只把窗口消息投递到创建窗口的线程队列。systray 包级 init 的 LockOSThread 只锁定主 goroutine，因此该 goroutine 在线程阻塞唤醒后可能漂移到别的线程，托盘图标永久失去响应——即"运行一段时间后右键无反应"。将托盘 goroutine 终身锁定在一个 OS 线程上解决
 10. `4c013eb` chore(build): package.json.md5 与当前 package.json 同步
    - 核心：frontend/package.json.md5 记录的是旧 package.json 的哈希（wails build 安装依赖后会刷新此文件），可能导致后续 wails build 误判前端依赖变化；现已存为当前 package.json 的精确 md5。go.mod/go.sum 恢复为已提交的 wails v2.14.0（此前工作区被外部构建降级到 v2.12.0）；构建与测试在 v2.14.0 下验证通过
+11. `21e8f76` fix(update): 安装器通过 ShellExecute runas 提权启动
+   - 核心：立即安装在 Windows 上报「The requested operation requires elevation」——原启动器直接 fork NSIS 安装器，子进程继承应用的非提权令牌。新增平台拆分 launchInstaller：Windows 上调用 ShellExecute 并带 runas 动词，Windows 弹出 UAC 提权框，确认后以管理员身份分离启动安装器；其他平台保持普通 exec。updateLauncher 改为委托 launchInstaller；测试覆盖双平台的"文件不存在快速失败"路径（成功分支会弹 UAC 对话框，需手动验证）
 
 ## [v0.2.8] - 2026-08-18
 
