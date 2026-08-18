@@ -108,7 +108,11 @@ func buildServerCommand(cfg ServerConfig, presetPath string) (string, []string) 
 	args := []string{
 		"--host", effectiveHost(cfg.AccessMode),
 		"--port", strconv.Itoa(cfg.Port),
-		"--models-dir", effectiveModelDownloadDir(),
+		// No --models-dir: every model (download path + imported directory) is
+		// already registered through the preset. Passing --models-dir too would
+		// make llama-server auto-register the download path by directory layout,
+		// duplicating each model under a second id (e.g. preset id "qwen3.5-4b"
+		// plus directory-derived id "unsloth" for the same file).
 		"--models-preset", presetPath,
 		"--models-max", strconv.Itoa(max(cfg.MaxModels, 1)),
 		"--cont-batching",

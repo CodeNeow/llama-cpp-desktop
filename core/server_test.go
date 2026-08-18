@@ -59,7 +59,9 @@ func saveServerState(t *testing.T) (origLogs []string, origDir string) {
 }
 
 // TestBuildServerCommand verifies server command construction: default llama-server binary
-// and fixed argument sequence (host/port/models-dir/preset/max/batching/webui).
+// and fixed argument sequence (host/port/preset/max/batching/webui). No --models-dir is
+// passed: the preset already registers every model, and auto-scanning the directory would
+// duplicate each model under a second id.
 func TestBuildServerCommand(t *testing.T) {
 	saveServerState(t)
 	cfg := ServerConfig{AccessMode: accessLocal, Host: "127.0.0.1", Port: 8080, MaxModels: 1, CacheRAM: 0}
@@ -71,7 +73,6 @@ func TestBuildServerCommand(t *testing.T) {
 	want := []string{
 		"--host", "127.0.0.1",
 		"--port", "8080",
-		"--models-dir", "LLM-Models",
 		"--models-preset", "/tmp/preset.ini",
 		"--models-max", "1",
 		"--cont-batching",
@@ -149,14 +150,11 @@ func TestBuildServerCommandCustomDir(t *testing.T) {
 	}
 }
 
-// TestBuildServerCommandCustomModelsDir verifies that after setting a custom model directory,
-// --models-dir in buildServerCommand args uses the custom directory instead of the default
-// LLM-Models.
-// TestBuildServerCommandCustomModelDownloadDir verifies --models-dir uses the
-// model download path (default LLM-Models, or the configured download dir); the
-// imported model directory is scanned for the preset but does not affect the
-// server's models-dir fallback root.
-func TestBuildServerCommandCustomModelDownloadDir(t *testing.T) {
+// TestBuildServerCommandOmitsModelsDir verifies buildServerCommand no longer
+// passes --models-dir: the preset already registers every model (download path
+// + imported directory), and letting llama-server also auto-scan the download
+// path would register each model twice under different ids.
+func TestBuildServerCommandOmitsModelsDir(t *testing.T) {
 	saveServerState(t)
 	customModels := t.TempDir()
 	modelDownloadDirMu.Lock()
@@ -166,14 +164,10 @@ func TestBuildServerCommandCustomModelDownloadDir(t *testing.T) {
 	cfg := ServerConfig{AccessMode: accessLocal, Host: "127.0.0.1", Port: 8080, MaxModels: 1, CacheRAM: 0}
 	_, args := buildServerCommand(cfg, "/tmp/preset.ini")
 
-	found := false
-	for i, a := range args {
-		if a == "--models-dir" && i+1 < len(args) && args[i+1] == customModels {
-			found = true
+	for _, a := range args {
+		if a == "--models-dir" {
+			t.Fatalf("args should not contain --models-dir (duplicate registration), actual args = %v", args)
 		}
-	}
-	if !found {
-		t.Errorf("--models-dir in args should be %q, actual args = %v", customModels, args)
 	}
 }
 
