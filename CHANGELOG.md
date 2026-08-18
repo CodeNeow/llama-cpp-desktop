@@ -6,7 +6,7 @@
 
 ## English
 
-v0.2.9: Themed dropdowns everywhere, download-path vs external-directory separation, and model-source fixes (8 commits since v0.2.8, per-commit core changes):
+v0.2.9: Themed dropdowns everywhere, download-path vs external-directory separation, model-source fixes, and a tray responsiveness fix (10 commits since v0.2.8, per-commit core changes):
 
 1. `931366a` feat(frontend): theme the chat model picker as a custom dropdown
    - Core: Chat.vue's model picker replaced the native `<select>` with a custom dropdown (button + in-app option list). A native select's popup is OS-rendered and stays light in dark themes (WebView2 ignores option CSS / color-scheme); the new list renders inside the app with theme tokens (--bg-secondary / --text-secondary / --hover-bg / --accent-light), matching both light and dark themes. Adds hover / focus / expanded / disabled states, a rotating chevron, a selected-item checkmark, ARIA listbox/option semantics, and click-outside close.
@@ -24,10 +24,14 @@ v0.2.9: Themed dropdowns everywhere, download-path vs external-directory separat
    - Core: modelScanDirs now resolves scan roots to absolute paths, so the SourceDir annotated on scanned models matches the absolute modelDownloadDir GetConfig returns to the frontend. Previously a default (cwd-relative LLM-Models) download path produced a relative SourceDir that never matched the frontend's absolute downloadDir, mislabeling every model as imported; relative+absolute duplicate roots also dedupe correctly now. scanModels' lazy-creation check matches the default dir in both relative and absolute form. New tests TestScanModelsSourceDirAbsolute and TestScanModelsDedupesRelativeAndAbsoluteRoots.
 8. `9707ee0` docs(frontend): rename import directory wording to external path
    - Core: unify directory vocabulary across Settings, the Models page bar, model source badges and hint copy: the reuse-folder concept is now "external path" (外部路径) in both languages, and the badge previously labeled "download directory" (下载目录) now matches the settings term "download path" (下载路径).
+9. `9859e50` fix(tray): pin systray goroutine to an OS thread so tray stays responsive
+   - Core: InitTray's goroutine now calls runtime.LockOSThread before systray.Run. systray creates the tray window on the current thread and then blocks in GetMessage on the same goroutine; Win32 only delivers window messages to the queue of the thread that created the window. systray's package-level LockOSThread in init pins only the main goroutine, so this goroutine's thread could drift after a blocking GetMessage returns, leaving the tray icon permanently unresponsive — the reported "right-click does nothing after the app has been running a while" symptom. Pinning the tray goroutine to one OS thread for its lifetime fixes it.
+10. `4c013eb` chore(build): sync package.json.md5 with current package.json
+   - Core: frontend/package.json.md5 recorded the hash of an older package.json (wails build refreshes this file after install), which could make a later wails build misjudge frontend dependency changes; the stored value is now the exact md5 of the current package.json. go.mod/go.sum restored to the committed wails v2.14.0 after an external build downgraded the working tree to v2.12.0; build and tests verified against v2.14.0.
 
 ## 中文
 
-v0.2.9: 下拉框全面主题化、下载路径与外部目录分离、模型来源修复（v0.2.8 以来 8 个提交，按提交逐一说明核心改动）：
+v0.2.9: 下拉框全面主题化、下载路径与外部目录分离、模型来源修复、托盘响应修复（v0.2.8 以来 10 个提交，按提交逐一说明核心改动）：
 
 1. `931366a` feat(frontend): 聊天模型选择框改为自定义下拉
    - 核心：Chat.vue 的模型选择器由原生 `<select>` 替换为自定义下拉（按钮 + 应用内选项列表）。原生 select 的弹层由系统渲染，深色主题下保持浅色（WebView2 忽略 option 的 CSS / color-scheme）；新列表在应用内按主题变量（--bg-secondary / --text-secondary / --hover-bg / --accent-light）渲染，浅色深色主题均适配。含 hover / focus / 展开 / 禁用状态、旋转箭头、选中项对勾、ARIA listbox/option 语义与点击外部关闭
@@ -45,6 +49,10 @@ v0.2.9: 下拉框全面主题化、下载路径与外部目录分离、模型来
    - 核心：modelScanDirs 将扫描根解析为绝对路径，使模型标注的 SourceDir 与 GetConfig 返回给前端的绝对 modelDownloadDir 一致。此前默认（cwd 相对 LLM-Models）下载路径产生相对 SourceDir，与前端绝对 downloadDir 永不相等，所有模型被误标为引入；相对+绝对同目录现在也能正确去重。scanModels 的默认目录懒创建判断同时匹配相对与绝对形式。新增 TestScanModelsSourceDirAbsolute 与 TestScanModelsDedupesRelativeAndAbsoluteRoots
 8. `9707ee0` docs(frontend): 「引入目录」文案统一为「外部路径」
    - 核心：设置页、模型管理页目录栏、模型来源徽标与提示语统一目录词汇：复用文件夹概念中英文改为「外部路径」（External Path），徽标原「下载目录」同步为与设置页一致的「下载路径」
+9. `9859e50` fix(tray): 托盘 goroutine 锁定 OS 线程，托盘持续响应
+   - 核心：InitTray 的 goroutine 在进入 systray.Run 前调用 runtime.LockOSThread。systray 在当前线程创建托盘窗口，随后在同一 goroutine 阻塞于 GetMessage；Win32 只把窗口消息投递到创建窗口的线程队列。systray 包级 init 的 LockOSThread 只锁定主 goroutine，因此该 goroutine 在线程阻塞唤醒后可能漂移到别的线程，托盘图标永久失去响应——即"运行一段时间后右键无反应"。将托盘 goroutine 终身锁定在一个 OS 线程上解决
+10. `4c013eb` chore(build): package.json.md5 与当前 package.json 同步
+   - 核心：frontend/package.json.md5 记录的是旧 package.json 的哈希（wails build 安装依赖后会刷新此文件），可能导致后续 wails build 误判前端依赖变化；现已存为当前 package.json 的精确 md5。go.mod/go.sum 恢复为已提交的 wails v2.14.0（此前工作区被外部构建降级到 v2.12.0）；构建与测试在 v2.14.0 下验证通过
 
 ## [v0.2.8] - 2026-08-18
 
