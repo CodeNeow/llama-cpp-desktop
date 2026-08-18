@@ -5,6 +5,10 @@ import {context} from '../models';
 
 export function BrowseLlamaCppDir():Promise<string>;
 
+export function BrowseLlamaCppDownloadDir():Promise<string>;
+
+export function BrowseModelDownloadDir():Promise<string>;
+
 export function BrowseModelsDir():Promise<string>;
 
 export function CancelDownloadTask(arg1:string):Promise<void>;
@@ -55,6 +59,8 @@ export function GetSystemInfo():Promise<core.SystemInfo>;
 
 export function GetUpdateDownloadStatus():Promise<core.UpdateDownloadState>;
 
+export function InstallUpdate():Promise<void>;
+
 export function PauseDownloadTask(arg1:string):Promise<void>;
 
 export function PauseLlamaCppDownload():Promise<void>;
@@ -76,6 +82,10 @@ export function SearchDownloads(arg1:string,arg2:string):Promise<Array<core.HFSe
 export function SetDownloadSource(arg1:string):Promise<void>;
 
 export function SetLanguage(arg1:string):Promise<string>;
+
+export function SetLlamaCppDownloadDir(arg1:string):Promise<void>;
+
+export function SetModelDownloadDir(arg1:string):Promise<void>;
 
 export function SetModelsDir(arg1:string):Promise<void>;
 

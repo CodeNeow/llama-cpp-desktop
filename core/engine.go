@@ -141,6 +141,11 @@ type ModelInfo struct {
 	Architecture string `json:"architecture"`
 	Quantization string `json:"quantization"`
 	HasMMProj    bool   `json:"hasMmproj"`
+	// SourceDir is the root directory the model was scanned from (the model
+	// download directory or the user-imported model directory). Lets the
+	// frontend show which of the two sources a model belongs to when both are
+	// configured.
+	SourceDir string `json:"sourceDir"`
 }
 
 // ─── Cached system info (collected once at startup) ─────────────
@@ -187,6 +192,21 @@ var downloadCancel context.CancelFunc
 var downloadResumeCh = make(chan struct{}, 1)
 var customLlamaCppDir string
 var customLlamaCppMu sync.Mutex
+
+// llamaCppDownloadDirOverride is the user-chosen download path for new
+// llama.cpp installs (empty means unset, use the default downloadDir).
+// Distinct from customLlamaCppDir (the imported existing install): new
+// downloads land in the download path, while detection falls back to the
+// imported directory second.
+var llamaCppDownloadDirOverride string
+var llamaCppDownloadDirMu sync.Mutex
+
+// modelDownloadDirOverride is the user-chosen download path for new model
+// downloads (empty means unset, use the default modelsDir). Distinct from
+// customModelsDir (the imported existing model directory): downloads land in
+// the download path, and the model list merges both sources.
+var modelDownloadDirOverride string
+var modelDownloadDirMu sync.Mutex
 
 // ─── Download task queue ─────────────────────────────────────────
 
@@ -520,11 +540,14 @@ func findLlamaBin(dir, bin string) string {
 }
 
 // resolveLlamaServerBin resolves the llama-server executable path by priority
-// customLlamaCppDir > llama-cpp/ download directory > PATH, shared by
+// llamaCppDownloadDir() > customLlamaCppDir (imported install) > PATH, shared by
 // getLlamaCppInfo and buildServerCommand to keep the two lookups from drifting.
 // A directory hit returns an absolute path; a PATH hit returns the bare binary
 // name "llama-server" (left for exec.Command to resolve); no hit returns "".
 func resolveLlamaServerBin() string {
+	if p := findLlamaBinInDir(llamaCppDownloadDir(), "llama-server"); p != "" {
+		return p
+	}
 	customLlamaCppMu.Lock()
 	customDir := customLlamaCppDir
 	customLlamaCppMu.Unlock()
@@ -532,9 +555,6 @@ func resolveLlamaServerBin() string {
 		if p := findLlamaBinInDir(customDir, "llama-server"); p != "" {
 			return p
 		}
-	}
-	if p := findLlamaBinInDir(downloadDir, "llama-server"); p != "" {
-		return p
 	}
 	if _, err := exec.LookPath("llama-server"); err == nil {
 		return "llama-server"
@@ -612,7 +632,7 @@ func fillLlamaCppVersion(info *LlamaCppInfo, path string) {
 }
 
 // getLlamaCppInfo detects the llama.cpp runtime: searches for the binary by
-// priority customLlamaCppDir > llama-cpp/ download directory > PATH.
+// priority llamaCppDownloadDir() > customLlamaCppDir (imported install) > PATH.
 // llama-server goes through the shared helper resolveLlamaServerBin (the
 // download directory supports both root and one-level-subdir layouts); the
 // other candidate binaries (llama-cli / llama.cpp / llama) follow the same
@@ -639,11 +659,12 @@ func getLlamaCppInfo() LlamaCppInfo {
 	customDir := customLlamaCppDir
 	customLlamaCppMu.Unlock()
 
-	dirsToCheck := make([]string, 0, 3)
+	// Download path first, then the imported install, then PATH — the same
+	// order as resolveLlamaServerBin / llamaCppDownloadDir.
+	dirsToCheck := []string{llamaCppDownloadDir()}
 	if customDir != "" {
 		dirsToCheck = append(dirsToCheck, customDir)
 	}
-	dirsToCheck = append(dirsToCheck, downloadDir)
 	dirsToCheck = append(dirsToCheck, "") // empty string means PATH
 
 	for _, dir := range dirsToCheck {
@@ -751,39 +772,88 @@ func parseVMStat(out, key string) uint64 {
 
 const modelsDir = "LLM-Models"
 
-// customModelsDir is the custom model directory (empty means unset, use the
-// default modelsDir). modelsDirMu guards its reads/writes, consistent with the
-// style of customLlamaCppMu guarding customLlamaCppDir.
+// customModelsDir is the imported model directory (empty means unset). It is
+// the directory of models the user already has and wants to reuse; distinct
+// from modelDownloadDirOverride, where new downloads land. modelsDirMu guards
+// its reads/writes, consistent with the style of customLlamaCppMu guarding
+// customLlamaCppDir.
 var customModelsDir string
 var modelsDirMu sync.Mutex
 
-// effectiveModelsDir returns the currently effective model directory: the
-// custom directory when configured, otherwise falling back to the default
-// modelsDir. Reads happen under the modelsDirMu lock, staying safe against
-// concurrent writes from SetModelsDir / loadConfig / saveConfig.
-func effectiveModelsDir() string {
-	modelsDirMu.Lock()
-	dir := customModelsDir
-	modelsDirMu.Unlock()
+// effectiveModelDownloadDir returns the directory new model downloads land in:
+// the user-chosen download path when configured, otherwise the default
+// modelsDir.
+func effectiveModelDownloadDir() string {
+	modelDownloadDirMu.Lock()
+	dir := modelDownloadDirOverride
+	modelDownloadDirMu.Unlock()
 	if dir != "" {
 		return dir
 	}
 	return modelsDir
 }
 
-// scanModels scans the effective model directory (custom when set), creating
-// the default LLM-Models directory only when no custom dir is configured.
+// modelScanDirs returns the roots the model list is scanned from, in priority
+// order: the model download directory first, then the imported model directory
+// when set. Directories are cleaned and duplicates removed, so pointing both
+// settings at the same place does not double-list models.
+func modelScanDirs() []string {
+	dirs := []string{effectiveModelDownloadDir()}
+	modelsDirMu.Lock()
+	imported := customModelsDir
+	modelsDirMu.Unlock()
+	if imported != "" {
+		dirs = append(dirs, imported)
+	}
+	seen := make(map[string]bool, len(dirs))
+	out := make([]string, 0, len(dirs))
+	for _, d := range dirs {
+		clean := filepath.Clean(d)
+		if seen[clean] {
+			continue
+		}
+		seen[clean] = true
+		out = append(out, clean)
+	}
+	return out
+}
+
+// scanModels scans all model sources (the model download directory and the
+// imported model directory, when set), creating the default LLM-Models
+// directory only when no custom path is configured. Results are merged by
+// model identity (author + name): the download path is scanned first, so a
+// model present in both sources is listed once with the download path's copy
+// (the imported duplicate is dropped); each result is annotated with the root
+// it was scanned from.
 func scanModels() []ModelInfo {
-	dir := effectiveModelsDir()
-	// Custom directories are user-picked and expected to exist already;
-	// only the default directory needs lazy creation.
-	if dir == modelsDir {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			log.Printf("[WARN] Failed to create %s dir: %v", dir, err)
-			return make([]ModelInfo, 0)
+	merged := make([]ModelInfo, 0)
+	seen := make(map[string]bool)
+	for _, dir := range modelScanDirs() {
+		// Custom paths are user-picked and expected to exist already; only
+		// the default directory needs lazy creation.
+		if dir == modelsDir {
+			if err := os.MkdirAll(dir, 0755); err != nil {
+				log.Printf("[WARN] Failed to create %s dir: %v", dir, err)
+				continue
+			}
+		}
+		for _, m := range scanModelsDir(dir) {
+			// Dedupe by author+name (the identity shown in the model list):
+			// a copy in the imported directory is dropped when the download
+			// path already has the same model.
+			key := m.Author + "\x00" + m.Name
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			m.SourceDir = dir
+			merged = append(merged, m)
 		}
 	}
-	return scanModelsDir(dir)
+	sort.Slice(merged, func(i, j int) bool {
+		return merged[i].SizeBytes > merged[j].SizeBytes
+	})
+	return merged
 }
 
 // scanModelsDir scans the model directory tree for GGUF models. Both the
@@ -1199,17 +1269,16 @@ var githubReleasesAPI = "https://api.github.com/repos/ggml-org/llama.cpp/release
 const downloadDir = "llama-cpp"
 
 // llamaCppDownloadDir returns the target directory for llama.cpp download
-// extraction: when the user has set a custom llama.cpp directory
-// (customLlamaCppDir), install there first; otherwise fall back to the default
-// llama-cpp/. Matches the detection priority of getLlamaCppInfo /
-// resolveLlamaServerBin (customLlamaCppDir > downloadDir > PATH) so the
-// download landing spot and the detection location stay consistent.
+// extraction: the user-chosen download path when configured, otherwise the
+// default llama-cpp/. Matches the detection priority of getLlamaCppInfo /
+// resolveLlamaServerBin (download path > imported customLlamaCppDir > PATH) so
+// the download landing spot and the detection location stay consistent.
 func llamaCppDownloadDir() string {
-	customLlamaCppMu.Lock()
-	customDir := customLlamaCppDir
-	customLlamaCppMu.Unlock()
-	if customDir != "" {
-		return customDir
+	llamaCppDownloadDirMu.Lock()
+	dir := llamaCppDownloadDirOverride
+	llamaCppDownloadDirMu.Unlock()
+	if dir != "" {
+		return dir
 	}
 	return downloadDir
 }
@@ -2872,16 +2941,18 @@ func sanitizeAlias(name string) string {
 // ─── Config persistence ─────────────────────────────────────────
 
 type appConfig struct {
-	LlamaCppDir      string                 `json:"llamaCppDir"`
-	ModelDir         string                 `json:"modelDir"`
-	Theme            string                 `json:"theme"`
-	ModelConfigs     map[string]ModelConfig `json:"modelConfigs"`
-	ServerConfig     ServerConfig           `json:"serverConfig"`
-	DownloadSource   string                 `json:"downloadSource"`
-	Language         string                 `json:"language"`         // language preference: zh / en / auto (empty or invalid falls back to auto)
-	TrayEnabled      bool                   `json:"trayEnabled"`      // Windows system tray toggle, default true
-	SidebarCollapsed bool                   `json:"sidebarCollapsed"` // sidebar collapsed state, default true (collapsed)
-	DownloadTasks    []PersistedDlTask      `json:"downloadTasks,omitempty"`
+	LlamaCppDir         string                 `json:"llamaCppDir"`
+	ModelDir            string                 `json:"modelDir"`
+	LlamaCppDownloadDir string                 `json:"llamaCppDownloadDir,omitempty"`
+	ModelDownloadDir    string                 `json:"modelDownloadDir,omitempty"`
+	Theme               string                 `json:"theme"`
+	ModelConfigs        map[string]ModelConfig `json:"modelConfigs"`
+	ServerConfig        ServerConfig           `json:"serverConfig"`
+	DownloadSource      string                 `json:"downloadSource"`
+	Language            string                 `json:"language"`         // language preference: zh / en / auto (empty or invalid falls back to auto)
+	TrayEnabled         bool                   `json:"trayEnabled"`      // Windows system tray toggle, default true
+	SidebarCollapsed    bool                   `json:"sidebarCollapsed"` // sidebar collapsed state, default true (collapsed)
+	DownloadTasks       []PersistedDlTask      `json:"downloadTasks,omitempty"`
 }
 
 // PersistedDlTask is the persisted form of download queue tasks (written to
@@ -3013,7 +3084,25 @@ func loadConfig() {
 		customLlamaCppMu.Unlock()
 		log.Printf("[DIR] Loaded custom llama.cpp dir from config: %s", cfg.LlamaCppDir)
 	}
-	// Custom model directory: empty values or paths that do not exist / are
+	// llama.cpp download path: empty values fall back to the default
+	// llama-cpp/ directory (no existence check — a fresh path is a valid
+	// target for the next download).
+	if cfg.LlamaCppDownloadDir != "" {
+		llamaCppDownloadDirMu.Lock()
+		llamaCppDownloadDirOverride = cfg.LlamaCppDownloadDir
+		llamaCppDownloadDirMu.Unlock()
+		log.Printf("[DIR] Loaded llama.cpp download dir from config: %s", cfg.LlamaCppDownloadDir)
+	}
+	// Model download path: empty values fall back to the default LLM-Models
+	// directory (no existence check — a fresh path is a valid target for the
+	// next model download).
+	if cfg.ModelDownloadDir != "" {
+		modelDownloadDirMu.Lock()
+		modelDownloadDirOverride = cfg.ModelDownloadDir
+		modelDownloadDirMu.Unlock()
+		log.Printf("[DIR] Loaded model download dir from config: %s", cfg.ModelDownloadDir)
+	}
+	// Imported model directory: empty values or paths that do not exist / are
 	// not directories are ignored and fall back to the default directory,
 	// preventing scans/downloads from landing on invalid paths after config
 	// corruption or directory deletion.
@@ -3218,6 +3307,14 @@ func saveConfig() {
 	modelDir := customModelsDir
 	modelsDirMu.Unlock()
 
+	llamaCppDownloadDirMu.Lock()
+	llamaDownloadDir := llamaCppDownloadDirOverride
+	llamaCppDownloadDirMu.Unlock()
+
+	modelDownloadDirMu.Lock()
+	modelDownloadDir := modelDownloadDirOverride
+	modelDownloadDirMu.Unlock()
+
 	configMu.Lock()
 	theme := currentTheme
 	configMu.Unlock()
@@ -3275,16 +3372,18 @@ func saveConfig() {
 	dlTasksMu.Unlock()
 
 	cfg := appConfig{
-		LlamaCppDir:      dir,
-		ModelDir:         modelDir,
-		Theme:            theme,
-		ModelConfigs:     mcfgs,
-		ServerConfig:     scfg,
-		DownloadSource:   dlsrc,
-		Language:         lang,
-		TrayEnabled:      tray,
-		SidebarCollapsed: sidebarCollapsed,
-		DownloadTasks:    persistedTasks,
+		LlamaCppDir:         dir,
+		ModelDir:            modelDir,
+		LlamaCppDownloadDir: llamaDownloadDir,
+		ModelDownloadDir:    modelDownloadDir,
+		Theme:               theme,
+		ModelConfigs:        mcfgs,
+		ServerConfig:        scfg,
+		DownloadSource:      dlsrc,
+		Language:            lang,
+		TrayEnabled:         tray,
+		SidebarCollapsed:    sidebarCollapsed,
+		DownloadTasks:       persistedTasks,
 	}
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {

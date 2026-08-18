@@ -89,7 +89,7 @@ func TestRetryDownloadTaskCompletesAfterError(t *testing.T) {
 		ID:       "dl-1",
 		ModelID:  "author/model",
 		FileName: "model.gguf",
-		DestDir:  filepath.Join(effectiveModelsDir(), "author"),
+		DestDir:  filepath.Join(effectiveModelDownloadDir(), "author"),
 		URL:      srv.URL,
 		Status:   "error",
 		Error:    "stream error: stream ID 1; CANCEL; received from peer",
@@ -139,7 +139,7 @@ func TestRetryDownloadTaskCompletesAfterError(t *testing.T) {
 		t.Fatalf("重试后任务未完成, 状态 = %q", status)
 	}
 
-	got, err := os.ReadFile(filepath.Join(effectiveModelsDir(), "author", "model.gguf"))
+	got, err := os.ReadFile(filepath.Join(effectiveModelDownloadDir(), "author", "model.gguf"))
 	if err != nil {
 		t.Fatalf("下载文件未落盘: %v", err)
 	}
@@ -152,7 +152,7 @@ func TestRetryDownloadTaskCompletesAfterError(t *testing.T) {
 		ID:       "dl-2",
 		ModelID:  "author/model",
 		FileName: "active.gguf",
-		DestDir:  filepath.Join(effectiveModelsDir(), "author"),
+		DestDir:  filepath.Join(effectiveModelDownloadDir(), "author"),
 		URL:      srv.URL,
 		Status:   "downloading",
 	}

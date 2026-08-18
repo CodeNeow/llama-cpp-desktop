@@ -28,6 +28,12 @@ func saveServerState(t *testing.T) (origLogs []string, origDir string) {
 	modelsDirMu.Lock()
 	origModelsDir := customModelsDir
 	modelsDirMu.Unlock()
+	llamaCppDownloadDirMu.Lock()
+	origLlamaDownloadDir := llamaCppDownloadDirOverride
+	llamaCppDownloadDirMu.Unlock()
+	modelDownloadDirMu.Lock()
+	origModelDownloadDir := modelDownloadDirOverride
+	modelDownloadDirMu.Unlock()
 	t.Cleanup(func() {
 		serverLogsMu.Lock()
 		serverLogs = origLogs
@@ -42,6 +48,12 @@ func saveServerState(t *testing.T) (origLogs []string, origDir string) {
 		modelsDirMu.Lock()
 		customModelsDir = origModelsDir
 		modelsDirMu.Unlock()
+		llamaCppDownloadDirMu.Lock()
+		llamaCppDownloadDirOverride = origLlamaDownloadDir
+		llamaCppDownloadDirMu.Unlock()
+		modelDownloadDirMu.Lock()
+		modelDownloadDirOverride = origModelDownloadDir
+		modelDownloadDirMu.Unlock()
 	})
 	return
 }
@@ -140,12 +152,16 @@ func TestBuildServerCommandCustomDir(t *testing.T) {
 // TestBuildServerCommandCustomModelsDir verifies that after setting a custom model directory,
 // --models-dir in buildServerCommand args uses the custom directory instead of the default
 // LLM-Models.
-func TestBuildServerCommandCustomModelsDir(t *testing.T) {
+// TestBuildServerCommandCustomModelDownloadDir verifies --models-dir uses the
+// model download path (default LLM-Models, or the configured download dir); the
+// imported model directory is scanned for the preset but does not affect the
+// server's models-dir fallback root.
+func TestBuildServerCommandCustomModelDownloadDir(t *testing.T) {
 	saveServerState(t)
 	customModels := t.TempDir()
-	modelsDirMu.Lock()
-	customModelsDir = customModels
-	modelsDirMu.Unlock()
+	modelDownloadDirMu.Lock()
+	modelDownloadDirOverride = customModels
+	modelDownloadDirMu.Unlock()
 
 	cfg := ServerConfig{AccessMode: accessLocal, Host: "127.0.0.1", Port: 8080, MaxModels: 1, CacheRAM: 0}
 	_, args := buildServerCommand(cfg, "/tmp/preset.ini")

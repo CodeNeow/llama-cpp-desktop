@@ -293,3 +293,131 @@ func TestScanModelsDirMixedLayout(t *testing.T) {
 		t.Errorf("models[1].Name = %q, want variant-small", models[1].Name)
 	}
 }
+
+// TestScanModelsMergesSources verifies scanModels merges the model download
+// directory and the imported model directory: models from both roots are
+// listed, SourceDir annotates the root each model came from, duplicates of the
+// same file reachable from both roots are listed once, and the merged result
+// is sorted by size descending.
+func TestScanModelsMergesSources(t *testing.T) {
+	saveConfigState(t)
+	dlDir := t.TempDir()
+	importedDir := t.TempDir()
+
+	modelDownloadDirMu.Lock()
+	modelDownloadDirOverride = dlDir
+	modelDownloadDirMu.Unlock()
+	modelsDirMu.Lock()
+	customModelsDir = importedDir
+	modelsDirMu.Unlock()
+
+	// downloaded root: a large model
+	makeVariant(t, dlDir, "dl-author", "dl-model", "model.gguf", 2048)
+	// imported root: a smaller model
+	makeVariant(t, importedDir, "imp-author", "imp-model", "model.gguf", 512)
+
+	models := scanModels()
+	if len(models) != 2 {
+		t.Fatalf("scanned %d models, want 2", len(models))
+	}
+	if models[0].Name != "dl-model" {
+		t.Errorf("models[0].Name = %q, want dl-model (sorted by size descending)", models[0].Name)
+	}
+	if models[0].SourceDir != dlDir {
+		t.Errorf("models[0].SourceDir = %q, want %q", models[0].SourceDir, dlDir)
+	}
+	if models[1].SourceDir != importedDir {
+		t.Errorf("models[1].SourceDir = %q, want %q", models[1].SourceDir, importedDir)
+	}
+}
+
+// TestScanModelsDedupesOverlappingDirs verifies modelScanDirs collapses roots
+// that resolve to the same directory (download path and imported dir pointing
+// at the same location), so a model file is not listed twice.
+func TestScanModelsDedupesOverlappingDirs(t *testing.T) {
+	saveConfigState(t)
+	dir := t.TempDir()
+
+	modelDownloadDirMu.Lock()
+	modelDownloadDirOverride = dir
+	modelDownloadDirMu.Unlock()
+	modelsDirMu.Lock()
+	customModelsDir = dir
+	modelsDirMu.Unlock()
+
+	makeVariant(t, dir, "author", "model", "model.gguf", 1024)
+
+	models := scanModels()
+	if len(models) != 1 {
+		t.Fatalf("scanned %d models, want 1 (overlapping roots must dedupe)", len(models))
+	}
+	if models[0].Name != "model" {
+		t.Errorf("models[0].Name = %q, want model", models[0].Name)
+	}
+}
+
+// TestScanModelsDownloadWinsDuplicates verifies that when the same model
+// (author + name) exists in both the model download directory and the
+// imported model directory, only the download path's copy is listed and it is
+// annotated with the download path as its source.
+func TestScanModelsDownloadWinsDuplicates(t *testing.T) {
+	saveConfigState(t)
+	dlDir := t.TempDir()
+	importedDir := t.TempDir()
+
+	modelDownloadDirMu.Lock()
+	modelDownloadDirOverride = dlDir
+	modelDownloadDirMu.Unlock()
+	modelsDirMu.Lock()
+	customModelsDir = importedDir
+	modelsDirMu.Unlock()
+
+	// same author+name in both roots: the download copy must win
+	makeVariant(t, dlDir, "shared", "my-model", "model.gguf", 2048)
+	makeVariant(t, importedDir, "shared", "my-model", "model.gguf", 512)
+
+	models := scanModels()
+	if len(models) != 1 {
+		t.Fatalf("scanned %d models, want 1 (imported duplicate of the same model must be dropped)", len(models))
+	}
+	if models[0].Name != "my-model" || models[0].Author != "shared" {
+		t.Errorf("model identity = %s/%s, want shared/my-model", models[0].Author, models[0].Name)
+	}
+	if models[0].SourceDir != dlDir {
+		t.Errorf("SourceDir = %q, want %q (download path copy must win)", models[0].SourceDir, dlDir)
+	}
+}
+
+// TestScanModelsKeepsDistinctAuthorsAcrossSources verifies a model with the
+// same name under a different author in the imported directory is NOT treated
+// as a duplicate: both entries are listed (dedupe key is author+name).
+func TestScanModelsKeepsDistinctAuthorsAcrossSources(t *testing.T) {
+	saveConfigState(t)
+	dlDir := t.TempDir()
+	importedDir := t.TempDir()
+
+	modelDownloadDirMu.Lock()
+	modelDownloadDirOverride = dlDir
+	modelDownloadDirMu.Unlock()
+	modelsDirMu.Lock()
+	customModelsDir = importedDir
+	modelsDirMu.Unlock()
+
+	makeVariant(t, dlDir, "authorA", "my-model", "model.gguf", 1024)
+	makeVariant(t, importedDir, "authorB", "my-model", "model.gguf", 512)
+
+	models := scanModels()
+	if len(models) != 2 {
+		t.Fatalf("scanned %d models, want 2 (same name under different authors is not a duplicate)", len(models))
+	}
+	byAuthor := map[string]string{}
+	for _, m := range models {
+		byAuthor[m.Author] = m.SourceDir
+	}
+	if byAuthor["authorA"] != dlDir {
+		t.Errorf("authorA SourceDir = %q, want %q", byAuthor["authorA"], dlDir)
+	}
+	if byAuthor["authorB"] != importedDir {
+		t.Errorf("authorB SourceDir = %q, want %q", byAuthor["authorB"], importedDir)
+	}
+}

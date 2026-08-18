@@ -28,6 +28,10 @@ export const appConfig = reactive({
   theme: readStoredTheme(),
   llamaCppDir: '',
   modelsDir: '',
+  // User-chosen download paths: empty means unset (backend falls back to the
+  // default llama-cpp/ and LLM-Models directories).
+  llamaCppDownloadDir: '',
+  modelDownloadDir: '',
   downloadSource: 'hf',
   serverAccessMode: 'local',
   language: 'auto',
@@ -49,6 +53,8 @@ export async function loadConfig() {
     appConfig.theme = config.theme || 'light'
     appConfig.llamaCppDir = config.llamaCppDir || ''
     appConfig.modelsDir = config.modelsDir || ''
+    appConfig.llamaCppDownloadDir = config.llamaCppDownloadDir || ''
+    appConfig.modelDownloadDir = config.modelDownloadDir || ''
     appConfig.downloadSource = config.downloadSource || 'hf'
     appConfig.language = config.language || 'auto'
     appConfig.resolvedLanguage = config.resolvedLanguage === 'en' ? 'en' : 'zh'

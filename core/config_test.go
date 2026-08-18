@@ -54,6 +54,12 @@ func saveConfigState(t *testing.T) (origModels map[string]ModelConfig, origServe
 	modelsDirMu.Lock()
 	origModelsDir = customModelsDir
 	modelsDirMu.Unlock()
+	llamaCppDownloadDirMu.Lock()
+	origLlamaDownloadDir := llamaCppDownloadDirOverride
+	llamaCppDownloadDirMu.Unlock()
+	modelDownloadDirMu.Lock()
+	origModelDownloadDir := modelDownloadDirOverride
+	modelDownloadDirMu.Unlock()
 	languageMu.Lock()
 	origLanguage := currentLanguage
 	languageMu.Unlock()
@@ -75,6 +81,12 @@ func saveConfigState(t *testing.T) (origModels map[string]ModelConfig, origServe
 		modelsDirMu.Lock()
 		customModelsDir = origModelsDir
 		modelsDirMu.Unlock()
+		llamaCppDownloadDirMu.Lock()
+		llamaCppDownloadDirOverride = origLlamaDownloadDir
+		llamaCppDownloadDirMu.Unlock()
+		modelDownloadDirMu.Lock()
+		modelDownloadDirOverride = origModelDownloadDir
+		modelDownloadDirMu.Unlock()
 		languageMu.Lock()
 		currentLanguage = origLanguage
 		languageMu.Unlock()
@@ -687,24 +699,98 @@ func TestSaveModelConfigRejectsInvalidWhitelist(t *testing.T) {
 	}
 }
 
-// TestEffectiveModelsDir verifies the effective models directory: defaults to LLM-Models;
-// returns the configured custom directory when one is set.
-func TestEffectiveModelsDir(t *testing.T) {
+// TestEffectiveModelDownloadDir verifies the model download path: defaults to
+// LLM-Models; returns the configured download path when one is set.
+func TestEffectiveModelDownloadDir(t *testing.T) {
 	saveConfigState(t)
 
-	modelsDirMu.Lock()
-	customModelsDir = ""
-	modelsDirMu.Unlock()
-	if got := effectiveModelsDir(); got != modelsDir {
-		t.Errorf("default effective dir = %q, want %q", got, modelsDir)
+	modelDownloadDirMu.Lock()
+	modelDownloadDirOverride = ""
+	modelDownloadDirMu.Unlock()
+	if got := effectiveModelDownloadDir(); got != modelsDir {
+		t.Errorf("default download dir = %q, want %q", got, modelsDir)
 	}
 
 	custom := t.TempDir()
-	modelsDirMu.Lock()
-	customModelsDir = custom
-	modelsDirMu.Unlock()
-	if got := effectiveModelsDir(); got != custom {
-		t.Errorf("effective dir after setting custom = %q, want %q", got, custom)
+	modelDownloadDirMu.Lock()
+	modelDownloadDirOverride = custom
+	modelDownloadDirMu.Unlock()
+	if got := effectiveModelDownloadDir(); got != custom {
+		t.Errorf("download dir after setting custom = %q, want %q", got, custom)
+	}
+}
+
+// TestSaveLoadConfigDownloadDirsRoundTrip verifies the two new download-path
+// fields persist through saveConfig / loadConfig: a non-empty value round-trips
+// losslessly, and an old config missing both fields falls back to defaults
+// (empty overrides → llama-cpp/ and LLM-Models).
+func TestSaveLoadConfigDownloadDirsRoundTrip(t *testing.T) {
+	withTempCwd(t)
+	saveConfigState(t)
+
+	llamaPath := filepath.Join(t.TempDir(), "llama-custom")
+	modelPath := filepath.Join(t.TempDir(), "models-custom")
+	llamaCppDownloadDirMu.Lock()
+	llamaCppDownloadDirOverride = llamaPath
+	llamaCppDownloadDirMu.Unlock()
+	modelDownloadDirMu.Lock()
+	modelDownloadDirOverride = modelPath
+	modelDownloadDirMu.Unlock()
+
+	saveConfig()
+	data, err := os.ReadFile(configFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"llamaCppDownloadDir": `) || !strings.Contains(string(data), `"modelDownloadDir": `) {
+		t.Errorf("saved config should contain both download dir fields, actual: %s", data)
+	}
+
+	llamaCppDownloadDirMu.Lock()
+	llamaCppDownloadDirOverride = ""
+	llamaCppDownloadDirMu.Unlock()
+	modelDownloadDirMu.Lock()
+	modelDownloadDirOverride = ""
+	modelDownloadDirMu.Unlock()
+
+	loadConfig()
+	llamaCppDownloadDirMu.Lock()
+	gotLlama := llamaCppDownloadDirOverride
+	llamaCppDownloadDirMu.Unlock()
+	modelDownloadDirMu.Lock()
+	gotModel := modelDownloadDirOverride
+	modelDownloadDirMu.Unlock()
+	if gotLlama != llamaPath {
+		t.Errorf("after load llamaCppDownloadDirOverride = %q, want %q", gotLlama, llamaPath)
+	}
+	if gotModel != modelPath {
+		t.Errorf("after load modelDownloadDirOverride = %q, want %q", gotModel, modelPath)
+	}
+
+	// Old config without the new fields must not populate them: start from an
+	// empty override, load the legacy-shaped config, and both stay empty
+	// (the effective functions then fall back to llama-cpp/ and LLM-Models).
+	llamaCppDownloadDirMu.Lock()
+	llamaCppDownloadDirOverride = ""
+	llamaCppDownloadDirMu.Unlock()
+	modelDownloadDirMu.Lock()
+	modelDownloadDirOverride = ""
+	modelDownloadDirMu.Unlock()
+	if err := os.WriteFile(configFile, []byte(`{"theme":"light"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	loadConfig()
+	llamaCppDownloadDirMu.Lock()
+	gotLlama = llamaCppDownloadDirOverride
+	llamaCppDownloadDirMu.Unlock()
+	modelDownloadDirMu.Lock()
+	gotModel = modelDownloadDirOverride
+	modelDownloadDirMu.Unlock()
+	if gotLlama != "" {
+		t.Errorf("old config should leave llamaCppDownloadDirOverride empty (default llama-cpp/), got %q", gotLlama)
+	}
+	if gotModel != "" {
+		t.Errorf("old config should leave modelDownloadDirOverride empty (default LLM-Models), got %q", gotModel)
 	}
 }
 

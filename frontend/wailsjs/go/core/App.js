@@ -6,6 +6,14 @@ export function BrowseLlamaCppDir() {
   return window['go']['core']['App']['BrowseLlamaCppDir']();
 }
 
+export function BrowseLlamaCppDownloadDir() {
+  return window['go']['core']['App']['BrowseLlamaCppDownloadDir']();
+}
+
+export function BrowseModelDownloadDir() {
+  return window['go']['core']['App']['BrowseModelDownloadDir']();
+}
+
 export function BrowseModelsDir() {
   return window['go']['core']['App']['BrowseModelsDir']();
 }
@@ -106,6 +114,10 @@ export function GetUpdateDownloadStatus() {
   return window['go']['core']['App']['GetUpdateDownloadStatus']();
 }
 
+export function InstallUpdate() {
+  return window['go']['core']['App']['InstallUpdate']();
+}
+
 export function PauseDownloadTask(arg1) {
   return window['go']['core']['App']['PauseDownloadTask'](arg1);
 }
@@ -148,6 +160,14 @@ export function SetDownloadSource(arg1) {
 
 export function SetLanguage(arg1) {
   return window['go']['core']['App']['SetLanguage'](arg1);
+}
+
+export function SetLlamaCppDownloadDir(arg1) {
+  return window['go']['core']['App']['SetLlamaCppDownloadDir'](arg1);
+}
+
+export function SetModelDownloadDir(arg1) {
+  return window['go']['core']['App']['SetModelDownloadDir'](arg1);
 }
 
 export function SetModelsDir(arg1) {

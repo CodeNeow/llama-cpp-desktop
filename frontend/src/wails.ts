@@ -17,7 +17,7 @@ function app(): any {
 
 // ─── Config ─────────────────────────────────────────────────────
 
-export async function getConfig(): Promise<{ theme: string; llamaCppDir: string; modelsDir: string; downloadSource: string; language: string; resolvedLanguage: 'zh' | 'en'; trayEnabled: boolean; sidebarCollapsed?: boolean }> {
+export async function getConfig(): Promise<{ theme: string; llamaCppDir: string; modelsDir: string; llamaCppDownloadDir?: string; modelDownloadDir?: string; downloadSource: string; language: string; resolvedLanguage: 'zh' | 'en'; trayEnabled: boolean; sidebarCollapsed?: boolean }> {
   return app().GetConfig()
 }
 
@@ -158,10 +158,22 @@ export async function browseLlamaCppDir(): Promise<string> {
   return app().BrowseLlamaCppDir()
 }
 
+// Choose the llama.cpp download path: opens the system folder picker, persists the
+// choice, and returns the selected directory string (empty string when cancelled)
+export async function browseLlamaCppDownloadDir(): Promise<string> {
+  return app().BrowseLlamaCppDownloadDir()
+}
+
 // Choose the models directory: opens the system folder picker and returns the selected
 // directory string (empty string when the dialog is cancelled)
 export async function browseModelsDir(): Promise<string> {
   return app().BrowseModelsDir()
+}
+
+// Choose the model download path: opens the system folder picker, persists the
+// choice, and returns the selected directory string (empty string when cancelled)
+export async function browseModelDownloadDir(): Promise<string> {
+  return app().BrowseModelDownloadDir()
 }
 
 // ─── App Update ──────────────────────────────────────────────────

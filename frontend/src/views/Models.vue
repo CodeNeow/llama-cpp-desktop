@@ -12,14 +12,20 @@
         <button class="refresh-btn" :disabled="loading" :title="t('models.refreshTitle')" @click="fetchModels(true)">{{ t('models.refresh') }}</button>
       </div>
 
-      <!-- Models directory -->
+      <!-- Models directory sources -->
       <div class="dir-bar">
-      <div class="dir-info">
-        <span class="dir-label">{{ t('models.dir') }}</span>
-        <span class="dir-value">{{ modelsDir || t('models.dirNotSet') }}</span>
+        <div class="dir-sources">
+          <div class="dir-info">
+            <span class="dir-label">{{ t('models.downloadDir') }}</span>
+            <span class="dir-value">{{ downloadDir || t('settings.dirDefaultModels') }}</span>
+          </div>
+          <div class="dir-info">
+            <span class="dir-label">{{ t('models.importDir') }}</span>
+            <span class="dir-value" :class="{ 'dir-empty': !modelsDir }">{{ modelsDir || t('models.dirNotSet') }}</span>
+          </div>
+        </div>
+        <button class="dir-btn" :title="t('models.chooseDirTitle')" @click="chooseModelsDir">{{ t('models.chooseDir') }}</button>
       </div>
-      <button class="dir-btn" :title="t('models.chooseDirTitle')" @click="chooseModelsDir">{{ t('models.chooseDir') }}</button>
-    </div>
     </div>
 
     <!-- Loading skeleton -->
@@ -53,7 +59,7 @@
         </svg>
       </div>
       <h2>{{ t('models.emptyTitle') }}</h2>
-      <p>{{ t('models.emptyHint', { dir: modelsDir || t('models.dirNotSet') }) }}</p>
+      <p>{{ t('models.emptyHint', { dir: downloadDir || t('settings.dirDefaultModels') }) }}</p>
     </div>
 
     <!-- Model list -->
@@ -75,6 +81,9 @@
             </button>
           </div>
           <div class="model-author" v-if="model.author">{{ model.author }}</div>
+          <div class="source-badge" :class="model.sourceDir === downloadDir ? 'source-download' : 'source-import'">
+            {{ model.sourceDir === downloadDir ? t('models.sourceDownload') : t('models.sourceImport') }}
+          </div>
           <div class="model-meta">
             <span v-if="model.architecture && model.architecture !== '-'" class="meta-tag arch-tag">{{ model.architecture }}</span>
             <span v-if="model.quantization && model.quantization !== '-'" class="meta-tag quant-tag">{{ model.quantization }}</span>
@@ -105,18 +114,22 @@ interface ModelInfo {
   architecture: string
   quantization: string
   hasMmproj: boolean
+  sourceDir: string
 }
 
 const models = ref<ModelInfo[]>([])
 const loading = ref(true)
 const error = ref('')
 
-// Currently active models directory (from backend config, updatable via "Choose Folder")
+// Model sources shown in the directory bar: the model download path (where new
+// downloads land) and the imported model directory (reuse of existing models).
+const downloadDir = ref('')
 const modelsDir = ref('')
 
 async function loadModelsDir() {
   try {
     const cfg = await getConfig()
+    downloadDir.value = cfg.modelDownloadDir || ''
     modelsDir.value = cfg.modelsDir || ''
   } catch {}
 }
@@ -212,6 +225,13 @@ onMounted(() => {
   border-radius: 12px;
 }
 
+.dir-sources {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
 .dir-info {
   display: flex;
   align-items: baseline;
@@ -230,6 +250,11 @@ onMounted(() => {
   color: var(--text-muted);
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
   word-break: break-all;
+}
+
+.dir-empty {
+  color: var(--text-dim);
+  font-style: italic;
 }
 
 .dir-btn {
@@ -376,7 +401,29 @@ onMounted(() => {
 .model-author {
   font-size: 12px;
   color: var(--text-dim);
-  margin-bottom: 10px;
+  margin-bottom: 6px;
+}
+
+.source-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.source-download {
+  background: rgba(99, 102, 241, 0.1);
+  color: var(--accent-light);
+  border: 1px solid rgba(99, 102, 241, 0.22);
+}
+
+.source-import {
+  background: rgba(168, 85, 247, 0.1);
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.2);
 }
 
 .model-meta {

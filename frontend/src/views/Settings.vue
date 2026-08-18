@@ -124,6 +124,38 @@
       <p v-if="sourceError" class="source-error">{{ sourceError }}</p>
     </section>
 
+    <!-- Directories: download paths for new installs/downloads (imported dirs
+         for reuse stay on the Home and Models pages) -->
+    <section class="settings-section">
+      <h2 class="section-title">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+        </svg>
+        {{ t('settings.directories') }}
+      </h2>
+      <div class="dir-row">
+        <div class="setting-info">
+          <span class="setting-label">{{ t('settings.llamaCppDownloadDir') }}</span>
+          <span class="setting-desc">{{ t('settings.llamaCppDownloadDirDesc') }}</span>
+        </div>
+        <div class="dir-path-row">
+          <div class="dir-path">{{ appConfig.llamaCppDownloadDir }}</div>
+          <button class="dir-btn" type="button" @click="chooseLlamaCppDownloadDir">{{ t('settings.choose') }}</button>
+        </div>
+      </div>
+      <div class="dir-row">
+        <div class="setting-info">
+          <span class="setting-label">{{ t('settings.modelDownloadDir') }}</span>
+          <span class="setting-desc">{{ t('settings.modelDownloadDirDesc') }}</span>
+        </div>
+        <div class="dir-path-row">
+          <div class="dir-path">{{ appConfig.modelDownloadDir }}</div>
+          <button class="dir-btn" type="button" @click="chooseModelDownloadDir">{{ t('settings.choose') }}</button>
+        </div>
+      </div>
+      <p class="source-hint">{{ t('settings.directoriesHint') }}</p>
+    </section>
+
     <!-- Server access scope -->
     <section class="settings-section">
       <h2 class="section-title">
@@ -223,7 +255,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { appConfig, setTheme, loadConfig, setDownloadSource as applyDownloadSource, setLanguage as applyLanguage, setServerAccessMode as applyServerAccessMode, setTrayEnabled as applyTrayEnabled } from '../store'
 import { updateState, checkForUpdate } from '../lib/update'
-import { getAppVersion, getOS, getServerConfig } from '../wails'
+import { getAppVersion, getOS, getServerConfig, browseLlamaCppDownloadDir, browseModelDownloadDir } from '../wails'
 import { t } from '../lib/i18n'
 
 const currentTheme = computed({
@@ -246,6 +278,21 @@ async function setSource(source: string) {
   } finally {
     sourceSwitching.value = false
   }
+}
+
+// ─── Directories ────────────────────────────────────────────────
+// Download paths decide where new llama.cpp installs and model downloads
+// land. The backend persists the choice and refreshes its caches; local state
+// is updated only after a non-empty pick so a cancelled dialog leaves the
+// display unchanged. Errors are silent (the dialog already reports failure).
+async function chooseLlamaCppDownloadDir() {
+  const dir = await browseLlamaCppDownloadDir()
+  if (dir) appConfig.llamaCppDownloadDir = dir
+}
+
+async function chooseModelDownloadDir() {
+  const dir = await browseModelDownloadDir()
+  if (dir) appConfig.modelDownloadDir = dir
 }
 
 const languageError = ref('')
@@ -512,6 +559,56 @@ async function manualCheck() {
   margin: 10px 0 0;
   font-size: 12px;
   color: #ef4444;
+}
+
+/* ─── Directories ─── */
+.dir-row {
+  padding: 10px 0;
+}
+
+.dir-row + .dir-row {
+  border-top: 1px solid var(--border-light);
+}
+
+/* Full path on its own line under the label/desc, button vertically centered
+   beside it (same row), so long Windows paths stay fully readable */
+.dir-path-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.dir-path {
+  flex: 1;
+  min-width: 0;
+  word-break: break-all;
+  line-height: 1.4;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 10px;
+}
+
+.dir-btn {
+  padding: 6px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.dir-btn:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
 }
 
 /* ─── Updates ─── */

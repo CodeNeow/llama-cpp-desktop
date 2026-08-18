@@ -44,18 +44,29 @@ describe('store', () => {
   })
 
   it('loadConfig success writes theme, llamaCppDir and modelsDir', async () => {
-    mockGetConfig.mockResolvedValue({ theme: 'light', llamaCppDir: 'C:/llama-cpp', modelsDir: 'D:/models', downloadSource: 'modelscope', language: 'auto', resolvedLanguage: 'en', trayEnabled: false })
+    mockGetConfig.mockResolvedValue({ theme: 'light', llamaCppDir: 'C:/llama-cpp', modelsDir: 'D:/models', llamaCppDownloadDir: 'E:/llama-dl', modelDownloadDir: 'F:/model-dl', downloadSource: 'modelscope', language: 'auto', resolvedLanguage: 'en', trayEnabled: false })
 
     await loadConfig()
 
     expect(appConfig.theme).toBe('light')
     expect(appConfig.llamaCppDir).toBe('C:/llama-cpp')
     expect(appConfig.modelsDir).toBe('D:/models')
+    expect(appConfig.llamaCppDownloadDir).toBe('E:/llama-dl')
+    expect(appConfig.modelDownloadDir).toBe('F:/model-dl')
     expect(appConfig.downloadSource).toBe('modelscope')
     expect(appConfig.trayEnabled).toBe(false)
     expect(appConfig.loaded).toBe(true)
     expect(localStorage.getItem('llama-desktop-theme')).toBe('light')
     expect(document.documentElement.getAttribute('data-theme')).toBe('light')
+  })
+
+  it('loadConfig falls back to empty download dirs when backend omits them', async () => {
+    mockGetConfig.mockResolvedValue({ theme: 'dark', llamaCppDir: 'C:/llama-cpp', modelsDir: 'D:/models', downloadSource: '', language: 'auto', resolvedLanguage: 'zh', trayEnabled: true })
+
+    await loadConfig()
+
+    expect(appConfig.llamaCppDownloadDir).toBe('')
+    expect(appConfig.modelDownloadDir).toBe('')
   })
 
   it('loadConfig reads language/resolvedLanguage and syncs locale', async () => {

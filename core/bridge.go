@@ -108,7 +108,7 @@ func buildServerCommand(cfg ServerConfig, presetPath string) (string, []string) 
 	args := []string{
 		"--host", effectiveHost(cfg.AccessMode),
 		"--port", strconv.Itoa(cfg.Port),
-		"--models-dir", effectiveModelsDir(),
+		"--models-dir", effectiveModelDownloadDir(),
 		"--models-preset", presetPath,
 		"--models-max", strconv.Itoa(max(cfg.MaxModels, 1)),
 		"--cont-batching",
@@ -222,7 +222,7 @@ func startHFDownload(modelID string, files []string) error {
 			ID:       id,
 			ModelID:  modelID,
 			FileName: cleanName,
-			DestDir:  filepath.Join(effectiveModelsDir(), authorPart, repoPart),
+			DestDir:  filepath.Join(effectiveModelDownloadDir(), authorPart, repoPart),
 			Source:   source,
 			URL:      url,
 			Status:   "queued",

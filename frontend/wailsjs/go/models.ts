@@ -307,6 +307,7 @@ export namespace core {
 	    architecture: string;
 	    quantization: string;
 	    hasMmproj: boolean;
+	    sourceDir: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ModelInfo(source);
@@ -322,6 +323,7 @@ export namespace core {
 	        this.architecture = source["architecture"];
 	        this.quantization = source["quantization"];
 	        this.hasMmproj = source["hasMmproj"];
+	        this.sourceDir = source["sourceDir"];
 	    }
 	}
 	export class MonitorGPU {
@@ -479,6 +481,7 @@ export namespace core {
 	    filePath: string;
 	    error: string;
 	    kind: string;
+	    installer: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new UpdateDownloadState(source);
@@ -494,6 +497,7 @@ export namespace core {
 	        this.filePath = source["filePath"];
 	        this.error = source["error"];
 	        this.kind = source["kind"];
+	        this.installer = source["installer"];
 	    }
 	}
 

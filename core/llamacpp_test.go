@@ -216,18 +216,18 @@ func TestDownloadLlamaCppInvalidatesLlamaCache(t *testing.T) {
 // instead of the default llama-cpp/ (previously extraction was fixed to llama-cpp/,
 // causing product landing and detection positions to mismatch in custom-dir scenarios).
 // Full chain end-to-end: httptest returns release JSON containing platform-matching
-// zip assets, zip contains llama-server stub; customLlamaCppDir points to another
-// temp directory.
-func TestDownloadLlamaCppUsesCustomDir(t *testing.T) {
+// zip assets, zip contains llama-server stub; llamaCppDownloadDirOverride points
+// to another temp directory.
+func TestDownloadLlamaCppUsesDownloadDir(t *testing.T) {
 	saveDownloadState(t)
 	saveServerState(t)
-	// customLlamaCppDir save/restore is handled by saveServerState, set it directly here
+	// llama.cpp download path save/restore is handled by saveServerState, set it directly here
 	customDir := t.TempDir()
 	withTempCwd(t)
 
-	customLlamaCppMu.Lock()
-	customLlamaCppDir = customDir
-	customLlamaCppMu.Unlock()
+	llamaCppDownloadDirMu.Lock()
+	llamaCppDownloadDirOverride = customDir
+	llamaCppDownloadDirMu.Unlock()
 
 	// build a minimal zip containing a llama-server stub
 	var buf bytes.Buffer
@@ -407,5 +407,55 @@ func TestDownloadLlamaCppDownloadsCudartOnWindows(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join("llama-cpp", "cublas64_12.dll")); err != nil {
 		t.Errorf("cudart runtime artifact missing after extraction: %v", err)
+	}
+}
+
+// TestGetLlamaCppInfoDownloadDirOverridesImported verifies the detection chain
+// priority: the configured llama.cpp download path wins over the imported
+// customLlamaCppDir, which in turn wins over PATH.
+func TestGetLlamaCppInfoDownloadDirOverridesImported(t *testing.T) {
+	for _, bin := range []string{"llama-server", "llama-cli", "llama.cpp", "llama"} {
+		if _, err := exec.LookPath(bin); err == nil {
+			t.Skipf("PATH contains %s, cannot verify not-installed scenario, skipping", bin)
+		}
+	}
+	saveServerState(t)
+
+	downloadPath := t.TempDir()
+	importedPath := t.TempDir()
+	binName := llamaServerBinName()
+	if err := os.WriteFile(filepath.Join(downloadPath, binName), []byte("download"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(importedPath, binName), []byte("imported"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	llamaCppDownloadDirMu.Lock()
+	llamaCppDownloadDirOverride = downloadPath
+	llamaCppDownloadDirMu.Unlock()
+	customLlamaCppMu.Lock()
+	customLlamaCppDir = importedPath
+	customLlamaCppMu.Unlock()
+
+	info := getLlamaCppInfo()
+	if !info.Installed {
+		t.Fatal("Installed should be true when a stub exists in the download path")
+	}
+	wantPath := filepath.Join(downloadPath, binName)
+	if info.Path != wantPath {
+		t.Errorf("Path = %q, want %q (download path must take priority over the imported dir)", info.Path, wantPath)
+	}
+
+	// With only the imported dir set, detection falls back to it.
+	llamaCppDownloadDirMu.Lock()
+	llamaCppDownloadDirOverride = ""
+	llamaCppDownloadDirMu.Unlock()
+	info = getLlamaCppInfo()
+	if !info.Installed {
+		t.Fatal("Installed should be true when only the imported dir holds a stub")
+	}
+	if info.Path != filepath.Join(importedPath, binName) {
+		t.Errorf("Path = %q, want %q (imported dir fallback)", info.Path, filepath.Join(importedPath, binName))
 	}
 }

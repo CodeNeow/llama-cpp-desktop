@@ -167,7 +167,7 @@ func TestStartHFDownloadNoDeadlock(t *testing.T) {
 }
 
 // TestStartHFDownloadQueue verifies batch file enqueue: IDs increment, URLs use
-// HF Mirror domain, initial status is queued, and destination is effectiveModelsDir/<author>/<repo>
+// HF Mirror domain, initial status is queued, and destination is effectiveModelDownloadDir/<author>/<repo>
 // (three-level layout: author/model/file).
 func TestStartHFDownloadQueue(t *testing.T) {
 	saveConfigState(t)
@@ -204,8 +204,8 @@ func TestStartHFDownloadQueue(t *testing.T) {
 	if !strings.HasPrefix(dlTasks[0].URL, hfMirrorBase+"/author/model/resolve/main/") {
 		t.Errorf("URL prefix wrong: %q", dlTasks[0].URL)
 	}
-	if !strings.HasSuffix(dlTasks[0].DestDir, filepath.Join(effectiveModelsDir(), "author", "model")) {
-		t.Errorf("DestDir = %q, want to end with %q", dlTasks[0].DestDir, filepath.Join(effectiveModelsDir(), "author", "model"))
+	if !strings.HasSuffix(dlTasks[0].DestDir, filepath.Join(effectiveModelDownloadDir(), "author", "model")) {
+		t.Errorf("DestDir = %q, want to end with %q", dlTasks[0].DestDir, filepath.Join(effectiveModelDownloadDir(), "author", "model"))
 	}
 	if dlTasks[0].cancel == nil {
 		t.Error("task should hold cancel func (used by cancel / exit cleanup)")
@@ -472,4 +472,39 @@ func TestStartHFDownloadRejectsInvalidRepoPart(t *testing.T) {
 	if len(dlTasks) != 0 || dlTaskCounter != 0 {
 		t.Errorf("invalid input must not create tasks: len=%d counter=%d", len(dlTasks), dlTaskCounter)
 	}
+}
+
+// TestStartHFDownloadUsesDownloadDirOverride verifies new model downloads land
+// under the configured model download path (not the imported model directory).
+func TestStartHFDownloadUsesDownloadDirOverride(t *testing.T) {
+	saveConfigState(t)
+	restoreSource := withModelScope404Server(t)
+	defer restoreSource()
+
+	dlDir := t.TempDir()
+	modelDownloadDirMu.Lock()
+	modelDownloadDirOverride = dlDir
+	modelDownloadDirMu.Unlock()
+	dlTasksMu.Lock()
+	dlTasks = nil
+	dlTaskCounter = 0
+	dlTasksMu.Unlock()
+	defer func() {
+		dlTasksMu.Lock()
+		dlTasks = nil
+		dlTaskCounter = 0
+		dlTasksMu.Unlock()
+	}()
+
+	if err := startHFDownload("author/model", []string{"a.gguf"}); err != nil {
+		t.Fatal(err)
+	}
+	dlTasksMu.Lock()
+	destDir := dlTasks[0].DestDir
+	dlTasksMu.Unlock()
+	want := filepath.Join(dlDir, "author", "model")
+	if destDir != want {
+		t.Errorf("DestDir = %q, want %q (model download path must be used)", destDir, want)
+	}
+	cancelAllTasks(t)
 }

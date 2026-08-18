@@ -257,14 +257,14 @@ func sampleMonitor() {
 // ─── Disk Sampling ────────────────────────────────────────────────
 
 // sampleDiskUsage samples the disk usage of the volume containing the model
-// directory: the target volume is the root of the absolute path of the
-// effective model directory (effectiveModelsDir, read under modelsDirMu). On
-// non-Windows platforms where filepath.VolumeName is empty, it falls back to
-// the volume root of the current working directory. Used = Total - Free is
-// computed inside the platform-specific diskUsageForPath. Returns nil on
-// sampling failure, without blocking other sampling metrics.
+// download directory: the target volume is the root of the absolute path of
+// effectiveModelDownloadDir (read under modelDownloadDirMu). On non-Windows
+// platforms where filepath.VolumeName is empty, it falls back to the volume
+// root of the current working directory. Used = Total - Free is computed
+// inside the platform-specific diskUsageForPath. Returns nil on sampling
+// failure, without blocking other sampling metrics.
 func sampleDiskUsage() *DiskUsage {
-	dir := effectiveModelsDir()
+	dir := effectiveModelDownloadDir()
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		abs = dir

@@ -400,7 +400,7 @@ func TestDownloadTaskRenameFailure(t *testing.T) {
 		ID:       "dl-1",
 		ModelID:  "author/model",
 		FileName: "model.gguf",
-		DestDir:  filepath.Join(effectiveModelsDir(), "author"),
+		DestDir:  filepath.Join(effectiveModelDownloadDir(), "author"),
 		URL:      srv.URL,
 	}
 	task.ctx, task.cancel = context.WithCancel(context.Background())
@@ -577,7 +577,7 @@ func TestDownloadTaskRangeIgnoredRestart(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	destDir := filepath.Join(effectiveModelsDir(), "author")
+	destDir := filepath.Join(effectiveModelDownloadDir(), "author")
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -728,7 +728,7 @@ func TestDownloadTaskStalledStreamReconnects(t *testing.T) {
 		}
 	}()
 
-	destDir := filepath.Join(effectiveModelsDir(), "author")
+	destDir := filepath.Join(effectiveModelDownloadDir(), "author")
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		t.Fatal(err)
 	}

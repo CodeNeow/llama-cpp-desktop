@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"runtime"
 
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -118,15 +119,33 @@ func (a *App) GetConfig() map[string]interface{} {
 	languageMu.Unlock()
 
 	return map[string]interface{}{
-		"theme":            theme,
-		"llamaCppDir":      dir,
-		"modelsDir":        modelDir,
-		"downloadSource":   dsrc,
-		"language":         lang,                // raw language preference: zh / en / auto
-		"resolvedLanguage": effectiveLanguage(), // effective language: zh / en (auto follows system detection)
-		"trayEnabled":      tray,                // Windows system tray toggle
-		"sidebarCollapsed": sidebarCollapsed,    // sidebar collapsed state (default true = collapsed)
+		"theme":       theme,
+		"llamaCppDir": dir,
+		"modelsDir":   modelDir,
+		// Effective download paths (default resolved to an absolute path) so
+		// the frontend can show the full location even when the user never
+		// configured a custom download path.
+		"llamaCppDownloadDir": absDir(llamaCppDownloadDir()),
+		"modelDownloadDir":    absDir(effectiveModelDownloadDir()),
+		"downloadSource":      dsrc,
+		"language":            lang,                // raw language preference: zh / en / auto
+		"resolvedLanguage":    effectiveLanguage(), // effective language: zh / en (auto follows system detection)
+		"trayEnabled":         tray,                // Windows system tray toggle
+		"sidebarCollapsed":    sidebarCollapsed,    // sidebar collapsed state (default true = collapsed)
 	}
+}
+
+// absDir resolves dir to an absolute path for display; returns dir unchanged
+// when the resolution fails or dir is empty. Used to surface the effective
+// download paths (defaults are cwd-relative, e.g. LLM-Models) as full paths.
+func absDir(dir string) string {
+	if dir == "" {
+		return ""
+	}
+	if abs, err := filepath.Abs(dir); err == nil {
+		return abs
+	}
+	return dir
 }
 
 // GetDownloadSource returns the current model download source ("hf" | "modelscope").
@@ -268,6 +287,78 @@ func (a *App) BrowseModelsDir() (string, error) {
 		return "", err
 	}
 	if err := a.SetModelsDir(dir); err != nil {
+		return "", err
+	}
+	return dir, nil
+}
+
+// SetModelDownloadDir sets the directory new model downloads land in: any
+// non-empty path is accepted (a fresh path is a valid target for the next
+// download), written to the global, persisted, and the model cache is
+// invalidated so the merged model list reflects the new download root.
+func (a *App) SetModelDownloadDir(dir string) error {
+	if dir == "" {
+		return errors.New(tr("模型下载路径不能为空", "model download path cannot be empty"))
+	}
+	modelDownloadDirMu.Lock()
+	modelDownloadDirOverride = dir
+	modelDownloadDirMu.Unlock()
+	invalidateModelCache()
+	saveConfig()
+	return nil
+}
+
+// BrowseModelDownloadDir opens a system directory chooser to pick the model
+// download path; returns empty string and nil on cancel, and on success
+// performs the same write as SetModelDownloadDir and returns the chosen
+// directory.
+func (a *App) BrowseModelDownloadDir() (string, error) {
+	if a.ctx == nil {
+		return "", nil
+	}
+	dir, err := wailsRuntime.OpenDirectoryDialog(a.ctx, wailsRuntime.OpenDialogOptions{
+		Title: tr("选择模型下载路径", "Select Model Download Path"),
+	})
+	if err != nil || dir == "" {
+		return "", err
+	}
+	if err := a.SetModelDownloadDir(dir); err != nil {
+		return "", err
+	}
+	return dir, nil
+}
+
+// SetLlamaCppDownloadDir sets the directory new llama.cpp downloads are
+// extracted into: any non-empty path is accepted, written to the global,
+// persisted, and the llama.cpp detection cache is invalidated so the new
+// install is picked up immediately.
+func (a *App) SetLlamaCppDownloadDir(dir string) error {
+	if dir == "" {
+		return errors.New(tr("llama.cpp 下载路径不能为空", "llama.cpp download path cannot be empty"))
+	}
+	llamaCppDownloadDirMu.Lock()
+	llamaCppDownloadDirOverride = dir
+	llamaCppDownloadDirMu.Unlock()
+	llamaCacheValid.Store(false)
+	saveConfig()
+	return nil
+}
+
+// BrowseLlamaCppDownloadDir opens a system directory chooser to pick the
+// llama.cpp download path; returns empty string and nil on cancel, and on
+// success performs the same write as SetLlamaCppDownloadDir and returns the
+// chosen directory.
+func (a *App) BrowseLlamaCppDownloadDir() (string, error) {
+	if a.ctx == nil {
+		return "", nil
+	}
+	dir, err := wailsRuntime.OpenDirectoryDialog(a.ctx, wailsRuntime.OpenDialogOptions{
+		Title: tr("选择 llama.cpp 下载路径", "Select llama.cpp Download Path"),
+	})
+	if err != nil || dir == "" {
+		return "", err
+	}
+	if err := a.SetLlamaCppDownloadDir(dir); err != nil {
 		return "", err
 	}
 	return dir, nil
