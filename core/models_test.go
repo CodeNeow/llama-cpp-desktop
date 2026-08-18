@@ -356,6 +356,63 @@ func TestScanModelsDedupesOverlappingDirs(t *testing.T) {
 	}
 }
 
+// TestScanModelsSourceDirAbsolute verifies SourceDir is reported as an absolute
+// path even when the download path is the default cwd-relative LLM-Models: the
+// frontend compares model.sourceDir against the absolute modelDownloadDir from
+// GetConfig, so a relative SourceDir would mislabel download-path models as
+// imported (regression).
+func TestScanModelsSourceDirAbsolute(t *testing.T) {
+	withTempCwd(t)
+	saveConfigState(t)
+
+	modelDownloadDirMu.Lock()
+	modelDownloadDirOverride = "LLM-Models"
+	modelDownloadDirMu.Unlock()
+	modelsDirMu.Lock()
+	customModelsDir = ""
+	modelsDirMu.Unlock()
+
+	makeVariant(t, "LLM-Models", "author", "model", "model.gguf", 1024)
+
+	models := scanModels()
+	if len(models) != 1 {
+		t.Fatalf("scanned %d models, want 1", len(models))
+	}
+	absWant, err := filepath.Abs("LLM-Models")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if models[0].SourceDir != absWant {
+		t.Errorf("SourceDir = %q, want absolute %q", models[0].SourceDir, absWant)
+	}
+}
+
+// TestScanModelsDedupesRelativeAndAbsoluteRoots verifies a relative download
+// path and an imported dir pointing at the same location (one relative, one
+// absolute) are collapsed into a single scan root.
+func TestScanModelsDedupesRelativeAndAbsoluteRoots(t *testing.T) {
+	withTempCwd(t)
+	saveConfigState(t)
+
+	modelDownloadDirMu.Lock()
+	modelDownloadDirOverride = "LLM-Models"
+	modelDownloadDirMu.Unlock()
+	modelsDirMu.Lock()
+	abs, err := filepath.Abs("LLM-Models")
+	if err != nil {
+		t.Fatal(err)
+	}
+	customModelsDir = abs
+	modelsDirMu.Unlock()
+
+	makeVariant(t, "LLM-Models", "author", "model", "model.gguf", 1024)
+
+	models := scanModels()
+	if len(models) != 1 {
+		t.Fatalf("scanned %d models, want 1 (relative+absolute duplicate roots must dedupe)", len(models))
+	}
+}
+
 // TestScanModelsDownloadWinsDuplicates verifies that when the same model
 // (author + name) exists in both the model download directory and the
 // imported model directory, only the download path's copy is listed and it is

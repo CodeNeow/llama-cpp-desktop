@@ -812,8 +812,11 @@ func effectiveModelDownloadDir() string {
 
 // modelScanDirs returns the roots the model list is scanned from, in priority
 // order: the model download directory first, then the imported model directory
-// when set. Directories are cleaned and duplicates removed, so pointing both
-// settings at the same place does not double-list models.
+// when set. Directories are resolved to absolute paths and duplicates removed,
+// so pointing both settings at the same place does not double-list models, and
+// so the SourceDir annotated on scanned models matches the absolute download
+// path GetConfig reports to the frontend (the default is cwd-relative, e.g.
+// LLM-Models).
 func modelScanDirs() []string {
 	dirs := []string{effectiveModelDownloadDir()}
 	modelsDirMu.Lock()
@@ -826,6 +829,9 @@ func modelScanDirs() []string {
 	out := make([]string, 0, len(dirs))
 	for _, d := range dirs {
 		clean := filepath.Clean(d)
+		if abs, err := filepath.Abs(clean); err == nil {
+			clean = abs
+		}
 		if seen[clean] {
 			continue
 		}
@@ -847,8 +853,14 @@ func scanModels() []ModelInfo {
 	seen := make(map[string]bool)
 	for _, dir := range modelScanDirs() {
 		// Custom paths are user-picked and expected to exist already; only
-		// the default directory needs lazy creation.
-		if dir == modelsDir {
+		// the default directory needs lazy creation (compare both the
+		// relative default and its absolute form, as scan roots are
+		// resolved to absolute paths).
+		isDefault := dir == modelsDir
+		if abs, err := filepath.Abs(modelsDir); err == nil {
+			isDefault = isDefault || dir == abs
+		}
+		if isDefault {
 			if err := os.MkdirAll(dir, 0755); err != nil {
 				log.Printf("[WARN] Failed to create %s dir: %v", dir, err)
 				continue
