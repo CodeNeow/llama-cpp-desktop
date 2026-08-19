@@ -477,13 +477,15 @@ onUnmounted(() => {
 
 <style scoped>
 .chat-page {
-  /* --dock-reserve is injected by App.vue from lib/dockSpace: while the floating
-     TaskDock card is visible the whole chat layout shrinks so the input row
-     (stop/send buttons) stays clear of the dock instead of being overlapped. */
-  height: calc(100vh - 36px - var(--dock-reserve, 0px));
-  /* Smooth transition when --dock-reserve changes (dock appears/disappears,
-     0 <-> pill height + offset ~56px) so the input row doesn't jump. */
-  transition: height 0.2s ease;
+  /* --dock-reserve is injected by App.vue from lib/dockSpace (pill height +
+     bottom offset + gap, ~56px while the dock is visible). The max() clamps a
+     56px floor = pill height 32 + bottom offset 16 + content gap 8, mirroring
+     the constants in lib/dockSpace.ts and the pill size in TaskDock.vue —
+     change either and update this value in sync. The floor makes the chat page
+     permanently reserve the dock pill band, so the input row (stop/send
+     buttons) never moves when the dock appears/disappears: hidden → var is 0
+     and max() yields 56; visible → var is 56 and the result is unchanged. */
+  height: calc(100vh - 36px - max(var(--dock-reserve, 0px), 56px));
   display: flex;
   flex-direction: column;
   padding: 0 48px;

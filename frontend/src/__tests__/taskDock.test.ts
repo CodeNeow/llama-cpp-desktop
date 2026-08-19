@@ -70,6 +70,17 @@ async function mountDock() {
   return wrapper
 }
 
+/** Wait for a <Transition> leave to finish removing the leaving element.
+ * Vue applies/removes the transition classes across two requestAnimationFrame
+ * hops before removal; in happy-dom those are 0ms timers and the CSS timing
+ * resolves instantly (SFC styles are not loaded), so the render tick plus a
+ * macrotask sleep longer than both frames is enough. */
+async function flushTransitionLeave() {
+  await nextTick()
+  await new Promise(resolve => setTimeout(resolve, 20))
+  await nextTick()
+}
+
 beforeEach(() => {
   MockResizeObserver.instances = []
 })
@@ -147,7 +158,7 @@ describe('TaskDock popover interactions', () => {
 
     // Click on the body (outside the dock): collapse
     document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }))
-    await nextTick()
+    await flushTransitionLeave() // <Transition> removes the card asynchronously
     expect(wrapper.find('.dock-popover').exists()).toBe(false)
 
     // Re-expand, then click inside the popover: must stay open
@@ -170,8 +181,38 @@ describe('TaskDock popover interactions', () => {
     expect(wrapper.find('.dock-popover').exists()).toBe(true)
 
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
-    await nextTick()
+    await flushTransitionLeave() // <Transition> removes the card asynchronously
     expect(wrapper.find('.dock-popover').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('hides the pill visually while the popover is open (morph)', async () => {
+    vi.stubGlobal('ResizeObserver', MockResizeObserver)
+    // SFC styles are not loaded in unit tests (vitest css processing is off),
+    // so mirror the component's pill/morph rules to make the pill's computed
+    // visibility observable in happy-dom.
+    const style = document.createElement('style')
+    style.textContent = `
+      .dock-pill { visibility: visible; }
+      .dock-pill-hidden { visibility: hidden; opacity: 0; pointer-events: none; }
+    `
+    document.head.appendChild(style)
+    const wrapper = await mountDock()
+
+    await wrapper.find('.dock-pill').trigger('click')
+    await nextTick()
+    // Morph: while the card is open the pill stays in the DOM (its layout
+    // placeholder keeps the measured --dock-reserve constant) but is invisible.
+    const pill = wrapper.find('.dock-pill')
+    expect(pill.exists()).toBe(true)
+    expect(getComputedStyle(pill.element).visibility).toBe('hidden')
+
+    // Outside click collapses the card; the pill fades back in.
+    document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    expect(getComputedStyle(wrapper.find('.dock-pill').element).visibility).toBe('visible')
+
+    style.remove()
     wrapper.unmount()
   })
 })

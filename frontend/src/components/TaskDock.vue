@@ -1,106 +1,113 @@
 <template>
   <div v-if="visible" class="task-dock" ref="dockEl">
-    <!-- Popover card: absolute overlay above the pill, zero layout impact, so
-         the root size (and --dock-reserve) never changes when expanding. -->
-    <div v-if="expanded" class="dock-popover">
-      <!-- Header -->
-      <div class="dock-header">
-        <span class="dock-title">{{ t('dock.title') }}</span>
-        <button class="dock-toggle" @click="expanded = !expanded" :title="expanded ? t('dock.collapse') : t('dock.expand')">
-          <svg v-if="expanded" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-          <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>
-        </button>
-      </div>
+    <!-- Popover card: absolute overlay landing on the pill's original spot,
+         zero layout impact, so the root size (and --dock-reserve) never changes
+         when expanding. The <Transition> slides the card up + fades it in from
+         the pill position, pairing with the pill's fade-out into a "morph". -->
+    <Transition name="dock-pop">
+      <div v-if="expanded" class="dock-popover">
+        <!-- Header -->
+        <div class="dock-header">
+          <span class="dock-title">{{ t('dock.title') }}</span>
+          <button class="dock-toggle" @click="expanded = !expanded" :title="expanded ? t('dock.collapse') : t('dock.expand')">
+            <svg v-if="expanded" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+            <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>
+          </button>
+        </div>
 
-      <!-- Downloads section -->
-      <div v-if="hasDownloads" class="dock-section">
-        <div class="dock-section-title">{{ t('dock.downloads') }}</div>
+        <!-- Downloads section -->
+        <div v-if="hasDownloads" class="dock-section">
+          <div class="dock-section-title">{{ t('dock.downloads') }}</div>
 
-        <!-- App self-update download; clicking the row reopens the update modal -->
-        <div
-          v-if="updateActive"
-          class="dock-task clickable"
-          :title="t('dock.viewUpdate')"
-          @click="openUpdateModal"
-        >
-          <div class="dock-task-header">
-            <span class="dock-task-name">llama-desktop {{ updateDownload?.version }}</span>
-            <span class="dock-task-status" :class="'status-' + updateDownload?.status">
-              {{ updateStatusLabel(updateDownload?.status || '') }}
-            </span>
-          </div>
-          <div v-if="updateDownload?.status === 'downloading'" class="dock-bar-wrap">
-            <div class="dock-bar">
-              <div class="dock-fill" :style="{ width: updateDownload.progress + '%' }"></div>
+          <!-- App self-update download; clicking the row reopens the update modal -->
+          <div
+            v-if="updateActive"
+            class="dock-task clickable"
+            :title="t('dock.viewUpdate')"
+            @click="openUpdateModal"
+          >
+            <div class="dock-task-header">
+              <span class="dock-task-name">llama-desktop {{ updateDownload?.version }}</span>
+              <span class="dock-task-status" :class="'status-' + updateDownload?.status">
+                {{ updateStatusLabel(updateDownload?.status || '') }}
+              </span>
             </div>
-            <span class="dock-percent">{{ updateDownload.progress }}%</span>
+            <div v-if="updateDownload?.status === 'downloading'" class="dock-bar-wrap">
+              <div class="dock-bar">
+                <div class="dock-fill" :style="{ width: updateDownload.progress + '%' }"></div>
+              </div>
+              <span class="dock-percent">{{ updateDownload.progress }}%</span>
+            </div>
+          </div>
+
+          <!-- Llama.cpp download -->
+          <div v-if="llamaActive" class="dock-task">
+            <div class="dock-task-header">
+              <span class="dock-task-name">llama.cpp</span>
+              <span class="dock-task-status" :class="'status-' + llamaStatus.status">{{ statusLabel(llamaStatus.status) }}</span>
+            </div>
+            <div v-if="isProgressStatus(llamaStatus.status)" class="dock-bar-wrap">
+              <div class="dock-bar">
+                <div
+                  class="dock-fill"
+                  :class="{ paused: llamaStatus.status === 'paused' }"
+                  :style="{ width: llamaStatus.progress + '%' }"
+                ></div>
+              </div>
+              <span class="dock-percent">{{ llamaStatus.progress }}%</span>
+            </div>
+          </div>
+
+          <!-- Model download tasks -->
+          <div v-for="task in activeTasks" :key="task.id" class="dock-task">
+            <div class="dock-task-header">
+              <span class="dock-task-name" :title="task.fileName">{{ truncatedName(task.fileName) }}</span>
+              <span class="dock-task-status" :class="'status-' + task.status">{{ statusLabel(task.status) }}</span>
+            </div>
+            <div v-if="task.status === 'downloading' || task.status === 'paused'" class="dock-bar-wrap">
+              <div class="dock-bar">
+                <div
+                  class="dock-fill"
+                  :class="{ paused: task.status === 'paused' }"
+                  :style="{ width: task.progress + '%' }"
+                ></div>
+              </div>
+              <span class="dock-percent">{{ task.progress }}%</span>
+            </div>
           </div>
         </div>
 
-        <!-- Llama.cpp download -->
-        <div v-if="llamaActive" class="dock-task">
-          <div class="dock-task-header">
-            <span class="dock-task-name">llama.cpp</span>
-            <span class="dock-task-status" :class="'status-' + llamaStatus.status">{{ statusLabel(llamaStatus.status) }}</span>
-          </div>
-          <div v-if="isProgressStatus(llamaStatus.status)" class="dock-bar-wrap">
-            <div class="dock-bar">
-              <div
-                class="dock-fill"
-                :class="{ paused: llamaStatus.status === 'paused' }"
-                :style="{ width: llamaStatus.progress + '%' }"
-              ></div>
+        <!-- Models in memory section -->
+        <div v-if="serverRunning && loadedModels.length > 0" class="dock-section">
+          <div class="dock-section-title">{{ t('dock.modelsInMemory', { n: loadedModels.length }) }}</div>
+          <div v-for="model in loadedModels" :key="model.id" class="dock-model-item">
+            <div class="dock-model-row">
+              <span class="dock-model-badge" :class="'type-' + model.type">{{ typeLabel(model.type) }}</span>
+              <span class="dock-model-id" :title="model.id">{{ truncatedName(model.id) }}</span>
+              <span class="dock-model-status">{{ modelStatusLabel(model.status) }}</span>
+              <button
+                class="dock-unload-btn"
+                :disabled="unloadingId === model.id"
+                @click="handleUnload(model.id)"
+              >
+                {{ unloadingId === model.id ? t('dock.unloading') : t('dock.unload') }}
+              </button>
             </div>
-            <span class="dock-percent">{{ llamaStatus.progress }}%</span>
-          </div>
-        </div>
-
-        <!-- Model download tasks -->
-        <div v-for="task in activeTasks" :key="task.id" class="dock-task">
-          <div class="dock-task-header">
-            <span class="dock-task-name" :title="task.fileName">{{ truncatedName(task.fileName) }}</span>
-            <span class="dock-task-status" :class="'status-' + task.status">{{ statusLabel(task.status) }}</span>
-          </div>
-          <div v-if="task.status === 'downloading' || task.status === 'paused'" class="dock-bar-wrap">
-            <div class="dock-bar">
-              <div
-                class="dock-fill"
-                :class="{ paused: task.status === 'paused' }"
-                :style="{ width: task.progress + '%' }"
-              ></div>
+            <div v-if="unloadErrors[model.id]" class="dock-unload-error">
+              {{ t('dock.unloadFailed', { msg: unloadErrors[model.id] }) }}
             </div>
-            <span class="dock-percent">{{ task.progress }}%</span>
           </div>
         </div>
       </div>
+    </Transition>
 
-      <!-- Models in memory section -->
-      <div v-if="serverRunning && loadedModels.length > 0" class="dock-section">
-        <div class="dock-section-title">{{ t('dock.modelsInMemory', { n: loadedModels.length }) }}</div>
-        <div v-for="model in loadedModels" :key="model.id" class="dock-model-item">
-          <div class="dock-model-row">
-            <span class="dock-model-badge" :class="'type-' + model.type">{{ typeLabel(model.type) }}</span>
-            <span class="dock-model-id" :title="model.id">{{ truncatedName(model.id) }}</span>
-            <span class="dock-model-status">{{ modelStatusLabel(model.status) }}</span>
-            <button
-              class="dock-unload-btn"
-              :disabled="unloadingId === model.id"
-              @click="handleUnload(model.id)"
-            >
-              {{ unloadingId === model.id ? t('dock.unloading') : t('dock.unload') }}
-            </button>
-          </div>
-          <div v-if="unloadErrors[model.id]" class="dock-unload-error">
-            {{ t('dock.unloadFailed', { msg: unloadErrors[model.id] }) }}
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Persistent compact pill: download/task and model counters, expands the
-         popover on click -->
+    <!-- Persistent compact pill: the collapsed form of the dock (download/task
+         and model counters). While the popover is open the pill is visually
+         hidden and yields its spot to the card (morph, see .dock-pill-hidden),
+         but keeps occupying layout so --dock-reserve stays constant. -->
     <button
       class="dock-pill"
+      :class="{ 'dock-pill-hidden': expanded }"
       @click="expanded = !expanded"
       :aria-label="t('dock.title')"
       :title="t('dock.title')"
@@ -394,11 +401,14 @@ onUnmounted(() => {
   z-index: 50;
 }
 
-/* Full card as an absolute overlay above the pill: expanding has zero layout
-   impact, so reserved pages never jump when the popover shows/hides. */
+/* Full card as an absolute overlay landing on the pill's spot: `bottom: 0`
+   aligns the card's bottom edge with the (now hidden) pill's bottom edge, so
+   the card reads as the pill morphing into its expanded form. Absolute
+   positioning keeps expansion layout-neutral, so reserved pages never jump
+   when the popover shows/hides. */
 .dock-popover {
   position: absolute;
-  bottom: calc(100% + 8px);
+  bottom: 0;
   right: 0;
   width: 300px;
   max-height: 50vh;
@@ -432,6 +442,32 @@ onUnmounted(() => {
 .dock-pill:hover {
   background: var(--hover-bg);
   color: var(--text-primary);
+}
+
+/* Collapsed-form pill hidden while the popover is open (the "morph" pairing:
+   pill fades out, card fades/slides in on the pill's spot). MUST use
+   visibility (not v-if / display: none): the hidden pill still occupies
+   layout, so the root keeps its 32px height and the ResizeObserver-measured
+   --dock-reserve stays constant while expanding/collapsing. The fade-out rides
+   the existing `transition: all 0.15s` on .dock-pill, which already covers
+   opacity and visibility. */
+.dock-pill-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* Popover morph entrance/exit: slides up + fades in from the pill position,
+   completing the morph illusion together with the pill's fade-out. */
+.dock-pop-enter-active,
+.dock-pop-leave-active {
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.dock-pop-enter-from,
+.dock-pop-leave-to {
+  opacity: 0;
+  transform: translateY(6px);
 }
 
 /* One metric per segment: 12px inline icon + bold count */
