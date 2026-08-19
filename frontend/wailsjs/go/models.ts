@@ -202,6 +202,7 @@ export namespace core {
 	    installed: boolean;
 	    path: string;
 	    version: string;
+	    cudartInstalled: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new LlamaCppInfo(source);
@@ -212,6 +213,7 @@ export namespace core {
 	        this.installed = source["installed"];
 	        this.path = source["path"];
 	        this.version = source["version"];
+	        this.cudartInstalled = source["cudartInstalled"];
 	    }
 	}
 	export class LoadedModel {
