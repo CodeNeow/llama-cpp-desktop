@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -769,5 +771,432 @@ func TestDownloadTaskStalledStreamReconnects(t *testing.T) {
 	mu.Unlock()
 	if count != 2 {
 		t.Errorf("request count = %d, want 2 (initial stream + one Range reconnect); ranges: %s", count, ranges)
+	}
+}
+
+// ─── downloadWithResume robustness (llama.cpp download path) ──────────────
+
+// resetDownloadForTest clears llama.cpp download globals so a directly-invoked
+// downloadWithResume starts from a clean, unpaused state (saveDownloadState
+// snapshots/restores the rest). Removes leftover llamacpp-download-* temp
+// files so the file-size polling helper in the pause/resume test cannot
+// mistake a previous test's temp file for its own.
+func resetDownloadForTest(t *testing.T) {
+	t.Helper()
+	saveDownloadState(t)
+	downloadMu.Lock()
+	downloadState.Paused = false
+	downloadMu.Unlock()
+	matches, _ := filepath.Glob(filepath.Join(os.TempDir(), "llamacpp-download-*"))
+	for _, m := range matches {
+		os.Remove(m)
+	}
+}
+
+// waitLlamaTmpSize polls the system temp dir for the llamacpp-download-* file
+// created by downloadWithResume and returns once some temp file reaches want
+// bytes (deterministic condition wait: the writer goroutine is guaranteed to
+// have flushed that many bytes once observed; the short poll interval is not
+// used to guess timing).
+func waitLlamaTmpSize(t *testing.T, want int64) string {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		matches, _ := filepath.Glob(filepath.Join(os.TempDir(), "llamacpp-download-*"))
+		for _, m := range matches {
+			if fi, err := os.Stat(m); err == nil && fi.Size() >= want {
+				return m
+			}
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	t.Fatalf("llamacpp temp file did not reach %d bytes within timeout", want)
+	return ""
+}
+
+// TestDownloadWithResumeTruncatedEOFAutoResumes verifies that a clean io.EOF
+// before the declared totalSize (a truncated body, e.g. a proxy cutting the
+// stream at a chunk boundary) is not treated as success: the download
+// auto-resumes with a Range request from the bytes already on disk and
+// finishes the file. Previously EOF returned the partial file as success,
+// producing a corrupt zip that only failed later at extraction.
+func TestDownloadWithResumeTruncatedEOFAutoResumes(t *testing.T) {
+	resetDownloadForTest(t)
+
+	payload := []byte("0123456789abcdef") // 16 bytes total
+	var mu sync.Mutex
+	rangeReqs := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if rng := r.Header.Get("Range"); rng != "" {
+			if !strings.Contains(rng, "bytes=8-") {
+				t.Errorf("resume Range header = %q, want bytes=8- (resume from bytes already on disk)", rng)
+			}
+			mu.Lock()
+			rangeReqs++
+			mu.Unlock()
+			w.Header().Set("Content-Range", "bytes 8-15/16")
+			w.Header().Set("Content-Length", "8")
+			w.WriteHeader(http.StatusPartialContent)
+			w.Write(payload[8:])
+			return
+		}
+		// First request: half the payload, chunked (no Content-Length) →
+		// the handler returns normally and the client sees a clean EOF.
+		w.Write(payload[:8])
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	path, err := downloadWithResume(ctx, srv.URL+"/asset.zip", int64(len(payload)), 0)
+	if err != nil {
+		t.Fatalf("downloadWithResume = %v, want nil (truncated EOF must auto-resume and finish)", err)
+	}
+	defer os.Remove(path)
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(payload) {
+		t.Errorf("file content = %q, want full payload %q (auto-resume must complete the truncated body)", got, payload)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if rangeReqs != 1 {
+		t.Errorf("Range request count = %d, want 1 (single auto-resume after the truncated first response)", rangeReqs)
+	}
+}
+
+// TestDownloadWithResumePersistentTruncationErrors verifies that a server
+// which keeps truncating the body (every response carries only half of the
+// declared size) never yields success: after 3 auto-resume attempts the
+// download fails with a clear "incomplete download" error instead of
+// returning a partial file that would later fail extraction as a corrupt zip.
+func TestDownloadWithResumePersistentTruncationErrors(t *testing.T) {
+	resetDownloadForTest(t)
+	setLanguageForTest(t, "en")
+
+	payload := []byte("0123456789abcdef")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Every request (Range or not) answers 200 with only half the
+		// payload, chunked → clean EOF far below the declared size.
+		w.Write(payload[:8])
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	path, err := downloadWithResume(ctx, srv.URL+"/asset.zip", int64(len(payload)), 0)
+	defer os.Remove(path)
+	if err == nil {
+		t.Fatal("persistently truncated download must return an error, got nil")
+	}
+	if !strings.Contains(err.Error(), "incomplete download") {
+		t.Errorf("error = %q, want it to contain %q", err.Error(), "incomplete download")
+	}
+}
+
+// TestDownloadWithResumeRangeIgnoredRestartsClean verifies that when a resume
+// request (offset>0 → Range header) hits a server that ignores Range and
+// answers 200 with the full body, the temp file is truncated and the body is
+// written from zero; naively appending would produce "partial prefix + full
+// body" corruption. Setup: the first request truncates halfway (clean EOF,
+// triggering the auto-resume), the second request ignores the Range header
+// and returns 200 with the full body.
+func TestDownloadWithResumeRangeIgnoredRestartsClean(t *testing.T) {
+	resetDownloadForTest(t)
+
+	payload := []byte("0123456789abcdef")
+	var mu sync.Mutex
+	reqs := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		reqs++
+		n := reqs
+		mu.Unlock()
+		if n == 1 {
+			// First request: half then clean EOF (chunked) → auto-resume triggers.
+			w.Write(payload[:8])
+			return
+		}
+		// Subsequent requests ignore Range and return the full body with 200.
+		w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
+		w.Write(payload)
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	path, err := downloadWithResume(ctx, srv.URL+"/asset.zip", int64(len(payload)), 0)
+	if err != nil {
+		t.Fatalf("downloadWithResume = %v, want nil (200-on-Range must restart clean and finish)", err)
+	}
+	defer os.Remove(path)
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(payload) {
+		t.Errorf("file content = %q (%d bytes), want exactly the full payload %q (no partial prefix duplicated)", got, len(got), payload)
+	}
+}
+
+// TestDownloadWithResumePauseResumeReopensFile verifies the pause → resume
+// path reopens the temp file before writing: the pause branch closes the
+// handle, and the pre-fix outer loop never reopened it, so every post-resume
+// Write failed with "file already closed" and the download died. Fully
+// deterministic orchestration (no sleep-based guessing):
+//   - the first connection delivers bytes 0..7, then blocks on gate1;
+//   - the test observes 8 bytes on disk, then flips Paused=true (mimicking
+//     PauseLlamaCppDownload, including a fresh resume channel);
+//   - gate1 releases bytes 8..11 only; since the stream has not ended (the
+//     handler still blocks on gate2), a (n>0, io.EOF) merged read cannot
+//     escape the pause check — the read loop is guaranteed to take the pause
+//     branch and block in waitForResume once 12 bytes are on disk;
+//   - the test observes 12 bytes, then mimics ResumeLlamaCppDownload
+//     (Paused=false + buffered resume signal);
+//   - the resumed pass reopens the temp file (the fix), requests
+//     Range bytes=12- and writes the remaining bytes through the reopened
+//     handle — the pre-fix code fails here with "file already closed".
+func TestDownloadWithResumePauseResumeReopensFile(t *testing.T) {
+	resetDownloadForTest(t)
+
+	payload := []byte("0123456789abcdef") // 16 bytes total
+	gate1 := make(chan struct{})
+	gate2 := make(chan struct{})
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if rng := r.Header.Get("Range"); rng != "" {
+			// Resumed pass: serve exactly the requested remainder with 206.
+			off, err := strconv.ParseInt(strings.TrimSuffix(strings.TrimPrefix(rng, "bytes="), "-"), 10, 64)
+			if err != nil || off < 0 || off > int64(len(payload)) {
+				t.Errorf("unexpected Range header %q", rng)
+				w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
+				return
+			}
+			w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", off, len(payload)-1, len(payload)))
+			w.Header().Set("Content-Length", strconv.Itoa(len(payload)-int(off)))
+			w.WriteHeader(http.StatusPartialContent)
+			if off < int64(len(payload)) {
+				w.Write(payload[off:])
+			}
+			return
+		}
+		// First connection: staged delivery so the pause lands mid-body.
+		w.Write(payload[:8])
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		<-gate1
+		w.Write(payload[8:12])
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+		<-gate2 // keep the stream open: no EOF can merge with the last chunk
+		w.Write(payload[12:])
+	}))
+	defer srv.Close()
+	// Registered after srv.Close, so LIFO runs it FIRST: releasing gate2 lets
+	// the parked first-connection handler return before Close waits on it.
+	defer func() { close(gate2) }()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	type result struct {
+		path string
+		err  error
+	}
+	resCh := make(chan result, 1)
+	go func() {
+		p, err := downloadWithResume(ctx, srv.URL+"/asset.zip", int64(len(payload)), 0)
+		resCh <- result{p, err}
+	}()
+
+	// Bytes 0..7 are on disk; the download goroutine is now either at the
+	// read-loop top or blocked reading — both lead into the pause branch
+	// once Paused=true is set and gate1 releases more (non-terminal) bytes.
+	tmpPath := waitLlamaTmpSize(t, 8)
+	downloadMu.Lock()
+	downloadState.Status = "paused"
+	downloadState.Paused = true
+	downloadResumeCh = make(chan struct{}, 1) // fresh channel, as PauseLlamaCppDownload does
+	downloadMu.Unlock()
+
+	close(gate1) // release bytes 8..11 (stream stays open on gate2)
+
+	// 12 bytes on disk: the read loop has consumed the released chunk and,
+	// with the stream not ended, must now be blocked in the pause branch's
+	// waitForResume (the pause check happens before the next read).
+	waitLlamaTmpSize(t, 12)
+
+	// Mimic ResumeLlamaCppDownload: Paused=false first, then the buffered
+	// resume signal — the resumed pass reads Paused after waitForResume
+	// returns, so ordering guarantees it proceeds instead of re-pausing.
+	downloadMu.Lock()
+	downloadState.Paused = false
+	if downloadState.Status == "paused" {
+		downloadState.Status = "downloading"
+	}
+	select {
+	case downloadResumeCh <- struct{}{}:
+	default:
+	}
+	downloadMu.Unlock()
+
+	var res result
+	select {
+	case res = <-resCh:
+	case <-time.After(30 * time.Second):
+		cancel()
+		t.Fatal("downloadWithResume did not finish after resume (deadlock or repeated re-pause)")
+	}
+	if res.err != nil {
+		t.Fatalf("downloadWithResume after pause→resume = %v, want nil (pre-fix code fails writing to the closed pre-pause handle: file already closed)", res.err)
+	}
+	got, err := os.ReadFile(res.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(payload) {
+		t.Errorf("file content = %q, want full payload %q", got, payload)
+	}
+	if res.path != tmpPath {
+		t.Logf("note: temp file path changed across pause (%q → %q)", tmpPath, res.path)
+	}
+	os.Remove(res.path)
+}
+
+// TestDownloadLlamaCppMultiAssetStatusTransitions verifies that in a
+// two-asset download (Windows CUDA main zip + cudart runtime zip) the status
+// re-enters "downloading" for the second asset instead of staying on the
+// stale "extracting" left behind by the first asset's extraction: an
+// edge-triggered sampler records every distinct downloadState.Status in
+// order, and the recorded sequence must contain "extracting" (asset 1
+// extraction) followed by "downloading" again (asset 2 download), end at
+// "done", with both assets extracted on disk. The main zip is padded with
+// many entries and the asset handlers add a small fixed delay so each phase
+// is comfortably longer than the sampler's poll period. Windows-only: the
+// cudart co-download path is Windows-exclusive.
+func TestDownloadLlamaCppMultiAssetStatusTransitions(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("multi-asset cudart co-download is Windows-only; skipped on non-Windows")
+	}
+	resetDownloadForTest(t)
+	saveServerState(t)
+	withTempCwd(t)
+
+	// Pad the main zip so its extraction lasts far longer than one sampler
+	// poll period, guaranteeing the "extracting" edge is always captured.
+	mainFiles := map[string]string{llamaServerBinName(): "stub"}
+	for i := 0; i < 2000; i++ {
+		mainFiles[fmt.Sprintf("pad/file-%04d.bin", i)] = "padding"
+	}
+	mainZip := makeZip(t, mainFiles)
+	cudartZip := makeZip(t, map[string]string{"cublas64_12.dll": "stub"})
+
+	ver := "12.4"
+	mainName := fmt.Sprintf("llama-b9999-bin-win-cuda-%s-x64.zip", ver)
+	cudartName := fmt.Sprintf("cudart-llama-bin-win-cuda-%s-x64.zip", ver)
+
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/release":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprintf(w, `{"tag_name":"b9999","assets":[{"name":%q,"size":%d,"browser_download_url":%q},{"name":%q,"size":%d,"browser_download_url":%q}]}`,
+				cudartName, len(cudartZip), srv.URL+"/cudart.zip",
+				mainName, len(mainZip), srv.URL+"/main.zip")
+		case "/main.zip":
+			time.Sleep(20 * time.Millisecond) // widen the "downloading" phase
+			w.Write(mainZip)
+		case "/cudart.zip":
+			time.Sleep(20 * time.Millisecond) // widen the second "downloading" phase
+			w.Write(cudartZip)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	origAPI := githubReleasesAPI
+	githubReleasesAPI = srv.URL + "/release"
+	defer func() { githubReleasesAPI = origAPI }()
+
+	// Stub the GPU probe: a pre-Blackwell host (no CUDA floor) keeps asset
+	// selection deterministic regardless of the host GPU.
+	origCC := probeGPUComputeCap
+	probeGPUComputeCap = func() string { return "8.9" }
+	defer func() { probeGPUComputeCap = origCC }()
+
+	// Edge-triggered status sampler: busy-polls downloadState.Status and
+	// records each transition in order (denser than any ticker, so no
+	// phase wider than a poll period can be missed).
+	stopSample := make(chan struct{})
+	sampled := make(chan []string, 1)
+	go func() {
+		var seq []string
+		last := ""
+		for {
+			select {
+			case <-stopSample:
+				sampled <- seq
+				return
+			default:
+			}
+			downloadMu.Lock()
+			s := downloadState.Status
+			downloadMu.Unlock()
+			if s != last {
+				seq = append(seq, s)
+				last = s
+			}
+			runtime.Gosched()
+		}
+	}()
+
+	downloadLlamaCpp()
+	close(stopSample)
+	seq := <-sampled
+
+	downloadMu.Lock()
+	status := downloadState.Status
+	errMsg := downloadState.Error
+	downloadMu.Unlock()
+
+	if status != "done" {
+		t.Fatalf("download status = %q, want done (error: %s)", status, errMsg)
+	}
+
+	// The defect: asset 2 downloaded under the stale "extracting" label, so
+	// no "downloading" ever followed the first "extracting".
+	extractIdx := -1
+	downloadAfterExtract := -1
+	for i, s := range seq {
+		if s == "extracting" && extractIdx == -1 {
+			extractIdx = i
+		}
+		if extractIdx != -1 && s == "downloading" && downloadAfterExtract == -1 {
+			downloadAfterExtract = i
+		}
+	}
+	if extractIdx == -1 {
+		t.Fatalf("sampled status sequence %v lacks extracting (asset 1 extraction phase)", seq)
+	}
+	if downloadAfterExtract == -1 {
+		t.Fatalf("sampled status sequence %v lacks a downloading phase after extracting (asset 2 must re-enter downloading, not stay on the stale extracting label)", seq)
+	}
+
+	// Both assets must be extracted on disk.
+	if _, err := os.Stat(filepath.Join("llama-cpp", llamaServerBinName())); err != nil {
+		t.Errorf("main program artifact missing after extraction: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join("llama-cpp", "cublas64_12.dll")); err != nil {
+		t.Errorf("cudart runtime artifact missing after extraction: %v", err)
 	}
 }

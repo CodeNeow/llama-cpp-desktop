@@ -1476,8 +1476,15 @@ func downloadLlamaCpp() {
 	// baseDownloaded with bytes already completed by previous assets
 	var baseDownloaded int64
 	for _, asset := range assets {
-		// FileName updates per loop iteration to the asset currently downloading
+		// Multi-asset downloads must re-enter "downloading" per asset: the
+		// status is set once before this loop, but asset 1's extraction
+		// flips it to "extracting"; without resetting here, asset 2+ (the
+		// cudart runtime zip) downloads under the stale "extracting" label —
+		// the UI claims "extracting" while bytes are still being fetched,
+		// and a network failure there surfaces as a confusing "download
+		// failed" right after "extracting".
 		downloadMu.Lock()
+		downloadState.Status = "downloading"
 		downloadState.FileName = asset.Name
 		downloadMu.Unlock()
 
@@ -1555,6 +1562,11 @@ func downloadLlamaCpp() {
 // file: in sequential multi-asset downloads (e.g. llama.cpp main program +
 // cudart runtime) progress must overlay the previous cumulative value; pass 0
 // for a single-asset call.
+// Robustness: after a pause the temp file is reopened before writing (the
+// pre-pause handle is closed); a 200 answer to a Range resume truncates the
+// temp file and restarts clean; a clean EOF before totalSize (a truncated
+// body) auto-resumes via Range, giving up after 3 retries with a clear error
+// instead of returning a corrupt zip for extraction.
 // Returns the path to the downloaded temp file.
 func downloadWithResume(ctx context.Context, url string, totalSize int64, baseDownloaded int64) (string, error) {
 	tmpFile, err := os.CreateTemp("", "llamacpp-download-*"+filepath.Ext(url[strings.LastIndex(url, "."):]))
@@ -1563,14 +1575,53 @@ func downloadWithResume(ctx context.Context, url string, totalSize int64, baseDo
 	}
 	tmpPath := tmpFile.Name()
 
+	// closeTmp closes the current handle and clears it so the next
+	// outer-loop pass knows to reopen the file: the resume path must
+	// reopen the temp file, because writing to the pre-pause handle fails
+	// with "file already closed".
+	closeTmp := func() {
+		if tmpFile != nil {
+			tmpFile.Close()
+			tmpFile = nil
+		}
+	}
+	// reopenTmp reopens the temp file for append when a previous pass
+	// (pause or truncated-EOF retry) closed the handle; O_APPEND makes
+	// every Write land at the current end of file, no seek needed.
+	reopenTmp := func() error {
+		if tmpFile != nil {
+			return nil
+		}
+		f, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+		if err != nil {
+			return fmt.Errorf(tr("打开临时文件失败: %w", "failed to reopen temporary file: %w"), err)
+		}
+		tmpFile = f
+		return nil
+	}
+
+	// A clean EOF before the declared size means a truncated body: the
+	// loop below auto-resumes with a Range request from the bytes already
+	// on disk, giving up after maxTruncResumes retries with a clear error
+	// instead of extracting a corrupt zip.
+	const maxTruncResumes = 3
+	truncResumes := 0
+
 	// We'll loop to handle pause → resume cycles
 	for {
 		// Check if cancelled
 		select {
 		case <-ctx.Done():
-			tmpFile.Close()
+			closeTmp()
 			return tmpPath, ctx.Err()
 		default:
+		}
+
+		// Reopen the temp file if a previous pass (pause / truncated-EOF
+		// retry) closed it; downloads resume by appending to the bytes
+		// already on disk.
+		if err := reopenTmp(); err != nil {
+			return tmpPath, err
 		}
 
 		// Get current file size for Range header
@@ -1588,7 +1639,7 @@ func downloadWithResume(ctx context.Context, url string, totalSize int64, baseDo
 		// Build request
 		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 		if err != nil {
-			tmpFile.Close()
+			closeTmp()
 			return tmpPath, err
 		}
 		req.Header.Set("User-Agent", "llama-desktop")
@@ -1608,7 +1659,7 @@ func downloadWithResume(ctx context.Context, url string, totalSize int64, baseDo
 				waitForResume(ctx, resumeCh)
 				continue
 			}
-			tmpFile.Close()
+			closeTmp()
 			return tmpPath, err
 		}
 
@@ -1619,8 +1670,31 @@ func downloadWithResume(ctx context.Context, url string, totalSize int64, baseDo
 		}
 		if resp.StatusCode != expectedStatus && resp.StatusCode != http.StatusOK {
 			resp.Body.Close()
-			tmpFile.Close()
+			closeTmp()
 			return tmpPath, fmt.Errorf("HTTP %d", resp.StatusCode)
+		}
+
+		// Robustness against servers ignoring Range: this request carried
+		// a Range header (offset>0) but the server answered 200 with the
+		// full body from byte 0. Appending that body at the current offset
+		// would yield "partial prefix + full body" corruption, so truncate
+		// the temp file to zero — with the O_APPEND handle the next writes
+		// start from 0, no seek needed — reset the offset and the progress
+		// display, then read this same response as a clean full
+		// re-download. Truncate goes through the path, not the handle:
+		// O_APPEND handles are opened with FILE_APPEND_DATA on Windows and
+		// reject SetEndOfFile with "Access is denied" (same approach as
+		// the downloadTask Range-ignored branch).
+		if offset > 0 && resp.StatusCode == http.StatusOK {
+			if err := os.Truncate(tmpPath, 0); err != nil {
+				resp.Body.Close()
+				closeTmp()
+				return tmpPath, fmt.Errorf(tr("重置临时文件失败: %w", "failed to reset temporary file: %w"), err)
+			}
+			offset = 0
+			downloadMu.Lock()
+			downloadState.Downloaded = baseDownloaded
+			downloadMu.Unlock()
 		}
 
 		// Update total from Content-Length or Content-Range
@@ -1647,8 +1721,8 @@ func downloadWithResume(ctx context.Context, url string, totalSize int64, baseDo
 			if paused {
 				resp.Body.Close()
 				waitForResume(ctx, resumeCh)
-				tmpFile.Close()
-				break // breaks inner for, outer for will re-establish
+				closeTmp()
+				break // breaks inner for, outer for reopens the file and re-establishes
 			}
 
 			// Interruptible read: do Read in goroutine, select on ctx.Done
@@ -1666,7 +1740,7 @@ func downloadWithResume(ctx context.Context, url string, totalSize int64, baseDo
 			select {
 			case <-ctx.Done():
 				resp.Body.Close()
-				tmpFile.Close()
+				closeTmp()
 				return tmpPath, ctx.Err()
 			case rr = <-ch:
 			}
@@ -1674,7 +1748,7 @@ func downloadWithResume(ctx context.Context, url string, totalSize int64, baseDo
 			if rr.n > 0 {
 				if _, writeErr := tmpFile.Write(buf[:rr.n]); writeErr != nil {
 					resp.Body.Close()
-					tmpFile.Close()
+					closeTmp()
 					return tmpPath, writeErr
 				}
 				downloaded += int64(rr.n)
@@ -1690,12 +1764,30 @@ func downloadWithResume(ctx context.Context, url string, totalSize int64, baseDo
 			}
 			if rr.err == io.EOF {
 				resp.Body.Close()
-				tmpFile.Close()
+				// A clean EOF before the declared size means a truncated
+				// body (e.g. a proxy cutting the stream exactly at a chunk
+				// boundary): never return the partial file as success — a
+				// corrupt zip would only blow up later at extraction with
+				// a confusing error. Auto-resume with a Range request from
+				// the bytes already on disk; give up after maxTruncResumes
+				// retries with a clear error. A Content-Length smaller than
+				// the remaining asset size ends up here too (same
+				// truncated-body handling).
+				if totalSize > 0 && downloaded < totalSize {
+					truncResumes++
+					if truncResumes > maxTruncResumes {
+						closeTmp()
+						return tmpPath, fmt.Errorf(tr("下载不完整: 已下载 %d / %d 字节", "incomplete download: got %d of %d bytes"), downloaded, totalSize)
+					}
+					closeTmp()
+					break // back to the outer loop: reopen the file, Range resume from the current file size
+				}
+				closeTmp()
 				return tmpPath, nil
 			}
 			if rr.err != nil {
 				resp.Body.Close()
-				tmpFile.Close()
+				closeTmp()
 				return tmpPath, rr.err
 			}
 		}
