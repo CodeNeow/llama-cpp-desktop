@@ -1,5 +1,5 @@
 <template>
-  <div class="app-layout">
+  <div class="app-layout" :style="{ '--dock-reserve': dockReserve + 'px' }">
     <Sidebar />
     <main class="main-content">
       <!-- Custom title bar -->
@@ -56,6 +56,7 @@ import Sidebar from './components/Sidebar.vue'
 import UpdateModal from './components/UpdateModal.vue'
 import TaskDock from './components/TaskDock.vue'
 import { updateState, checkForUpdate, shouldAutoCheck, closeUpdateModal } from './lib/update'
+import { dockReserve } from './lib/dockSpace'
 import { t } from './lib/i18n'
 import { appConfig } from './store'
 import { getOS } from './wails'
@@ -232,6 +233,10 @@ async function closeWindow() {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
+  /* Reserve bottom space for the floating TaskDock card: when scrolled to the
+     end, the last content stays visible above the dock instead of behind it.
+     --dock-reserve is bound on .app-layout from lib/dockSpace (0 when hidden). */
+  padding-bottom: var(--dock-reserve, 0px);
 }
 
 .content-area::-webkit-scrollbar {

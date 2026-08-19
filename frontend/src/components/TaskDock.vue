@@ -1,5 +1,5 @@
 <template>
-  <div v-if="visible" class="task-dock">
+  <div v-if="visible" class="task-dock" ref="dockEl">
     <!-- Header -->
     <div class="dock-header">
       <span class="dock-title">{{ t('dock.title') }}</span>
@@ -108,6 +108,7 @@ import {
   unloadModel
 } from '../wails'
 import { activeLlamaCppDownload, activeModelTasks, activeUpdateDownload, shouldShowDock } from '../lib/dock'
+import { useDockReserve } from '../lib/dockSpace'
 import { updateState } from '../lib/update'
 import { t } from '../lib/i18n'
 
@@ -170,6 +171,14 @@ const visible = computed(() =>
     updateActive.value
   )
 )
+
+// ─── Dock space reservation ───────────────────────────────────────
+
+// Publish the dock's measured height as a global reserve (consumed by App.vue
+// as the `--dock-reserve` CSS variable) so overlapped page controls stay
+// reachable; must run after `visible` is declared above.
+const dockEl = ref<HTMLElement | null>(null)
+useDockReserve(dockEl, visible)
 
 // ─── Polling ──────────────────────────────────────────────────────
 

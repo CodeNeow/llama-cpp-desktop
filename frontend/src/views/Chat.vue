@@ -477,7 +477,10 @@ onUnmounted(() => {
 
 <style scoped>
 .chat-page {
-  height: calc(100vh - 36px);
+  /* --dock-reserve is injected by App.vue from lib/dockSpace: while the floating
+     TaskDock card is visible the whole chat layout shrinks so the input row
+     (stop/send buttons) stays clear of the dock instead of being overlapped. */
+  height: calc(100vh - 36px - var(--dock-reserve, 0px));
   display: flex;
   flex-direction: column;
   padding: 0 48px;
