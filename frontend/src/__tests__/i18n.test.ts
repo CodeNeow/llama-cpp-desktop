@@ -36,6 +36,23 @@ describe('lib/i18n', () => {
     expect(t('settings.apiRouteModeError')).not.toBe('settings.apiRouteModeError')
   })
 
+  it('libraries page and shared download labels render in both locales', () => {
+    setLocale('zh')
+    expect(t('nav.libraries')).toBe('库与依赖')
+    expect(t('libraries.title')).toBe('库与依赖')
+    expect(t('libraries.llamacpp.path')).toBe('安装路径')
+    expect(t('libraries.downloadDir')).toBe('下载路径')
+    expect(t('dl.downloading')).toBe('正在下载')
+    expect(t('dl.error')).toBe('下载失败')
+    setLocale('en')
+    expect(t('nav.libraries')).toBe('Libraries')
+    expect(t('libraries.title')).toBe('Libraries & Dependencies')
+    expect(t('libraries.llamacpp.path')).toBe('Install Path')
+    expect(t('libraries.downloadDir')).toBe('Download Path')
+    expect(t('dl.downloading')).toBe('Downloading')
+    expect(t('dl.error')).toBe('Download failed')
+  })
+
   it('t supports {name} placeholder interpolation', () => {
     expect(t('home.cpu.coresValue', { n: 8 })).toBe('8 核')
     expect(t('models.saveFailed', { msg: 'boom' })).toBe('保存失败: boom')

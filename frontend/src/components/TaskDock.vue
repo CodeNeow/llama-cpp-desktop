@@ -318,12 +318,12 @@ async function handleUnload(id: string) {
 
 function statusLabel(status: string): string {
   const map: Record<string, string> = {
-    fetching: t('home.dlFetching'),
-    downloading: t('home.dlDownloading'),
-    paused: t('home.dlPaused'),
-    extracting: t('home.dlExtracting'),
+    fetching: t('dl.fetching'),
+    downloading: t('dl.downloading'),
+    paused: t('dl.paused'),
+    extracting: t('dl.extracting'),
     done: '',
-    error: t('home.dlError'),
+    error: t('dl.error'),
     idle: '',
     queued: t('downloads.statusQueued'),
     cancelled: t('downloads.statusCancelled')
@@ -338,7 +338,7 @@ function isProgressStatus(status: string): boolean {
 // Update row labels: unlike llama.cpp rows, done/error outcomes stay visible here
 function updateStatusLabel(status: string): string {
   const map: Record<string, string> = {
-    downloading: t('home.dlDownloading'),
+    downloading: t('dl.downloading'),
     installing: t('updateModal.installing'),
     done: t('downloads.statusDone'),
     error: t('downloads.statusError')
