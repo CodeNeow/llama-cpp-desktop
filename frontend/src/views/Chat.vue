@@ -477,18 +477,16 @@ onUnmounted(() => {
 
 <style scoped>
 .chat-page {
-  /* --dock-reserve is injected by App.vue from lib/dockSpace (pill height +
-     bottom offset + gap, ~56px while the dock is visible). The max() clamps a
-     56px floor = pill height 32 + bottom offset 16 + content gap 8, mirroring
-     the constants in lib/dockSpace.ts and the pill size in TaskDock.vue —
-     change either and update this value in sync. The floor makes the chat page
-     permanently reserve the dock pill band, so the input row (stop/send
-     buttons) never moves when the dock appears/disappears: hidden → var is 0
-     and max() yields 56; visible → var is 56 and the result is unchanged. */
-  height: calc(100vh - 36px - max(var(--dock-reserve, 0px), 56px));
+  /* No bottom reserve for the task dock: the pill sits in the input row's
+     right gap (see padding-right) and shares the send button's vertical band,
+     so the page layout simply fills the viewport below the titlebar. */
+  height: calc(100vh - 36px);
   display: flex;
   flex-direction: column;
-  padding: 0 48px;
+  /* Right 72 = pill band (16 right offset + 48 pill width) + 8px gap: the
+     input row (send button) and the messages scrollbar stop left of the pill,
+     keeping the pill vertically aligned with the send button. */
+  padding: 0 72px 0 48px;
   /* Chat page does not scroll with page: layout fills remaining viewport height, messages area scrolls independently */
 }
 

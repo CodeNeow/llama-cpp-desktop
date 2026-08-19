@@ -393,11 +393,14 @@ onUnmounted(() => {
 <style scoped>
 /* Pure positioning container: the pill is the only in-flow content, so the
    root size (and thus --dock-reserve) never changes when the popover opens.
-   Keep `bottom: 16px` in sync with DOCK_BOTTOM_OFFSET in lib/dockSpace.ts. */
+   `bottom: 29px` vertically centers the pill on the chat page's input row:
+   input-area bottom padding 24 + (row height 42 - pill height 32) / 2 = 29,
+   which puts the pill's center on the send button's center. Keep this value
+   in sync with DOCK_BOTTOM_OFFSET in lib/dockSpace.ts. */
 .task-dock {
   position: fixed;
   right: 16px;
-  bottom: 16px;
+  bottom: 29px;
   z-index: 50;
 }
 

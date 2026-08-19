@@ -231,14 +231,14 @@ describe('TaskDock dock-space wiring', () => {
     // ResizeObserver reports the initial size asynchronously; simulate that
     // initial callback delivery here
     MockResizeObserver.last.trigger(dockEl)
-    expect(dockReserve.value).toBe(144) // 120 + 16 + 8
+    expect(dockReserve.value).toBe(157) // 120 + 29 + 8
 
     // Expanding the popover must not change the root's measured height: the
     // popover is absolutely positioned, so the reserve stays constant
     await wrapper.find('.dock-pill').trigger('click')
     await nextTick()
     MockResizeObserver.last.trigger(dockEl)
-    expect(dockReserve.value).toBe(144)
+    expect(dockReserve.value).toBe(157)
 
     // Unmount clears the polling interval and the reserved space
     wrapper.unmount()

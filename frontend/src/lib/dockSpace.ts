@@ -1,20 +1,26 @@
 /**
- * Shared dock-space reservation state: the floating TaskDock card overlays the
+ * Shared dock-space reservation state: the floating TaskDock pill overlays the
  * bottom-right corner of the window (position: fixed), so page layouts need to
  * reserve matching space to keep controls there clickable:
  * - scrollable pages (App.vue `.content-area`) get bottom padding,
- * - the fixed-viewport chat page (Chat.vue) shrinks its height.
+ * - the fixed-viewport chat page (Chat.vue) reserves no bottom band: the pill
+ *   sits in the input row's right gap, vertically centered on the send button
+ *   (see DOCK_BOTTOM_OFFSET below).
  *
  * TaskDock measures its own height via this composable and publishes it in the
  * module-level `dockReserve` ref; App.vue binds the value to the global CSS
- * variable `--dock-reserve` which the two layouts consume. When the dock is
+ * variable `--dock-reserve` which scrollable layouts consume. When the dock is
  * hidden the reserve is 0 and the layout matches the pre-dock state exactly.
  */
 import { ref, watchEffect, onScopeDispose, type Ref } from 'vue'
 
-// Bottom offset of the fixed dock card. Keep in sync with `bottom: 16px` in
-// TaskDock.vue's `.task-dock` style (change both or the reserve drifts).
-const DOCK_BOTTOM_OFFSET = 16
+// Bottom offset of the fixed dock pill: the vertical centering offset on the
+// chat page's input row band, input-area bottom padding 24 + (row height 42 -
+// pill height 32) / 2 = 29, which places the pill's center on the send
+// button's center. Keep in sync with `bottom: 29px` in TaskDock.vue's
+// `.task-dock` style (change both or the reserve drifts). With this offset the
+// scrollable-page reserve becomes root height (32) + 29 + 8 = 69px.
+const DOCK_BOTTOM_OFFSET = 29
 
 // Small breathing gap between the reserved band and the content above it.
 const CONTENT_GAP = 8

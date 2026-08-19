@@ -80,8 +80,8 @@ describe('dockReservePx', () => {
   })
 
   it('returns height + bottom offset + gap when visible', () => {
-    // 39 (collapsed dock header) + 16 (bottom: 16px) + 8 (content gap)
-    expect(dockReservePx(true, 39)).toBe(63)
+    // 39 (collapsed dock header) + 29 (bottom: 29px) + 8 (content gap)
+    expect(dockReservePx(true, 39)).toBe(76)
   })
 
   it('returns 0 for invalid heights', () => {
@@ -140,7 +140,7 @@ describe('useDockReserve', () => {
     vm.visible = true
     await nextTick() // watchEffect (flush: pre) re-runs on the next tick
 
-    expect(dockReserve.value).toBe(124) // 100 + 16 + 8
+    expect(dockReserve.value).toBe(137) // 100 + 29 + 8
     expect(MockResizeObserver.instances).toHaveLength(1)
     expect(MockResizeObserver.instances[0].observe).toHaveBeenCalledTimes(1)
     wrapper.unmount()
@@ -153,11 +153,11 @@ describe('useDockReserve', () => {
     stubOffsetHeight(node, 100)
     vm.visible = true
     await nextTick()
-    expect(dockReserve.value).toBe(124)
+    expect(dockReserve.value).toBe(137)
 
     stubOffsetHeight(node, 60)
     MockResizeObserver.last.trigger(node)
-    expect(dockReserve.value).toBe(84) // 60 + 16 + 8
+    expect(dockReserve.value).toBe(97) // 60 + 29 + 8
     wrapper.unmount()
   })
 
@@ -168,7 +168,7 @@ describe('useDockReserve', () => {
     stubOffsetHeight(node, 100)
     vm.visible = true
     await nextTick()
-    expect(dockReserve.value).toBe(124)
+    expect(dockReserve.value).toBe(137)
 
     vm.visible = false
     await nextTick()
@@ -183,7 +183,7 @@ describe('useDockReserve', () => {
     stubOffsetHeight(harnessElement(vm), 100)
     vm.visible = true
     await nextTick()
-    expect(dockReserve.value).toBe(124)
+    expect(dockReserve.value).toBe(137)
 
     wrapper.unmount()
     expect(dockReserve.value).toBe(0)
@@ -197,7 +197,7 @@ describe('useDockReserve', () => {
     stubOffsetHeight(harnessElement(vm), 50)
     vm.visible = true
     await nextTick()
-    expect(dockReserve.value).toBe(74) // 50 + 16 + 8
+    expect(dockReserve.value).toBe(87) // 50 + 29 + 8
     wrapper.unmount()
     expect(dockReserve.value).toBe(0)
   })
