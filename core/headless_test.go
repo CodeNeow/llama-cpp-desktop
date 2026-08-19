@@ -604,6 +604,11 @@ func TestSetApiRouteModeEnableHandsOver(t *testing.T) {
 	saveConfigState(t)
 	launches := injectRelaunchSelf(t, false)
 
+	// Enabling requires the tray (the headless return entry point)
+	configMu.Lock()
+	trayEnabled = true
+	configMu.Unlock()
+
 	serverMu.Lock()
 	serverRunning = true
 	serverCmd = nil
@@ -643,11 +648,46 @@ func TestSetApiRouteModeEnableRelaunchFailure(t *testing.T) {
 	saveConfigState(t)
 	_ = injectRelaunchSelf(t, true)
 
+	// Enabling requires the tray (the headless return entry point)
+	configMu.Lock()
+	trayEnabled = true
+	configMu.Unlock()
+
 	app := &App{}
 	if err := app.SetApiRouteMode(true); err == nil {
 		t.Fatal("relaunch failure should surface an error")
 	}
 	if switchRestartPending.Load() {
 		t.Error("switch-restart marker must stay unset when the relaunch fails")
+	}
+}
+
+// TestSetApiRouteModeRequiresTray verifies the enable path is rejected while
+// the system tray is disabled (the tray menu is the only way back from
+// headless mode): the preference stays false, no successor is spawned and
+// the switch-restart marker stays unset.
+func TestSetApiRouteModeRequiresTray(t *testing.T) {
+	withTempCwd(t)
+	saveAdoptedState(t)
+	saveConfigState(t)
+	launches := injectRelaunchSelf(t, false)
+
+	configMu.Lock()
+	trayEnabled = false
+	apiRouteMode = false
+	configMu.Unlock()
+
+	app := &App{}
+	if err := app.SetApiRouteMode(true); err == nil {
+		t.Fatal("enabling API route mode with the tray disabled should surface an error")
+	}
+	if ApiRouteMode() {
+		t.Error("apiRouteMode must stay false when the tray guard rejects the call")
+	}
+	if len(*launches) != 0 {
+		t.Errorf("no successor should be spawned when the guard rejects, launches = %v", *launches)
+	}
+	if switchRestartPending.Load() {
+		t.Error("switch-restart marker must stay unset when the guard rejects")
 	}
 }

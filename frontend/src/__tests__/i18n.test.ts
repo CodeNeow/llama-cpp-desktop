@@ -25,10 +25,12 @@ describe('lib/i18n', () => {
     setLocale('zh')
     expect(t('settings.apiRouteMode')).toBe('API 路由模式')
     expect(t('settings.apiRouteModeDesc')).toContain('显示主窗口')
+    expect(t('settings.apiRouteModeRequiresTray')).toContain('系统托盘')
     expect(t('settings.apiRouteModeError')).not.toBe('settings.apiRouteModeError')
     setLocale('en')
     expect(t('settings.apiRouteMode')).toBe('API Route Mode')
     expect(t('settings.apiRouteModeDesc')).toContain('Show Main Window')
+    expect(t('settings.apiRouteModeRequiresTray')).toContain('system tray')
     expect(t('settings.apiRouteModeError')).not.toBe('settings.apiRouteModeError')
   })
 

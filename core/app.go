@@ -282,8 +282,15 @@ func (a *App) SetTrayEnabled(enabled bool) error {
 // alive) and quits the GUI — the WebView2 process tree is released and only
 // the Go backend + tray + llama-server remain. Disabling just persists the
 // flag: the GUI toggle always starts from false (the headless "Show Main
-// Window" path resets it itself before relaunching the GUI).
+// Window" path resets it itself before relaunching the GUI). Enabling is
+// rejected while the system tray is disabled: the tray menu is the only way
+// back from headless mode, so without it the headless process would have no
+// visible entry point at all.
 func (a *App) SetApiRouteMode(enabled bool) error {
+	if enabled && !TrayEnabled() {
+		return errors.New(tr("需先启用系统托盘，才能开启 API 路由模式（托盘菜单是后台模式的唯一返回入口）", "enable the system tray before turning on API route mode (the tray menu is the only way back from headless mode)"))
+	}
+
 	configMu.Lock()
 	apiRouteMode = enabled
 	configMu.Unlock()
