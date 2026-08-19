@@ -1,9 +1,10 @@
 /**
- * Download section display conditions: drives the visibility logic of Home.vue's
- * download area's three blocks (button group / custom path info / progress area),
- * preventing a recurrence of v-if/v-else-if mutual exclusion swallowing the
- * progress area (previously, when a custom path existed the progress area never
- * rendered: after clicking download the buttons vanished with no feedback).
+ * Download section display conditions: drives the visibility logic of the
+ * Runtime page's download area's three blocks (button group / custom path
+ * info / progress area), preventing a recurrence of v-if/v-else-if mutual
+ * exclusion swallowing the progress area (previously, when a custom path
+ * existed the progress area never rendered: after clicking download the
+ * buttons vanished with no feedback).
  *
  * - showButtons: show the "download llama.cpp / custom" button group on idle / error;
  * - showProgress: show the progress area for non-idle states (fetching /
@@ -54,4 +55,50 @@ export function initialDownloadAction(status: string, installed: boolean): Initi
     return 'showError'
   }
   return 'none'
+}
+
+/**
+ * Whether a llama.cpp release asset name is the cudart runtime package
+ * (e.g. "cudart-llama-bin-win-cuda-12.4-x64.zip"): on Windows CUDA builds the
+ * runtime ships as a separate asset downloaded after the main program and
+ * extracted into the same directory.
+ */
+export function isCudartAsset(name: string): boolean {
+  return name.toLowerCase().includes('cudart')
+}
+
+export interface DownloadPackageRow {
+  id: 'main' | 'cudart'
+  /** Row currently downloading (exactly one while a file name is present) */
+  active: boolean
+  /** Package fully downloaded (the main program finishes before cudart starts) */
+  done: boolean
+  /** 0–100 clamped; a row without a measurable byte share reports 0 */
+  progress: number
+}
+
+/**
+ * Split the combined llama.cpp download progress into per-package rows for the
+ * Runtime page. The backend downloads assets sequentially (main program first,
+ * then the cudart runtime) with Downloaded/Total accumulating across both and
+ * FileName naming the asset currently in flight:
+ * - while the main asset downloads there is no way to know whether a cudart
+ *   asset will follow (CPU/Vulkan builds never ship one), so only one row is
+ *   returned — a perpetually "waiting" cudart row would be misleading there;
+ * - once the cudart asset becomes current, the main package is complete by
+ *   construction; mainBytes is the cumulative byte count the caller snapshotted
+ *   when the file name switched, so the cudart row's share is
+ *   (downloaded − mainBytes) / (total − mainBytes).
+ */
+export function packageRows(fileName: string, downloaded: number, total: number, mainBytes: number): DownloadPackageRow[] {
+  const pct = (part: number, whole: number): number =>
+    whole > 0 ? Math.min(100, Math.max(0, Math.round((part / whole) * 100))) : 0
+
+  if (!isCudartAsset(fileName)) {
+    return [{ id: 'main', active: true, done: false, progress: pct(downloaded, total) }]
+  }
+  return [
+    { id: 'main', active: false, done: true, progress: 100 },
+    { id: 'cudart', active: true, done: false, progress: pct(downloaded - mainBytes, total - mainBytes) },
+  ]
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { downloadVisibility, initialDownloadAction } from '../lib/llamaDownload'
+import { downloadVisibility, initialDownloadAction, isCudartAsset, packageRows } from '../lib/llamaDownload'
 import type { InitialDownloadAction } from '../lib/llamaDownload'
 import { LLAMA_CPP_DOWNLOAD_STATUSES } from '../lib/downloadStatus'
 import type { LlamaCppDownloadStatus } from '../lib/downloadStatus'
@@ -90,5 +90,54 @@ describe('initialDownloadAction', () => {
   it('error returns showError (download fails during tab switch, returning home shows error and retry button)', () => {
     expect(initialDownloadAction('error', false)).toBe('showError')
     expect(initialDownloadAction('error', true)).toBe('showError')
+  })
+})
+
+describe('isCudartAsset', () => {
+  it('recognizes the cudart runtime asset name case-insensitively', () => {
+    expect(isCudartAsset('cudart-llama-bin-win-cuda-12.4-x64.zip')).toBe(true)
+    expect(isCudartAsset('CUDART-llama-bin-win-cuda-12.4-x64.zip')).toBe(true)
+  })
+
+  it('does not match main-program assets', () => {
+    expect(isCudartAsset('llama-b6084-bin-win-cuda-12.4-x64.zip')).toBe(false)
+    expect(isCudartAsset('llama-b6084-bin-win-vulkan-x64.zip')).toBe(false)
+    expect(isCudartAsset('')).toBe(false)
+  })
+})
+
+describe('packageRows', () => {
+  it('main asset downloading: a single row carrying the combined progress', () => {
+    const rows = packageRows('llama-b6084-bin-win-cuda-12.4-x64.zip', 300, 1000, 0)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toEqual({ id: 'main', active: true, done: false, progress: 30 })
+  })
+
+  it('cudart asset downloading: main row done, cudart row scoped to its own byte share', () => {
+    // total 1000 = main 600 + cudart 400; 700 cumulative bytes means cudart is at 25%
+    const rows = packageRows('cudart-llama-bin-win-cuda-12.4-x64.zip', 700, 1000, 600)
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toEqual({ id: 'main', active: false, done: true, progress: 100 })
+    expect(rows[1]).toEqual({ id: 'cudart', active: true, done: false, progress: 25 })
+  })
+
+  it('completed download with cudart: both rows fully done', () => {
+    const rows = packageRows('cudart-llama-bin-win-cuda-12.4-x64.zip', 1000, 1000, 600)
+    expect(rows[0].done).toBe(true)
+    expect(rows[1].done).toBe(false) // active row, but progress clamps to 100
+    expect(rows[1].progress).toBe(100)
+  })
+
+  it('mid-download remount with mainBytes unset: cudart share falls back to the combined ratio', () => {
+    const rows = packageRows('cudart-llama-bin-win-cuda-12.4-x64.zip', 700, 1000, 0)
+    expect(rows[1].progress).toBe(70)
+  })
+
+  it('guards against zero and negative byte shares', () => {
+    expect(packageRows('llama-b6084-bin-win-cuda-12.4-x64.zip', 0, 0, 0)[0].progress).toBe(0)
+    const rows = packageRows('cudart-llama-bin-win-cuda-12.4-x64.zip', 500, 1000, 1000)
+    expect(rows[1].progress).toBe(0) // total - mainBytes = 0
+    const clamped = packageRows('cudart-llama-bin-win-cuda-12.4-x64.zip', 1200, 1000, 600)
+    expect(clamped[1].progress).toBe(100) // clamped above 100
   })
 })

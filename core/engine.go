@@ -85,6 +85,10 @@ type LlamaCppInfo struct {
 	Installed bool   `json:"installed"`
 	Path      string `json:"path"`
 	Version   string `json:"version"`
+	// CudartInstalled reports whether the CUDA runtime DLLs (cudart/cublas,
+	// co-downloaded with CUDA builds since llama.cpp b10342) sit next to the
+	// resolved binary; always false on non-Windows and for CPU/Vulkan builds.
+	CudartInstalled bool `json:"cudartInstalled"`
 }
 
 // ─── HF Mirror types ─────────────────────────────────────────────
@@ -652,6 +656,7 @@ func getLlamaCppInfo() LlamaCppInfo {
 		info.Installed = true
 		info.Path = p
 		fillLlamaCppVersion(&info, p)
+		info.CudartInstalled = detectCudartRuntime(filepath.Dir(p))
 		return info
 	}
 
@@ -673,12 +678,31 @@ func getLlamaCppInfo() LlamaCppInfo {
 				info.Installed = true
 				info.Path = p
 				fillLlamaCppVersion(&info, p)
+				info.CudartInstalled = detectCudartRuntime(filepath.Dir(p))
 				return info
 			}
 		}
 	}
 
 	return info
+}
+
+// detectCudartRuntime reports whether the CUDA runtime DLLs shipped by the
+// cudart asset (cudart64_*.dll plus the cublas family) are present in dir.
+// The DLLs land next to llama-server.exe because both assets extract into the
+// same directory, so their presence marks a CUDA build with its runtime
+// installed. Non-Windows never carries the Windows-exclusive cudart asset.
+func detectCudartRuntime(dir string) bool {
+	if runtime.GOOS != "windows" || dir == "" {
+		return false
+	}
+	patterns := []string{"cudart*.dll", "cublas*.dll"}
+	for _, pat := range patterns {
+		if matches, err := filepath.Glob(filepath.Join(dir, pat)); err == nil && len(matches) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // ─── Command helpers ─────────────────────────────────────────────

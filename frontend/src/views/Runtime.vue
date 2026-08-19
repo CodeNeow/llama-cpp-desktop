@@ -2,8 +2,8 @@
   <div class="page">
     <div class="sticky-top">
       <div class="page-header">
-        <h1 class="page-title">{{ t('libraries.title') }}</h1>
-        <p class="page-subtitle">{{ t('libraries.subtitle') }}</p>
+        <h1 class="page-title">{{ t('runtime.title') }}</h1>
+        <p class="page-subtitle">{{ t('runtime.subtitle') }}</p>
       </div>
     </div>
 
@@ -21,9 +21,9 @@
           <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
         </svg>
       </div>
-      <h2>{{ t('libraries.errorTitle') }}</h2>
+      <h2>{{ t('runtime.errorTitle') }}</h2>
       <p>{{ error }}</p>
-      <button class="retry-btn" @click="fetchInfo">{{ t('libraries.retry') }}</button>
+      <button class="retry-btn" @click="fetchInfo">{{ t('runtime.retry') }}</button>
     </div>
 
     <!-- Data: one stacked full-width card per managed dependency (llama.cpp today,
@@ -35,28 +35,48 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
           </svg>
-          {{ t('libraries.llamacpp') }}
+          {{ t('runtime.llamacpp') }}
         </h2>
         <div class="info-grid">
           <div class="info-item">
-            <span class="info-label">{{ t('libraries.llamacpp.status') }}</span>
+            <span class="info-label">{{ t('runtime.llamacpp.status') }}</span>
             <span class="info-value">
               <span class="status-badge" :class="info.installed ? 'available' : 'unavailable'">
-                {{ info.installed ? t('libraries.llamacpp.installed') : t('libraries.llamacpp.notFound') }}
+                {{ info.installed ? t('runtime.llamacpp.installed') : t('runtime.llamacpp.notFound') }}
               </span>
             </span>
           </div>
           <div class="info-item" v-if="info.version">
-            <span class="info-label">{{ t('libraries.llamacpp.version') }}</span>
+            <span class="info-label">{{ t('runtime.llamacpp.version') }}</span>
             <span class="info-value">{{ info.version }}</span>
           </div>
           <div class="info-item info-item-full" v-if="info.installed">
-            <span class="info-label">{{ t('libraries.llamacpp.path') }}</span>
+            <span class="info-label">{{ t('runtime.llamacpp.path') }}</span>
             <span class="info-value path-value">{{ info.path }}</span>
           </div>
           <div class="info-item info-item-full" v-if="downloadDir">
-            <span class="info-label">{{ t('libraries.downloadDir') }}</span>
+            <span class="info-label">{{ t('runtime.downloadDir') }}</span>
             <span class="info-value path-value">{{ downloadDir }}</span>
+          </div>
+        </div>
+
+        <!-- Installed components: the download fetches the main-program asset plus
+             (on Windows CUDA builds) the cudart runtime asset and extracts both into
+             the same directory, so each component is reported separately -->
+        <div v-if="info.installed" class="components-area">
+          <div class="components-title">{{ t('runtime.components') }}</div>
+          <div class="comp-row">
+            <span class="comp-name">{{ t('runtime.compMain') }}</span>
+            <span class="status-badge available">{{ t('runtime.llamacpp.installed') }}</span>
+          </div>
+          <div v-if="isWindows" class="comp-row">
+            <span class="comp-name">
+              {{ t('runtime.compCudart') }}
+              <span class="comp-desc">{{ t('runtime.compCudartDesc') }}</span>
+            </span>
+            <span class="status-badge" :class="info.cudartInstalled ? 'available' : 'unavailable'">
+              {{ info.cudartInstalled ? t('runtime.llamacpp.installed') : t('runtime.compNotDetected') }}
+            </span>
           </div>
         </div>
 
@@ -71,63 +91,78 @@
                 <polyline points="7 10 12 15 17 10"/>
                 <line x1="12" y1="15" x2="12" y2="3"/>
               </svg>
-              {{ t('libraries.downloadLlamaCpp') }}
+              {{ t('runtime.downloadLlamaCpp') }}
             </button>
             <button class="custom-btn" @click="browseCustomDir">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
               </svg>
-              {{ t('libraries.custom') }}
+              {{ t('runtime.custom') }}
             </button>
           </div>
           <!-- Custom path info: independent v-if, not bound to progress area -->
           <div v-if="customPath" class="custom-path-info">
-            <span class="custom-path-label">{{ t('libraries.customPath') }}</span>
+            <span class="custom-path-label">{{ t('runtime.customPath') }}</span>
             <span class="custom-path-value">{{ customPath }}</span>
           </div>
 
           <!-- Downloading / Paused / Extracting / Error: display depends only on download status,
                  independent of whether a custom path is set -->
           <div v-if="dlVisibility.showProgress" class="download-progress">
+            <!-- Overall summary line + one row per package (the cudart row appears only
+                 once its asset actually starts downloading; CPU/Vulkan builds never ship it) -->
             <div class="dl-info">
               <span class="dl-label">{{ statusLabel[dlStatus.status] }}</span>
               <span class="dl-percent" v-if="dlStatus.status === 'downloading' || dlStatus.status === 'paused'">{{ dlStatus.progress }}%</span>
             </div>
-            <div class="dl-bar">
-              <div
-                class="dl-fill"
-                :class="{ indeterminate: dlStatus.status === 'fetching' || dlStatus.status === 'extracting', paused: dlStatus.status === 'paused' }"
-                :style="(dlStatus.status === 'downloading' || dlStatus.status === 'paused') ? { width: dlStatus.progress + '%' } : {}"
-              ></div>
-            </div>
-            <div class="dl-meta" v-if="dlStatus.fileName">
-              <span>{{ dlStatus.fileName }}</span>
-              <span v-if="dlStatus.total > 0">{{ formatSize(dlStatus.total) }}</span>
+            <div v-for="pkg in packages" :key="pkg.id" class="pkg-row">
+              <div class="pkg-head">
+                <span class="pkg-name">
+                  <svg v-if="pkg.done" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  {{ pkg.id === 'main' ? t('runtime.pkgMain') : t('runtime.pkgCudart') }}
+                </span>
+                <span class="pkg-state">
+                  <template v-if="pkg.done">{{ t('dl.done') }}</template>
+                  <template v-else-if="pkg.active && dlStatus.status === 'extracting'">{{ t('dl.extracting') }}</template>
+                  <template v-else>{{ pkg.progress }}%</template>
+                </span>
+              </div>
+              <div class="dl-bar">
+                <div
+                  class="dl-fill"
+                  :class="{ indeterminate: pkg.active && (dlStatus.status === 'fetching' || dlStatus.status === 'extracting'), paused: dlStatus.status === 'paused' }"
+                  :style="{ width: pkg.progress + '%' }"
+                ></div>
+              </div>
+              <div class="dl-meta" v-if="pkg.active && dlStatus.fileName">
+                <span>{{ dlStatus.fileName }}</span>
+                <span v-if="dlStatus.total > 0">{{ formatSize(dlStatus.total) }}</span>
+              </div>
             </div>
 
             <!-- Action buttons -->
             <div class="dl-actions" v-if="dlStatus.status === 'downloading' || dlStatus.status === 'paused' || dlStatus.status === 'fetching'">
               <button v-if="dlStatus.status === 'downloading'" class="dl-btn pause-btn" @click="pauseDownload">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
-                {{ t('libraries.pause') }}
+                {{ t('runtime.pause') }}
               </button>
               <button v-if="dlStatus.status === 'paused'" class="dl-btn resume-btn" @click="resumeDownload">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                {{ t('libraries.resume') }}
+                {{ t('runtime.resume') }}
               </button>
               <button class="dl-btn stop-btn" @click="stopDownload">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
-                {{ t('libraries.stop') }}
+                {{ t('runtime.stop') }}
               </button>
             </div>
 
             <div class="dl-paused-hint" v-if="dlStatus.status === 'paused'">
-              {{ t('libraries.dlPausedHint') }}
+              {{ t('runtime.dlPausedHint') }}
             </div>
 
             <div class="dl-error" v-if="dlStatus.status === 'error'">
               <span>{{ dlStatus.error }}</span>
-              <button class="retry-btn-sm" @click="startDownload">{{ t('libraries.retry') }}</button>
+              <button class="retry-btn-sm" @click="startDownload">{{ t('runtime.retry') }}</button>
             </div>
           </div>
         </div>
@@ -137,23 +172,26 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import {
   getLlamaCpp, getLlamaCppDownloadStatus, startLlamaCppDownload, pauseLlamaCppDownload,
-  resumeLlamaCppDownload, stopLlamaCppDownload, browseLlamaCppDir, getConfig
+  resumeLlamaCppDownload, stopLlamaCppDownload, browseLlamaCppDir, getConfig, getOS
 } from '../wails'
-import { downloadVisibility, initialDownloadAction } from '../lib/llamaDownload'
+import { downloadVisibility, initialDownloadAction, isCudartAsset, packageRows } from '../lib/llamaDownload'
 import { t } from '../lib/i18n'
 
 interface LlamaCppInfo {
   installed: boolean
   path: string
   version: string
+  cudartInstalled: boolean
 }
 
-const info = ref<LlamaCppInfo>({ installed: false, path: '', version: '' })
+const info = ref<LlamaCppInfo>({ installed: false, path: '', version: '', cudartInstalled: false })
 const loading = ref(true)
 const error = ref('')
+// The cudart component row applies to Windows only (the runtime asset is Windows-exclusive)
+const isWindows = ref(false)
 
 // Download state
 interface DlStatus {
@@ -172,6 +210,28 @@ let pollTimer: ReturnType<typeof setInterval> | null = null
 
 // Download area visibility: button group / custom path info / progress area render independently (see lib/llamaDownload)
 const dlVisibility = computed(() => downloadVisibility(dlStatus.value.status))
+
+// Cumulative byte count snapshotted when the file name switches from the main
+// asset to the cudart asset: the backend reports one combined Downloaded/Total
+// pair across both sequential packages, so the cudart row's own share is
+// (Downloaded − mainBytes) / (Total − mainBytes). A mid-download remount joins
+// with the cudart asset already current (mainBytes still 0); the best available
+// snapshot is the cumulative count at that moment. Reset when the file name
+// clears (retry/idle).
+const mainBytes = ref(0)
+watch(() => dlStatus.value.fileName, (name, prev) => {
+  if (!name) {
+    mainBytes.value = 0
+    return
+  }
+  if (isCudartAsset(name) && (mainBytes.value === 0 || (prev && !isCudartAsset(prev)))) {
+    mainBytes.value = dlStatus.value.downloaded
+  }
+})
+
+// Per-package progress rows for the download area (see lib/llamaDownload.packageRows)
+const packages = computed(() =>
+  packageRows(dlStatus.value.fileName, dlStatus.value.downloaded, dlStatus.value.total, mainBytes.value))
 
 function formatSize(bytes: number): string {
   if (bytes <= 0) return ''
@@ -227,7 +287,7 @@ async function startDownload() {
     await startLlamaCppDownload()
   } catch (e: any) {
     dlStatus.value.status = 'error'
-    dlStatus.value.error = t('libraries.backendError', { msg: e.message })
+    dlStatus.value.error = t('runtime.backendError', { msg: e.message })
     stopPolling()
   }
 }
@@ -297,13 +357,16 @@ async function fetchInfo() {
   try {
     info.value = await getLlamaCpp()
   } catch (e: any) {
-    error.value = t('libraries.backendError', { msg: e.message })
+    error.value = t('runtime.backendError', { msg: e.message })
   } finally {
     loading.value = false
   }
 }
 
 onMounted(() => {
+  getOS()
+    .then((o: any) => { isWindows.value = o.os === 'windows' })
+    .catch(() => {})
   restoreConfigPaths()
   fetchInfo().then(checkInitialDownloadStatus)
 })
@@ -593,11 +656,83 @@ onUnmounted(() => {
   word-break: break-all;
 }
 
+/* ─── Installed components list ─── */
+.components-area {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.components-title {
+  font-size: 12px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 500;
+}
+
+.comp-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.comp-name {
+  font-size: 14px;
+  color: var(--text-secondary);
+  font-weight: 500;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.comp-desc {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
 /* ─── Download progress ─── */
 .download-progress {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.pkg-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 4px;
+}
+
+.pkg-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.pkg-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.pkg-name svg {
+  color: #22c55e;
+  flex-shrink: 0;
+}
+
+.pkg-state {
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 .dl-info {

@@ -84,6 +84,50 @@ func TestGetLlamaCppInfoDetectsDownloadDir(t *testing.T) {
 	}
 }
 
+// TestDetectCudartRuntime verifies the cudart-runtime DLL detection feeding
+// the per-component status on the Runtime page: the cudart asset's DLLs
+// (cudart64_*.dll / cublas*.dll) mark a CUDA build with its runtime present,
+// while a binary-only or missing directory does not. Non-Windows never ships
+// the Windows-exclusive cudart asset, so detection stays false there.
+func TestDetectCudartRuntime(t *testing.T) {
+	tmp := withTempCwd(t)
+
+	if detectCudartRuntime("") {
+		t.Error("empty dir must never report the cudart runtime")
+	}
+	if detectCudartRuntime(filepath.Join(tmp, "does-not-exist")) {
+		t.Error("missing dir must never report the cudart runtime")
+	}
+
+	dir := filepath.Join(tmp, "llama-cpp")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, llamaServerBinName()), []byte("stub"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if detectCudartRuntime(dir) {
+		t.Error("binary-only directory must not report the cudart runtime")
+	}
+
+	if runtime.GOOS == "windows" {
+		for _, dll := range []string{"cudart64_12.dll", "cublas64_12.dll", "cublasLt64_12.dll"} {
+			p := filepath.Join(dir, dll)
+			if err := os.WriteFile(p, []byte("stub"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			if !detectCudartRuntime(dir) {
+				t.Errorf("%s present should report the cudart runtime", dll)
+			}
+			if err := os.Remove(p); err != nil {
+				t.Fatal(err)
+			}
+		}
+	} else if detectCudartRuntime(dir) {
+		t.Error("non-Windows must never report the cudart runtime")
+	}
+}
+
 // TestGetLlamaCppInfoDetectsDownloadDirSubdir verifies that when the downloaded zip
 // contains a top-level folder (after extraction the binary is under llama-cpp/<one-subdir>/),
 // it is still detected, and Path points precisely to the stub inside the subdirectory

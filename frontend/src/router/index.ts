@@ -1,6 +1,6 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import Home from '../views/Home.vue'
-import Libraries from '../views/Libraries.vue'
+import Runtime from '../views/Runtime.vue'
 import Chat from '../views/Chat.vue'
 import Models from '../views/Models.vue'
 import Api from '../views/Api.vue'
@@ -17,11 +17,12 @@ const routes = [
     meta: { title: '系统信息', icon: 'home' }
   },
   {
-    // Runtime libraries & dependencies (llama.cpp install/download management)
-    path: '/libraries',
-    name: 'Libraries',
-    component: Libraries,
-    meta: { title: '库与依赖', icon: 'layers' }
+    // Runtime environment: inference engine + runtime components (llama.cpp
+    // main program, cudart runtime) with install/download management
+    path: '/runtime',
+    name: 'Runtime',
+    component: Runtime,
+    meta: { title: '运行环境', icon: 'layers' }
   },
   {
     path: '/chat',
