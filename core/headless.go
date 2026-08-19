@@ -117,10 +117,17 @@ func adoptOrCleanHandover() {
 	}
 }
 
+// notifyHeadlessServerStartFailed surfaces a headless llama-server start
+// failure to the user. Headless mode has no window and no console, so the
+// default platform implementation (core/headlessalert_windows.go) shows a
+// native alert dialog; other platforms default to a no-op (headless is
+// Windows-only). Tests replace this variable to observe the failure.
+var notifyHeadlessServerStartFailed = defaultHeadlessServerAlert
+
 // startOrAdoptServer brings llama-server up in a headless startup: healthy
 // handover record → adopt; stale record → delete + auto start; no record →
-// auto start. A start failure only logs (headless keeps running so the tray
-// can still return to GUI mode).
+// auto start. A start failure logs and notifies the user (headless keeps
+// running so the tray can still return to GUI mode).
 func startOrAdoptServer() {
 	plan := evaluateHandover()
 	if plan.Adopt {
@@ -134,6 +141,7 @@ func startOrAdoptServer() {
 	}
 	if err := startServerInternal(); err != nil {
 		log.Printf("[WARN] headless llama-server start failed (use the tray to return to GUI): %v", err)
+		notifyHeadlessServerStartFailed(err)
 	}
 }
 

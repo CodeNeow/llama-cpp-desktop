@@ -447,10 +447,18 @@ func TestShouldRunHeadlessPure(t *testing.T) {
 // injected probes: healthy record adopts without starting; with no record the
 // fresh-start attempt fails against an empty model directory (expected,
 // logged) and must not mark the server running; a stale record is deleted.
+// Every failed start must surface through notifyHeadlessServerStartFailed,
+// while adopting a healthy record must not notify.
 func TestStartOrAdoptServerDecision(t *testing.T) {
 	withTempCwd(t)
 	saveServerState(t)
 	saveAdoptedState(t)
+
+	// Record notify calls instead of popping the real Windows alert dialog
+	var notifyErrs []error
+	origNotify := notifyHeadlessServerStartFailed
+	notifyHeadlessServerStartFailed = func(err error) { notifyErrs = append(notifyErrs, err) }
+	t.Cleanup(func() { notifyHeadlessServerStartFailed = origNotify })
 
 	// no record → startServerInternal fails (empty LLM-Models), server not running
 	if err := removeHandover(); err != nil {
@@ -464,6 +472,9 @@ func TestStartOrAdoptServerDecision(t *testing.T) {
 	if running {
 		t.Error("no handover record + failed start must not mark the server running")
 	}
+	if len(notifyErrs) != 1 || notifyErrs[0] == nil {
+		t.Errorf("a failed start must notify once with the error, got %d calls: %v", len(notifyErrs), notifyErrs)
+	}
 
 	// healthy record → adopted, no start attempt needed
 	if err := writeHandover(4321, 8282); err != nil {
@@ -476,6 +487,9 @@ func TestStartOrAdoptServerDecision(t *testing.T) {
 	if !running || adopted != 4321 || port != 8282 {
 		t.Errorf("healthy record should be adopted, running=%v adopted=%d port=%d", running, adopted, port)
 	}
+	if len(notifyErrs) != 1 {
+		t.Errorf("adopting a healthy record must not notify, got %d calls", len(notifyErrs))
+	}
 
 	// stale record → deleted even though the subsequent start fails
 	if err := writeHandover(9999, 8383); err != nil {
@@ -485,6 +499,9 @@ func TestStartOrAdoptServerDecision(t *testing.T) {
 	startOrAdoptServer()
 	if _, err := os.Stat(handoverFile); !os.IsNotExist(err) {
 		t.Errorf("stale handover record should be deleted, stat err = %v", err)
+	}
+	if len(notifyErrs) != 2 || notifyErrs[1] == nil {
+		t.Errorf("the start after stale-record cleanup must notify again, got %d calls: %v", len(notifyErrs), notifyErrs)
 	}
 }
 
