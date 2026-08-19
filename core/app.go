@@ -285,8 +285,14 @@ func (a *App) SetTrayEnabled(enabled bool) error {
 // Window" path resets it itself before relaunching the GUI). Enabling is
 // rejected while the system tray is disabled: the tray menu is the only way
 // back from headless mode, so without it the headless process would have no
-// visible entry point at all.
+// visible entry point at all. Dev builds (wails dev) reject enabling
+// outright: the relaunch-based switch escapes the wails dev supervisor and
+// tears the dev session down (binary lock + dead vite server), so the
+// feature must be exercised on a `wails build` production binary.
 func (a *App) SetApiRouteMode(enabled bool) error {
+	if enabled && isDevBuild {
+		return errors.New(tr("wails dev 开发构建不支持开启 API 路由模式：切换会重启进程并终止开发会话，请使用 wails build 的正式构建测试", "API route mode cannot be enabled in a wails dev build: the switch restarts the process and ends the dev session — test with a wails build production binary"))
+	}
 	if enabled && !TrayEnabled() {
 		return errors.New(tr("需先启用系统托盘，才能开启 API 路由模式（托盘菜单是后台模式的唯一返回入口）", "enable the system tray before turning on API route mode (the tray menu is the only way back from headless mode)"))
 	}

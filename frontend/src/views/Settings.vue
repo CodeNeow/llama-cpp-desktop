@@ -239,7 +239,7 @@
           <span class="setting-label">{{ t('settings.apiRouteMode') }}</span>
           <span class="setting-desc">{{ t('settings.apiRouteModeDesc') }}</span>
         </div>
-        <div class="theme-toggle" :class="{ disabled: !appConfig.trayEnabled }" @click="toggleApiRouteMode">
+        <div class="theme-toggle" :class="{ disabled: !appConfig.trayEnabled || apiRouteDevBlocked }" @click="toggleApiRouteMode">
           <div class="toggle-track" :class="{ light: appConfig.apiRouteMode }">
             <div class="toggle-thumb">
               <svg v-if="appConfig.apiRouteMode" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -253,8 +253,10 @@
           <span class="toggle-label">{{ appConfig.apiRouteMode ? t('settings.on') : t('settings.off') }}</span>
         </div>
       </div>
+      <!-- dev builds refuse the relaunch-based switch entirely: it escapes the wails dev supervisor -->
+      <p v-if="apiRouteDevBlocked" class="source-hint">{{ t('settings.apiRouteModeDevBlocked') }}</p>
       <!-- headless mode returns to the GUI via the tray menu only: gate the toggle on the tray setting -->
-      <p v-if="!appConfig.trayEnabled" class="source-hint">{{ t('settings.apiRouteModeRequiresTray') }}</p>
+      <p v-else-if="!appConfig.trayEnabled" class="source-hint">{{ t('settings.apiRouteModeRequiresTray') }}</p>
       <p v-if="apiRouteError" class="source-error">{{ apiRouteError }}</p>
     </section>
 
@@ -384,14 +386,16 @@ async function toggleTray() {
 // Enabling relaunches the app headless and quits the GUI without stopping llama-server;
 // in GUI mode the state is always off, so this effectively only ever enables. On success
 // the process quits (no visible state change to roll back); failures surface inline.
-// Gated on the tray setting: the headless tray menu is the only way back to the GUI,
-// so enabling with the tray off is refused both here and by the backend guard.
+// Unavailable under wails dev (vite dev server): the relaunch escapes the wails dev
+// supervisor, killing the dev session and leaving the successor without a frontend
+// server. import.meta.env.DEV mirrors the backend's `dev` build-tag detection.
+const apiRouteDevBlocked = import.meta.env.DEV
 const apiRouteError = ref('')
 const apiRouteSwitching = ref(false)
 
 async function toggleApiRouteMode() {
   if (apiRouteSwitching.value) return
-  if (!appConfig.trayEnabled) return
+  if (apiRouteDevBlocked || !appConfig.trayEnabled) return
   apiRouteSwitching.value = true
   apiRouteError.value = ''
   try {

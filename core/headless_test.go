@@ -413,7 +413,8 @@ func TestShutdownStopsAdoptedServer(t *testing.T) {
 
 // TestShouldRunHeadlessPure verifies the pure headless decision matrix:
 // non-Windows never headless; --headless wins; --gui overrides the persisted
-// preference; otherwise the preference decides.
+// preference; dev builds ignore the preference (only the flag works);
+// otherwise the preference decides.
 func TestShouldRunHeadlessPure(t *testing.T) {
 	cases := []struct {
 		name        string
@@ -421,18 +422,22 @@ func TestShouldRunHeadlessPure(t *testing.T) {
 		headlessFlg bool
 		guiFlag     bool
 		enabled     bool
+		devBuild    bool
 		want        bool
 	}{
-		{"non-windows never headless", "linux", true, false, true, false},
-		{"headless flag wins", "windows", true, true, false, true},
-		{"config enabled", "windows", false, false, true, true},
-		{"config disabled", "windows", false, false, false, false},
-		{"gui flag overrides config", "windows", false, true, true, false},
+		{"non-windows never headless", "linux", true, false, true, false, false},
+		{"headless flag wins", "windows", true, true, false, false, true},
+		{"headless flag wins in dev build", "windows", true, false, false, true, true},
+		{"config enabled", "windows", false, false, true, false, true},
+		{"config disabled", "windows", false, false, false, false, false},
+		{"gui flag overrides config", "windows", false, true, true, false, false},
+		{"dev build ignores config preference", "windows", false, false, true, true, false},
+		{"dev build gui flag stays GUI", "windows", false, true, false, true, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := shouldRunHeadless(c.goos, c.headlessFlg, c.guiFlag, c.enabled); got != c.want {
-				t.Errorf("shouldRunHeadless(%q,%v,%v,%v) = %v, want %v", c.goos, c.headlessFlg, c.guiFlag, c.enabled, got, c.want)
+			if got := shouldRunHeadless(c.goos, c.headlessFlg, c.guiFlag, c.enabled, c.devBuild); got != c.want {
+				t.Errorf("shouldRunHeadless(%q,%v,%v,%v,%v) = %v, want %v", c.goos, c.headlessFlg, c.guiFlag, c.enabled, c.devBuild, got, c.want)
 			}
 		})
 	}
@@ -575,6 +580,41 @@ func TestConfigApiRouteModeRoundTrip(t *testing.T) {
 		t.Error("SetApiRouteMode(false) should persist false")
 	}
 	switchRestartPending.Store(false)
+}
+
+// TestSetApiRouteModeDevRejected verifies the enable path is rejected in a
+// dev build (wails dev): the relaunch-based switch escapes the dev supervisor
+// and tears the dev session down, so the preference stays false, no successor
+// is spawned and the switch-restart marker stays unset.
+func TestSetApiRouteModeDevRejected(t *testing.T) {
+	withTempCwd(t)
+	saveAdoptedState(t)
+	saveConfigState(t)
+	launches := injectRelaunchSelf(t, false)
+
+	origDev := isDevBuild
+	isDevBuild = true
+	t.Cleanup(func() { isDevBuild = origDev })
+
+	// Tray on so the dev guard — not the tray guard — is what rejects
+	configMu.Lock()
+	trayEnabled = true
+	apiRouteMode = false
+	configMu.Unlock()
+
+	app := &App{}
+	if err := app.SetApiRouteMode(true); err == nil {
+		t.Fatal("enabling API route mode in a dev build should surface an error")
+	}
+	if ApiRouteMode() {
+		t.Error("apiRouteMode must stay false when the dev guard rejects the call")
+	}
+	if len(*launches) != 0 {
+		t.Errorf("no successor should be spawned when the dev guard rejects, launches = %v", *launches)
+	}
+	if switchRestartPending.Load() {
+		t.Error("switch-restart marker must stay unset when the dev guard rejects")
+	}
 }
 
 // injectRelaunchSelf replaces the relaunchSelf injection point, recording the

@@ -21,10 +21,12 @@ import (
 // shouldRunHeadless is the pure decision core for headless startup:
 //   - non-Windows never runs headless (v1 platform restriction);
 //   - an explicit --headless flag wins;
-//   - otherwise the persisted apiRouteMode preference decides, unless an
-//     explicit --gui flag overrides it (recovery escape hatch when a
-//     headless preference is stuck in the config).
-func shouldRunHeadless(goos string, headlessFlag, guiFlag, modeEnabled bool) bool {
+//   - an explicit --gui flag overrides the persisted preference;
+//   - dev builds (wails dev) never follow the persisted preference: the
+//     relaunch-based switch escapes the wails dev supervisor and tears the
+//     dev session down (locked binary), so only the explicit flag works;
+//   - otherwise the persisted apiRouteMode preference decides.
+func shouldRunHeadless(goos string, headlessFlag, guiFlag, modeEnabled, devBuild bool) bool {
 	if goos != "windows" {
 		return false
 	}
@@ -32,6 +34,9 @@ func shouldRunHeadless(goos string, headlessFlag, guiFlag, modeEnabled bool) boo
 		return true
 	}
 	if guiFlag {
+		return false
+	}
+	if devBuild {
 		return false
 	}
 	return modeEnabled
@@ -46,7 +51,7 @@ func ShouldRunHeadless(headlessFlag, guiFlag bool) bool {
 	if !headlessFlag && !guiFlag {
 		loadConfig()
 	}
-	return shouldRunHeadless(runtime.GOOS, headlessFlag, guiFlag, ApiRouteMode())
+	return shouldRunHeadless(runtime.GOOS, headlessFlag, guiFlag, ApiRouteMode(), isDevBuild)
 }
 
 // relaunchSelf is the test injection point starting a fresh copy of this
