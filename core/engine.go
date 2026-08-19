@@ -1517,7 +1517,7 @@ func downloadLlamaCpp() {
 			if ctx.Err() != nil {
 				// Cancelled by user (stop)
 				downloadMu.Lock()
-				if downloadState.Status != "paused" {
+				if downloadState.Status != "paused" && downloadState.Status != "idle" {
 					downloadState.Status = "idle"
 					downloadState.Error = ""
 				}
