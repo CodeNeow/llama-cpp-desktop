@@ -237,6 +237,9 @@ async function closeWindow() {
      end, the last content stays visible above the dock instead of behind it.
      --dock-reserve is bound on .app-layout from lib/dockSpace (0 when hidden). */
   padding-bottom: var(--dock-reserve, 0px);
+  /* Smooth transition when the dock reserve changes (dock appears/disappears,
+     0 <-> pill height + offset ~56px) so content doesn't jump. */
+  transition: padding-bottom 0.2s ease;
 }
 
 .content-area::-webkit-scrollbar {

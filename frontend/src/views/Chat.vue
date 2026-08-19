@@ -481,6 +481,9 @@ onUnmounted(() => {
      TaskDock card is visible the whole chat layout shrinks so the input row
      (stop/send buttons) stays clear of the dock instead of being overlapped. */
   height: calc(100vh - 36px - var(--dock-reserve, 0px));
+  /* Smooth transition when --dock-reserve changes (dock appears/disappears,
+     0 <-> pill height + offset ~56px) so the input row doesn't jump. */
+  transition: height 0.2s ease;
   display: flex;
   flex-direction: column;
   padding: 0 48px;

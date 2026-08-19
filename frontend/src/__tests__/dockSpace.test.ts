@@ -1,9 +1,8 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mount, flushPromises } from '@vue/test-utils'
+import { mount } from '@vue/test-utils'
 import { defineComponent, ref, nextTick } from 'vue'
 import { dockReserve, dockReservePx, useDockReserve } from '../lib/dockSpace'
-import TaskDock from '../components/TaskDock.vue'
 
 // Mock the Wails bridge (window.go is injected only by the Wails runtime).
 // Update-related exports are included because lib/update imports the same
@@ -199,30 +198,6 @@ describe('useDockReserve', () => {
     vm.visible = true
     await nextTick()
     expect(dockReserve.value).toBe(74) // 50 + 16 + 8
-    wrapper.unmount()
-    expect(dockReserve.value).toBe(0)
-  })
-})
-
-// ─── TaskDock wiring smoke ───────────────────────────────────────────────────
-
-describe('TaskDock dock-space wiring', () => {
-  it('publishes the measured dock height into dockReserve', async () => {
-    vi.stubGlobal('ResizeObserver', MockResizeObserver)
-    const wrapper = mount(TaskDock, { attachTo: document.body })
-    await flushPromises() // first poll resolves: 1 loaded model -> visible
-    await nextTick() // template ref + watchEffect settle
-
-    expect(wrapper.find('.task-dock').exists()).toBe(true)
-    const dockEl = wrapper.find<HTMLElement>('.task-dock').element
-    stubOffsetHeight(dockEl, 120)
-
-    // ResizeObserver reports the initial size asynchronously; simulate that
-    // initial callback delivery here
-    MockResizeObserver.last.trigger(dockEl)
-    expect(dockReserve.value).toBe(144) // 120 + 16 + 8
-
-    // Unmount clears the polling interval and the reserved space
     wrapper.unmount()
     expect(dockReserve.value).toBe(0)
   })

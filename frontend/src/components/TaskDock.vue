@@ -1,16 +1,17 @@
 <template>
   <div v-if="visible" class="task-dock" ref="dockEl">
-    <!-- Header -->
-    <div class="dock-header">
-      <span class="dock-title">{{ t('dock.title') }}</span>
-      <button class="dock-toggle" @click="expanded = !expanded" :title="expanded ? t('dock.collapse') : t('dock.expand')">
-        <svg v-if="expanded" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-        <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>
-      </button>
-    </div>
+    <!-- Popover card: absolute overlay above the pill, zero layout impact, so
+         the root size (and --dock-reserve) never changes when expanding. -->
+    <div v-if="expanded" class="dock-popover">
+      <!-- Header -->
+      <div class="dock-header">
+        <span class="dock-title">{{ t('dock.title') }}</span>
+        <button class="dock-toggle" @click="expanded = !expanded" :title="expanded ? t('dock.collapse') : t('dock.expand')">
+          <svg v-if="expanded" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="18 15 12 9 6 15"/></svg>
+        </button>
+      </div>
 
-    <!-- Expanded content -->
-    <template v-if="expanded">
       <!-- Downloads section -->
       <div v-if="hasDownloads" class="dock-section">
         <div class="dock-section-title">{{ t('dock.downloads') }}</div>
@@ -94,12 +95,31 @@
           </div>
         </div>
       </div>
-    </template>
+    </div>
+
+    <!-- Persistent compact pill: download/task and model counters, expands the
+         popover on click -->
+    <button
+      class="dock-pill"
+      @click="expanded = !expanded"
+      :aria-label="t('dock.title')"
+      :title="t('dock.title')"
+    >
+      <span v-if="hasDownloads" class="pill-seg">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span>{{ activeDownloadCount }}</span>
+      </span>
+      <span v-if="serverRunning && loadedModels.length > 0" class="pill-seg">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>
+        <span>{{ loadedModels.length }}</span>
+      </span>
+      <span v-if="pillAlert" class="pill-alert"></span>
+    </button>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, watchEffect, onMounted, onUnmounted } from 'vue'
 import {
   getLlamaCppDownloadStatus,
   getDownloadTasks,
@@ -120,7 +140,9 @@ interface LoadedModel {
   status: string
 }
 
-const expanded = ref(true)
+// Collapsed by default: only the compact pill is shown; the full card is a
+// popover and the state is intentionally not persisted across mounts.
+const expanded = ref(false)
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
 // Llama.cpp download
@@ -163,6 +185,18 @@ const hasDownloads = computed(() => {
   return llamaActive.value || activeTasks.value.length > 0 || updateActive.value
 })
 
+// Pill summary: total active download rows (app update + llama.cpp + model tasks)
+const activeDownloadCount = computed(
+  () =>
+    (updateActive.value ? 1 : 0) + (llamaActive.value ? 1 : 0) + activeTasks.value.length
+)
+
+// Pill alert dot: shown when any tracked download (llama.cpp / app update)
+// ended in error
+const pillAlert = computed(
+  () => llamaStatus.value.status === 'error' || updateDownload.value?.status === 'error'
+)
+
 const visible = computed(() =>
   shouldShowDock(
     llamaActive.value,
@@ -179,6 +213,33 @@ const visible = computed(() =>
 // reachable; must run after `visible` is declared above.
 const dockEl = ref<HTMLElement | null>(null)
 useDockReserve(dockEl, visible)
+
+// ─── Popover dismissal ────────────────────────────────────────────
+
+// Collapse the popover when clicking outside the dock or pressing Escape.
+// The events are not consumed (no preventDefault / stopPropagation), so an
+// outside click still lands on the control the user actually aimed at.
+function onDocClick(e: MouseEvent) {
+  if (dockEl.value && !dockEl.value.contains(e.target as Node)) {
+    expanded.value = false
+  }
+}
+
+function onDocKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') {
+    expanded.value = false
+  }
+}
+
+watchEffect(() => {
+  if (expanded.value) {
+    document.addEventListener('click', onDocClick)
+    document.addEventListener('keydown', onDocKeydown)
+  } else {
+    document.removeEventListener('click', onDocClick)
+    document.removeEventListener('keydown', onDocKeydown)
+  }
+})
 
 // ─── Polling ──────────────────────────────────────────────────────
 
@@ -316,17 +377,31 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopPolling()
+  // Safety net: never leave document listeners attached after unmount
+  document.removeEventListener('click', onDocClick)
+  document.removeEventListener('keydown', onDocKeydown)
 })
 </script>
 
 <style scoped>
+/* Pure positioning container: the pill is the only in-flow content, so the
+   root size (and thus --dock-reserve) never changes when the popover opens.
+   Keep `bottom: 16px` in sync with DOCK_BOTTOM_OFFSET in lib/dockSpace.ts. */
 .task-dock {
   position: fixed;
   right: 16px;
   bottom: 16px;
+  z-index: 50;
+}
+
+/* Full card as an absolute overlay above the pill: expanding has zero layout
+   impact, so reserved pages never jump when the popover shows/hides. */
+.dock-popover {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
   width: 300px;
   max-height: 50vh;
-  z-index: 50;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -335,6 +410,45 @@ onUnmounted(() => {
   flex-direction: column;
   overflow: hidden;
   font-size: 12px;
+}
+
+/* Persistent compact pill: collapsed-state summary of downloads and models */
+.dock-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 12px;
+  transition: all 0.15s;
+}
+
+.dock-pill:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+/* One metric per segment: 12px inline icon + bold count */
+.pill-seg {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+}
+
+/* Error indicator dot */
+.pill-alert {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ef4444;
+  flex-shrink: 0;
 }
 
 .dock-header {
