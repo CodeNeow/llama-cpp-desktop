@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"embed"
+	"flag"
+	"os"
 
 	"llama-desktop/core"
 
@@ -18,12 +20,37 @@ var assets embed.FS
 var trayIcon []byte
 
 func main() {
+	// Mode flags for API-route (headless) mode: --headless forces headless
+	// (used by the GUI → headless relaunch), --gui forces the GUI even when
+	// the persisted apiRouteMode preference requests headless (recovery
+	// escape hatch). ContinueOnError keeps unknown arguments from third-party
+	// launchers harmless.
+	flags := flag.NewFlagSet("llama-desktop", flag.ContinueOnError)
+	headless := flags.Bool("headless", false, "run in headless API-route mode (tray + llama-server only, no GUI)")
+	gui := flags.Bool("gui", false, "force GUI mode even when apiRouteMode is enabled in the config")
+	_ = flags.Parse(os.Args[1:])
+
 	app := core.NewApp()
 
 	// Tray icon is injected before Wails starts (needed because SetTrayEnabled
 	// may start/stop the tray at runtime); main only declares the embed, and
 	// the bytes are exposed to core via core.TrayIcon.
 	core.TrayIcon = trayIcon
+
+	// Headless branch: skip wails.Run entirely (no WebView2 process tree) —
+	// core.RunHeadless loads the config, takes the single-instance mutex,
+	// starts the headless tray and starts/adopts llama-server.
+	if core.ShouldRunHeadless(*headless, *gui) {
+		core.RunHeadless(trayIcon)
+		return
+	}
+
+	// GUI mode takes the same single-instance mutex (fixes double-launch);
+	// the mutex retry window also covers the headless → GUI handover.
+	if !core.AcquireSingleInstance() {
+		println("Llama Desktop is already running.")
+		return
+	}
 
 	err := wails.Run(&options.App{
 		Title:     "Llama Desktop",

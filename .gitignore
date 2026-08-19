@@ -14,6 +14,7 @@ Thumbs.db
 LLM-Models/
 llama-cpp/
 llama-desktop-config.json
+llama-desktop-server-handover.json
 llama-gui-config.json
 .codegraph
 .zcode/plans/

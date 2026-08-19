@@ -3,14 +3,25 @@ package core
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 )
+
+// ─── Adopted-server state ────────────────────────────────────────
+
+// adoptedPid records the pid of an adopted llama-server (handed over by the
+// previous process during a mode switch, see core/handover.go); 0 means the
+// running server (if any) is our own child tracked in serverCmd. Guarded by
+// serverMu alongside serverRunning/serverCmd, preserving the invariant
+// "adoptedPid > 0 ⟹ serverCmd == nil".
+var adoptedPid int
 
 // ─── Wails binding helpers ───────────────────────────────────────
 
@@ -124,7 +135,65 @@ func buildServerCommand(cfg ServerConfig, presetPath string) (string, []string) 
 	return llamaServer, args
 }
 
+// switchRestartPending marks an in-flight mode-switch restart (GUI → headless
+// via SetApiRouteMode, or headless → GUI via the tray "Show Main Window"):
+// the exiting process has already relaunched its successor and handed the
+// running llama-server over, so Shutdown/headless-exit must NOT stop the
+// service and must NOT cancel in-flight downloads (the handover window is
+// short; the new process restores the persisted download queue).
+var switchRestartPending atomic.Bool
+
+// killProcessByPid is the injection point killing an arbitrary process by pid
+// (same style as updateLauncher / renameFile): adopted llama-server processes
+// belong to the previous, exited process — there is no child handle to
+// Signal, so os.FindProcess(pid).Kill() is the only stop path. Tests replace
+// this variable instead of killing real processes.
+var killProcessByPid = func(pid int) error {
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return err
+	}
+	return proc.Kill()
+}
+
+// stopAdoptedServerIfAny stops a running adopted llama-server (handed over
+// from another process: serverCmd nil, adoptedPid > 0): kills it by pid via
+// the killProcessByPid injection point, clears the adopted state and removes
+// the handover record. Returns true when an adopted server was stopped; false
+// when nothing adopted is running (callers fall back to the child-stop path).
+func stopAdoptedServerIfAny() bool {
+	serverMu.Lock()
+	running := serverRunning
+	cmd := serverCmd
+	adopted := adoptedPid
+	serverMu.Unlock()
+	if !running || cmd != nil || adopted <= 0 {
+		return false
+	}
+
+	addServerLog(fmt.Sprintf("[INFO] Stopping adopted llama-server (pid %d)...", adopted))
+	if err := killProcessByPid(adopted); err != nil {
+		log.Printf("[WARN] failed to kill adopted llama-server pid %d: %v", adopted, err)
+	}
+	serverMu.Lock()
+	serverRunning = false
+	serverPort = 0
+	serverStartTime = time.Time{}
+	adoptedPid = 0
+	serverMu.Unlock()
+	if err := removeHandover(); err != nil {
+		log.Printf("[WARN] %v", err)
+	}
+	return true
+}
+
 func stopServerInternal() error {
+	// Adopted server (handed over by the previous process): no child handle
+	// exists, so stop by pid and remove the handover record.
+	if stopAdoptedServerIfAny() {
+		return nil
+	}
+
 	// Read running/cmd local copies inside serverMu, operate on the copies
 	// outside (#3), to avoid concurrent access to serverCmd/Process between
 	// stopServerInternal and start/goroutine.

@@ -39,6 +39,10 @@ export const appConfig = reactive({
   // Windows system tray toggle: default true (matches the backend loadConfig fallback);
   // only overridden once loadConfig fetches the persisted backend value.
   trayEnabled: true,
+  // API-route (headless) mode toggle: default false (matches the backend loadConfig
+  // fallback); in GUI mode always false — the headless "Show Main Window" path resets
+  // it in the backend before relaunching the GUI, and enabling quits this process.
+  apiRouteMode: false,
   // Sidebar collapsed state: read from localStorage for the first frame ('0' expanded,
   // otherwise collapsed) so the sidebar does not render at the wrong width before the
   // async loadConfig returns; defaults to collapsed when the key is missing (matching
@@ -60,6 +64,8 @@ export async function loadConfig() {
     appConfig.resolvedLanguage = config.resolvedLanguage === 'en' ? 'en' : 'zh'
     // Keep the default true when the backend omits/does not return trayEnabled (matches the backend loadConfig fallback)
     appConfig.trayEnabled = config.trayEnabled !== false
+    // API-route mode: default false when the backend omits the field (legacy backend)
+    appConfig.apiRouteMode = config.apiRouteMode === true
     // Backend field missing / old backend not returning it → undefined → default collapsed
     // (matching the backend loadConfig preset true fallback); only an explicit false
     // (user's expanded preference) yields false; on success sync back to localStorage

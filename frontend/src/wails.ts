@@ -17,7 +17,7 @@ function app(): any {
 
 // ─── Config ─────────────────────────────────────────────────────
 
-export async function getConfig(): Promise<{ theme: string; llamaCppDir: string; modelsDir: string; llamaCppDownloadDir?: string; modelDownloadDir?: string; downloadSource: string; language: string; resolvedLanguage: 'zh' | 'en'; trayEnabled: boolean; sidebarCollapsed?: boolean }> {
+export async function getConfig(): Promise<{ theme: string; llamaCppDir: string; modelsDir: string; llamaCppDownloadDir?: string; modelDownloadDir?: string; downloadSource: string; language: string; resolvedLanguage: 'zh' | 'en'; trayEnabled: boolean; apiRouteMode?: boolean; sidebarCollapsed?: boolean }> {
   return app().GetConfig()
 }
 
@@ -35,6 +35,16 @@ export async function setSidebarCollapsed(collapsed: boolean): Promise<void> {
 // be started twice in one process: once disabled it stays disabled until the app restarts.
 export async function setTrayEnabled(enabled: boolean): Promise<void> {
   return app().SetTrayEnabled(enabled)
+}
+
+// Toggle API-route (headless) mode (settings item rendered on Windows only). Enabling
+// persists the preference, hands the running llama-server over, relaunches the app in
+// headless mode (tray + llama-server only, no GUI/WebView2) and quits — the service
+// keeps serving the OpenAI API without interruption. From headless, the tray "Show Main
+// Window" item returns to GUI mode. On success this call never resolves visibly in the
+// GUI (the app quits); failures reject for inline error display.
+export async function setApiRouteMode(enabled: boolean): Promise<void> {
+  return app().SetApiRouteMode(enabled)
 }
 
 // Set the UI language preference ("zh" | "en" | "auto"); the backend returns the effective

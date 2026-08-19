@@ -3071,7 +3071,12 @@ type appConfig struct {
 	Language            string                 `json:"language"`         // language preference: zh / en / auto (empty or invalid falls back to auto)
 	TrayEnabled         bool                   `json:"trayEnabled"`      // Windows system tray toggle, default true
 	SidebarCollapsed    bool                   `json:"sidebarCollapsed"` // sidebar collapsed state, default true (collapsed)
-	DownloadTasks       []PersistedDlTask      `json:"downloadTasks,omitempty"`
+	// ApiRouteMode is the API-route (headless) mode toggle, default false:
+	// when true, the next app start skips the GUI and runs as tray +
+	// llama-server only (Windows; see core/headless.go). False is the Go zero
+	// value, so old configs missing the field fall back to false naturally.
+	ApiRouteMode  bool              `json:"apiRouteMode"`
+	DownloadTasks []PersistedDlTask `json:"downloadTasks,omitempty"`
 }
 
 // PersistedDlTask is the persisted form of download queue tasks (written to
@@ -3308,8 +3313,11 @@ func loadConfig() {
 	// System tray toggle: keep the pre-populated default true when the field is
 	// missing; only an explicit false disables it (tray stays on after old
 	// config upgrades, matching 4aacac2's unconditional tray behavior).
+	// API-route mode: Go zero value false is already the intended default for
+	// configs missing the field, no pre-population needed (unlike trayEnabled).
 	configMu.Lock()
 	trayEnabled = cfg.TrayEnabled
+	apiRouteMode = cfg.ApiRouteMode
 	configMu.Unlock()
 
 	// Sidebar collapsed state: keep the pre-populated default true when the
@@ -3400,6 +3408,24 @@ var configMu sync.Mutex
 // true} pre-population in loadConfig).
 var trayEnabled = true
 
+// apiRouteMode indicates whether API-route (headless) mode is enabled:
+// when true, the next app start skips the GUI (WebView2) and runs as the Go
+// backend + system tray + llama-server only, keeping the OpenAI API alive
+// with a much smaller footprint (Windows only, see core/headless.go).
+// Default false; guarded by configMu and persisted to the config file's
+// apiRouteMode field. Old configs missing the field fall back to false
+// (Go zero value, no pre-population needed).
+var apiRouteMode bool
+
+// ApiRouteMode returns the current API-route (headless) mode preference
+// (concurrency-safe, guarded by configMu). Used by ShouldRunHeadless when a
+// process starts without an explicit --headless/--gui flag.
+func ApiRouteMode() bool {
+	configMu.Lock()
+	defer configMu.Unlock()
+	return apiRouteMode
+}
+
 // currentSidebarCollapsed indicates whether the sidebar is collapsed
 // (icon-only rail), default true (collapsed); guarded by configMu and
 // persisted to the config file's sidebarCollapsed field. When an old config
@@ -3463,6 +3489,7 @@ func saveConfig() {
 
 	configMu.Lock()
 	sidebarCollapsed := currentSidebarCollapsed
+	apiRoute := apiRouteMode
 	configMu.Unlock()
 
 	// Lock-ordering iron rule: inside saveConfig, dlTasksMu must be the last
@@ -3502,6 +3529,7 @@ func saveConfig() {
 		Language:            lang,
 		TrayEnabled:         tray,
 		SidebarCollapsed:    sidebarCollapsed,
+		ApiRouteMode:        apiRoute,
 		DownloadTasks:       persistedTasks,
 	}
 	data, err := json.MarshalIndent(cfg, "", "  ")

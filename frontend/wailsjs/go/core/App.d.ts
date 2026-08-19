@@ -79,6 +79,8 @@ export function SaveServerConfig(arg1:core.ServerConfig):Promise<void>;
 
 export function SearchDownloads(arg1:string,arg2:string):Promise<Array<core.HFSearchResult>>;
 
+export function SetApiRouteMode(arg1:boolean):Promise<void>;
+
 export function SetDownloadSource(arg1:string):Promise<void>;
 
 export function SetLanguage(arg1:string):Promise<string>;

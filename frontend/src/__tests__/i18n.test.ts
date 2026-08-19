@@ -1,9 +1,15 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { locale, setLocale, t } from '../lib/i18n'
+import { locale, setLocale, t, messages } from '../lib/i18n'
 
 describe('lib/i18n', () => {
   beforeEach(() => {
     setLocale('zh')
+  })
+
+  it('zh and en dictionaries stay symmetric (same key set)', () => {
+    const zhKeys = Object.keys(messages.zh).sort()
+    const enKeys = Object.keys(messages.en).sort()
+    expect(enKeys).toEqual(zhKeys)
   })
 
   it('t gets current locale dict value (zh)', () => {
@@ -13,6 +19,17 @@ describe('lib/i18n', () => {
 
   it('t returns key as-is when missing', () => {
     expect(t('no.such.key')).toBe('no.such.key')
+  })
+
+  it('apiRouteMode settings keys render in both locales and mention the tray return path', () => {
+    setLocale('zh')
+    expect(t('settings.apiRouteMode')).toBe('API 路由模式')
+    expect(t('settings.apiRouteModeDesc')).toContain('显示主窗口')
+    expect(t('settings.apiRouteModeError')).not.toBe('settings.apiRouteModeError')
+    setLocale('en')
+    expect(t('settings.apiRouteMode')).toBe('API Route Mode')
+    expect(t('settings.apiRouteModeDesc')).toContain('Show Main Window')
+    expect(t('settings.apiRouteModeError')).not.toBe('settings.apiRouteModeError')
   })
 
   it('t supports {name} placeholder interpolation', () => {

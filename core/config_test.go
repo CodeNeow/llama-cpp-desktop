@@ -47,6 +47,7 @@ func saveConfigState(t *testing.T) (origModels map[string]ModelConfig, origServe
 	origTheme = currentTheme
 	origTray := trayEnabled
 	origSidebarCollapsed := currentSidebarCollapsed
+	origApiRouteMode := apiRouteMode
 	configMu.Unlock()
 	customLlamaCppMu.Lock()
 	origDir = customLlamaCppDir
@@ -74,6 +75,7 @@ func saveConfigState(t *testing.T) (origModels map[string]ModelConfig, origServe
 		currentTheme = origTheme
 		trayEnabled = origTray
 		currentSidebarCollapsed = origSidebarCollapsed
+		apiRouteMode = origApiRouteMode
 		configMu.Unlock()
 		customLlamaCppMu.Lock()
 		customLlamaCppDir = origDir

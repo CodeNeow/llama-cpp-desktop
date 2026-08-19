@@ -16,3 +16,9 @@ func InitTray(_ context.Context, _ []byte) {}
 
 // QuitTray is a no-op stub on non-Windows platforms.
 func QuitTray() {}
+
+// InitHeadlessTray is a no-op stub on non-Windows platforms: headless
+// (API-route) mode is Windows-only (ShouldRunHeadless always returns false
+// elsewhere), so this never gets called; kept for cross-platform build
+// signature consistency.
+func InitHeadlessTray(_ []byte, _, _ func()) {}

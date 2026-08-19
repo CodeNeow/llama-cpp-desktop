@@ -20,12 +20,18 @@ func NewApp() *App {
 }
 
 // Startup is called by Wails after the runtime is ready; it loads persisted
-// config and applies the saved theme to the window background.
+// config, adopts a handed-over llama-server (when returning from headless
+// API-route mode) and applies the saved theme to the window background.
 func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
 
 	// Load persisted config on startup
 	loadConfig()
+
+	// Adopt a healthy llama-server handed over by a headless predecessor
+	// (serverRunning=true, serverCmd=nil, adoptedPid set); a stale handover
+	// record is deleted. GUI never auto-starts the service.
+	adoptOrCleanHandover()
 
 	// Start the background monitor sampler (CPU / memory / GPU / TPS)
 	StartMonitorSampler()
@@ -44,7 +50,11 @@ func (a *App) Startup(ctx context.Context) {
 }
 
 // Shutdown is called by Wails on application exit; it persists the download
-// queue, stops llama-server and cancels all in-flight downloads.
+// queue, stops llama-server and cancels all in-flight downloads — except
+// during a mode-switch restart (GUI → headless via SetApiRouteMode), where
+// the relaunched process adopts the running llama-server via the handover
+// file and in-flight downloads continue from the persisted queue, so both the
+// service stop and the download cancels are skipped.
 func (a *App) Shutdown(ctx context.Context) {
 	// Persist the download task queue before cancelling anything (#12): save
 	// before cancelling downloads to guarantee the latest state is restored
@@ -52,16 +62,30 @@ func (a *App) Shutdown(ctx context.Context) {
 	// held here.
 	saveConfig()
 
+	if switchRestartPending.Load() {
+		// Mode-switch restart: the successor process (already relaunched)
+		// adopts llama-server via the handover file; keep the service and the
+		// download goroutines alive until this process exits.
+		log.Println("[INFO] Llama Desktop stopping for mode switch; llama-server keeps running")
+		return
+	}
+
 	// Stop running llama-server if any (#3): take a local copy under
 	// serverMu, then Signal the copy outside the lock, avoiding data races
-	// with concurrent start/stop during app exit.
-	serverMu.Lock()
-	running := serverRunning
-	cmd := serverCmd
-	serverMu.Unlock()
-	if running && cmd != nil {
-		addServerLog("[INFO] Stopping llama-server on shutdown...")
-		cmd.Process.Signal(osInterrupt)
+	// with concurrent start/stop during app exit. An adopted server (handed
+	// over from headless mode: cmd nil, adoptedPid set) is killed by pid and
+	// its handover record removed.
+	if stopAdoptedServerIfAny() {
+		// adopted server stopped and handover record removed
+	} else {
+		serverMu.Lock()
+		running := serverRunning
+		cmd := serverCmd
+		serverMu.Unlock()
+		if running && cmd != nil {
+			addServerLog("[INFO] Stopping llama-server on shutdown...")
+			cmd.Process.Signal(osInterrupt)
+		}
 	}
 
 	// Cancel ongoing llama.cpp download (#3): downloadCancel is guarded by
@@ -107,6 +131,7 @@ func (a *App) GetConfig() map[string]interface{} {
 	configMu.Lock()
 	theme := currentTheme
 	tray := trayEnabled
+	apiRoute := apiRouteMode
 	sidebarCollapsed := currentSidebarCollapsed
 	configMu.Unlock()
 
@@ -131,6 +156,7 @@ func (a *App) GetConfig() map[string]interface{} {
 		"language":            lang,                // raw language preference: zh / en / auto
 		"resolvedLanguage":    effectiveLanguage(), // effective language: zh / en (auto follows system detection)
 		"trayEnabled":         tray,                // Windows system tray toggle
+		"apiRouteMode":        apiRoute,            // API-route (headless) mode toggle
 		"sidebarCollapsed":    sidebarCollapsed,    // sidebar collapsed state (default true = collapsed)
 	}
 }
@@ -246,6 +272,46 @@ func (a *App) SetTrayEnabled(enabled bool) error {
 	}
 	saveConfig()
 	log.Printf("[INFO] trayEnabled set to %v", enabled)
+	return nil
+}
+
+// SetApiRouteMode toggles API-route (headless) mode. Enabling persists the
+// preference, hands a running llama-server over to the successor process
+// (handover file), relaunches the app with --headless, marks the upcoming
+// shutdown as a mode switch (Shutdown then keeps the service and downloads
+// alive) and quits the GUI — the WebView2 process tree is released and only
+// the Go backend + tray + llama-server remain. Disabling just persists the
+// flag: the GUI toggle always starts from false (the headless "Show Main
+// Window" path resets it itself before relaunching the GUI).
+func (a *App) SetApiRouteMode(enabled bool) error {
+	configMu.Lock()
+	apiRouteMode = enabled
+	configMu.Unlock()
+	saveConfig()
+	log.Printf("[INFO] apiRouteMode set to %v", enabled)
+
+	if !enabled {
+		return nil
+	}
+
+	// Hand the running llama-server over so the headless successor adopts it
+	// without an interruption; no file is written when no server runs.
+	if err := writeServerHandover(); err != nil {
+		log.Printf("[WARN] %v", err)
+	}
+
+	if err := relaunchSelf("--headless"); err != nil {
+		// Relaunch failed: report and keep the GUI running as before (the
+		// preference stays persisted; the switch-restart marker is only set
+		// after a successful relaunch, so a later shutdown stops the server
+		// normally).
+		return fmt.Errorf(tr("拉起后台模式失败: %w", "failed to relaunch in headless mode: %w"), err)
+	}
+
+	switchRestartPending.Store(true)
+	if a.ctx != nil {
+		wailsRuntime.Quit(a.ctx)
+	}
 	return nil
 }
 

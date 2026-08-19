@@ -154,6 +154,10 @@ export function SearchDownloads(arg1, arg2) {
   return window['go']['core']['App']['SearchDownloads'](arg1, arg2);
 }
 
+export function SetApiRouteMode(arg1) {
+  return window['go']['core']['App']['SetApiRouteMode'](arg1);
+}
+
 export function SetDownloadSource(arg1) {
   return window['go']['core']['App']['SetDownloadSource'](arg1);
 }

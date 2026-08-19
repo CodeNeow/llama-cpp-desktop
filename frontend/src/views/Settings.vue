@@ -226,6 +226,36 @@
       <p v-if="trayError" class="source-error">{{ trayError }}</p>
     </section>
 
+    <!-- API route mode (Windows only): restart into headless tray+server mode -->
+    <section v-if="isWindows" class="settings-section">
+      <h2 class="section-title">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+        </svg>
+        {{ t('settings.apiRouteMode') }}
+      </h2>
+      <div class="setting-row">
+        <div class="setting-info">
+          <span class="setting-label">{{ t('settings.apiRouteMode') }}</span>
+          <span class="setting-desc">{{ t('settings.apiRouteModeDesc') }}</span>
+        </div>
+        <div class="theme-toggle" @click="toggleApiRouteMode">
+          <div class="toggle-track" :class="{ light: appConfig.apiRouteMode }">
+            <div class="toggle-thumb">
+              <svg v-if="appConfig.apiRouteMode" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+              <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </div>
+          </div>
+          <span class="toggle-label">{{ appConfig.apiRouteMode ? t('settings.on') : t('settings.off') }}</span>
+        </div>
+      </div>
+      <p v-if="apiRouteError" class="source-error">{{ apiRouteError }}</p>
+    </section>
+
     <!-- Updates -->
     <section class="settings-section">
       <h2 class="section-title">
@@ -255,7 +285,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { appConfig, setTheme, loadConfig, setDownloadSource as applyDownloadSource, setLanguage as applyLanguage, setServerAccessMode as applyServerAccessMode, setTrayEnabled as applyTrayEnabled } from '../store'
 import { updateState, checkForUpdate } from '../lib/update'
-import { getAppVersion, getOS, getServerConfig, browseLlamaCppDownloadDir, browseModelDownloadDir } from '../wails'
+import { getAppVersion, getOS, getServerConfig, browseLlamaCppDownloadDir, browseModelDownloadDir, setApiRouteMode } from '../wails'
 import { t } from '../lib/i18n'
 
 const currentTheme = computed({
@@ -345,6 +375,26 @@ async function toggleTray() {
     trayError.value = t('settings.trayError')
   } finally {
     traySwitching.value = false
+  }
+}
+
+// API-route mode toggle: rendered on Windows only (backend gates headless to Windows).
+// Enabling relaunches the app headless and quits the GUI without stopping llama-server;
+// in GUI mode the state is always off, so this effectively only ever enables. On success
+// the process quits (no visible state change to roll back); failures surface inline.
+const apiRouteError = ref('')
+const apiRouteSwitching = ref(false)
+
+async function toggleApiRouteMode() {
+  if (apiRouteSwitching.value) return
+  apiRouteSwitching.value = true
+  apiRouteError.value = ''
+  try {
+    await setApiRouteMode(!appConfig.apiRouteMode)
+  } catch {
+    apiRouteError.value = t('settings.apiRouteModeError')
+  } finally {
+    apiRouteSwitching.value = false
   }
 }
 

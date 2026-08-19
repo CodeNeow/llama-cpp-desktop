@@ -36,6 +36,7 @@ describe('store', () => {
     appConfig.language = 'auto'
     appConfig.resolvedLanguage = 'zh'
     appConfig.trayEnabled = true
+    appConfig.apiRouteMode = false
     // reset sidebar collapsed state to avoid cross-test pollution (readStoredSidebarCollapsed runs at module
     // load time; explicitly reset to default collapsed state so each test starts collapsed)
     appConfig.sidebarCollapsed = true
@@ -114,6 +115,18 @@ describe('store', () => {
     await loadConfig()
 
     expect(appConfig.trayEnabled).toBe(true)
+  })
+
+  it('loadConfig falls back to false when backend omits apiRouteMode, reads explicit true', async () => {
+    // legacy backend/missing field: apiRouteMode stays false (GUI never starts in headless mode)
+    mockGetConfig.mockResolvedValue({ theme: 'dark', llamaCppDir: '', modelsDir: '', downloadSource: '', language: 'auto', resolvedLanguage: 'zh', trayEnabled: true } as any)
+    await loadConfig()
+    expect(appConfig.apiRouteMode).toBe(false)
+
+    // explicit true from the backend is honored
+    mockGetConfig.mockResolvedValue({ theme: 'dark', llamaCppDir: '', modelsDir: '', downloadSource: '', language: 'auto', resolvedLanguage: 'zh', trayEnabled: true, apiRouteMode: true })
+    await loadConfig()
+    expect(appConfig.apiRouteMode).toBe(true)
   })
 
   it('loadConfig failure still marks loaded, retains default theme', async () => {
