@@ -2,6 +2,40 @@
 
 更新日志的**权威来源**（见 `AGENTS.md`「版本发布」）：发版时先在此新增版本条目（含日期与逐提交核心改动），`git tag` 注解消息与 GitHub Release 正文均从该条目复制，保持一致。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本。
 
+## [v0.3.0] - 2026-08-19
+
+## English
+
+v0.3.0: Runtime Environment page rename, llama.cpp component-level status, sidebar reordering, and stop button fix (4 commits since v0.2.9, per-commit core changes):
+
+1. `bd46b08` feat(app): rename the page to Runtime Environment and split llama.cpp into per-component status
+   - Core: renamed `/libraries` route and view to `/runtime` (name: `Runtime`, meta title '运行环境', layers icon retained). Added `LlamaCppInfo.cudartInstalled` (bool, JSON field, backward compatible) and `detectCudartRuntime(dir string) bool` (glob for cudart*.dll / cublas*.dll on Windows, false on other platforms). No new bindings; wails.ts unchanged; wailsjs regenerated on build. Frontend: new pure helpers in lib/llamaDownload.ts: `isCudartAsset(name)` and `packageRows(fileName, downloaded, total, mainBytes)` returning done/active/progress for main program and CUDA runtime, omitting cudart row if absent to avoid false Vulkan/CPU build waiting lines. Runtime.vue uses `watch(fileName)` to snapshot `mainBytes` when switching to cudart package, then cudart progress = `(Downloaded-mainBytes)/(Total-mainBytes)` clamped 0-100. Extraction stage shows "Extracting" on the active row. Pause/Resume/Stop/Retry logic unchanged. Component keys: `runtime.compMain`, `runtime.compCudart`, `runtime.compCudartDesc`, `runtime.pkgMain` / `runtime.pkgCudart`, status badge styles retained. Tests: backend `TestDetectCudartRuntime` (temp dir with cudart64_12.dll → true; cublas64_12.dll → true; only llama-server.exe → false; empty dir → false). Frontend: llamaDownload.test.ts adds `isCudartAsset` / `packageRows` cases (single package, two packages in progress, two packages main done, divide-by-zero protection), i18n test block renamed to runtime keys + new component keys bilingual assertions.
+
+2. `9533d90` fix(app): stop button should reset paused state to idle, and move Downloads after Runtime
+   - Core: `core/engine.go` lines ~1515-1529: stop handler previously called `cancel()` but didn't reset status from "paused" to "idle", so the UI kept showing "Resume" button. Fixed condition: `if downloadState.Status != "paused" && downloadState.Status != "idle"` allows reset. Frontend: no changes (DownloadButton.vue handles pause/stop via `stopDownload()` → `downloadCancel()` → context cancellation → status reset logic).
+
+3. `a83d07f` feat(frontend): reorder sidebar navigation to place API route above Chat
+   - Frontend: `Sidebar.vue` navItems array: API route (`/api`) moved before Chat (`/chat`), keeping Downloads, Models, API, Settings in original order. New order: Home → Runtime → Downloads → API → Chat → Models → Settings.
+
+4. `08f1188` refactor(frontend): reorder sidebar navigation for better user flow
+   - Frontend: Reordered navItems to follow natural user workflow: Chat page moved before Downloads, API route moved after Models (service start before chat). New sidebar order: Home → Runtime → Chat → Downloads → Models → API → Settings. Rationale: User workflow is check system status → run environment → chat → download models → manage models → start service → configure.
+
+## 中文
+
+v0.3.0: 运行环境页重命名、llama.cpp 组件级状态、侧边栏重排与停止按钮修复（v0.2.9 以来 4 个提交，按提交逐一说明核心改动）：
+
+1. `bd46b08` feat(app): 重命名页面为运行环境并拆分 llama.cpp 为组件级状态
+   - 核心：路由 `/libraries` 与视图重命名为 `/runtime`（name: `Runtime`，meta title '运行环境'，layers 图标保留）。新增 `LlamaCppInfo.cudartInstalled`（bool，JSON 字段，向后兼容）与 `detectCudartRuntime(dir string) bool`（Windows 下 glob cudart*.dll / cublas*.dll，其他平台 false）。无新绑定；wails.ts 不变；wailsjs 由构建自动再生成。前端：lib/llamaDownload.ts 新增纯函数 `isCudartAsset(name)` 与 `packageRows(fileName, downloaded, total, mainBytes)` 返回主程序和 CUDA 运行时的 done/active/progress，若 cudart 不存在则不显示等待行。Runtime.vue 用 `watch(fileName)` 切换到 cudart 包时快照 `mainBytes`，此后 cudart 进度 = `(Downloaded-mainBytes)/(Total-mainBytes)` 钳 0-100。解压阶段在当前活动行显示「正在解压」。暂停/继续/停止/重试逻辑不变。组件键：`runtime.compMain`、`runtime.compCudart`、`runtime.compCudartDesc`、`runtime.pkgMain` / `runtime.pkgCudart`，状态徽标样式保留。测试：后端 `TestDetectCudartRuntime`（临时目录含 cudart64_12.dll → true；含 cublas64_12.dll → true；仅 llama-server.exe → false；空目录 → false）。前端：llamaDownload.test.ts 新增 `isCudartAsset` / `packageRows` 用例（单包、双包进行中、双包主包完成、除零保护），i18n 测试块重命名为 runtime 键 + 新组件键双语断言。
+
+2. `9533d90` fix(app): 停止按钮应重置暂停状态为 idle，并将 Downloads 移动到 Runtime 之后
+   - 核心：`core/engine.go` 行 ~1515-1529：停止处理器此前调用 `cancel()` 但未重置状态从 "paused" 到 "idle"，UI 仍显示「Resume」按钮。修复条件：`if downloadState.Status != "paused" && downloadState.Status != "idle"`，允许重置。前端：无改动（DownloadButton.vue 通过 `stopDownload()` → `downloadCancel()` → context cancellation → status reset 处理暂停/停止逻辑）。
+
+3. `a83d07f` feat(frontend): 重排侧边栏导航将 API 路由置于 Chat 之前
+   - 前端：`Sidebar.vue` navItems 数组：API 路由（`/api`）移动到 Chat（`/chat`）之前，保持 Downloads、Models、API、Settings 原有序列。新顺序：Home → Runtime → Downloads → API → Chat → Models → Settings。
+
+4. `08f1188` refactor(frontend): 重排侧边栏导航以符合更好的用户流程
+   - 前端：reordered navItems 以遵循自然用户流程：Chat 页移动到 Downloads 之前，API 路由移动到 Models 之后（服务启动在聊天之前）。新侧边栏顺序：Home → Runtime → Chat → Downloads → Models → API → Settings。理由：用户流程为检查系统状态 → 运行环境 → 对话 → 下载模型 → 管理模型 → 启动服务 → 配置。
+
 ## [v0.2.9] - 2026-08-18
 
 ## English
