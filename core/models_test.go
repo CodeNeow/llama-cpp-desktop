@@ -164,6 +164,28 @@ func TestScanModelsDirGGUFMeta(t *testing.T) {
 	}
 }
 
+// TestScanModelsDirGGUFMetaRepoIDName verifies a general.name that embeds the full
+// source repo id ("org/model", written by some converters) is trimmed to the model
+// segment.
+func TestScanModelsDirGGUFMetaRepoIDName(t *testing.T) {
+	base := t.TempDir()
+	dir := filepath.Join(base, "unsloth", "GLM-4.7-Flash-REAP-23B-A3B-GGUF")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	writeTempGGUF(t, dir, "GLM-4.7-Flash-REAP-23B-A3B-Q4_K_M.gguf", buildGGUF(3,
+		strKV("general.name", "cerebras/GLM-4.7-Flash-REAP-23B-A3B"),
+	))
+
+	models := scanModelsDir(base)
+	if len(models) != 1 {
+		t.Fatalf("scanned %d models, want 1", len(models))
+	}
+	if models[0].Name != "GLM-4.7-Flash-REAP-23B-A3B" {
+		t.Errorf("Name = %q, want GLM-4.7-Flash-REAP-23B-A3B (repo id prefix trimmed)", models[0].Name)
+	}
+}
+
 // TestScanModelsDirQuantFallback verifies quantization is inferred from the directory
 // name or filename when GGUF metadata is absent.
 func TestScanModelsDirQuantFallback(t *testing.T) {

@@ -1024,6 +1024,11 @@ func buildModelInfo(path, author, fallbackName string) ModelInfo {
 	if metadata := readGGUFMeta(path); metadata != nil {
 		// Only use GGUF name if it looks readable (not a hash)
 		if n := metadata["name"]; n != "" && isReadableName(n) {
+			// Some converters embed the full source repo id ("org/model")
+			// into general.name; display only the model segment.
+			if i := strings.LastIndex(n, "/"); i >= 0 && i+1 < len(n) {
+				n = n[i+1:]
+			}
 			model.Name = n
 		}
 		if a := metadata["arch"]; a != "" {
