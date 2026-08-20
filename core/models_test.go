@@ -166,14 +166,15 @@ func TestScanModelsDirGGUFMeta(t *testing.T) {
 
 // TestScanModelsDirGGUFMetaRepoIDName verifies a general.name that embeds the full
 // source repo id ("org/model", written by some converters) is trimmed to the model
-// segment.
+// segment. The generic file name is not a candidate here (the metadata name does
+// not prefix it), so the trimmed metadata name is displayed as-is.
 func TestScanModelsDirGGUFMetaRepoIDName(t *testing.T) {
 	base := t.TempDir()
 	dir := filepath.Join(base, "unsloth", "GLM-4.7-Flash-REAP-23B-A3B-GGUF")
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	writeTempGGUF(t, dir, "GLM-4.7-Flash-REAP-23B-A3B-Q4_K_M.gguf", buildGGUF(3,
+	writeTempGGUF(t, dir, "model-q4_k_m.gguf", buildGGUF(3,
 		strKV("general.name", "cerebras/GLM-4.7-Flash-REAP-23B-A3B"),
 	))
 
@@ -183,6 +184,46 @@ func TestScanModelsDirGGUFMetaRepoIDName(t *testing.T) {
 	}
 	if models[0].Name != "GLM-4.7-Flash-REAP-23B-A3B" {
 		t.Errorf("Name = %q, want GLM-4.7-Flash-REAP-23B-A3B (repo id prefix trimmed)", models[0].Name)
+	}
+}
+
+// TestScanModelsDirGGUFMetaBaseNamePrefix verifies that when the metadata name is
+// only a prefix of the main file name (unsloth writes the bare base-model name
+// into general.name for every quant variant in a repo, e.g. "Qwen3.5-9B" for
+// Qwen3.5-9B-UD-Q4_K_XL.gguf), the more specific file name is displayed. A
+// non-separator boundary ("Qwen3.5-9Bv2") keeps the metadata name.
+func TestScanModelsDirGGUFMetaBaseNamePrefix(t *testing.T) {
+	base := t.TempDir()
+	cases := []struct {
+		author, file, meta, want string
+	}{
+		{"unsloth", "Qwen3.5-9B-UD-Q4_K_XL.gguf", "Qwen3.5-9B", "Qwen3.5-9B-UD-Q4_K_XL"},
+		{"other", "Qwen3.5-9Bv2.gguf", "Qwen3.5-9B", "Qwen3.5-9B"},
+	}
+	for _, tc := range cases {
+		dir := filepath.Join(base, tc.author, "Qwen3.5-9B-GGUF")
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		writeTempGGUF(t, dir, tc.file, buildGGUF(3, strKV("general.name", tc.meta)))
+	}
+
+	models := scanModelsDir(base)
+	if len(models) != len(cases) {
+		t.Fatalf("scanned %d models, want %d", len(models), len(cases))
+	}
+	byFile := make(map[string]ModelInfo, len(models))
+	for _, m := range models {
+		byFile[filepath.Base(m.Path)] = m
+	}
+	for _, tc := range cases {
+		m, ok := byFile[tc.file]
+		if !ok {
+			t.Fatalf("model for %s not scanned", tc.file)
+		}
+		if m.Name != tc.want {
+			t.Errorf("Name for %s = %q, want %q", tc.file, m.Name, tc.want)
+		}
 	}
 }
 

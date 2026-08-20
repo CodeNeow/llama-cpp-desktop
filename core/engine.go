@@ -1038,6 +1038,13 @@ func buildModelInfo(path, author, fallbackName string) ModelInfo {
 			model.Quantization = q
 		}
 	}
+	// The main file name identifies the actual variant on disk when the
+	// resolved name is only its prefix (unsloth writes the bare base-model
+	// name into general.name for every quant in a repo, e.g. "Qwen3.5-9B"
+	// for Qwen3.5-9B-UD-Q4_K_XL.gguf).
+	if fileBase := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)); preferFileNameVariant(model.Name, fileBase) {
+		model.Name = fileBase
+	}
 	// Fallback quantization from fallbackName, then from file name
 	if model.Quantization == "" {
 		model.Quantization = guessQuantFromName(fallbackName)
@@ -1050,6 +1057,23 @@ func buildModelInfo(path, author, fallbackName string) ModelInfo {
 		model.Architecture = guessArchFromName(fallbackName + " " + author)
 	}
 	return model
+}
+
+// preferFileNameVariant reports whether fileBase carries strictly more
+// information than name: name is a proper prefix of fileBase and the next
+// character is a separator ("-" or "_"). This catches converters that write
+// the bare base-model name ("Qwen3.5-9B") while the file name carries the
+// quant variant ("Qwen3.5-9B-UD-Q4_K_XL"); generic file names ("model.gguf")
+// never qualify because name does not prefix them.
+func preferFileNameVariant(name, fileBase string) bool {
+	if len(name) == 0 || len(fileBase) <= len(name) {
+		return false
+	}
+	if !strings.EqualFold(fileBase[:len(name)], name) {
+		return false
+	}
+	c := fileBase[len(name)]
+	return c == '-' || c == '_'
 }
 
 // isReadableName returns true if the name doesn't look like a hash/UUID.
