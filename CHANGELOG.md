@@ -2,6 +2,46 @@
 
 更新日志的**权威来源**（见 `AGENTS.md`「版本发布」）：发版时先在此新增版本条目（含日期与逐提交核心改动），`git tag` 注解消息与 GitHub Release 正文均从该条目复制，保持一致。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本。
 
+## [v0.3.1] - 2026-08-21
+
+## English
+
+v0.3.1: hardware-aware one-click auto-tune (MoE cpu-moe plans, 128k contexts), model display-name fixes, paused Ubuntu builds, and the GPL v3 license switch (7 commits since v0.3.0, per-commit core changes):
+
+1. `488b8e9` docs: sync architecture table and READMEs with the current codebase
+   - AGENTS.md: overview mentions API-route (headless) mode; architecture table adds core/headless.go, core/handover.go and the singleinstance / headlessalert / installer_launch / diskusage / devbuild / locale platform pairs; the views row adds Runtime plus the sidebar order; the lib row adds selectOptions.ts / dockSpace.ts. READMEs move the llama.cpp status and download entry point from System Info to the Runtime Environment page and document the apiRouteMode and download-path config fields; CONTRIBUTING bumps Go to 1.25+.
+2. `ffe6132` fix(models): trim repo-id prefix from GGUF metadata model names
+   - buildModelInfo trims the "org/" segment when general.name embeds the full source repo id (e.g. "cerebras/GLM-4.7-Flash-REAP-23B-A3B" written by the converter), so the Models page shows only the model name; preset aliases shorten accordingly. Test: TestScanModelsDirGGUFMetaRepoIDName.
+3. `5ef2010` fix(models): prefer the file name when the GGUF metadata name is only its prefix
+   - Unsloth-style converters write the bare base-model name ("Qwen3.5-9B") into general.name for every quant variant in a repo; when the resolved name is a proper prefix of the main file name at a "-"/"_" boundary, the more specific file name is displayed instead (Qwen3.5-9B-UD-Q4_K_XL). Generic file names ("model.gguf") never qualify; the chat model picker follows via preset aliases. Tests: TestScanModelsDirGGUFMetaBaseNamePrefix (prefix + non-separator boundary).
+4. `e9cbf29` feat(models): one-click hardware-aware auto-tune for per-model inference params
+   - New core/autotune.go: readGGUFModelMetrics parses the real GGUF header (block count, GQA/MLA/hybrid-attention KV geometry, trained context) with a correct GGUF v3 array skipper (u64 counts); the pure deterministic tuneModelConfig planner picks gpuLayers / ctxSize / threads / flashAttn / cache types against the hardware snapshot (full offload f16 → q8_0 upgrade on NVIDIA → partial offload bounded by VRAM and RAM → CPU-only). New binding TuneModelConfig persists through SaveModelConfig validation; the Models page gains a per-card sparkle button with inline bilingual feedback. 12 new focused tests incl. preset-integration.
+5. `5a5b0d6` fix(models): MoE-aware auto-tune (cpu-moe plan), 128k context ladder, icon spacing
+   - readGGUFTensorSplit walks the tensor info table for an exact MoE-expert vs dense byte split (GLM-23B-A3B: 89.2% expert); new cpu-moe decision step keeps experts in system RAM and dense weights + KV on the GPU with auto threads — measured 26.7 t/s at ctx 131072 on RTX 5070 vs 22.8 t/s for the previous partial-offload plan; context ladder extended to 131072 with a 0.92 budget cap on ≥65536 tiers (tight 128k plans OOM at load); Models card action icons grouped adjacently (two auto margins previously split the row).
+6. `44309b3` chore(build): temporarily disable the Ubuntu build and release artifacts
+   - CI build-linux (three .deb packages) gets if: false until Ubuntu support lands; the release job drops build-linux from needs and validates 1 artifact (Windows exe) instead of 4; frontend / backend check jobs unchanged.
+7. `2d1b20d` docs: switch the project license from MIT to GPL v3
+   - LICENSE replaced with the canonical GNU GPL v3 text (gnu.org); README badges and license sections updated in both languages; third-party dependency license metadata and test fixtures untouched.
+
+## 中文
+
+v0.3.1:硬件感知的一键调优(MoE cpu-moe 方案、128k 上下文)、模型显示名修复、暂停 Ubuntu 构建、切换 GPL v3 协议(v0.3.0 以来 7 个提交,按提交逐一说明核心改动):
+
+1. `488b8e9` docs: 同步架构表与 README 至当前代码
+   - AGENTS.md:概览补充 API 路由(无头)模式;架构表新增 core/headless.go、core/handover.go 及 singleinstance / headlessalert / installer_launch / diskusage / devbuild / locale 平台文件对;视图行补充 Runtime 页与侧边栏顺序;lib 行补充 selectOptions.ts / dockSpace.ts。README 将 llama.cpp 状态与下载入口从系统信息页移至运行环境页,并补记 apiRouteMode 与下载路径配置字段;CONTRIBUTING 的 Go 版本升至 1.25+。
+2. `ffe6132` fix(models): 裁剪 GGUF 元数据模型名中的仓库 ID 前缀
+   - buildModelInfo 在 general.name 内嵌完整源仓库 ID(如转换工具写入的 "cerebras/GLM-4.7-Flash-REAP-23B-A3B")时裁掉 "org/" 段,模型管理页只显示模型名;预设别名同步变短。测试:TestScanModelsDirGGUFMetaRepoIDName。
+3. `5ef2010` fix(models): 元数据名仅为文件名前缀时优先显示文件名
+   - unsloth 类转换工具对仓库内所有量化变体写入同一个基础模型名("Qwen3.5-9B");当解析出的名字是主文件名在 "-"/"_" 边界处的严格前缀时,改显更具体的文件名(Qwen3.5-9B-UD-Q4_K_XL)。通用文件名("model.gguf")不受影响;聊天选择器的模型 ID 经预设别名同步。测试:TestScanModelsDirGGUFMetaBaseNamePrefix(前缀与无分隔符边界)。
+4. `e9cbf29` feat(models): 按硬件一键调优逐模型推理参数
+   - 新增 core/autotune.go:readGGUFModelMetrics 解析真实 GGUF 头(层数、GQA/MLA/混合注意力 KV 几何、训练上下文),数组跳过器按 GGUF v3 实际的 u64 计数实现;纯函数 tuneModelConfig 依据硬件快照规划 gpuLayers / ctxSize / threads / flashAttn / 缓存类型(全量卸载 f16 → NVIDIA 上 q8_0 升级 → 受显存与内存双重约束的部分卸载 → 纯 CPU)。新绑定 TuneModelConfig 经 SaveModelConfig 校验持久化;模型管理页每卡新增 ✨ 按钮与双语内联反馈。新增 12 个聚焦测试(含预设集成)。
+5. `5a5b0d6` fix(models): MoE 感知调优(cpu-moe 方案)、128k 上下文阶梯、图标间距
+   - readGGUFTensorSplit 遍历张量信息表得到专家/稠密字节的精确拆分(GLM-23B-A3B 专家占 89.2%);新增 cpu-moe 决策步:专家留内存、稠密权重 + KV 上 GPU、线程自动——RTX 5070 实测 26.7 t/s、上下文 131072,优于旧部分卸载方案的 22.8 t/s;上下文阶梯扩至 131072 并对 ≥65536 档位施加 0.92 预算上限(贴边的 128k 计划会在加载时显存不足);模型卡片操作图标改为紧邻分组(此前两个 auto 边距把图标分开)。
+6. `44309b3` chore(build): 暂时屏蔽 Ubuntu 构建与发布产物
+   - CI 的 build-linux(三个 .deb 包)加 if: false,待 Ubuntu 适配完成后恢复;release 任务从 needs 移除 build-linux,产物数量校验从 4 改为 1(仅 Windows exe);frontend / backend 检查任务不变。
+7. `2d1b20d` docs: 项目协议从 MIT 切换为 GPL v3
+   - LICENSE 替换为 gnu.org 的 GPL v3 权威文本;两个 README 的徽章与协议章节双语更新;第三方依赖的许可证元数据与测试夹具未动。
+
 ## [v0.3.0] - 2026-08-19
 
 ## English
