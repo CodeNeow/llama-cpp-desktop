@@ -16,14 +16,16 @@ import (
 // TestReadGGUFModelMetricsGQA verifies the standard GQA fixture: architecture
 // keys are resolved via the {arch} prefix, u32 and u64 numerics both parse,
 // and non-metric / non-numeric KVs (bool, strings) are skipped without
-// desynchronizing the stream.
+// desynchronizing the stream. MoE geometry keys and general.file_type round
+// out the expert metadata surface.
 func TestReadGGUFModelMetricsGQA(t *testing.T) {
 	dir := t.TempDir()
 	path := writeTempGGUF(t, dir, "qwen35.gguf", buildGGUF(3,
 		strKV("general.name", "Qwen3.5-4B"),
 		strKV("general.architecture", "qwen35"),
 		u32KV("general.size", 12345), // non-metric numeric key, ignored by lookups
-		boolKV("general.foo", 1),     // bool type exercises the skip branch
+		u32KV("general.file_type", 15),
+		boolKV("general.foo", 1), // bool type exercises the skip branch
 		u64KV("qwen35.block_count", 36),
 		u64KV("qwen35.context_length", 262144),
 		u32KV("qwen35.embedding_length", 2560),
@@ -33,6 +35,11 @@ func TestReadGGUFModelMetricsGQA(t *testing.T) {
 		u32KV("qwen35.attention.value_length", 128),
 		u32KV("qwen35.rope.dimension_count", 128),
 		u32KV("qwen35.full_attention_interval", 3),
+		u32KV("qwen35.expert_count", 128),
+		u32KV("qwen35.expert_used_count", 8),
+		u32KV("qwen35.expert_shared_count", 1),
+		u32KV("qwen35.expert_feed_forward_length", 960),
+		u32KV("qwen35.leading_dense_block_count", 1),
 		strKV("tokenizer.ggml.model", "gpt2"), // unrelated string KV, skipped
 	))
 
@@ -42,6 +49,12 @@ func TestReadGGUFModelMetricsGQA(t *testing.T) {
 	}
 	if m.Arch != "qwen35" || m.Name != "Qwen3.5-4B" {
 		t.Errorf("Arch/Name = %q/%q, want qwen35/Qwen3.5-4B", m.Arch, m.Name)
+	}
+	if m.Path != path {
+		t.Errorf("Path = %q, want %q", m.Path, path)
+	}
+	if m.Quant != "Q4_K_M" {
+		t.Errorf("Quant = %q, want Q4_K_M (file_type 15)", m.Quant)
 	}
 	want := []struct {
 		name string
@@ -58,6 +71,11 @@ func TestReadGGUFModelMetricsGQA(t *testing.T) {
 		{"RopeDimCount", m.RopeDimCount, 128},
 		{"FullAttentionInterval", m.FullAttentionInterval, 3},
 		{"KVLoRaRank", m.KVLoRaRank, 0},
+		{"ExpertCount", m.ExpertCount, 128},
+		{"ExpertUsedCount", m.ExpertUsedCount, 8},
+		{"ExpertSharedCount", m.ExpertSharedCount, 1},
+		{"ExpertFFNLength", m.ExpertFFNLength, 960},
+		{"LeadingDenseBlockCount", m.LeadingDenseBlockCount, 1},
 	}
 	for _, w := range want {
 		if w.got != w.want {
@@ -174,6 +192,241 @@ func TestReadGGUFModelMetricsLargeArraySkipsFully(t *testing.T) {
 	}
 }
 
+// ─── readGGUFTensorSplit (expert/dense split) ────────────────────
+
+// ggufTensor is a test helper describing one GGUF tensor info record.
+type ggufTensor struct {
+	name   string
+	dims   []uint64
+	typ    uint32
+	offset uint64
+}
+
+// buildGGUFTensors assembles a GGUF byte slice whose tensor info area (after
+// the KV region) carries the given records, each serialized as name(string) +
+// n_dims(u32) + dims(u64 x n_dims) + type(u32) + offset(u64) per the GGUF
+// v2/v3 layout.
+func buildGGUFTensors(version uint32, kvs []ggufKV, tensors []ggufTensor) []byte {
+	var buf bytes.Buffer
+	buf.WriteString("GGUF")
+	putU32(&buf, version)
+	putU64(&buf, uint64(len(tensors)))
+	putU64(&buf, uint64(len(kvs)))
+	for _, kv := range kvs {
+		putU64(&buf, uint64(len(kv.key)))
+		buf.WriteString(kv.key)
+		putU32(&buf, kv.valueType)
+		buf.Write(kv.raw)
+	}
+	for _, t := range tensors {
+		putU64(&buf, uint64(len(t.name)))
+		buf.WriteString(t.name)
+		putU32(&buf, uint32(len(t.dims)))
+		for _, d := range t.dims {
+			putU64(&buf, d)
+		}
+		putU32(&buf, t.typ)
+		putU64(&buf, t.offset)
+	}
+	return buf.Bytes()
+}
+
+// TestReadGGUFTensorSplitQuantBytes verifies the headless size math against
+// the ggml block table: a Q4_K expert tensor (256-element blocks), a Q8_0
+// dense tensor, a partial final Q8_0 block proving ceil rounding, and an F16
+// shared-expert tensor that stays dense.
+func TestReadGGUFTensorSplitQuantBytes(t *testing.T) {
+	dir := t.TempDir()
+	path := writeTempGGUF(t, dir, "split.gguf", buildGGUFTensors(3,
+		[]ggufKV{strKV("general.architecture", "glm4")},
+		[]ggufTensor{
+			// Q4_K: 2304*576*8 = 10616832 elems = 41472 blocks of 256, *144 B.
+			{name: "blk.3.ffn_gate_exps.weight", dims: []uint64{2304, 576, 8}, typ: 12},
+			// Q8_0: 2048*2048 = 4194304 elems = 131072 blocks of 32, *34 B.
+			{name: "blk.3.attn_q.weight", dims: []uint64{2048, 2048}, typ: 8},
+			// Q8_0 with a partial final block: ceil(100/32) = 4 blocks, *34 B.
+			{name: "token_embd.weight", dims: []uint64{100}, typ: 8},
+			// F16 shared-expert tensor stays dense: 64*64 elems * 2 B.
+			{name: "blk.3.ffn_down_shexp.weight", dims: []uint64{64, 64}, typ: 1},
+		}))
+
+	expert, dense, ok := readGGUFTensorSplit(path)
+	if !ok {
+		t.Fatal("readGGUFTensorSplit returned false, expected successful parse")
+	}
+	if want := int64(41472 * 144); expert != want {
+		t.Errorf("expert bytes = %d, want %d", expert, want)
+	}
+	wantDense := int64(131072*34 + 4*34 + 64*64*2)
+	if dense != wantDense {
+		t.Errorf("dense bytes = %d, want %d", dense, wantDense)
+	}
+}
+
+// TestReadGGUFTensorSplitNameRules verifies the expert-name classification:
+// "_exps", "ffn_exp" and ".exp"+ffn mark expert tensors while routers,
+// shared experts and plain dense tensors stay dense. Every tensor here is a
+// 1-element F32 (4 bytes) so the sums count classifications directly.
+func TestReadGGUFTensorSplitNameRules(t *testing.T) {
+	dir := t.TempDir()
+	path := writeTempGGUF(t, dir, "names.gguf", buildGGUFTensors(3, nil, []ggufTensor{
+		{name: "blk.0.ffn_up_exps.weight", dims: []uint64{1}, typ: 0},         // _exps
+		{name: "model.layers.0.ffn_exp_up.weight", dims: []uint64{1}, typ: 0}, // ffn_exp
+		{name: "blk.0.ffn_down.exp.weight", dims: []uint64{1}, typ: 0},        // .exp + ffn
+		{name: "blk.0.ffn_gate_inp.weight", dims: []uint64{1}, typ: 0},        // router stays dense
+		{name: "blk.0.ffn_gate_shexp.weight", dims: []uint64{1}, typ: 0},      // shared expert stays dense
+		{name: "output.weight", dims: []uint64{1}, typ: 0},
+	}))
+
+	expert, dense, ok := readGGUFTensorSplit(path)
+	if !ok {
+		t.Fatal("readGGUFTensorSplit returned false, expected successful parse")
+	}
+	if expert != 12 {
+		t.Errorf("expert bytes = %d, want 12 (3 expert tensors x 4 B)", expert)
+	}
+	if dense != 12 {
+		t.Errorf("dense bytes = %d, want 12 (3 dense tensors x 4 B)", dense)
+	}
+}
+
+// TestReadGGUFTensorSplitUnreliable verifies the safety fallbacks: an unknown
+// tensor type, n_dims outside 1..4, an empty tensor table, a truncated stream,
+// a non-GGUF file and a tensor count above the cap all return ok=false so
+// callers fall back to metadata estimation instead of trusting partial sums.
+func TestReadGGUFTensorSplitUnreliable(t *testing.T) {
+	dir := t.TempDir()
+	kvs := []ggufKV{strKV("general.architecture", "glm4")}
+
+	var truncated bytes.Buffer
+	truncated.WriteString("GGUF")
+	putU32(&truncated, 3)
+	putU64(&truncated, 2) // tensorCount, no records follow
+	putU64(&truncated, 0) // kvCount
+
+	cases := []struct {
+		name string
+		data []byte
+	}{
+		{"unknown tensor type", buildGGUFTensors(3, kvs, []ggufTensor{
+			{name: "blk.0.attn_q.weight", dims: []uint64{16}, typ: 99},
+		})},
+		{"n_dims zero", buildGGUFTensors(3, kvs, []ggufTensor{
+			{name: "blk.0.attn_q.weight", typ: 0},
+		})},
+		{"n_dims five", buildGGUFTensors(3, kvs, []ggufTensor{
+			{name: "blk.0.attn_q.weight", dims: []uint64{1, 1, 1, 1, 1}, typ: 0},
+		})},
+		{"no tensors at all", buildGGUFTensors(3, kvs, nil)},
+		{"truncated after header", truncated.Bytes()},
+		{"not a gguf", []byte("NOPE")},
+	}
+	for _, c := range cases {
+		p := writeTempGGUF(t, dir, "bad.gguf", c.data)
+		if _, _, ok := readGGUFTensorSplit(p); ok {
+			t.Errorf("%s: expected ok=false", c.name)
+		}
+	}
+
+	// tensorCount above the 2M cap aborts before the walk (crafting a header
+	// only: the walk must not spin through two million EOF records).
+	var huge bytes.Buffer
+	huge.WriteString("GGUF")
+	putU32(&huge, 3)
+	putU64(&huge, tuneTensorCountMax+1)
+	putU64(&huge, 0)
+	p := writeTempGGUF(t, dir, "huge.gguf", huge.Bytes())
+	if _, _, ok := readGGUFTensorSplit(p); ok {
+		t.Error("tensorCount over the cap should return ok=false")
+	}
+}
+
+// TestEstimateExpertBytes verifies the metadata estimator: exact F16/BF16/
+// Q8_0/Q4_K_M/unknown-quant numbers on integer-friendly geometry, the shared
+// expert term, dense treatment without expert metadata, MoE-layer arithmetic
+// (block_count minus leading dense layers) and the file-size clamp.
+func TestEstimateExpertBytes(t *testing.T) {
+	// Geometry: 3 MoE layers x 8 experts x 3 matrices of 512x1024 elements.
+	base := func(quant string, shared int) modelMetrics {
+		return modelMetrics{
+			Quant: quant, BlockCount: 4, LeadingDenseBlockCount: 1,
+			ExpertCount: 8, ExpertSharedCount: shared,
+			ExpertFFNLength: 512, EmbeddingLength: 1024,
+		}
+	}
+	cases := []struct {
+		name         string
+		m            modelMetrics
+		weightsBytes int64
+		want         int64
+	}{
+		// 3*8*3*512*1024 = 37748736 elements.
+		{"F16 at 2.0 bpw", base("F16", 0), 1 << 40, 75497472},
+		{"BF16 contains F16", base("BF16", 0), 1 << 40, 75497472},
+		{"Q8_0 at 1.06 bpw truncates", base("Q8_0", 0), 1 << 40, 40013660},
+		{"Q4_K_M at 0.60 bpw truncates", base("Q4_K_M", 0), 1 << 40, 22649241},
+		{"unknown quant falls back to 0.6", base("IQ2_XS", 0), 1 << 40, 22649241},
+		// Shared experts widen the pool to 9 experts: 42467328 elements.
+		{"shared expert adds to the pool", base("F16", 1), 1 << 40, 84934656},
+		// Safety: no expert metadata or no MoE layers -> dense (0), estimates
+		// above the file size clamp to the file size.
+		{"no expert metadata is dense", modelMetrics{BlockCount: 4}, 1 << 40, 0},
+		{"all blocks dense-leading is dense", base("F16", 0), 1 << 40, 0},
+		{"estimate clamps to weights size", base("F16", 0), 1000, 1000},
+	}
+	for _, c := range cases {
+		if c.name == "all blocks dense-leading is dense" {
+			c.m.BlockCount = c.m.LeadingDenseBlockCount
+		}
+		if got := estimateExpertBytes(c.m, c.weightsBytes); got != c.want {
+			t.Errorf("%s: estimateExpertBytes = %d, want %d", c.name, got, c.want)
+		}
+	}
+}
+
+// TestBuildTuneModelSplitPreference verifies the split chain in buildTuneModel:
+// a tensor table whose sums match the file size wins over the metadata
+// estimate, and a split missing the size by more than the tolerance falls
+// back to the estimate.
+func TestBuildTuneModelSplitPreference(t *testing.T) {
+	dir := t.TempDir()
+	// Expert 196608 F32 elements (786432 B) + dense 65536 elements (262144 B)
+	// = exactly 1 MiB of tensor data.
+	path := writeTempGGUF(t, dir, "split.gguf", buildGGUFTensors(3,
+		[]ggufKV{strKV("general.architecture", "glm4")},
+		[]ggufTensor{
+			{name: "blk.0.ffn_up_exps.weight", dims: []uint64{196608}, typ: 0},
+			{name: "token_embd.weight", dims: []uint64{65536}, typ: 0},
+		}))
+	metrics := modelMetrics{
+		Path: path, Arch: "glm4", Quant: "F16",
+		BlockCount: 47, LeadingDenseBlockCount: 1,
+		ExpertCount: 48, ExpertUsedCount: 4,
+		ExpertFFNLength: 512, EmbeddingLength: 4096,
+		HeadCount: 8, HeadCountKV: 4, KeyLength: 128, ValueLength: 128,
+	}
+
+	// Split accepted: 786432 + 262144 == weightsBytes exactly.
+	tm := buildTuneModel(metrics, true, 1048576)
+	if tm.ExpertBytes != 786432 || tm.DenseBytes != 262144 {
+		t.Errorf("tensor split not preferred: expert=%d dense=%d, want 786432/262144",
+			tm.ExpertBytes, tm.DenseBytes)
+	}
+	if math.Abs(tm.ExpertUsedFrac-4.0/48.0) > 1e-9 {
+		t.Errorf("ExpertUsedFrac = %g, want %g", tm.ExpertUsedFrac, 4.0/48.0)
+	}
+
+	// Same file declared at 32 GiB: the split misses by > 5% so the metadata
+	// estimate takes over (F16: 2.0 * 46 layers * 48 experts * 3 * 512 * 4096).
+	tm = buildTuneModel(metrics, true, 32<<30)
+	if tm.ExpertBytes != 27783069696 {
+		t.Errorf("estimate fallback expert = %d, want 27783069696", tm.ExpertBytes)
+	}
+	if want := int64(32<<30) - 27783069696; tm.DenseBytes != want {
+		t.Errorf("estimate fallback dense = %d, want %d", tm.DenseBytes, want)
+	}
+}
+
 // ─── KV cache estimation ─────────────────────────────────────────
 
 // TestKVBytesPerTokenF16 verifies the three estimator branches: MLA latent,
@@ -220,7 +473,8 @@ func TestKVCacheLayers(t *testing.T) {
 // ─── buildTuneModel (KV folding consistency) ─────────────────────
 
 // TestBuildTuneModelFallback verifies the conservative fallback used when the
-// GGUF metadata is unreadable: 32 layers, 1024 bytes/layer/token, ctx 32768.
+// GGUF metadata is unreadable: 32 layers, 1024 bytes/layer/token, ctx 32768,
+// all weights dense (no expert split without a parsed file).
 func TestBuildTuneModelFallback(t *testing.T) {
 	tm := buildTuneModel(modelMetrics{}, false, 4096<<20)
 	if tm.Layers != 32 || tm.KVBytesPerTokPerLayerF16 != 1024 || tm.TrainCtx != 32768 {
@@ -228,6 +482,10 @@ func TestBuildTuneModelFallback(t *testing.T) {
 	}
 	if tm.WeightsBytes != 4096<<20 {
 		t.Errorf("WeightsBytes = %d, want %d", tm.WeightsBytes, 4096<<20)
+	}
+	if tm.ExpertBytes != 0 || tm.DenseBytes != 4096<<20 {
+		t.Errorf("fallback expert/dense = %d/%d, want 0/%d (treated as dense)",
+			tm.ExpertBytes, tm.DenseBytes, 4096<<20)
 	}
 }
 
@@ -256,6 +514,12 @@ func TestBuildTuneModelHybridFold(t *testing.T) {
 	if math.Abs(foldedTotal-trueTotal) > 1e-6 {
 		t.Errorf("folded KV total %g != true KV total %g", foldedTotal, trueTotal)
 	}
+	// No Path (hand-built metrics): no tensor split and no MoE metadata, so
+	// the split chain degrades to all-dense.
+	if tm.ExpertBytes != 0 || tm.DenseBytes != 8<<30 {
+		t.Errorf("hybrid tuneModel expert/dense = %d/%d, want 0/%d",
+			tm.ExpertBytes, tm.DenseBytes, 8<<30)
+	}
 
 	// Without hybrid attention the per-layer cost is unfolded.
 	plain := buildTuneModel(modelMetrics{BlockCount: 36, HeadCount: 8, HeadCountKV: 8, KeyLength: 128, ValueLength: 128, ContextLength: 32768}, true, 0)
@@ -271,17 +535,38 @@ func TestBuildTuneModelHybridFold(t *testing.T) {
 //   - 4B  = 2765 MiB, 36 layers, 4096 B/layer/token KV, trained 262144
 //   - 23B = 13824 MiB, 45 layers, 1152 B/layer/token KV (MLA), trained 131072
 //   - 9B  = 5837 MiB, 40 layers, 4096 B/layer/token KV, trained 262144
+//   - GLM-like MoE = 13435 MiB (11995 expert + 1440 dense), 47 layers,
+//     1152 B/layer/token KV, trained 202752
+//
+// v2 ladder: [131072, 65536, 32768, 16384, 8192, 4096, 2048] filtered by
+// TrainCtx; compute buffer 384 MB (<16384) / 640 MB (16384..65535) /
+// 1152 MB (>=65536). Huge tiers (>=65536) additionally require the footprint
+// to stay within budget * 0.92 (tuneHugeCtxSafetyRatio); the CPU-only branch
+// plans against RAM and is unaffected by that margin.
 //
 // Hardware baseline: 8 physical cores / 16 logical, RAM 31 total / 18 free
 // (usable RAM = min(18, 31*0.9)*0.85 = 15.3 GiB); NVIDIA 12 GB → 11776 MiB
-// usable, 8 GB → 7680 MiB, AMD 16 GB → 15684 MiB.
+// usable, RTX 5070 12227 MB → 11715 MiB, NVIDIA 8 GB → 7680 MiB, AMD 16 GB →
+// 15684 MiB.
 func TestTuneModelConfig(t *testing.T) {
 	hwNvidia12 := tuneHardware{GPUVendor: vendorNvidia, VRAMMB: 12288, RAMTotalGB: 31, RAMFreeGB: 18, PhysicalCores: 8, LogicalCPUs: 16}
+	hwRTX5070 := tuneHardware{GPUVendor: vendorNvidia, VRAMMB: 12227, RAMTotalGB: 31, RAMFreeGB: 18, PhysicalCores: 8, LogicalCPUs: 16}
 	baseNone := tuneHardware{GPUVendor: vendorNone, RAMTotalGB: 31, RAMFreeGB: 18, PhysicalCores: 8, LogicalCPUs: 16}
 
 	tm4B := tuneModel{WeightsBytes: 2765 << 20, Layers: 36, KVBytesPerTokPerLayerF16: 4096, TrainCtx: 262144}
 	tm23B := tuneModel{WeightsBytes: 13824 << 20, Layers: 45, KVBytesPerTokPerLayerF16: 1152, TrainCtx: 131072}
 	tm9B := tuneModel{WeightsBytes: 5837 << 20, Layers: 40, KVBytesPerTokPerLayerF16: 4096, TrainCtx: 262144}
+	// GLM-4.7-Flash-REAP-23B-A3B-like fixture: 47-layer MoE whose expert
+	// tensors (tensor-table measured) dominate the file.
+	tmGLM := tuneModel{
+		WeightsBytes: 13435 << 20, Layers: 47, KVBytesPerTokPerLayerF16: 1152,
+		TrainCtx: 202752, ExpertBytes: 11995 << 20, DenseBytes: 1440 << 20,
+	}
+	// Small MoE that fully fits a 24 GB card (24064 MiB usable).
+	tmSmallMoE := tuneModel{
+		WeightsBytes: 5000 << 20, Layers: 47, KVBytesPerTokPerLayerF16: 1152,
+		TrainCtx: 131072, ExpertBytes: 3000 << 20, DenseBytes: 2000 << 20,
+	}
 
 	cases := []struct {
 		name        string
@@ -293,11 +578,15 @@ func TestTuneModelConfig(t *testing.T) {
 		wantCacheK  string
 		wantCacheV  string
 		wantThreads int
+		wantCPUMoe  bool
 	}{
 		{
-			name: "4B on nvidia 12GB: full offload, f16 cache, max ladder ctx",
+			// f16: 2765+9216+1152 = 13133 > 11776 at 65536, fits 32768
+			// (2765+4608+640 = 8013); q8_0 at 65536 = 2765+4896+1152 = 8813
+			// fits, so B buys 65536 and wins.
+			name: "4B on nvidia 12GB: f16 caps at 32768, q8_0 buys 65536 so B wins",
 			hw:   hwNvidia12, tm: tm4B,
-			wantGPU: "all", wantCtx: 32768, wantFlash: true, wantCacheK: "", wantCacheV: "", wantThreads: 8,
+			wantGPU: "all", wantCtx: 65536, wantFlash: true, wantCacheK: "q8_0", wantCacheV: "q8_0", wantThreads: 8,
 		},
 		{
 			name: "4B on nvidia 8GB: f16 caps at 16384, q8_0 buys 32768 so B wins",
@@ -305,24 +594,51 @@ func TestTuneModelConfig(t *testing.T) {
 			wantGPU: "all", wantCtx: 32768, wantFlash: true, wantCacheK: "q8_0", wantCacheV: "q8_0", wantThreads: 8,
 		},
 		{
-			name: "23B MoE MLA on nvidia 12GB: partial offload n=36 of 45 at ctx 8192",
+			// Dense 23B fixture (no expert split): weights 13824 > 11776 usable,
+			// partial offload n=36 of 45 at ctx 8192.
+			name: "23B dense fixture on nvidia 12GB: partial offload n=36 of 45 at ctx 8192",
 			hw:   hwNvidia12, tm: tm23B,
 			wantGPU: "36", wantCtx: 8192, wantFlash: true, wantCacheK: "", wantCacheV: "", wantThreads: 8,
 		},
 		{
+			// CPU-only: 65536 needs 13824+3240 = 17064 > 15.3 GiB; 32768 fits
+			// at 13824+1620 = 15444.
 			name: "23B without GPU: CPU-only, largest ctx fitting usable RAM",
 			hw:   baseNone, tm: tm23B,
 			wantGPU: "0", wantCtx: 32768, wantFlash: false, wantCacheK: "", wantCacheV: "", wantThreads: 8,
 		},
 		{
+			// AMD (no q8_0 plan): 65536 = 5837+10240+1152 = 17229 > 15684;
+			// 32768 = 5837+5120+640 = 11597 fits.
 			name: "9B on amd 16GB: full offload, flash-attn off (non-nvidia)",
 			hw:   tuneHardware{GPUVendor: vendorAMD, VRAMMB: 16384, RAMTotalGB: 31, RAMFreeGB: 18, PhysicalCores: 8, LogicalCPUs: 16}, tm: tm9B,
 			wantGPU: "all", wantCtx: 32768, wantFlash: false, wantCacheK: "", wantCacheV: "", wantThreads: 8,
 		},
 		{
+			// 9B on nvidia 12GB: f16 65536 = 17229 and q8_0 65536 = 12429 both
+			// exceed the raw 11776 budget, so both cap at 32768; the tie
+			// prefers f16 even though the f16 plan leaves only 179 MiB headroom
+			// (the huge-tier safety ratio never engages: 65536 never fit).
+			name: "9B on nvidia 12GB: both plans cap at 32768, tie keeps f16",
+			hw:   hwNvidia12, tm: tm9B,
+			wantGPU: "all", wantCtx: 32768, wantFlash: true, wantCacheK: "", wantCacheV: "", wantThreads: 8,
+		},
+		{
+			// Huge-tier safety margin: a tight 131072 f16 plan (8888+1536+1152
+			// = 11576) fits the raw 11776 budget but exceeds the 0.92 cap
+			// (10833.92), and the q8_0 131072 plan (8888+816+1152 = 10856) is
+			// also over the cap, so both plans drop to 65536
+			// (f16 10808 / q8_0 10448 <= cap) and the tie keeps f16.
+			name: "huge-tier safety ratio drops a tight 131072 plan to 65536",
+			hw:   hwNvidia12, tm: tuneModel{WeightsBytes: 8888 << 20, Layers: 12, KVBytesPerTokPerLayerF16: 1024, TrainCtx: 131072},
+			wantGPU: "all", wantCtx: 65536, wantFlash: true, wantCacheK: "", wantCacheV: "", wantThreads: 8,
+		},
+		{
+			// CPU-only ladder now reaches 65536: 2765+9216 = 11981 <= 15.3 GiB
+			// (131072 would need 2765+18432 = 21197).
 			name: "512MB iGPU is treated as no GPU even with nvidia vendor",
 			hw:   tuneHardware{GPUVendor: vendorNvidia, VRAMMB: 512, RAMTotalGB: 31, RAMFreeGB: 18, PhysicalCores: 8, LogicalCPUs: 16}, tm: tm4B,
-			wantGPU: "0", wantCtx: 32768, wantFlash: false, wantCacheK: "", wantCacheV: "", wantThreads: 8,
+			wantGPU: "0", wantCtx: 65536, wantFlash: false, wantCacheK: "", wantCacheV: "", wantThreads: 8,
 		},
 		{
 			name: "23B on nvidia 4GB: tiny partial offload (n=10), fields stay valid",
@@ -337,7 +653,33 @@ func TestTuneModelConfig(t *testing.T) {
 		{
 			name: "threads fall back to half the logical CPUs without physical cores",
 			hw:   tuneHardware{GPUVendor: vendorNone, RAMTotalGB: 31, RAMFreeGB: 18, PhysicalCores: 0, LogicalCPUs: 16}, tm: tm4B,
-			wantGPU: "0", wantCtx: 32768, wantFlash: false, wantCacheK: "", wantCacheV: "", wantThreads: 8,
+			wantGPU: "0", wantCtx: 65536, wantFlash: false, wantCacheK: "", wantCacheV: "", wantThreads: 8,
+		},
+		{
+			// GLM-like MoE on an RTX 5070: full offload impossible (13435 >
+			// 11715) but experts fit 15.3 GiB RAM, so the cpu-moe plan sizes
+			// the GPU side: dense 1440 + f16 KV 6768 + compute 1152 = 9360
+			// <= 11715x0.92 = 10777.8 at ctx 131072 (huge-tier margin holds);
+			// q8_0 also fits 131072, the tie keeps f16.
+			name: "GLM MoE on RTX 5070: cpu-moe, all layers GPU, ctx 131072 f16, threads 0",
+			hw:   hwRTX5070, tm: tmGLM,
+			wantGPU: "all", wantCtx: 131072, wantFlash: true, wantCacheK: "", wantCacheV: "", wantThreads: 0, wantCPUMoe: true,
+		},
+		{
+			// 8 GB RAM machine: usable RAM 4.25 GiB < 11995 MiB experts, the
+			// cpu-moe plan is skipped and partial offload takes n=38 of 47 at
+			// ctx 8192 (perLayer 13435/47+9 = 294.85, floor(11331/294.85) = 38).
+			name: "GLM MoE with 8GB RAM: experts do not fit, partial offload n=38",
+			hw:   tuneHardware{GPUVendor: vendorNvidia, VRAMMB: 12227, RAMTotalGB: 8, RAMFreeGB: 5, PhysicalCores: 8, LogicalCPUs: 16}, tm: tmGLM,
+			wantGPU: "38", wantCtx: 8192, wantFlash: true, wantCacheK: "", wantCacheV: "", wantThreads: 8,
+		},
+		{
+			// The whole model fits a 24 GB card: 131072 needs
+			// 5000+6768+1152 = 12920 <= 24064x0.92 = 22138.88, so full
+			// offload returns before the cpu-moe step is ever consulted.
+			name: "small MoE on nvidia 24GB: full offload wins, cpu-moe never consulted",
+			hw:   tuneHardware{GPUVendor: vendorNvidia, VRAMMB: 24576, RAMTotalGB: 31, RAMFreeGB: 18, PhysicalCores: 8, LogicalCPUs: 16}, tm: tmSmallMoE,
+			wantGPU: "all", wantCtx: 131072, wantFlash: true, wantCacheK: "", wantCacheV: "", wantThreads: 8,
 		},
 	}
 
@@ -375,6 +717,9 @@ func TestTuneModelConfig(t *testing.T) {
 			if cfg.Threads != c.wantThreads {
 				t.Errorf("Threads = %d, want %d", cfg.Threads, c.wantThreads)
 			}
+			if cfg.CPUMoe != c.wantCPUMoe {
+				t.Errorf("CPUMoe = %v, want %v", cfg.CPUMoe, c.wantCPUMoe)
+			}
 		})
 	}
 
@@ -394,9 +739,12 @@ func TestTuneModelConfig(t *testing.T) {
 }
 
 // TestTuneModelConfigHybridEndToEnd runs the folded hybrid-attention tuneModel
-// through the planner: an 8 GiB model with 12/36 KV-bearing layers fully
-// offloads at 32768 with the f16 cache (the q8_0 plan offers no larger ctx, so
-// the headroom guard must not fire).
+// through the planner: an 8 GiB model with 12/36 KV-bearing layers (49152 B
+// per token) fully offloads at 32768 with the f16 cache. The q8_0 plan would
+// fit 65536 under the raw budget (8192+1632+1152 = 10976 <= 11776, only 6.8%
+// headroom) but the huge-tier safety ratio rejects it (10976 > 11776x0.92 =
+// 10833.92), so B caps at 32768 too and the tie keeps f16. A dense hybrid
+// model must never carry cpu-moe.
 func TestTuneModelConfigHybridEndToEnd(t *testing.T) {
 	hw := tuneHardware{GPUVendor: vendorNvidia, VRAMMB: 12288, RAMTotalGB: 31, RAMFreeGB: 18, PhysicalCores: 8, LogicalCPUs: 16}
 	metrics := modelMetrics{
@@ -408,6 +756,9 @@ func TestTuneModelConfigHybridEndToEnd(t *testing.T) {
 	if cfg.GPULayers != "all" || cfg.CtxSize != 32768 || cfg.CacheTypeK != "" || !cfg.FlashAttn {
 		t.Errorf("hybrid model tune = gpu %q ctx %d cache %q flash %v, want all/32768/f16/true",
 			cfg.GPULayers, cfg.CtxSize, cfg.CacheTypeK, cfg.FlashAttn)
+	}
+	if cfg.CPUMoe {
+		t.Error("dense hybrid model must not carry cpu-moe")
 	}
 }
 
@@ -442,5 +793,42 @@ func TestTuneModelConfigPresetIntegration(t *testing.T) {
 		if !strings.Contains(content, w+"\n") {
 			t.Errorf("preset missing %q: %q", w, content)
 		}
+	}
+}
+
+// TestTuneModelConfigPresetCPUMoe feeds a cpu-moe tuned plan through the real
+// preset generator and asserts the INI carries cpu-moe = on while the zero
+// thread count omits the threads line (llama-server auto-threads).
+func TestTuneModelConfigPresetCPUMoe(t *testing.T) {
+	hw := tuneHardware{GPUVendor: vendorNvidia, VRAMMB: 12227, RAMTotalGB: 31, RAMFreeGB: 18, PhysicalCores: 8, LogicalCPUs: 16}
+	tm := tuneModel{
+		WeightsBytes: 13435 << 20, Layers: 47, KVBytesPerTokPerLayerF16: 1152,
+		TrainCtx: 202752, ExpertBytes: 11995 << 20, DenseBytes: 1440 << 20,
+	}
+	cfg := tuneModelConfig(hw, tm)
+	if !cfg.CPUMoe {
+		t.Fatal("expected a cpu-moe plan for the GLM-like fixture")
+	}
+
+	models := []ModelInfo{{Name: "m", Path: "/models/m.gguf"}}
+	path, err := generateModelsPresetFrom(models, map[string]ModelConfig{"m": cfg})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(path)
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "cpu-moe = on\n") {
+		t.Errorf("preset missing \"cpu-moe = on\": %q", content)
+	}
+	if strings.Contains(content, "threads = ") {
+		t.Errorf("threads=0 must omit the threads line: %q", content)
+	}
+	if !strings.Contains(content, fmt.Sprintf("ctx-size = %d\n", cfg.CtxSize)) {
+		t.Errorf("preset missing ctx-size = %d", cfg.CtxSize)
 	}
 }

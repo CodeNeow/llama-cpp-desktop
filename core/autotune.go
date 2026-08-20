@@ -31,6 +31,12 @@ const (
 // header. Missing keys stay 0; estimators apply documented fallbacks.
 type modelMetrics struct {
 	Arch, Name string
+	// Path is the parsed GGUF file path, letting buildTuneModel run the
+	// tensor-table expert/dense split over the same file.
+	Path string
+	// Quant is the quantization name derived from general.file_type (empty when
+	// the key is absent); used by the metadata-based expert size estimator.
+	Quant string
 	// BlockCount is {arch}.block_count (transformer layers).
 	BlockCount int
 	// ContextLength is {arch}.context_length (trained context window).
@@ -51,6 +57,89 @@ type modelMetrics struct {
 	// FullAttentionInterval is {arch}.full_attention_interval; >1 marks hybrid
 	// attention (e.g. qwen3.5) where only every Nth layer holds a KV cache.
 	FullAttentionInterval int
+	// ExpertCount / ExpertUsedCount / ExpertSharedCount are {arch}.expert_count
+	// / expert_used_count / expert_shared_count (MoE geometry). ExpertCount <= 0
+	// marks a dense model for the tuner.
+	ExpertCount, ExpertUsedCount, ExpertSharedCount int
+	// ExpertFFNLength is {arch}.expert_feed_forward_length (per-expert hidden
+	// width) used by the expert size estimator.
+	ExpertFFNLength int
+	// LeadingDenseBlockCount is {arch}.leading_dense_block_count: dense prefix
+	// layers before the first MoE layer (0 for pure MoE stacks).
+	LeadingDenseBlockCount int
+}
+
+// ggufHeaderData carries the fixed GGUF header fields plus the scalar/string
+// KVs collected while walking the metadata region; shared by
+// readGGUFModelMetrics and readGGUFTensorSplit so both stay byte-compatible.
+type ggufHeaderData struct {
+	tensorCount uint64
+	nums        map[string]int
+	strs        map[string]string
+}
+
+// readGGUFHeader parses the GGUF fixed header of f (magic, version 2-3, tensor
+// and KV counts — kvCount over 4096 aborts, mirroring readGGUFMeta's #7.2
+// guard) and walks the whole KV region, collecting numeric (u32/u64) and
+// string values. On success f is positioned exactly at the first tensor info
+// record, so callers may continue straight into the tensor table.
+func readGGUFHeader(f *os.File) (ggufHeaderData, error) {
+	var magic uint32
+	if err := binary.Read(f, binary.LittleEndian, &magic); err != nil || magic != 0x46554747 {
+		return ggufHeaderData{}, fmt.Errorf("invalid GGUF magic")
+	}
+	var version uint32
+	if err := binary.Read(f, binary.LittleEndian, &version); err != nil || version < 2 || version > 3 {
+		return ggufHeaderData{}, fmt.Errorf("unsupported GGUF version %d", version)
+	}
+	h := ggufHeaderData{nums: make(map[string]int, 64), strs: make(map[string]string, 8)}
+	if err := binary.Read(f, binary.LittleEndian, &h.tensorCount); err != nil {
+		return ggufHeaderData{}, err
+	}
+	var kvCount uint64
+	if err := binary.Read(f, binary.LittleEndian, &kvCount); err != nil {
+		return ggufHeaderData{}, err
+	}
+	if kvCount > 4096 {
+		return ggufHeaderData{}, fmt.Errorf("kv count %d over limit", kvCount)
+	}
+	for i := uint64(0); i < kvCount; i++ {
+		key, err := readGGUFString(f)
+		if err != nil {
+			return ggufHeaderData{}, err
+		}
+		var valueType uint32
+		if err := binary.Read(f, binary.LittleEndian, &valueType); err != nil {
+			return ggufHeaderData{}, err
+		}
+		switch valueType {
+		case 4: // uint32
+			var v uint32
+			if err := binary.Read(f, binary.LittleEndian, &v); err != nil {
+				return ggufHeaderData{}, err
+			}
+			h.nums[key] = int(v)
+		case 10: // uint64
+			var v uint64
+			if err := binary.Read(f, binary.LittleEndian, &v); err != nil {
+				return ggufHeaderData{}, err
+			}
+			h.nums[key] = int(v)
+		case 8: // string
+			s, err := readGGUFString(f)
+			if err != nil {
+				return ggufHeaderData{}, err
+			}
+			h.strs[key] = s
+		default:
+			// Other types (bool/float/array/...) carry no metric we need;
+			// skip them so the stream stays in sync.
+			if err := skipMetricsValue(f, valueType); err != nil {
+				return ggufHeaderData{}, err
+			}
+		}
+	}
+	return h, nil
 }
 
 // readGGUFModelMetrics parses the GGUF header of path and extracts the model
@@ -66,75 +155,24 @@ func readGGUFModelMetrics(path string) (modelMetrics, bool) {
 	}
 	defer f.Close()
 
-	var magic uint32
-	if err := binary.Read(f, binary.LittleEndian, &magic); err != nil || magic != 0x46554747 {
+	h, err := readGGUFHeader(f)
+	if err != nil {
 		return modelMetrics{}, false
-	}
-	var version uint32
-	if err := binary.Read(f, binary.LittleEndian, &version); err != nil || version < 2 || version > 3 {
-		return modelMetrics{}, false
-	}
-	var tensorCount, kvCount uint64
-	if err := binary.Read(f, binary.LittleEndian, &tensorCount); err != nil {
-		return modelMetrics{}, false
-	}
-	if err := binary.Read(f, binary.LittleEndian, &kvCount); err != nil {
-		return modelMetrics{}, false
-	}
-	// Same corrupt-file guard as readGGUFMeta (#7.2): real GGUF metadata has
-	// few KVs; refuse to parse beyond 4096 entries.
-	if kvCount > 4096 {
-		return modelMetrics{}, false
-	}
-
-	nums := make(map[string]int, 64)
-	strs := make(map[string]string, 8)
-	for i := uint64(0); i < kvCount; i++ {
-		key, err := readGGUFString(f)
-		if err != nil {
-			return modelMetrics{}, false
-		}
-		var valueType uint32
-		if err := binary.Read(f, binary.LittleEndian, &valueType); err != nil {
-			return modelMetrics{}, false
-		}
-		switch valueType {
-		case 4: // uint32
-			var v uint32
-			if err := binary.Read(f, binary.LittleEndian, &v); err != nil {
-				return modelMetrics{}, false
-			}
-			nums[key] = int(v)
-		case 10: // uint64
-			var v uint64
-			if err := binary.Read(f, binary.LittleEndian, &v); err != nil {
-				return modelMetrics{}, false
-			}
-			nums[key] = int(v)
-		case 8: // string
-			s, err := readGGUFString(f)
-			if err != nil {
-				return modelMetrics{}, false
-			}
-			strs[key] = s
-		default:
-			// Other types (bool/float/array/...) carry no metric we need;
-			// skip them so the stream stays in sync.
-			if err := skipMetricsValue(f, valueType); err != nil {
-				return modelMetrics{}, false
-			}
-		}
 	}
 
 	m := modelMetrics{
-		Arch: strs["general.architecture"],
-		Name: strs["general.name"],
+		Arch: h.strs["general.architecture"],
+		Name: h.strs["general.name"],
+		Path: path,
+	}
+	if ft, has := h.nums["general.file_type"]; has {
+		m.Quant = ggufQuantName(uint32(ft))
 	}
 	// Architecture-prefixed lookups happen after the loop: real key names are
 	// e.g. qwen35.attention.head_count, deepseek2.attention.kv_lora_rank and
 	// {arch}.rope.dimension_count (verified against local qwen3.5 / deepseek2
 	// GGUF files).
-	get := func(name string) int { return nums[m.Arch+"."+name] }
+	get := func(name string) int { return h.nums[m.Arch+"."+name] }
 	m.BlockCount = get("block_count")
 	m.ContextLength = get("context_length")
 	m.EmbeddingLength = get("embedding_length")
@@ -145,6 +183,11 @@ func readGGUFModelMetrics(path string) (modelMetrics, bool) {
 	m.KVLoRaRank = get("attention.kv_lora_rank")
 	m.RopeDimCount = get("rope.dimension_count")
 	m.FullAttentionInterval = get("full_attention_interval")
+	m.ExpertCount = get("expert_count")
+	m.ExpertUsedCount = get("expert_used_count")
+	m.ExpertSharedCount = get("expert_shared_count")
+	m.ExpertFFNLength = get("expert_feed_forward_length")
+	m.LeadingDenseBlockCount = get("leading_dense_block_count")
 	return m, true
 }
 
@@ -217,6 +260,194 @@ func ggufFixedValueSize(valueType uint32) (int, bool) {
 		return 8, true
 	}
 	return 0, false
+}
+
+// ─── Expert / dense weight split (tensor table) ───────────────────
+
+// ggmlBlockLayout describes one ggml quantization block: how many tensor
+// elements a block packs (elems) and the block's on-disk byte size (bytes).
+type ggmlBlockLayout struct {
+	elems uint64
+	bytes uint64
+}
+
+// ggmlBlockTable maps GGUF tensor types (ggml type ids, ggml.h) to their block
+// layouts. A type absent from the table (unsupported / future) makes the whole
+// tensor split unreliable — callers fall back to metadata estimation instead
+// of guessing sizes.
+var ggmlBlockTable = map[uint32]ggmlBlockLayout{
+	0:  {1, 4},     // F32
+	1:  {1, 2},     // F16
+	2:  {32, 18},   // Q4_0
+	3:  {32, 20},   // Q4_1
+	6:  {32, 22},   // Q5_0
+	7:  {32, 24},   // Q5_1
+	8:  {32, 34},   // Q8_0
+	9:  {32, 36},   // Q8_1
+	10: {256, 84},  // Q2_K
+	11: {256, 110}, // Q3_K
+	12: {256, 144}, // Q4_K
+	13: {256, 176}, // Q5_K
+	14: {256, 210}, // Q6_K
+	15: {256, 292}, // Q8_K
+	16: {256, 66},  // IQ2_XXS
+	17: {256, 74},  // IQ2_XS
+	18: {256, 81},  // IQ3_XXS
+	19: {256, 62},  // IQ1_S
+	20: {32, 18},   // IQ4_NL
+	21: {256, 110}, // IQ3_S
+	22: {256, 88},  // IQ2_S
+	23: {256, 136}, // IQ4_XS
+	24: {256, 56},  // IQ1_M
+	25: {1, 2},     // BF16
+}
+
+// Guards for the tensor-table walk. Real GGUF models stay far below two
+// million tensors and 2^50 elements per tensor; the caps only reject corrupt
+// or crafted files quickly and keep the uint64 math overflow-free.
+const (
+	tuneTensorCountMax = 2_000_000
+	tuneTensorElemCap  = 1 << 50
+	tuneTensorBytesCap = 1 << 62
+	tuneTensorSplitTol = 0.05
+)
+
+// isExpertTensor classifies a GGUF tensor name as a MoE expert weight.
+// Conventions in the wild: ffn_{up,gate,down}_exps.weight (llama.cpp convert
+// for GLM / Qwen / DeepSeek MoE), ffn_exp* names, and ".exp" + "ffn" markers.
+// Router (ffn_*_inp) and shared-expert (ffn_*_shexp) weights lack these
+// markers and stay dense, matching what llama-server keeps on the GPU under
+// --cpu-moe.
+func isExpertTensor(name string) bool {
+	if strings.Contains(name, "_exps") || strings.Contains(name, "ffn_exp") {
+		return true
+	}
+	return strings.Contains(name, ".exp") && strings.Contains(name, "ffn")
+}
+
+// readGGUFTensorSplit walks the GGUF tensor info area (after the KV region)
+// and sums the headless data size of every tensor, split into expert vs dense
+// weights: per tensor, size = ceil(nelem / elemsPerBlock) * bytesPerBlock with
+// the block layout from ggmlBlockTable. Each record is name(string) +
+// n_dims(u32, 1..4) + dims(u64 x n_dims) + type(u32) + offset(u64). ok is
+// false when the file is unreadable/invalid, the tensor count is 0 or above
+// tuneTensorCountMax, n_dims falls outside 1..4, or any tensor uses a type
+// missing from the block table — callers must then fall back to the metadata
+// estimator instead of guessing.
+func readGGUFTensorSplit(path string) (expertBytes, denseBytes int64, ok bool) {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0, 0, false
+	}
+	defer f.Close()
+
+	h, err := readGGUFHeader(f)
+	if err != nil || h.tensorCount == 0 || h.tensorCount > tuneTensorCountMax {
+		return 0, 0, false
+	}
+
+	var expert, dense int64
+	for i := uint64(0); i < h.tensorCount; i++ {
+		name, err := readGGUFString(f)
+		if err != nil {
+			return 0, 0, false
+		}
+		var nDims uint32
+		if err := binary.Read(f, binary.LittleEndian, &nDims); err != nil || nDims < 1 || nDims > 4 {
+			return 0, 0, false
+		}
+		nelem := uint64(1)
+		for d := uint32(0); d < nDims; d++ {
+			var dim uint64
+			if err := binary.Read(f, binary.LittleEndian, &dim); err != nil {
+				return 0, 0, false
+			}
+			if dim == 0 {
+				// Degenerate zero dimension: a zero-element tensor adds 0 bytes
+				// but the remaining dims still advance the stream.
+				nelem = 0
+				continue
+			}
+			// Bound the running product so crafted huge dims cannot overflow.
+			if nelem > tuneTensorElemCap/dim {
+				return 0, 0, false
+			}
+			nelem *= dim
+		}
+		var typ uint32
+		if err := binary.Read(f, binary.LittleEndian, &typ); err != nil {
+			return 0, 0, false
+		}
+		var offset uint64 // alignment offset inside the data area; size math ignores it
+		if err := binary.Read(f, binary.LittleEndian, &offset); err != nil {
+			return 0, 0, false
+		}
+		layout, known := ggmlBlockTable[typ]
+		if !known {
+			return 0, 0, false
+		}
+		size := (nelem + layout.elems - 1) / layout.elems * layout.bytes
+		if isExpertTensor(name) {
+			expert += int64(size)
+		} else {
+			dense += int64(size)
+		}
+		// Cap the running sums so crafted files cannot wrap int64.
+		if expert > tuneTensorBytesCap || dense > tuneTensorBytesCap {
+			return 0, 0, false
+		}
+	}
+	return expert, dense, true
+}
+
+// moeBytesPerWeight maps a quantization name to an approximate bytes-per-weight
+// for MoE expert tensors. These are coarse approximations: real mixed-quant
+// files blend block types (e.g. Q4_K_M mixes Q4_K with Q6_K), so the estimator
+// only needs order-of-magnitude accuracy — the tensor-table split is the
+// precise path.
+func moeBytesPerWeight(quant string) float64 {
+	switch {
+	case strings.Contains(quant, "F16") || strings.Contains(quant, "BF16"):
+		return 2.0
+	case strings.Contains(quant, "Q8"):
+		return 1.06
+	case strings.Contains(quant, "Q6"):
+		return 0.82
+	case strings.Contains(quant, "Q5"):
+		return 0.69
+	case strings.Contains(quant, "Q4") || strings.Contains(quant, "IQ4"):
+		return 0.60
+	default:
+		return 0.6
+	}
+}
+
+// estimateExpertBytes approximates the expert weight bytes from MoE GGUF
+// metadata when the tensor-table split is unavailable:
+//
+//	expertBytes ~= bpw * moeLayers * (expert_count + expert_shared_count)
+//	                * 3 * expert_ffn * embedding_length
+//
+// where moeLayers = block_count - leading_dense_block_count (floored at 0) and
+// the factor 3 covers the up/gate/down matrices every expert holds. Missing
+// expert metadata (ExpertCount <= 0) or an unusable geometry returns 0 — the
+// model is then treated as dense. The result is clamped to weightsBytes as a
+// sanity bound (the experts cannot outweigh the whole file).
+func estimateExpertBytes(m modelMetrics, weightsBytes int64) int64 {
+	if m.ExpertCount <= 0 {
+		return 0
+	}
+	moeLayers := m.BlockCount - m.LeadingDenseBlockCount
+	if moeLayers <= 0 || m.ExpertFFNLength <= 0 || m.EmbeddingLength <= 0 {
+		return 0
+	}
+	est := moeBytesPerWeight(m.Quant) *
+		float64(moeLayers) * float64(m.ExpertCount+m.ExpertSharedCount) *
+		3 * float64(m.ExpertFFNLength) * float64(m.EmbeddingLength)
+	if est > float64(weightsBytes) {
+		return weightsBytes
+	}
+	return int64(est)
 }
 
 // ─── KV cache estimation ─────────────────────────────────────────
@@ -295,6 +526,15 @@ type tuneModel struct {
 	KVBytesPerTokPerLayerF16 float64
 	// TrainCtx is the trained context window; <=0 is treated as 32768.
 	TrainCtx int
+	// ExpertBytes / DenseBytes split WeightsBytes into MoE expert weights and
+	// everything else. ExpertBytes > 0 marks a MoE model eligible for the
+	// --cpu-moe plan (experts in system RAM, dense weights + KV on the GPU).
+	ExpertBytes int64
+	DenseBytes  int64
+	// ExpertUsedFrac is expert_used_count / expert_count (tokens activate only
+	// this fraction of experts); 0 when the metadata is absent. Informational
+	// for now — the plan keeps all experts on one side.
+	ExpertUsedFrac float64
 }
 
 // buildTuneModel converts parsed GGUF metrics into the tuneModel inputs.
@@ -308,8 +548,14 @@ type tuneModel struct {
 // kvCacheLayers == per-token total, and the per-layer weight estimate W/L
 // still uses the true block count.
 //
+// Expert/dense split chain: the exact tensor-table walk (readGGUFTensorSplit
+// via m.Path, re-reading the same file's header) is preferred and accepted
+// only when its sums stay within tuneTensorSplitTol of the on-disk size — the
+// gap being the header, tensor info area and padding; anything else falls back
+// to the metadata estimate (dense treatment when expert metadata is missing).
+//
 // When ok is false (unreadable/invalid GGUF), conservative fallbacks are used:
-// 32 layers, 1024 bytes/layer/token, 32768 training context.
+// 32 layers, 1024 bytes/layer/token, 32768 training context, all-dense weights.
 func buildTuneModel(m modelMetrics, ok bool, weightsBytes int64) tuneModel {
 	if !ok {
 		return tuneModel{
@@ -317,6 +563,7 @@ func buildTuneModel(m modelMetrics, ok bool, weightsBytes int64) tuneModel {
 			Layers:                   32,
 			KVBytesPerTokPerLayerF16: 1024,
 			TrainCtx:                 32768,
+			DenseBytes:               weightsBytes,
 		}
 	}
 	layers := m.BlockCount
@@ -331,12 +578,33 @@ func buildTuneModel(m modelMetrics, ok bool, weightsBytes int64) tuneModel {
 	if kvLayers := kvCacheLayers(m); kvLayers > 0 && kvLayers != layers {
 		kvPerLayer = kvPerLayer * float64(kvLayers) / float64(layers)
 	}
-	return tuneModel{
+	tm := tuneModel{
 		WeightsBytes:             weightsBytes,
 		Layers:                   layers,
 		KVBytesPerTokPerLayerF16: kvPerLayer,
 		TrainCtx:                 trainCtx,
 	}
+
+	// Expert/dense split: exact tensor sizes when the split validates against
+	// the file size, else the metadata estimate.
+	expert, dense := int64(0), weightsBytes
+	splitUsed := false
+	if m.Path != "" && weightsBytes > 0 {
+		if e, d, splitOK := readGGUFTensorSplit(m.Path); splitOK &&
+			math.Abs(float64(e+d-weightsBytes))/float64(weightsBytes) <= tuneTensorSplitTol {
+			expert, dense, splitUsed = e, d, true
+		}
+	}
+	if !splitUsed {
+		e := estimateExpertBytes(m, weightsBytes)
+		expert, dense = e, weightsBytes-e
+	}
+	tm.ExpertBytes = expert
+	tm.DenseBytes = dense
+	if m.ExpertCount > 0 {
+		tm.ExpertUsedFrac = float64(m.ExpertUsedCount) / float64(m.ExpertCount)
+	}
+	return tm
 }
 
 // ─── Tuning pure function ─────────────────────────────────────────
@@ -360,16 +628,25 @@ const (
 	// 8.5/16 = 0.53125.
 	tuneQ8KVSizeRatio = 0.53125
 	// Compute buffer (logits + activation workspace): a base 384 MB, plus
-	// 256 MB for contexts >= 16384 where the logits/graph grow.
+	// 256 MB for contexts >= 16384 and another 512 MB for contexts >= 65536
+	// where the logits/graph grow superlinearly.
 	tuneComputeBufBaseMB    = 384
 	tuneComputeBufLargeMB   = 256
 	tuneComputeBufLargeFrom = 16384
+	tuneComputeBufHugeMB    = 512
+	tuneComputeBufHugeFrom  = 65536
 	// Flash-attention headroom guard: if the chosen f16 full-offload plan
 	// leaves less than 15% of usable VRAM free and a q8_0 plan buys a larger
 	// context, prefer the q8_0 plan.
 	tuneHeadroomGuardRatio = 0.15
+	// Huge-context tiers (>= tuneComputeBufHugeFrom) must keep a minimum 8%
+	// headroom on the GPU budget: estimation error in the KV geometry and the
+	// compute-buffer constants is amplified at 128k-scale contexts (measured
+	// edge cases down to ~2% free VRAM), and a service that fails to load on
+	// VRAM OOM costs far more than one ladder tier of context.
+	tuneHugeCtxSafetyRatio = 0.92
 	// Context ladder (descending) and the partial-offload context candidates.
-	tuneCtxMax = 32768
+	tuneCtxMax = 131072
 	tuneCtxMin = 2048
 )
 
@@ -392,6 +669,56 @@ func ctxLadderFor(trainCtx int, ladder []int) []int {
 	return out
 }
 
+// mergeCachePlans applies the shared A/B merge over the ladder: A is the f16
+// KV plan (factor 1.0), B the q8_0 KV plan (factor tuneQ8KVSizeRatio, NVIDIA
+// only). B wins only when it enables a strictly larger context, or when A is
+// tight (< tuneHeadroomGuardRatio of usable VRAM left) while B buys more
+// context; equal contexts prefer A (f16). Huge-context tiers
+// (>= tuneComputeBufHugeFrom) only count as fitting when they leave the
+// tuneHugeCtxSafetyRatio margin of the budget; smaller tiers use the raw
+// budget. footprint returns the plan's total footprint for a context under
+// the given KV size factor. Returns useB and the chosen context (0 when
+// neither plan fits). Shared by the full-offload and the cpu-moe steps so
+// both apply identical tie-breaking rules.
+func mergeCachePlans(ladder []int, budget float64, nvidia bool, footprint func(ctx int, kvFactor float64) float64) (useB bool, ctx int) {
+	fitCtx := func(kvFactor float64) int {
+		for _, ctx := range ladder {
+			limit := budget
+			if ctx >= tuneComputeBufHugeFrom {
+				// Huge-context tiers demand a minimum safety margin: at
+				// 128k-scale contexts the KV/compute estimates are amplified
+				// and a slight overshoot means the server fails to load.
+				limit = budget * tuneHugeCtxSafetyRatio
+			}
+			if footprint(ctx, kvFactor) <= limit {
+				return ctx
+			}
+		}
+		return 0
+	}
+	aCtx := fitCtx(1.0)
+	bCtx := 0
+	if nvidia {
+		bCtx = fitCtx(tuneQ8KVSizeRatio)
+	}
+	if aCtx > 0 && (bCtx == 0 || aCtx >= bCtx) {
+		if bCtx > 0 {
+			// Headroom guard: a tight f16 plan (< 15% budget left) with a q8_0
+			// plan offering a larger context is swapped for the q8_0 plan.
+			used := footprint(aCtx, 1.0)
+			if budget-used < tuneHeadroomGuardRatio*budget && bCtx > aCtx {
+				return true, bCtx
+			}
+		}
+		return false, aCtx
+	}
+	if bCtx > 0 {
+		// B enables a strictly larger context than A (or A does not exist).
+		return true, bCtx
+	}
+	return false, 0
+}
+
 // tuneModelConfig computes hardware-aware llama-server parameters for one
 // model. Pure and deterministic: same inputs, same ModelConfig.
 //
@@ -402,12 +729,22 @@ func ctxLadderFor(trainCtx int, ladder []int) []int {
 //  2. GPU present → try full offload first:
 //     A) f16 KV everywhere, or B) q8_0 KV (NVIDIA only, 0.53125 the size).
 //     Prefer A unless B enables a strictly larger context, or A leaves less
-//     than 15% VRAM headroom while B buys more context.
-//  3. Full offload impossible → partial offload: for each candidate context
-//     (8192/4096/2048) offload n = floor((vramUsable - computeBuf) /
-//     (perLayerWeights + perLayerKV)) layers, keeping the CPU-side remainder
-//     within usable RAM; cache stays f16.
-//  4. Even partial offload impossible → CPU-only plan.
+//     than 15% VRAM headroom while B buys more context. Full offload wins
+//     outright: with every weight already on the GPU, --cpu-moe has nothing
+//     left to move.
+//  3. Full offload impossible but the model is MoE (ExpertBytes > 0) and the
+//     experts fit usable RAM → cpu-moe plan: experts stay on CPU
+//     (--cpu-moe), the GPU carries dense weights + KV + compute buffers with
+//     GPULayers="all". The same A=f16 / B=q8_0 merge picks the context.
+//     Threads=0 omits the threads line: llama-server's automatic thread
+//     sizing measured >= manual physical-core threads when expert GEMMs run
+//     on the CPU.
+//  4. Partial offload fallback (dense models, or experts that do not fit
+//     RAM): for each candidate context (8192/4096/2048) offload n =
+//     floor((vramUsable - computeBuf) / (perLayerWeights + perLayerKV))
+//     layers, keeping the CPU-side remainder within usable RAM; cache stays
+//     f16.
+//  5. Even partial offload impossible → CPU-only plan.
 func tuneModelConfig(hw tuneHardware, m tuneModel) ModelConfig {
 	const MB = 1 << 20
 	// GB in bytes: RAMTotalGB/RAMFreeGB are GiB values (getTotalMemoryGB and
@@ -448,11 +785,14 @@ func tuneModelConfig(hw tuneHardware, m tuneModel) ModelConfig {
 	kvPerTok := m.KVBytesPerTokPerLayerF16 * float64(layers)
 	w := float64(m.WeightsBytes)
 
-	ladder := ctxLadderFor(m.TrainCtx, []int{32768, 16384, 8192, 4096, tuneCtxMin})
+	ladder := ctxLadderFor(m.TrainCtx, []int{131072, 65536, 32768, 16384, 8192, 4096, tuneCtxMin})
 	computeBuf := func(ctx int) float64 {
 		buf := tuneComputeBufBaseMB
 		if ctx >= tuneComputeBufLargeFrom {
 			buf += tuneComputeBufLargeMB
+		}
+		if ctx >= tuneComputeBufHugeFrom {
+			buf += tuneComputeBufHugeMB
 		}
 		return float64(buf) * MB
 	}
@@ -480,53 +820,53 @@ func tuneModelConfig(hw tuneHardware, m tuneModel) ModelConfig {
 		return cfg
 	}
 
-	// Plan A: full offload with f16 KV.
-	aCtx := 0
-	for _, ctx := range ladder {
-		if w+kvPerTok*float64(ctx)+computeBuf(ctx) <= vramUsable {
-			aCtx = ctx
-			break
-		}
-	}
-	// Plan B: full offload with q8_0 KV (NVIDIA only; llama.cpp's q8_0 cache
-	// quantization is a CUDA-backend feature).
-	bCtx := 0
-	if hw.GPUVendor == vendorNvidia {
-		for _, ctx := range ladder {
-			if w+kvPerTok*float64(ctx)*tuneQ8KVSizeRatio+computeBuf(ctx) <= vramUsable {
-				bCtx = ctx
-				break
-			}
-		}
-	}
+	nvidia := hw.GPUVendor == vendorNvidia
 
-	useB, fullCtx := false, 0
-	if aCtx > 0 && (bCtx == 0 || aCtx >= bCtx) {
-		fullCtx = aCtx
-		if bCtx > 0 {
-			// Headroom guard: a tight f16 plan (< 15% VRAM left) with a q8_0
-			// plan offering a larger context is swapped for the q8_0 plan.
-			used := w + kvPerTok*float64(aCtx) + computeBuf(aCtx)
-			if vramUsable-used < tuneHeadroomGuardRatio*vramUsable && bCtx > aCtx {
-				useB, fullCtx = true, bCtx
-			}
-		}
-	} else if bCtx > 0 {
-		// B enables a strictly larger context than A (or A does not exist).
-		useB, fullCtx = true, bCtx
-	}
-	if fullCtx > 0 {
+	// Step 1: full offload — every weight on the GPU beats any expert split,
+	// so success returns immediately without considering cpu-moe.
+	if useB, fullCtx := mergeCachePlans(ladder, vramUsable, nvidia, func(ctx int, kvFactor float64) float64 {
+		return w + kvPerTok*float64(ctx)*kvFactor + computeBuf(ctx)
+	}); fullCtx > 0 {
 		cfg.GPULayers = "all"
 		cfg.CtxSize = fullCtx
-		cfg.FlashAttn = hw.GPUVendor == vendorNvidia
+		cfg.FlashAttn = nvidia
 		if useB {
 			cfg.CacheTypeK, cfg.CacheTypeV = "q8_0", "q8_0"
 		}
 		return cfg
 	}
 
-	// Partial offload: offload as many whole layers as fit in VRAM for each
-	// candidate context, keeping the CPU-side remainder within usable RAM.
+	// Step 2: cpu-moe plan — keep the expert weights in system RAM and size
+	// the GPU side around dense weights + KV + compute buffers. Only when the
+	// experts fit usable RAM; otherwise the expert layers straddle both sides
+	// and partial offload (step 3) is the better fallback.
+	if m.ExpertBytes > 0 && float64(m.ExpertBytes) <= usableRAM {
+		dense := float64(m.DenseBytes)
+		if dense <= 0 {
+			// Defensive default for hand-built inputs without a split.
+			dense = math.Max(0, w-float64(m.ExpertBytes))
+		}
+		if useB, moeCtx := mergeCachePlans(ladder, vramUsable, nvidia, func(ctx int, kvFactor float64) float64 {
+			return dense + kvPerTok*float64(ctx)*kvFactor + computeBuf(ctx)
+		}); moeCtx > 0 {
+			cfg.GPULayers = "all"
+			cfg.CtxSize = moeCtx
+			cfg.FlashAttn = nvidia
+			cfg.CPUMoe = true
+			// Threads 0 omits the threads line so llama-server sizes threads
+			// automatically: with expert GEMMs running on the CPU the auto
+			// sizing measured >= pinning threads to the physical core count.
+			cfg.Threads = 0
+			if useB {
+				cfg.CacheTypeK, cfg.CacheTypeV = "q8_0", "q8_0"
+			}
+			return cfg
+		}
+	}
+
+	// Step 3: partial offload — offload as many whole layers as fit in VRAM
+	// for each candidate context, keeping the CPU-side remainder within
+	// usable RAM.
 	perLayerW := w / float64(layers)
 	for _, ctx := range ctxLadderFor(m.TrainCtx, []int{8192, 4096, tuneCtxMin}) {
 		perLayer := perLayerW + m.KVBytesPerTokPerLayerF16*float64(ctx)
