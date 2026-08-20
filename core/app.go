@@ -585,6 +585,36 @@ func (a *App) SaveModelConfig(modelID string, config ModelConfig) error {
 	return nil
 }
 
+// TuneModelConfig computes hardware-aware optimal inference parameters for the
+// model (GGUF metrics + GPU/CPU/RAM snapshot), persists them via SaveModelConfig
+// validation, and returns the applied config.
+func (a *App) TuneModelConfig(modelID string) (ModelConfig, error) {
+	var model *ModelInfo
+	models := scanModels()
+	for i := range models {
+		if models[i].Name == modelID {
+			model = &models[i]
+			break
+		}
+	}
+	if model == nil {
+		return ModelConfig{}, fmt.Errorf(tr("未找到模型 %q", "model %q not found"), modelID)
+	}
+
+	metrics, ok := readGGUFModelMetrics(model.Path)
+	if !ok {
+		log.Println(tuneFallbackLogLine(modelID))
+	}
+	tm := buildTuneModel(metrics, ok, tuneWeightsBytes(*model))
+	cfg := tuneModelConfig(a.tuneHardware(), tm)
+	if err := a.SaveModelConfig(modelID, cfg); err != nil {
+		return ModelConfig{}, fmt.Errorf(tr("保存调优参数失败: %w", "failed to save tuned config: %w"), err)
+	}
+	log.Printf("[OK] tune: %s -> gpuLayers=%s ctx=%d flashAttn=%v cacheK=%q threads=%d",
+		modelID, cfg.GPULayers, cfg.CtxSize, cfg.FlashAttn, cfg.CacheTypeK, cfg.Threads)
+	return cfg, nil
+}
+
 // ─── Server ──────────────────────────────────────────────────────
 
 func (a *App) GetServerConfig() ServerConfig {

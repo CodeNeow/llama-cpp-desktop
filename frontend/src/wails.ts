@@ -110,6 +110,14 @@ export async function saveModelConfig(modelID: string, config: any): Promise<voi
   return app().SaveModelConfig(modelID, config)
 }
 
+// Auto-tune the model's inference parameters: the backend reads the model's GGUF
+// metrics, snapshots GPU/CPU/RAM, computes optimal llama-server options and
+// persists them through the same validation path as saveModelConfig, returning
+// the applied ModelConfig
+export async function tuneModelConfig(modelID: string): Promise<any> {
+  return app().TuneModelConfig(modelID)
+}
+
 // ─── Server ──────────────────────────────────────────────────────
 
 // ServerConfig mirrors the backend core.ServerConfig: accessMode is the service access

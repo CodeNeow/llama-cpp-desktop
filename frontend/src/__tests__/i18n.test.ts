@@ -64,6 +64,23 @@ describe('lib/i18n', () => {
     expect(t('models.saveFailed', { msg: 'boom' })).toBe('保存失败: boom')
   })
 
+  it('models tune keys render in both locales with interpolated tune results', () => {
+    setLocale('zh')
+    expect(t('models.tune')).not.toBe('models.tune')
+    expect(t('models.tuneError', { msg: 'boom' })).toContain('boom')
+    expect(t('models.tuneError', { msg: 'boom' })).not.toBe('models.tuneError')
+    const zhTuned = t('models.tuned', { gpu: 'all', ctx: 32768, cache: 'f16', threads: 8 })
+    expect(zhTuned).not.toBe('models.tuned')
+    expect(zhTuned).toContain('32768')
+    setLocale('en')
+    expect(t('models.tune')).not.toBe('models.tune')
+    expect(t('models.tuneError', { msg: 'boom' })).toContain('boom')
+    expect(t('models.tuneError', { msg: 'boom' })).not.toBe('models.tuneError')
+    const enTuned = t('models.tuned', { gpu: 'all', ctx: 32768, cache: 'f16', threads: 8 })
+    expect(enTuned).not.toBe('models.tuned')
+    expect(enTuned).toContain('32768')
+  })
+
   it('after setLocale, t returns corresponding language', () => {
     setLocale('en')
     expect(t('nav.home')).toBe('System Info')
