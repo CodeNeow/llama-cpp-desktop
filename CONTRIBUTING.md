@@ -6,7 +6,7 @@ Thank you for contributing to Llama Desktop! This guide covers environment setup
 
 | Dependency | Version | Notes |
 | --- | --- | --- |
-| [Go](https://go.dev/dl/) | 1.22+ | Backend (declared in `go.mod`) |
+| [Go](https://go.dev/dl/) | 1.25+ | Backend (declared in `go.mod`) |
 | [Node.js](https://nodejs.org/) | 18+ | Frontend build (CI uses 24) |
 | [Wails CLI](https://wails.io/docs/gettingstarted/installation) | v2 | `go install github.com/wailsapp/wails/v2/cmd/wails@latest` |
 | [golangci-lint](https://golangci-lint.run/) | v2 | `go install github.com/golangci/golangci-lint/cmd/golangci-lint@v2.9.0` |

@@ -17,7 +17,7 @@ A user-friendly desktop GUI for [llama.cpp](https://github.com/ggml-org/llama.cp
 - **Per-model inference presets** — GPU layers, KV cache types, long-context RoPE settings, speculative decoding and more, persisted per model and written into the llama-server preset on save.
 - **Live service monitor** — server log console, prompt-processing and generation token speed with charts, and CPU / memory / GPU (utilization + VRAM) sampling, refreshed every second.
 - **Task dock** — a collapsible card floating at the bottom-right corner shows download progress at a glance (llama.cpp / model files / app updates) alongside the models currently loaded in memory, each with a one-click unload button.
-- **Desktop niceties** — Windows system tray, in-app update check, light / dark themes, and a zh / en / auto UI language.
+- **Desktop niceties** — Windows system tray, headless API-route mode (tray + llama-server background service, no GUI), in-app update check, light / dark themes, and a zh / en / auto UI language.
 
 ## Screenshots
 
@@ -53,14 +53,15 @@ wails dev
 
 ### First run
 
-1. On **System Info**, click "Download llama.cpp" to fetch the latest release from GitHub (resumable), or point the app at an existing llama.cpp directory.
+1. On **Runtime Environment**, click "Download llama.cpp" to fetch the latest release from GitHub (resumable), or point the app at an existing llama.cpp directory.
 2. On **Model Downloads**, search HF Mirror or ModelScope and download a GGUF file into the models directory (`LLM-Models/` by default); progress shows up in the task dock at the bottom-right corner.
 3. On **API Router**, confirm the host / port (default `127.0.0.1:8080`) and click "Start".
 4. Open **Local Chat**, pick the model, and start talking — or point any OpenAI-compatible client at the endpoint.
 
 ## Usage
 
-- **System Info** — detects CPU, memory, GPU and CUDA, and shows the llama.cpp installation status; one-click download or a custom directory.
+- **System Info** — detects CPU, memory, GPU and CUDA.
+- **Runtime Environment** — shows the llama.cpp installation status (main program and CUDA runtime components); one-click resumable download or a custom directory.
 - **Local Chat** — streaming chat with image attachments and sampling parameters; requires the API router to be running.
 - **Model Downloads** — dual-source search (HF Mirror / ModelScope, switchable in Preferences) with file-level selection and a persistent, resumable download queue.
 - **Model Manager** — scans the models directory for GGUF files (architecture, quantization, multimodal / embedding detection) and links each model to its settings page (basic / inference / memory / multi-GPU / long-context / advanced tabs).
@@ -87,9 +88,10 @@ Runtime settings are persisted to `llama-desktop-config.json` in the project roo
 | `downloadSource` | Default model source: `hf` / `modelscope` | `hf` |
 | `trayEnabled` | Windows system tray (show / quit menu) | `true` |
 | `sidebarCollapsed` | Whether the sidebar starts collapsed | `true` |
+| `apiRouteMode` | API-route (headless) mode: on the next start the app runs as tray + llama-server only, no GUI (Windows) | `false` |
 | `serverConfig` | `accessMode` (`local` / `lan`), `host`, `port`, `maxModels`, `cacheRam` (MiB) | `127.0.0.1:8080`, `maxModels` 1, `cacheRam` 8192 |
 
-Also stored: `llamaCppDir` / `modelDir` (custom directories), `modelConfigs` (per-model inference parameters) and `downloadTasks` (the download queue, recovered on restart).
+Also stored: `llamaCppDownloadDir` / `modelDownloadDir` (download paths) and `llamaCppDir` / `modelDir` (imported external directories), `modelConfigs` (per-model inference parameters) and `downloadTasks` (the download queue, recovered on restart).
 
 ## Development
 
@@ -116,13 +118,13 @@ The production binary is written to `build/bin/llama-desktop.exe` (Windows) or `
 The Vite dev server binds `localhost:5173` (see `frontend:dev:serverUrl` in `wails.json`). End the process occupying it and retry.
 
 **"Start" on the API Router page fails with "no models found".**
-Startup scans the models directory and generates presets first, so an empty directory is an error. Put GGUF files into `LLM-Models/` (check the Model Manager page) and try again. Also confirm llama.cpp is installed, as shown on the System Info page.
+Startup scans the models directory and generates presets first, so an empty directory is an error. Put GGUF files into `LLM-Models/` (check the Model Manager page) and try again. Also confirm llama.cpp is installed, as shown on the Runtime Environment page.
 
 **Every backend call throws when running the frontend with `npm run dev` standalone.**
 `window.go` is injected by the Wails runtime, so Vite without `wails dev` has no bridge to the Go backend — this is expected. Use `wails dev` to debug the UI with the backend attached.
 
 **Downloading llama.cpp is slow or fails.**
-The download comes from GitHub Releases; it supports pause / resume with resumable transfers. On a restricted network, download the release for your platform manually, extract it, and select the directory via "Custom" on the System Info page.
+The download comes from GitHub Releases; it supports pause / resume with resumable transfers. On a restricted network, download the release for your platform manually, extract it, and select the directory via "Custom" on the Runtime Environment page.
 
 ## License
 
