@@ -1038,11 +1038,14 @@ func buildModelInfo(path, author, fallbackName string) ModelInfo {
 			model.Quantization = q
 		}
 	}
-	// The main file name identifies the actual variant on disk when the
-	// resolved name is only its prefix (unsloth writes the bare base-model
-	// name into general.name for every quant in a repo, e.g. "Qwen3.5-9B"
-	// for Qwen3.5-9B-UD-Q4_K_XL.gguf).
-	if fileBase := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)); preferFileNameVariant(model.Name, fileBase) {
+	// The main file name identifies the actual variant on disk when it is
+	// strictly more specific than the resolved name: either the resolved name
+	// is only its prefix (unsloth writes the bare base-model name into
+	// general.name for every quant in a repo, e.g. "Qwen3.5-9B" for
+	// Qwen3.5-9B-UD-Q4_K_XL.gguf), or the resolved name is a "<model>-GGUF"
+	// variant-directory fallback that hides the quant the file name carries.
+	if fileBase := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)); fileBase != model.Name &&
+		(preferFileNameVariant(model.Name, fileBase) || preferFileNameOverGenericSuffix(model.Name, fileBase)) {
 		model.Name = fileBase
 	}
 	// Fallback quantization from fallbackName, then from file name
@@ -1076,7 +1079,43 @@ func preferFileNameVariant(name, fileBase string) bool {
 	return c == '-' || c == '_'
 }
 
-// isReadableName returns true if the name doesn't look like a hash/UUID.
+// genericVariantSuffixes lists variant-name suffixes that only mark the file
+// container format rather than the model itself; HF download destinations
+// typically name the variant directory after the source repo ("<model>-GGUF").
+var genericVariantSuffixes = []string{"-GGUF", "_GGUF"}
+
+// preferFileNameOverGenericSuffix reports whether fileBase carries strictly
+// more information than name: name ends with a generic "-GGUF"/"_GGUF" suffix
+// and fileBase begins with the suffix-trimmed name followed by a separator
+// ("-" or "_"). The variant-directory fallback hides the actual quant variant
+// ("Qwen3.5-9B-GGUF" holding "Qwen3.5-9B-Q4_K_M.gguf"); the main file name
+// identifies the real variant on disk. Mirrors preferFileNameVariant's
+// prefix/separator style.
+func preferFileNameOverGenericSuffix(name, fileBase string) bool {
+	for _, suffix := range genericVariantSuffixes {
+		if len(name) <= len(suffix) || !strings.EqualFold(name[len(name)-len(suffix):], suffix) {
+			continue
+		}
+		trimmed := name[:len(name)-len(suffix)]
+		if len(fileBase) <= len(trimmed) || !strings.EqualFold(fileBase[:len(trimmed)], trimmed) {
+			continue
+		}
+		if c := fileBase[len(trimmed)]; c == '-' || c == '_' {
+			return true
+		}
+	}
+	return false
+}
+
+// converterPlaceholderNames lists placeholder values converters write into
+// general.name when the real model name is unknown ("Unsloth_Gguf" from
+// unsloth, "Hf_Model" from some HF-space converters). A name equal to or
+// starting with any entry is treated as unreadable (case-insensitive), so the
+// scanner falls back to the variant directory / file name.
+var converterPlaceholderNames = []string{"Unsloth_Gguf", "Hf_Model"}
+
+// isReadableName returns true if the name doesn't look like a hash/UUID or a
+// converter placeholder.
 func isReadableName(name string) bool {
 	if len(name) < 3 {
 		return false
@@ -1091,9 +1130,11 @@ func isReadableName(name string) bool {
 	if hexCount > len(name)*3/4 && len(name) > 10 {
 		return false
 	}
-	// If it starts with "Unsloth_Gguf" it's an auto-generated name
-	if strings.HasPrefix(name, "Unsloth_Gguf") {
-		return false
+	// Converter placeholders are auto-generated names, not real model names
+	for _, ph := range converterPlaceholderNames {
+		if len(name) >= len(ph) && strings.EqualFold(name[:len(ph)], ph) {
+			return false
+		}
 	}
 	// If it contains spaces or dashes, it's likely human-readable
 	if strings.ContainsAny(name, " -.") {
@@ -2937,12 +2978,16 @@ func generateModelsPresetFrom(models []ModelInfo, cfgs map[string]ModelConfig) (
 	var buf bytes.Buffer
 	// Deterministic alias dedup: sanitizeAlias maps different characters like
 	// spaces and slashes all to '-', so distinct model names can collide into
-	// the same section name (#7.1). Append -2, -3... to already-used aliases
-	// in model order until unique; the result is deterministic, independent of
-	// randomness/time.
+	// the same section name (#7.1). Aliases are uppercased so the model id
+	// exposed via GET /models and the OpenAI API is uniform regardless of the
+	// on-disk file casing (llama-server matches model ids case-sensitively);
+	// the Models page keeps showing the original m.Name casing. Append -2,
+	// -3... to already-used aliases in model order until unique; the dedup
+	// operates on the uppercase names, so the result is deterministic and
+	// suffix-consistent, independent of randomness/time.
 	used := make(map[string]int)
 	for _, m := range models {
-		alias := sanitizeAlias(m.Name)
+		alias := strings.ToUpper(sanitizeAlias(m.Name))
 		if used[alias] > 0 {
 			for n := used[alias] + 1; ; n++ {
 				candidate := fmt.Sprintf("%s-%d", alias, n)

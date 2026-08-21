@@ -8,8 +8,8 @@ import (
 )
 
 // TestGenerateModelsPresetFrom verifies preset INI generation: section names use the
-// alias, model lines use forward-slash paths, and embedding models automatically get
-// embeddings=true.
+// alias (uppercase form of the sanitized model name), model lines use forward-slash
+// paths, and embedding models automatically get embeddings=true.
 func TestGenerateModelsPresetFrom(t *testing.T) {
 	// construct paths via filepath.Join (Windows produces backslashes, Unix produces
 	// forward slashes); assert INI model lines equal filepath.ToSlash(path), cross-platform
@@ -30,13 +30,13 @@ func TestGenerateModelsPresetFrom(t *testing.T) {
 	}
 	content := string(data)
 
-	if !strings.Contains(content, "[qwen2.5-7b]\n") {
-		t.Errorf("missing qwen2.5-7b section: %q", content)
+	if !strings.Contains(content, "[QWEN2.5-7B]\n") {
+		t.Errorf("missing QWEN2.5-7B section: %q", content)
 	}
 	if !strings.Contains(content, "model = "+filepath.ToSlash(models[0].Path)+"\n") {
 		t.Errorf("model path should use forward slashes: %q", content)
 	}
-	if !strings.Contains(content, "[bge-small-zh]\n") || !strings.Contains(content, "embeddings = true\n") {
+	if !strings.Contains(content, "[BGE-SMALL-ZH]\n") || !strings.Contains(content, "embeddings = true\n") {
 		t.Errorf("embedding model should output embeddings=true: %q", content)
 	}
 }
@@ -93,7 +93,7 @@ func TestGenerateModelsPresetFromNoConfig(t *testing.T) {
 
 	data, _ := os.ReadFile(path)
 	content := string(data)
-	if content != "[plain]\nmodel = /models/plain.gguf\n\n" {
+	if content != "[PLAIN]\nmodel = /models/plain.gguf\n\n" {
 		t.Errorf("preset content does not match expected: %q", content)
 	}
 }
@@ -154,13 +154,13 @@ func TestGenerateModelsPresetFromRejectsInjection(t *testing.T) {
 // TestGenerateModelsPresetFromAliasDedup verifies alias deduplication (#7.1): sanitizeAlias
 // unifies spaces/slashes/uppercase into lowercase and '-', so different model names may
 // collide into the same section name.
-// Already-occupied aliases get -2, -3… appended in model order until unique; the result
-// is deterministic and does not depend on randomness.
+// Already-occupied aliases get -2, -3… appended in model order until unique; the dedup
+// operates on the uppercase alias, so the result is deterministic and suffix-consistent.
 func TestGenerateModelsPresetFromAliasDedup(t *testing.T) {
 	models := []ModelInfo{
 		{Name: "Model v1", Path: "/models/a.gguf"},
-		{Name: "Model/v1", Path: "/models/b.gguf"}, // collision → model-v1-2
-		{Name: "Model-V1", Path: "/models/c.gguf"}, // another collision → model-v1-3
+		{Name: "Model/v1", Path: "/models/b.gguf"}, // collision → MODEL-V1-2
+		{Name: "Model-V1", Path: "/models/c.gguf"}, // another collision → MODEL-V1-3
 	}
 	path, err := generateModelsPresetFrom(models, nil)
 	if err != nil {
@@ -172,14 +172,54 @@ func TestGenerateModelsPresetFromAliasDedup(t *testing.T) {
 	content := string(data)
 
 	// three models must each have a unique section name, and each must contain its own model path
-	if !strings.Contains(content, "[model-v1]\nmodel = /models/a.gguf") {
-		t.Errorf("first model section should be model-v1: %q", content)
+	if !strings.Contains(content, "[MODEL-V1]\nmodel = /models/a.gguf") {
+		t.Errorf("first model section should be MODEL-V1: %q", content)
 	}
-	if !strings.Contains(content, "[model-v1-2]\nmodel = /models/b.gguf") {
-		t.Errorf("second model section should be model-v1-2: %q", content)
+	if !strings.Contains(content, "[MODEL-V1-2]\nmodel = /models/b.gguf") {
+		t.Errorf("second model section should be MODEL-V1-2: %q", content)
 	}
-	if !strings.Contains(content, "[model-v1-3]\nmodel = /models/c.gguf") {
-		t.Errorf("third model section should be model-v1-3: %q", content)
+	if !strings.Contains(content, "[MODEL-V1-3]\nmodel = /models/c.gguf") {
+		t.Errorf("third model section should be MODEL-V1-3: %q", content)
+	}
+}
+
+// TestGenerateModelsPresetFromUppercaseAlias verifies every preset section alias is
+// the uppercase form of the sanitized model name: llama-server matches the OpenAI-API
+// model field against section names exactly (case-sensitively), and GET /models feeds
+// the frontend chat picker and TaskDock, so uppercasing at generation time gives one
+// uniform model id everywhere. The Models page display name (m.Name) keeps its
+// original casing.
+func TestGenerateModelsPresetFromUppercaseAlias(t *testing.T) {
+	models := []ModelInfo{
+		{Name: "Qwen2.5 7B", Path: "/models/a.gguf"},
+		{Name: "DeepSeek-R1-Distill-Qwen-7B", Path: "/models/b.gguf"},
+	}
+	path, err := generateModelsPresetFrom(models, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(path)
+
+	data, _ := os.ReadFile(path)
+	content := string(data)
+
+	for _, want := range []string{"[QWEN2.5-7B]\n", "[DEEPSEEK-R1-DISTILL-QWEN-7B]\n"} {
+		if !strings.Contains(content, want) {
+			t.Errorf("preset missing uppercase section %q: %q", want, content)
+		}
+	}
+	// no lowercase/mixed-case duplicate sections: exactly one section per model
+	sections := 0
+	for _, line := range strings.Split(content, "\n") {
+		if strings.HasPrefix(line, "[") {
+			sections++
+		}
+	}
+	if sections != len(models) {
+		t.Errorf("expected exactly %d sections, got %d: %q", len(models), sections, content)
+	}
+	if strings.Contains(content, "[qwen2.5-7b]") || strings.Contains(content, "[deepseek-r1-distill-qwen-7b]") {
+		t.Errorf("preset must not contain lowercase duplicate sections: %q", content)
 	}
 }
 

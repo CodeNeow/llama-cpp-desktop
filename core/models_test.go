@@ -227,6 +227,82 @@ func TestScanModelsDirGGUFMetaBaseNamePrefix(t *testing.T) {
 	}
 }
 
+// TestIsReadableNameRejectsConverterPlaceholders verifies placeholder names
+// converters write into general.name ("Unsloth_Gguf" from unsloth, "Hf_Model"
+// from some HF-space converters) are treated as unreadable regardless of case
+// so the scanner falls back to directory/file names, while real model names
+// stay readable.
+func TestIsReadableNameRejectsConverterPlaceholders(t *testing.T) {
+	for _, name := range []string{
+		"Unsloth_Gguf", "unsloth_gguf", "UNSLOTH_GGUF", "Unsloth_Gguf-Qwen",
+		"Hf_Model", "hf_model", "HF_MODEL",
+	} {
+		if isReadableName(name) {
+			t.Errorf("isReadableName(%q) = true, want false (converter placeholder)", name)
+		}
+	}
+	for _, name := range []string{"Qwen3.5-9B", "Qwen2.5 7B Instruct"} {
+		if !isReadableName(name) {
+			t.Errorf("isReadableName(%q) = false, want true (real model name)", name)
+		}
+	}
+}
+
+// TestScanModelsDirGenericSuffixVariantFallback verifies that when GGUF
+// metadata is rejected (converter placeholders like "Hf_Model"/"Unsloth_Gguf")
+// and the variant-directory fallback only carries a generic "-GGUF"/"_GGUF"
+// container suffix, the main file base — which carries the actual quant
+// variant — is displayed instead. Variant names without the suffix (and file
+// names that are not more specific) keep the existing fallback behavior.
+func TestScanModelsDirGenericSuffixVariantFallback(t *testing.T) {
+	base := t.TempDir()
+	cases := []struct {
+		author, variant, file, meta, want string
+	}{
+		// Reproducer: "Hf_Model" placeholder + "-GGUF"-suffixed variant dir
+		// → file base wins over the variant dir name
+		{"barozp", "Qwen3.6-29B-REAP-Opus-Reasoning-Distill-MTP-GGUF",
+			"Qwen3.6-29B-REAP-Opus-Reasoning-Distill-MTP-Q4_K_M.gguf", "Hf_Model",
+			"Qwen3.6-29B-REAP-Opus-Reasoning-Distill-MTP-Q4_K_M"},
+		// Case-insensitive placeholder and "_GGUF" suffix behave the same
+		{"a", "Foo-9B_GGUF", "Foo-9B-Q4_K_M.gguf", "hf_model", "Foo-9B-Q4_K_M"},
+		// Existing "Unsloth_Gguf" rejection still falls through to the file base
+		{"b", "Foo-9B-GGUF", "Foo-9B-UD-Q4_K_XL.gguf", "Unsloth_Gguf", "Foo-9B-UD-Q4_K_XL"},
+		// Variant name without the -GGUF suffix is kept when the file name is
+		// not more specific (no prefix match, no suffix to trim)
+		{"c", "Foo-9B", "model.gguf", "Hf_Model", "Foo-9B"},
+		// File base equal to the trimmed variant adds nothing: keep variant name
+		{"d", "Foo-9B-GGUF", "Foo-9B.gguf", "Hf_Model", "Foo-9B-GGUF"},
+		// File base not extending the trimmed variant: keep variant name
+		{"e", "Foo-9B-GGUF", "other.gguf", "Hf_Model", "Foo-9B-GGUF"},
+	}
+	for _, tc := range cases {
+		dir := filepath.Join(base, tc.author, tc.variant)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		writeTempGGUF(t, dir, tc.file, buildGGUF(3, strKV("general.name", tc.meta)))
+	}
+
+	models := scanModelsDir(base)
+	if len(models) != len(cases) {
+		t.Fatalf("scanned %d models, want %d", len(models), len(cases))
+	}
+	byFile := make(map[string]ModelInfo, len(models))
+	for _, m := range models {
+		byFile[filepath.Base(m.Path)] = m
+	}
+	for _, tc := range cases {
+		m, ok := byFile[tc.file]
+		if !ok {
+			t.Fatalf("model for %s not scanned", tc.file)
+		}
+		if m.Name != tc.want {
+			t.Errorf("Name for %s = %q, want %q", tc.file, m.Name, tc.want)
+		}
+	}
+}
+
 // TestScanModelsDirQuantFallback verifies quantization is inferred from the directory
 // name or filename when GGUF metadata is absent.
 func TestScanModelsDirQuantFallback(t *testing.T) {
