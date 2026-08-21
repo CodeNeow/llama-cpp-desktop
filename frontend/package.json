@@ -9,10 +9,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "markdown-it": "^15.0.0",
     "vue": "^3.5.34",
     "vue-router": "^4.6.4"
   },
   "devDependencies": {
+    "@types/markdown-it": "^14.2.0",
     "@vitejs/plugin-vue": "^5.2.4",
     "@vue/test-utils": "^2.4.11",
     "happy-dom": "^18.0.1",

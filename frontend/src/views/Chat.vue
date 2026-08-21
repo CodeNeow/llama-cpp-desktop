@@ -104,13 +104,27 @@
                   <polyline points="6 9 12 15 18 9"/>
                 </svg>
               </button>
-              <div v-if="isReasoningExpanded(idx, msg)" class="reasoning-body">{{ msg.reasoning }}</div>
+              <!-- Ref/scroll wiring is bound to the last message only: that is the
+                   streaming stick-to-bottom target (see setReasoningBodyRef) -->
+              <div
+                v-if="isReasoningExpanded(idx, msg)"
+                class="reasoning-body"
+                :ref="idx === messages.length - 1 ? setReasoningBodyRef : undefined"
+                @scroll="onReasoningScroll"
+              >{{ msg.reasoning }}</div>
             </div>
             <!-- Images (attached to user messages) -->
             <div v-if="msg.images && msg.images.length" class="message-images">
               <img v-for="(img, i) in msg.images" :key="i" :src="img" class="message-image" alt="" />
             </div>
-            <p class="message-content">{{ msg.content }}</p>
+            <!-- Assistant output renders as markdown (raw HTML escaped by
+                 renderMarkdown); user input stays plain text with preserved breaks -->
+            <div
+              v-if="msg.role === 'assistant'"
+              class="message-content markdown-body"
+              v-html="renderMarkdown(msg.content)"
+            ></div>
+            <p v-else class="message-content">{{ msg.content }}</p>
             <span v-if="idx === messages.length - 1 && streaming" class="streaming-cursor" />
             <!-- Per-phase token rates footer, present after streaming ends -->
             <div v-if="statsLine(msg)" class="message-stats">{{ statsLine(msg) }}</div>
@@ -169,12 +183,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick, watch, onUnmounted } from 'vue'
+import { ref, computed, onMounted, nextTick, watch, onUnmounted, type ComponentPublicInstance } from 'vue'
 import { useRouter } from 'vue-router'
 import { getServerStatus, getServerConfig } from '../wails'
 import { fetchRouterModels, streamChatCompletion, buildChatBody, tokenRates } from '../lib/chat'
 import { messages, selectedModel, streaming, chatAbortController, persistChat, chatParams, persistChatParams, type ChatMessage, type ChatParams } from '../lib/chatState'
 import { t } from '../lib/i18n'
+import { renderMarkdown } from '../lib/markdown'
+import { isNearBottom } from '../lib/scroll'
 import ThemedSelect, { type SelectOption } from '../components/ThemedSelect.vue'
 
 const router = useRouter()
@@ -214,6 +230,50 @@ function toggleReasoning(idx: number) {
   const msg = messages.value[idx]
   if (!msg) return
   reasoningExpanded.value[idx] = !isReasoningExpanded(idx, msg)
+}
+
+// ─── Reasoning body stick-to-bottom ─────────────────────────────────────────
+
+/** Reasoning-body element of the last message (stick-to-bottom scroll target); null when collapsed or unmounted */
+const reasoningBodyEl = ref<HTMLDivElement | null>(null)
+
+/** Whether the reasoning body is pinned to its bottom; flipped false when the user scrolls up to read earlier thinking */
+const reasoningStuck = ref(true)
+
+/**
+ * Function ref for the last message's reasoning body: captures the element and
+ * resets the stick state when a NEW element appears (a fresh block starts
+ * pinned). Vue re-invokes function refs on every patch with the same element,
+ * so the identity guard keeps per-delta re-invocations from resetting a
+ * user-scrolled-up state. Element-null transitions (collapse, message stops
+ * being last, component unmount/navigation) simply clear the capture.
+ */
+function setReasoningBodyRef(el: Element | ComponentPublicInstance | null): void {
+  const dom = el instanceof HTMLDivElement ? el : null
+  if (dom === reasoningBodyEl.value) return
+  reasoningBodyEl.value = dom
+  reasoningStuck.value = true
+}
+
+/** Record near-bottom state from user scrolling; ignores bodies other than the captured target. */
+function onReasoningScroll(e: Event) {
+  const el = reasoningBodyEl.value
+  if (!el || e.target !== el) return
+  reasoningStuck.value = isNearBottom(el.scrollTop, el.scrollHeight, el.clientHeight)
+}
+
+/**
+ * Keep the expanded reasoning body pinned to its bottom while reasoning deltas
+ * stream in — but only while the user is themselves near the bottom, so a user
+ * reading earlier thinking is never yanked around. Runs after nextTick so the
+ * DOM (and scrollHeight) reflects the appended delta; the null check follows
+ * scrollToBottom's style and guards element absence after unmount/navigation.
+ */
+function scrollReasoningToBottom() {
+  nextTick(() => {
+    const el = reasoningBodyEl.value
+    if (el && reasoningStuck.value) el.scrollTop = el.scrollHeight
+  })
 }
 
 /** One-line stats footer, e.g. "思考 45.2 tok/s · 生成 38.6 tok/s"; each part shown only when defined. */
@@ -389,6 +449,7 @@ async function send() {
         if (last && last.role === 'assistant') {
           last.reasoning = (last.reasoning || '') + reasoning
           scrollToBottom()
+          scrollReasoningToBottom()
         }
       },
       chatAbortController.current.signal,
@@ -488,6 +549,11 @@ onUnmounted(() => {
      keeping the pill vertically aligned with the send button. */
   padding: 0 72px 0 48px;
   /* Chat page does not scroll with page: layout fills remaining viewport height, messages area scrolls independently */
+}
+
+/* Never compress the fixed header/input bands; the messages area absorbs overflow instead */
+.chat-page .sticky-top {
+  flex-shrink: 0;
 }
 
 .chat-page .page-title {
@@ -704,6 +770,10 @@ onUnmounted(() => {
 /* ─── Messages ─── */
 .messages-area {
   flex: 1;
+  /* min-height: 0 lets this flex child shrink below its content size so
+     overflow-y scrolling kicks in; with the default min-height: auto the
+     growing conversation pushes .input-area out of the viewport instead */
+  min-height: 0;
   overflow-y: auto;
   padding: 8px 0 16px;
 }
@@ -732,7 +802,8 @@ onUnmounted(() => {
   max-width: 78%;
   padding: 10px 14px;
   border-radius: 12px;
-  white-space: pre-wrap;
+  /* No blanket pre-wrap: markdown output manages its own spacing (code must
+     not wrap); plain-text spots scope pre-wrap individually */
   font-size: 13px;
   line-height: 1.6;
   word-break: break-word;
@@ -772,6 +843,142 @@ onUnmounted(() => {
 
 .message-content {
   margin: 0;
+}
+
+/* User input stays plain text: preserve explicit line breaks */
+.is-user .message-content {
+  white-space: pre-wrap;
+}
+
+/* ─── Markdown rendering (assistant bubbles) ───
+   v-html content does not carry the scope attribute, so child selectors need
+   :deep(). Sizes are relative to the 13px bubble text; colors ride the theme
+   CSS variables so light/dark both work. */
+.markdown-body :deep(h1),
+.markdown-body :deep(h2),
+.markdown-body :deep(h3),
+.markdown-body :deep(h4),
+.markdown-body :deep(h5),
+.markdown-body :deep(h6) {
+  margin: 12px 0 6px;
+  line-height: 1.35;
+  color: var(--text-primary);
+}
+
+.markdown-body :deep(h1) { font-size: 1.35em; }
+.markdown-body :deep(h2) { font-size: 1.2em; }
+.markdown-body :deep(h3) { font-size: 1.08em; }
+.markdown-body :deep(h4),
+.markdown-body :deep(h5),
+.markdown-body :deep(h6) { font-size: 1em; }
+
+.markdown-body :deep(p) {
+  margin: 6px 0;
+}
+
+.markdown-body :deep(ul),
+.markdown-body :deep(ol) {
+  margin: 6px 0;
+  padding-left: 1.4em;
+}
+
+.markdown-body :deep(li) {
+  margin: 2px 0;
+}
+
+.markdown-body :deep(li > ul),
+.markdown-body :deep(li > ol) {
+  margin: 2px 0;
+}
+
+/* Inline code: subtle inset chip */
+.markdown-body :deep(code) {
+  background: var(--overlay-8);
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  padding: 0.5px 5px;
+  font-size: 0.92em;
+  word-break: break-word;
+}
+
+/* Fenced code blocks: monospace via the global code/pre rule; long lines
+   scroll horizontally instead of wrapping */
+.markdown-body :deep(pre) {
+  margin: 8px 0;
+  padding: 10px 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.markdown-body :deep(pre code) {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: 0.95em;
+  line-height: 1.5;
+  white-space: pre;
+  word-break: normal;
+}
+
+.markdown-body :deep(blockquote) {
+  margin: 8px 0;
+  padding: 2px 0 2px 12px;
+  border-left: 3px solid var(--accent-glow);
+  color: var(--text-secondary);
+}
+
+.markdown-body :deep(blockquote p) {
+  margin: 4px 0;
+}
+
+/* Tables: block + auto scroll so wide tables stay inside the bubble */
+.markdown-body :deep(table) {
+  display: block;
+  margin: 8px 0;
+  border-collapse: collapse;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.markdown-body :deep(th),
+.markdown-body :deep(td) {
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  text-align: left;
+}
+
+.markdown-body :deep(th) {
+  background: var(--surface);
+  font-weight: 600;
+}
+
+.markdown-body :deep(a) {
+  color: var(--accent-light);
+}
+
+.markdown-body :deep(a:hover) {
+  text-decoration: underline;
+}
+
+.markdown-body :deep(img) {
+  max-width: 100%;
+}
+
+.markdown-body :deep(hr) {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 12px 0;
+}
+
+/* Avoid doubled spacing where the markdown content meets the bubble padding */
+.markdown-body > :deep(:first-child) {
+  margin-top: 0;
+}
+
+.markdown-body > :deep(:last-child) {
+  margin-bottom: 0;
 }
 
 /* ─── Reasoning (thinking) block ─── */
@@ -849,6 +1056,8 @@ onUnmounted(() => {
   gap: 10px;
   padding: 12px 0 24px;
   border-top: 1px solid var(--border);
+  /* Stays fixed at the bottom: never compressed by the flex column */
+  flex-shrink: 0;
 }
 
 .input-row {
