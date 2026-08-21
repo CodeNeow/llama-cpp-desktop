@@ -1,5 +1,5 @@
 <template>
-  <div class="page">
+  <div class="page page-fixed">
     <div class="sticky-top">
       <div class="page-header">
         <h1 class="page-title">{{ t('api.title') }}</h1>
@@ -414,6 +414,13 @@ function clearLog() {
   padding: 0 48px 60px;
 }
 
+/* Fixed-viewport layout (see .page-fixed in global.css): the header + toolbar
+   band stays pinned and never compresses; the monitor grid below flexes to
+   fill the remaining viewport height */
+.page-fixed .sticky-top {
+  flex-shrink: 0;
+}
+
 .page-header {
   /* Use padding instead of margin: header background covers this gap so content scrolls without leaving a seam */
   padding-bottom: 28px;
@@ -663,8 +670,11 @@ function clearLog() {
      the layout and pushing the config block below away */
   grid-template-rows: minmax(0, 1fr);
   gap: 16px;
-  /* Both columns equal height; shrinks with the window (min(440px, 55vh)) */
-  height: min(440px, 55vh);
+  /* Fixed-viewport layout: the grid flexes to fill the remaining viewport
+     height (page itself never scrolls); min-height: 0 lets it shrink below its
+     content so the columns' internal scrolls engage */
+  flex: 1;
+  min-height: 0;
   margin-bottom: 20px;
 }
 
@@ -748,9 +758,11 @@ function clearLog() {
   gap: 12px;
   height: 100%;
   /* Release the grid child default min-height:auto: the right column height stays
-     locked and oversized cards scroll via their own overflow-y */
+     locked and oversized cards scroll via their own overflow-y. Bottom reserve
+     keeps the last card clear of the floating TaskDock pill when scrolling. */
   min-height: 0;
   overflow-y: auto;
+  padding-bottom: var(--dock-reserve, 0px);
 }
 
 .monitor-card {

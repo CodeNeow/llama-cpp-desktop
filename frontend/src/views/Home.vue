@@ -1,5 +1,5 @@
 <template>
-  <div class="page">
+  <div class="page page-fixed">
     <div class="sticky-top">
       <div class="page-header">
         <h1 class="page-title">{{ t('home.title') }}</h1>
@@ -7,162 +7,165 @@
       </div>
     </div>
 
-    <!-- Loading skeleton -->
-    <div v-if="loading" class="loading-grid">
-      <div v-for="i in 5" :key="i" class="skeleton-card">
-        <div class="skeleton-line skeleton-title"></div>
-        <div class="skeleton-line"></div>
-        <div class="skeleton-line skeleton-short"></div>
+    <!-- Scrollable content band: only this region scrolls, never the page -->
+    <div class="page-scroll">
+      <!-- Loading skeleton -->
+      <div v-if="loading" class="loading-grid">
+        <div v-for="i in 5" :key="i" class="skeleton-card">
+          <div class="skeleton-line skeleton-title"></div>
+          <div class="skeleton-line"></div>
+          <div class="skeleton-line skeleton-short"></div>
+        </div>
       </div>
-    </div>
 
-    <!-- Error state -->
-    <div v-else-if="error" class="error-card">
-      <div class="error-icon">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-        </svg>
+      <!-- Error state -->
+      <div v-else-if="error" class="error-card">
+        <div class="error-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+        </div>
+        <h2>{{ t('home.errorTitle') }}</h2>
+        <p>{{ error }}</p>
+        <button class="retry-btn" @click="fetchSystemInfo">{{ t('home.retry') }}</button>
       </div>
-      <h2>{{ t('home.errorTitle') }}</h2>
-      <p>{{ error }}</p>
-      <button class="retry-btn" @click="fetchSystemInfo">{{ t('home.retry') }}</button>
-    </div>
 
-    <!-- Data -->
-    <template v-else>
-      <div class="cards-grid">
-        <!-- CPU Card -->
-        <section class="info-section">
-          <h2 class="section-title">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/>
-            </svg>
-            {{ t('home.cpu') }}
-          </h2>
-          <div class="info-grid">
-            <div class="info-item info-item-full">
-              <span class="info-label">{{ t('home.cpu.model') }}</span>
-              <span class="info-value">{{ info.cpu.model }}</span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">{{ t('home.cpu.cores') }}</span>
-              <span class="info-value">{{ t('home.cpu.coresValue', { n: info.cpu.cores }) }}</span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">{{ t('home.cpu.threads') }}</span>
-              <span class="info-value">{{ t('home.cpu.threadsValue', { n: info.cpu.logicalCpus }) }}</span>
-            </div>
-          </div>
-        </section>
-
-        <!-- Memory Card -->
-        <section class="info-section">
-          <h2 class="section-title">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="10" x2="6" y2="14"/><line x1="10" y1="10" x2="10" y2="14"/><line x1="14" y1="10" x2="14" y2="14"/><line x1="18" y1="10" x2="18" y2="14"/>
-            </svg>
-            {{ t('home.memory') }}
-          </h2>
-          <!-- Usage progress bar -->
-          <div class="memory-usage">
-            <div class="memory-usage-header">
-              <span class="memory-usage-label">{{ t('home.memory.usageLabel', { used: formatGB(info.memory.totalGb - info.memory.freeGb), total: formatGB(info.memory.totalGb) }) }}</span>
-              <span class="memory-usage-pct">{{ t('home.memory.usagePercent', { pct: usagePercent(info.memory.totalGb - info.memory.freeGb, info.memory.totalGb) }) }}</span>
-            </div>
-            <div class="usage-bar">
-              <div class="usage-fill" :style="{ width: usagePercent(info.memory.totalGb - info.memory.freeGb, info.memory.totalGb) + '%' }"></div>
-            </div>
-          </div>
-          <div class="info-grid">
-            <div class="info-item">
-              <span class="info-label">{{ t('home.memory.total') }}</span>
-              <span class="info-value">{{ formatGB(info.memory.totalGb) }}</span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">{{ t('home.memory.available') }}</span>
-              <span class="info-value">{{ formatGB(info.memory.freeGb) }}</span>
-            </div>
-          </div>
-        </section>
-
-        <!-- GPU Card -->
-        <section class="info-section">
-          <h2 class="section-title">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
-            </svg>
-            {{ t('home.gpu') }}
-          </h2>
-          <div v-if="info.gpu && info.gpu.length > 0">
-            <div v-for="(gpu, i) in info.gpu" :key="i" class="info-grid gpu-grid">
+      <!-- Data -->
+      <template v-else>
+        <div class="cards-grid">
+          <!-- CPU Card -->
+          <section class="info-section">
+            <h2 class="section-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/>
+              </svg>
+              {{ t('home.cpu') }}
+            </h2>
+            <div class="info-grid">
               <div class="info-item info-item-full">
-                <span class="info-label">{{ t('home.gpu.model') }}</span>
-                <span class="info-value gpu-name">{{ gpu.name }}</span>
+                <span class="info-label">{{ t('home.cpu.model') }}</span>
+                <span class="info-value">{{ info.cpu.model }}</span>
               </div>
               <div class="info-item">
-                <span class="info-label">{{ t('home.gpu.memory') }}</span>
-                <span class="info-value">{{ formatMB(gpu.memoryMb) }}</span>
+                <span class="info-label">{{ t('home.cpu.cores') }}</span>
+                <span class="info-value">{{ t('home.cpu.coresValue', { n: info.cpu.cores }) }}</span>
               </div>
               <div class="info-item">
-                <span class="info-label">{{ t('home.gpu.driver') }}</span>
-                <span class="info-value">{{ gpu.driverVersion }}</span>
+                <span class="info-label">{{ t('home.cpu.threads') }}</span>
+                <span class="info-value">{{ t('home.cpu.threadsValue', { n: info.cpu.logicalCpus }) }}</span>
               </div>
             </div>
-          </div>
-          <div v-else class="info-empty">
-            <span>{{ t('home.gpu.none') }}</span>
-          </div>
-        </section>
+          </section>
 
-        <!-- CUDA Card -->
-        <section class="info-section">
-          <h2 class="section-title">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"/><line x1="12" y1="22" x2="12" y2="15.5"/><polyline points="22 8.5 12 15.5 2 8.5"/>
-            </svg>
-            {{ t('home.cuda') }}
-          </h2>
-          <div class="info-grid">
-            <div class="info-item">
-              <span class="info-label">{{ t('home.cuda.status') }}</span>
-              <span class="info-value">
-                <span class="status-badge" :class="info.cuda.available ? 'available' : 'unavailable'">
-                  {{ info.cuda.available ? t('home.cuda.available') : t('home.cuda.unavailable') }}
+          <!-- Memory Card -->
+          <section class="info-section">
+            <h2 class="section-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="10" x2="6" y2="14"/><line x1="10" y1="10" x2="10" y2="14"/><line x1="14" y1="10" x2="14" y2="14"/><line x1="18" y1="10" x2="18" y2="14"/>
+              </svg>
+              {{ t('home.memory') }}
+            </h2>
+            <!-- Usage progress bar -->
+            <div class="memory-usage">
+              <div class="memory-usage-header">
+                <span class="memory-usage-label">{{ t('home.memory.usageLabel', { used: formatGB(info.memory.totalGb - info.memory.freeGb), total: formatGB(info.memory.totalGb) }) }}</span>
+                <span class="memory-usage-pct">{{ t('home.memory.usagePercent', { pct: usagePercent(info.memory.totalGb - info.memory.freeGb, info.memory.totalGb) }) }}</span>
+              </div>
+              <div class="usage-bar">
+                <div class="usage-fill" :style="{ width: usagePercent(info.memory.totalGb - info.memory.freeGb, info.memory.totalGb) + '%' }"></div>
+              </div>
+            </div>
+            <div class="info-grid">
+              <div class="info-item">
+                <span class="info-label">{{ t('home.memory.total') }}</span>
+                <span class="info-value">{{ formatGB(info.memory.totalGb) }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{ t('home.memory.available') }}</span>
+                <span class="info-value">{{ formatGB(info.memory.freeGb) }}</span>
+              </div>
+            </div>
+          </section>
+
+          <!-- GPU Card -->
+          <section class="info-section">
+            <h2 class="section-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+              </svg>
+              {{ t('home.gpu') }}
+            </h2>
+            <div v-if="info.gpu && info.gpu.length > 0">
+              <div v-for="(gpu, i) in info.gpu" :key="i" class="info-grid gpu-grid">
+                <div class="info-item info-item-full">
+                  <span class="info-label">{{ t('home.gpu.model') }}</span>
+                  <span class="info-value gpu-name">{{ gpu.name }}</span>
+                </div>
+                <div class="info-item">
+                  <span class="info-label">{{ t('home.gpu.memory') }}</span>
+                  <span class="info-value">{{ formatMB(gpu.memoryMb) }}</span>
+                </div>
+                <div class="info-item">
+                  <span class="info-label">{{ t('home.gpu.driver') }}</span>
+                  <span class="info-value">{{ gpu.driverVersion }}</span>
+                </div>
+              </div>
+            </div>
+            <div v-else class="info-empty">
+              <span>{{ t('home.gpu.none') }}</span>
+            </div>
+          </section>
+
+          <!-- CUDA Card -->
+          <section class="info-section">
+            <h2 class="section-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"/><line x1="12" y1="22" x2="12" y2="15.5"/><polyline points="22 8.5 12 15.5 2 8.5"/>
+              </svg>
+              {{ t('home.cuda') }}
+            </h2>
+            <div class="info-grid">
+              <div class="info-item">
+                <span class="info-label">{{ t('home.cuda.status') }}</span>
+                <span class="info-value">
+                  <span class="status-badge" :class="info.cuda.available ? 'available' : 'unavailable'">
+                    {{ info.cuda.available ? t('home.cuda.available') : t('home.cuda.unavailable') }}
+                  </span>
                 </span>
-              </span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{ t('home.cuda.driver') }}</span>
+                <span class="info-value">{{ info.cuda.driverVersion || 'N/A' }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{ t('home.cuda.toolkit') }}</span>
+                <span class="info-value">{{ info.cuda.toolkitVersion || t('home.cuda.notInstalled') }}</span>
+              </div>
             </div>
-            <div class="info-item">
-              <span class="info-label">{{ t('home.cuda.driver') }}</span>
-              <span class="info-value">{{ info.cuda.driverVersion || 'N/A' }}</span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">{{ t('home.cuda.toolkit') }}</span>
-              <span class="info-value">{{ info.cuda.toolkitVersion || t('home.cuda.notInstalled') }}</span>
-            </div>
-          </div>
-        </section>
+          </section>
 
-        <!-- OS Info -->
-        <section class="info-section">
-          <h2 class="section-title">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
-            </svg>
-            {{ t('home.os') }}
-          </h2>
-          <div class="info-grid">
-            <div class="info-item">
-              <span class="info-label">{{ t('home.os.name') }}</span>
-              <span class="info-value">{{ osLabel }}</span>
+          <!-- OS Info -->
+          <section class="info-section">
+            <h2 class="section-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+              </svg>
+              {{ t('home.os') }}
+            </h2>
+            <div class="info-grid">
+              <div class="info-item">
+                <span class="info-label">{{ t('home.os.name') }}</span>
+                <span class="info-value">{{ osLabel }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{ t('home.os.arch') }}</span>
+                <span class="info-value">{{ info.arch }}</span>
+              </div>
             </div>
-            <div class="info-item">
-              <span class="info-label">{{ t('home.os.arch') }}</span>
-              <span class="info-value">{{ info.arch }}</span>
-            </div>
-          </div>
-        </section>
-      </div>
-    </template>
+          </section>
+        </div>
+      </template>
+    </div>
   </div>
 </template>
 
@@ -250,13 +253,51 @@ onMounted(() => {
 
 <style scoped>
 .page {
-  /* No top padding: header flush with content top, title aligns with sidebar logo (see global.css .page-header) */
-  padding: 0 48px 60px;
+  /* No top padding: header flush with content top, title aligns with sidebar logo (see global.css .page-header).
+     No bottom padding either: the fixed layout (page-fixed) hands bottom spacing
+     to the .page-scroll band below */
+  padding: 0 48px;
+}
+
+/* Fixed-viewport layout (see .page-fixed in global.css): the header band stays
+   pinned; only the content band below scrolls */
+.page-fixed .sticky-top {
+  flex-shrink: 0;
 }
 
 .page-header {
   /* Use padding instead of margin: header background covers this gap so content scrolls without leaving a seam */
   padding-bottom: 36px;
+}
+
+/* Scrollable content band: absorbs the remaining viewport height and scrolls
+   internally, so the page itself never scrolls */
+.page-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* Bottom clearance so the last card row clears the floating TaskDock pill
+     (--dock-reserve is 0 while the dock is hidden) */
+  padding-bottom: calc(24px + var(--dock-reserve, 0px));
+}
+
+/* Thin scrollbar matching .content-area (App.vue) so the inner band does not
+   render a full-width system scrollbar */
+.page-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.page-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.page-scroll::-webkit-scrollbar-thumb {
+  background: var(--overlay-10);
+  border-radius: 3px;
+}
+
+.page-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
 }
 
 .page-title {

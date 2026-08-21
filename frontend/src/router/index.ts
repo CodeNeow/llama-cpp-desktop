@@ -1,4 +1,14 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
+
+// Route meta typing: `fixed` marks fixed-viewport pages (Home / Runtime /
+// Chat / Api) whose root element fills the window below the titlebar and
+// manages its own internal scroll bands. App.vue reads it to opt the shared
+// content area out of its scroll behavior and TaskDock bottom reserve.
+declare module 'vue-router' {
+  interface RouteMeta {
+    fixed?: boolean
+  }
+}
 import Home from '../views/Home.vue'
 import Runtime from '../views/Runtime.vue'
 import Chat from '../views/Chat.vue'
@@ -14,7 +24,7 @@ const routes = [
     path: '/',
     name: 'Home',
     component: Home,
-    meta: { title: '系统信息', icon: 'home' }
+    meta: { title: '系统信息', icon: 'home', fixed: true }
   },
   {
     // Runtime environment: inference engine + runtime components (llama.cpp
@@ -22,13 +32,13 @@ const routes = [
     path: '/runtime',
     name: 'Runtime',
     component: Runtime,
-    meta: { title: '运行环境', icon: 'layers' }
+    meta: { title: '运行环境', icon: 'layers', fixed: true }
   },
   {
     path: '/chat',
     name: 'Chat',
     component: Chat,
-    meta: { title: '本地聊天', icon: 'message-circle' }
+    meta: { title: '本地聊天', icon: 'message-circle', fixed: true }
   },
   {
     path: '/downloads',
@@ -62,7 +72,7 @@ const routes = [
     path: '/api',
     name: 'Api',
     component: Api,
-    meta: { title: 'API 路由', icon: 'terminal' }
+    meta: { title: 'API 路由', icon: 'terminal', fixed: true }
   },
   {
     path: '/monitor',

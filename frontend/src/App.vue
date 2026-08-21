@@ -37,7 +37,7 @@
           </button>
         </div>
       </div>
-      <div class="content-area">
+      <div class="content-area" :class="{ 'content-fixed': isFixedPage }">
         <router-view v-slot="{ Component, route }">
           <transition :name="(route.meta.transition as string) || 'fade'" mode="out-in">
             <component :is="Component" :key="route.path" />
@@ -51,7 +51,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import Sidebar from './components/Sidebar.vue'
 import UpdateModal from './components/UpdateModal.vue'
 import TaskDock from './components/TaskDock.vue'
@@ -63,6 +64,13 @@ import { getOS } from './wails'
 
 const w = window as any
 const isDesktop = !!(w.go || w.electronAPI)  // Wails or Electron
+
+// Current route: fixed-viewport pages (route meta fixed: true) fill the window
+// below the titlebar and manage their own internal scroll bands, so the shared
+// content area must neither scroll nor reserve TaskDock space for them (see
+// the .content-fixed rule in the style block).
+const route = useRoute()
+const isFixedPage = computed(() => route.meta.fixed === true)
 
 // Current OS: 'darwin' (macOS) / 'windows' / 'linux' / empty string (unknown or backend unavailable)
 // Drives window-control button platform adaptation: macOS keeps the colorful dots, other platforms use native flat buttons
@@ -257,6 +265,18 @@ async function closeWindow() {
 
 .content-area::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-hover);
+}
+
+/* Fixed-viewport pages (route meta fixed: true): these pages own the full
+   window height below the titlebar and manage their own internal scroll
+   bands, which reserve TaskDock space themselves — scroll bands use
+   padding-bottom: calc(... + var(--dock-reserve, 0px)) and the chat page
+   keeps the pill inside its 72px right padding band. The shared content area
+   must therefore add no bottom reserve (it would push the page past the
+   viewport and create a scrollbar) and must not scroll on its own. */
+.content-area.content-fixed {
+  padding-bottom: 0;
+  overflow: hidden;
 }
 
 /* Route transitions — opacity-only, avoiding sub-pixel horizontal jumps from composited-layer/layout switches during translate animations (fixes centered-text jitter of the chat page offline hint) */

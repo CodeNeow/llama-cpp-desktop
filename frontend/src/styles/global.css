@@ -128,6 +128,18 @@ code, pre {
   margin-right: auto;
 }
 
+/* Fixed-viewport page variant (Chat / Home / Runtime / API): fills the window
+   below the 36px custom titlebar (App.vue .title-bar) so the page itself never
+   scrolls. Inner bands opt into scrolling per page — pinned bands use
+   flex-shrink: 0, the scrollable band uses flex: 1 + min-height: 0 +
+   overflow-y: auto — because each page's DOM shape differs. All other pages
+   keep the normal document flow and let .content-area scroll instead. */
+.page-fixed {
+  height: calc(100vh - 36px);
+  display: flex;
+  flex-direction: column;
+}
+
 /* Page header styles: the sticky duty is delegated to the outer .sticky-top
    wrapper; header title/subtitle must not be mouse-selectable */
 .page-header {
