@@ -2,6 +2,38 @@
 
 更新日志的**权威来源**（见 `AGENTS.md`「版本发布」）：发版时先在此新增版本条目（含日期与逐提交核心改动），`git tag` 注解消息与 GitHub Release 正文均从该条目复制，保持一致。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本。
 
+## [v0.3.2] - 2026-08-22
+
+## English
+
+v0.3.2: fixed-viewport pages with internal scrolling, chat markdown rendering with live reasoning scroll, uppercase model IDs, and the Hf_Model display-name fix (5 commits since v0.3.1, per-commit core changes):
+
+1. `3a9c0cc` fix(models): reject Hf_Model placeholder names and unify preset aliases to uppercase
+   - Converter placeholder values in GGUF general.name ("Hf_Model", case-insensitive, alongside "Unsloth_Gguf") are rejected, and a "<model>-GGUF" variant-directory fallback now yields to the more specific main file name — the barozp/Qwen3.6-29B-REAP model displays its real name instead of "Hf_Model". Preset INI section aliases are uppercased so the model id served by GET /models, the OpenAI API, the chat picker and TaskDock is one uniform uppercase id (llama-server matches ids case-sensitively).
+2. `835e2fe` fix(frontend): pin chat input to the bottom, live-scroll reasoning, render markdown
+   - Chat input no longer scrolls away with the conversation (flex min-height fix); the streaming thinking block pins to its newest text and never yanks a user who scrolled up; assistant messages render markdown (markdown-it, html escaped as injection defense, breaks, linkify) with theme-aware styles; user input stays plain text. New deps: markdown-it, @types/markdown-it.
+3. `2606c3a` fix(frontend): fixed-viewport pages with internal scrolling on Home/Runtime/Chat/API
+   - The four main pages never scroll as a page; only inner bands scroll (cards region, log console, monitor column, messages). Root-cause fix for the TaskDock bottom reserve breaking the fixed layout: routes carry meta.fixed and .content-area drops its dock reserve for them. The API page keeps its original card design — monitor grid fills the remaining viewport height and the right column scrolls internally with both cards reachable.
+4. `735bbce` chore(frontend): sync wailsjs bindings for TuneModelConfig
+   - Checked-in Wails bindings regenerated for the TuneModelConfig method added in e9cbf29 (drift-only diff).
+5. `chore(release)` add v0.3.2 changelog entry and bump version
+   - core/VERSION realigned with the release tags: it had been stale at v0.2.9 since v0.3.0, which made every v0.3.x build report v0.2.9 internally and offer itself a permanent false "update available" prompt.
+
+## 中文
+
+v0.3.2:页面固定布局与内部滚动、聊天 Markdown 渲染与思考实时滚动、模型 ID 统一大写、Hf_Model 显示名修复(v0.3.1 以来 5 个提交,按提交逐一说明核心改动):
+
+1. `3a9c0cc` fix(models): 拒绝 Hf_Model 占位名并统一预设别名为大写
+   - GGUF general.name 中的转换工具占位名("Hf_Model",大小写不敏感,连同既有 "Unsloth_Gguf")被拒绝显示;"<模型>-GGUF" 目录回退名让位于更具体的主文件名——barozp/Qwen3.6-29B-REAP 显示真实名称而非 "Hf_Model"。预设 INI 节名统一大写,GET /models、OpenAI API、聊天选择器与 TaskDock 使用同一个大写模型 ID(llama-server 按大小写精确匹配)。
+2. `835e2fe` fix(frontend): 聊天输入框固定底部、思考过程实时滚动、渲染 Markdown
+   - 输入框不再随对话滚走(flex min-height 修复);流式思考块实时钉在最新文字,用户上滚回看时绝不强行拽回;助手消息按 Markdown 渲染(markdown-it,原始 HTML 转义防注入、单换行、链接识别),明暗主题适配;用户输入保持纯文本。新增依赖 markdown-it。
+3. `2606c3a` fix(frontend): 系统信息/运行环境/本地聊天/API 路由四页固定视口、内容内部滚动
+   - 四个主页面整页不再滚动,仅内部区域滚动(卡片区、日志控制台、监控右列、消息区)。修复 TaskDock 底部预留破坏固定布局的根因:路由携带 meta.fixed,content-area 对固定页去掉预留。API 页保持原版卡片设计——监控网格占满剩余视口高度,右列内部滚动、两卡均可触达。
+4. `735bbce` chore(frontend): 同步 TuneModelConfig 的 wailsjs 绑定
+   - 重新生成 Wails 绑定,补上 e9cbf29 新增的 TuneModelConfig 方法(纯漂移修正)。
+5. `chore(release)` 新增 v0.3.2 更新日志并提升版本号
+   - core/VERSION 与发布 tag 重新对齐:自 v0.3.0 起滞留在 v0.2.9,导致所有 v0.3.x 构建对内报告 v0.2.9、永久误报"有新版本"。
+
 ## [v0.3.1] - 2026-08-21
 
 ## English
