@@ -115,4 +115,6 @@ export function StopServer():Promise<void>;
 
 export function StopUpdateDownload():Promise<void>;
 
+export function TuneModelConfig(arg1:string):Promise<core.ModelConfig>;
+
 export function UnloadModel(arg1:string):Promise<void>;

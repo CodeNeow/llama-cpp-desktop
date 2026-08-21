@@ -226,6 +226,10 @@ export function StopUpdateDownload() {
   return window['go']['core']['App']['StopUpdateDownload']();
 }
 
+export function TuneModelConfig(arg1) {
+  return window['go']['core']['App']['TuneModelConfig'](arg1);
+}
+
 export function UnloadModel(arg1) {
   return window['go']['core']['App']['UnloadModel'](arg1);
 }
