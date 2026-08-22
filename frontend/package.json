@@ -1,6 +1,6 @@
 {
   "name": "llama-cpp-desktop",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Desktop GUI for llama.cpp - manage GGUF models, serve one OpenAI-compatible endpoint",
   "repository": {
     "type": "git",
