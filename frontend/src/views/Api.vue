@@ -153,14 +153,16 @@
               </svg>
               {{ t('api.tokenSpeed') }}
             </h2>
-            <div v-if="status.serverRunning" class="token-uptime">
+            <div class="token-uptime" :class="{ 'tps-ghost': !status.serverRunning }" :aria-hidden="!status.serverRunning">
               <span class="uptime-value">{{ formatUptime(status.uptimeSeconds, locale) }}</span>
               <span class="uptime-label">{{ t('monitor.uptimeLabel') }}</span>
             </div>
           </div>
-          <div v-if="!status.serverRunning" class="tps-placeholder">{{ t('monitor.uptimePlaceholder') }}</div>
-          <template v-else>
-            <div class="tps-cards">
+          <div class="tps-body">
+            <!-- Both states render the same content: the stopped state keeps the
+                 metrics invisible (visibility, not display) so card heights never
+                 shift when the service starts or stops; the placeholder overlays -->
+            <div class="tps-cards" :class="{ 'tps-ghost': !status.serverRunning }" :aria-hidden="!status.serverRunning">
               <div class="tps-card">
                 <span class="tps-card-name">{{ t('monitor.promptSpeed') }}</span>
                 <span class="tps-card-sub">{{ t('monitor.promptSub') }}</span>
@@ -178,8 +180,9 @@
                 </div>
               </div>
             </div>
-            <p class="tps-footnote">{{ t('monitor.footnote') }}</p>
-          </template>
+            <p class="tps-footnote" :class="{ 'tps-ghost': !status.serverRunning }" :aria-hidden="!status.serverRunning">{{ t('monitor.footnote') }}</p>
+            <div v-if="!status.serverRunning" class="tps-placeholder">{{ t('monitor.uptimePlaceholder') }}</div>
+          </div>
         </section>
       </div>
     </div>
@@ -743,23 +746,37 @@ function clearLog() {
   flex-direction: column;
   gap: 12px;
   height: 100%;
-  /* Release the grid child default min-height:auto: the right column height stays
-     locked and oversized cards scroll via their own overflow-y. Bottom reserve
-     keeps the last card clear of the floating TaskDock pill when scrolling. */
   min-height: 0;
-  overflow-y: auto;
-  padding-bottom: var(--dock-reserve, 0px);
+  /* Fixed, scroll-free column: the two cards share the column height and stretch
+     to fill it; metric blocks distribute the leftover space inside their card, so
+     no scrollbar appears. The floating TaskDock pill may overlap the footnote
+     band when active — no interactive control lives there. */
 }
 
 .monitor-card {
   margin-bottom: 0;
-  flex-shrink: 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding: 16px 20px;
 }
 
-/* Spacing between metric blocks inside system monitor */
+.monitor-card .section-title {
+  flex-shrink: 0;
+}
+
+/* Spacing between metric blocks inside system monitor: blocks flex-share the
+   card height (basis auto, equal grow) and center their content vertically, so
+   the card fills the column and compresses gracefully on short windows */
 .metric-block {
   margin-bottom: 14px;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .metric-block:last-child {
@@ -891,6 +908,7 @@ function clearLog() {
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 14px;
+  flex-shrink: 0;
 }
 
 .token-card-head .section-title {
@@ -916,11 +934,28 @@ function clearLog() {
   color: var(--text-dim);
 }
 
+.tps-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* visibility (not display) keeps the stopped state reserving exactly the
+   running state's space, so card heights never shift on service start/stop */
+.tps-ghost {
+  visibility: hidden;
+}
+
 .tps-placeholder {
-  padding: 24px 0;
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 13px;
   color: var(--text-dim);
-  text-align: center;
 }
 
 /* ─── TPS metric cards ─── */
@@ -928,6 +963,9 @@ function clearLog() {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
+  flex: 1 1 auto;
+  min-height: 0;
+  align-content: center;
 }
 
 .tps-card {
@@ -965,6 +1003,7 @@ function clearLog() {
 }
 
 .tps-footnote {
+  flex-shrink: 0;
   margin: 12px 0 0;
   font-size: 12px;
   color: var(--text-dim);
