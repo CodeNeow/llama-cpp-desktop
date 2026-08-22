@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatSpeed, formatBytes, usagePercent } from '../lib/format'
+import { formatSpeed, formatBytes, usagePercent, formatGB, formatMB } from '../lib/format'
 
 describe('formatSpeed', () => {
   it('<=0 returns empty string', () => {
@@ -74,5 +74,27 @@ describe('formatBytes', () => {
     expect(formatBytes(1024)).toBe('1 KB')
     expect(formatBytes(1.5 * 1024 * 1024)).toBe('1.5 MB')
     expect(formatBytes(2 * 1024 * 1024 * 1024)).toBe('2.00 GB')
+  })
+})
+
+describe('formatGB / formatMB (null-safe size formats)', () => {
+  // Null safety: a missing/non-finite backend field must render 'N/A', never
+  // crash the page render (undefined.toFixed previously white-screened Home).
+  it('undefined / null / NaN / <=0 render N/A', () => {
+    expect(formatGB(undefined)).toBe('N/A')
+    expect(formatGB(null)).toBe('N/A')
+    expect(formatGB(Number.NaN)).toBe('N/A')
+    expect(formatGB(0)).toBe('N/A')
+    expect(formatGB(-1)).toBe('N/A')
+    expect(formatMB(undefined)).toBe('N/A')
+    expect(formatMB(null)).toBe('N/A')
+    expect(formatMB(0)).toBe('N/A')
+  })
+
+  it('positive values keep the GB/MB formats', () => {
+    expect(formatGB(64)).toBe('64.0 GB')
+    expect(formatGB(32.76)).toBe('32.8 GB')
+    expect(formatMB(12288)).toBe('12.0 GB')
+    expect(formatMB(512)).toBe('512 MB')
   })
 })

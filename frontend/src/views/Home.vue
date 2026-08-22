@@ -173,7 +173,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { getCPU, getMemory, getGPU, getCUDA, getOS } from '../wails'
 import { t } from '../lib/i18n'
-import { usagePercent } from '../lib/format'
+import { usagePercent, formatGB, formatMB } from '../lib/format'
 
 interface SystemInfo {
   os: string
@@ -205,17 +205,6 @@ const osLabel = computed(() => {
   }
   return labels[info.value.os] || info.value.os || '...'
 })
-
-function formatGB(gb: number): string {
-  if (gb <= 0) return 'N/A'
-  return `${gb.toFixed(1)} GB`
-}
-
-function formatMB(mb: number): string {
-  if (mb <= 0) return 'N/A'
-  if (mb >= 1024) return `${(mb / 1024).toFixed(1)} GB`
-  return `${mb} MB`
-}
 
 async function fetchSystemInfo() {
   loading.value = true

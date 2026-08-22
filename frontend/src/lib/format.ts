@@ -26,3 +26,19 @@ export function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
 }
+
+/**
+ * GB / MB size formats for the System Info cards. Null-safe: a missing or
+ * non-finite value (backend field absent, partial data) renders as 'N/A'
+ * instead of crashing the whole page render (undefined.toFixed).
+ */
+export function formatGB(gb: number | undefined | null): string {
+  if (gb === undefined || gb === null || !(gb > 0)) return 'N/A'
+  return `${gb.toFixed(1)} GB`
+}
+
+export function formatMB(mb: number | undefined | null): string {
+  if (mb === undefined || mb === null || !(mb > 0)) return 'N/A'
+  if (mb >= 1024) return `${(mb / 1024).toFixed(1)} GB`
+  return `${mb} MB`
+}
