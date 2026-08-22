@@ -1664,6 +1664,40 @@ func downloadLlamaCpp() {
 	log.Printf("[OK] llama.cpp %s downloaded and extracted to %s/", release.TagName, targetDir)
 }
 
+// ─── Download retry policy ─────────────────────────────────────────
+//
+// All download paths (llama.cpp, model files, app update) share the same
+// automatic retry policy: a transient failure (network error, HTTP 429/5xx)
+// is retried internally up to downloadRetryCount times — keeping the
+// downloading state, never losing the bytes already on disk — before the
+// error is surfaced for a manual user retry. Permanent failures (other 4xx,
+// disk errors) and user-initiated cancellation are never retried.
+
+var (
+	// downloadRetryCount bounds the automatic retries per failure episode.
+	// Package-level var so tests can keep runs fast without sleeping.
+	downloadRetryCount = 3
+	// downloadRetryDelay is the backoff between automatic retries.
+	downloadRetryDelay = 3 * time.Second
+)
+
+// retryableDownloadStatus reports whether an HTTP status is transient and
+// worth retrying: 429 and 5xx qualify; other 4xx (404/403/...) are permanent.
+func retryableDownloadStatus(status int) bool {
+	return status == http.StatusTooManyRequests || status >= 500
+}
+
+// sleepDownloadRetry waits the retry delay, interruptible by ctx; returns
+// false when the context was cancelled first (the caller then gives up).
+func sleepDownloadRetry(ctx context.Context) bool {
+	select {
+	case <-ctx.Done():
+		return false
+	case <-time.After(downloadRetryDelay):
+		return true
+	}
+}
+
 // downloadWithResume downloads a file with pause/resume support.
 // baseDownloaded is the total bytes of assets already completed before this
 // file: in sequential multi-asset downloads (e.g. llama.cpp main program +
@@ -1713,6 +1747,12 @@ func downloadWithResume(ctx context.Context, url string, totalSize int64, baseDo
 	// instead of extracting a corrupt zip.
 	const maxTruncResumes = 3
 	truncResumes := 0
+
+	// Automatic transient-failure retries (see the download retry policy
+	// block): network errors and HTTP 429/5xx reconnect up to
+	// downloadRetryCount times — the outer loop re-stats the temp file, so
+	// every retry resumes from the bytes already on disk.
+	retries := 0
 
 	// We'll loop to handle pause → resume cycles
 	for {
@@ -1767,6 +1807,14 @@ func downloadWithResume(ctx context.Context, url string, totalSize int64, baseDo
 				continue
 			}
 			closeTmp()
+			if ctx.Err() == nil && retries < downloadRetryCount {
+				retries++
+				log.Printf("[WARN] llama.cpp download attempt failed (%v), retrying %d/%d", err, retries, downloadRetryCount)
+				if sleepDownloadRetry(ctx) {
+					continue
+				}
+				return tmpPath, ctx.Err()
+			}
 			return tmpPath, err
 		}
 
@@ -1776,9 +1824,18 @@ func downloadWithResume(ctx context.Context, url string, totalSize int64, baseDo
 			expectedStatus = http.StatusPartialContent
 		}
 		if resp.StatusCode != expectedStatus && resp.StatusCode != http.StatusOK {
+			status := resp.StatusCode
 			resp.Body.Close()
 			closeTmp()
-			return tmpPath, fmt.Errorf("HTTP %d", resp.StatusCode)
+			if retryableDownloadStatus(status) && ctx.Err() == nil && retries < downloadRetryCount {
+				retries++
+				log.Printf("[WARN] llama.cpp download got HTTP %d, retrying %d/%d", status, retries, downloadRetryCount)
+				if sleepDownloadRetry(ctx) {
+					continue
+				}
+				return tmpPath, ctx.Err()
+			}
+			return tmpPath, fmt.Errorf("HTTP %d", status)
 		}
 
 		// Robustness against servers ignoring Range: this request carried
@@ -1895,6 +1952,16 @@ func downloadWithResume(ctx context.Context, url string, totalSize int64, baseDo
 			if rr.err != nil {
 				resp.Body.Close()
 				closeTmp()
+				// Mid-body read failures (connection reset, stream errors) are
+				// transient: reconnect and resume from the bytes on disk.
+				if rr.err != io.EOF && ctx.Err() == nil && retries < downloadRetryCount {
+					retries++
+					log.Printf("[WARN] llama.cpp download stream failed (%v), retrying %d/%d", rr.err, retries, downloadRetryCount)
+					if sleepDownloadRetry(ctx) {
+						break // back to the outer loop: reopen + Range resume
+					}
+					return tmpPath, ctx.Err()
+				}
 				return tmpPath, rr.err
 			}
 		}
@@ -2745,7 +2812,10 @@ func installUpdateNow(quit func()) error {
 // downloadUpdateWithResume downloads the update file to a temp file and
 // reports progress, supporting cancellation. Unlike downloadWithResume: the
 // update exe is small and does not support pause/resume; it only responds to
-// context cancellation (app exit / stop download).
+// context cancellation (app exit / stop download). Transient failures
+// (network errors, HTTP 429/5xx, mid-stream errors) are retried internally
+// up to downloadRetryCount times (each attempt restarts clean); the error is
+// surfaced for a manual retry only after the retries are exhausted.
 func downloadUpdateWithResume(ctx context.Context, url string, totalSize int64) (string, error) {
 	tmpFile, err := os.CreateTemp("", "llama-desktop-update-*.exe")
 	if err != nil {
@@ -2753,67 +2823,111 @@ func downloadUpdateWithResume(ctx context.Context, url string, totalSize int64) 
 	}
 	tmpPath := tmpFile.Name()
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		tmpFile.Close()
-		return tmpPath, err
-	}
-	req.Header.Set("User-Agent", "llama-desktop")
-
-	client := &http.Client{Timeout: 30 * time.Minute}
-	resp, err := client.Do(req)
-	if err != nil {
-		tmpFile.Close()
-		return tmpPath, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		tmpFile.Close()
-		return tmpPath, fmt.Errorf("HTTP %d", resp.StatusCode)
-	}
-
-	buf := make([]byte, 32*1024)
-	downloaded := int64(0)
+	retries := 0
 	for {
-		type readRes struct {
-			n   int
-			err error
-		}
-		ch := make(chan readRes, 1)
-		go func() {
-			n, err := resp.Body.Read(buf)
-			ch <- readRes{n, err}
-		}()
-
-		var rr readRes
-		select {
-		case <-ctx.Done():
+		// Each attempt restarts clean: truncate and rewind the handle (no
+		// Range resume for updates) and reset the progress display.
+		if err := tmpFile.Truncate(0); err != nil {
 			tmpFile.Close()
-			return tmpPath, ctx.Err()
-		case rr = <-ch:
+			return tmpPath, err
 		}
+		if _, err := tmpFile.Seek(0, 0); err != nil {
+			tmpFile.Close()
+			return tmpPath, err
+		}
+		updateDownloadMu.Lock()
+		updateDownloadState.Downloaded = 0
+		updateDownloadMu.Unlock()
 
-		if rr.n > 0 {
-			if _, writeErr := tmpFile.Write(buf[:rr.n]); writeErr != nil {
-				tmpFile.Close()
-				return tmpPath, writeErr
-			}
-			downloaded += int64(rr.n)
-			updateDownloadMu.Lock()
-			updateDownloadState.Downloaded = downloaded
-			if updateDownloadState.Total > 0 {
-				updateDownloadState.Progress = int(float64(downloaded) * 100 / float64(updateDownloadState.Total))
-			}
-			updateDownloadMu.Unlock()
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+		if err != nil {
+			tmpFile.Close()
+			return tmpPath, err
 		}
-		if rr.err != nil {
-			if rr.err == io.EOF {
-				tmpFile.Close()
-				return tmpPath, nil
+		req.Header.Set("User-Agent", "llama-desktop")
+
+		client := &http.Client{Timeout: 30 * time.Minute}
+		resp, err := client.Do(req)
+		if err != nil {
+			if ctx.Err() == nil && retries < downloadRetryCount {
+				retries++
+				log.Printf("[WARN] update download attempt failed (%v), retrying %d/%d", err, retries, downloadRetryCount)
+				if sleepDownloadRetry(ctx) {
+					continue
+				}
 			}
 			tmpFile.Close()
-			return tmpPath, rr.err
+			return tmpPath, err
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			status := resp.StatusCode
+			resp.Body.Close()
+			if retryableDownloadStatus(status) && ctx.Err() == nil && retries < downloadRetryCount {
+				retries++
+				log.Printf("[WARN] update download got HTTP %d, retrying %d/%d", status, retries, downloadRetryCount)
+				if sleepDownloadRetry(ctx) {
+					continue
+				}
+			}
+			tmpFile.Close()
+			return tmpPath, fmt.Errorf("HTTP %d", status)
+		}
+
+		buf := make([]byte, 32*1024)
+		downloaded := int64(0)
+		for {
+			type readRes struct {
+				n   int
+				err error
+			}
+			ch := make(chan readRes, 1)
+			go func() {
+				n, err := resp.Body.Read(buf)
+				ch <- readRes{n, err}
+			}()
+
+			var rr readRes
+			select {
+			case <-ctx.Done():
+				resp.Body.Close()
+				tmpFile.Close()
+				return tmpPath, ctx.Err()
+			case rr = <-ch:
+			}
+
+			if rr.n > 0 {
+				if _, writeErr := tmpFile.Write(buf[:rr.n]); writeErr != nil {
+					resp.Body.Close()
+					tmpFile.Close()
+					return tmpPath, writeErr
+				}
+				downloaded += int64(rr.n)
+				updateDownloadMu.Lock()
+				updateDownloadState.Downloaded = downloaded
+				if updateDownloadState.Total > 0 {
+					updateDownloadState.Progress = int(float64(downloaded) * 100 / float64(updateDownloadState.Total))
+				}
+				updateDownloadMu.Unlock()
+			}
+			if rr.err != nil {
+				resp.Body.Close()
+				if rr.err == io.EOF {
+					tmpFile.Close()
+					return tmpPath, nil
+				}
+				// Mid-body stream failures are transient: restart the
+				// download (clean truncate) up to downloadRetryCount times.
+				if ctx.Err() == nil && retries < downloadRetryCount {
+					retries++
+					log.Printf("[WARN] update download stream failed (%v), retrying %d/%d", rr.err, retries, downloadRetryCount)
+					if sleepDownloadRetry(ctx) {
+						break // back to the attempt loop
+					}
+				}
+				tmpFile.Close()
+				return tmpPath, rr.err
+			}
 		}
 	}
 }
@@ -4132,6 +4246,10 @@ func downloadTask(task *DlTask) {
 
 	client := &http.Client{Timeout: 30 * time.Minute}
 
+	// Automatic transient-failure retries (see the download retry policy
+	// block), shared by the connect / status / mid-stream error branches.
+	retries := 0
+
 	for {
 		// Check cancellation
 		select {
@@ -4179,6 +4297,25 @@ func downloadTask(task *DlTask) {
 				persistTasksNow()
 				return
 			}
+			dlTasksMu.Unlock()
+			// Automatic transient-failure retry (see the download retry
+			// policy block): network errors reconnect up to
+			// downloadRetryCount times, resuming from the .part on disk; the
+			// task stays in downloading state so the UI never flashes error.
+			if retries < downloadRetryCount {
+				retries++
+				log.Printf("[WARN] task %s attempt failed (%v), retrying %d/%d", task.ID, err, retries, downloadRetryCount)
+				if sleepDownloadRetry(task.ctx) {
+					continue
+				}
+				dlTasksMu.Lock()
+				task.Status = "cancelled"
+				task.Speed = 0
+				dlTasksMu.Unlock()
+				persistTasksNow()
+				return
+			}
+			dlTasksMu.Lock()
 			task.Status = "error"
 			task.Error = err.Error()
 			task.Speed = 0
@@ -4188,10 +4325,26 @@ func downloadTask(task *DlTask) {
 		}
 
 		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
+			status := resp.StatusCode
 			resp.Body.Close()
+			// Same automatic retry for transient HTTP statuses (429/5xx);
+			// permanent 4xx (404/403/...) surfaces immediately.
+			if retryableDownloadStatus(status) && retries < downloadRetryCount {
+				retries++
+				log.Printf("[WARN] task %s got HTTP %d, retrying %d/%d", task.ID, status, retries, downloadRetryCount)
+				if sleepDownloadRetry(task.ctx) {
+					continue
+				}
+				dlTasksMu.Lock()
+				task.Status = "cancelled"
+				task.Speed = 0
+				dlTasksMu.Unlock()
+				persistTasksNow()
+				return
+			}
 			dlTasksMu.Lock()
 			task.Status = "error"
-			task.Error = fmt.Sprintf("HTTP %d", resp.StatusCode)
+			task.Error = fmt.Sprintf("HTTP %d", status)
 			task.Speed = 0
 			dlTasksMu.Unlock()
 			persistTasksNow()
@@ -4410,10 +4563,30 @@ func downloadTask(task *DlTask) {
 				// as the client.Do error branch).
 				if task.ctx.Err() != nil {
 					task.Status = "cancelled"
-				} else {
-					task.Status = "error"
-					task.Error = rr.err.Error()
+					task.Speed = 0
+					dlTasksMu.Unlock()
+					persistTasksNow()
+					return
 				}
+				dlTasksMu.Unlock()
+				// Mid-body stream failures are transient: reconnect and
+				// resume from the .part size on disk (outer loop re-stats).
+				if retries < downloadRetryCount {
+					retries++
+					log.Printf("[WARN] task %s stream failed (%v), retrying %d/%d", task.ID, rr.err, retries, downloadRetryCount)
+					if sleepDownloadRetry(task.ctx) {
+						break readLoop
+					}
+					dlTasksMu.Lock()
+					task.Status = "cancelled"
+					task.Speed = 0
+					dlTasksMu.Unlock()
+					persistTasksNow()
+					return
+				}
+				dlTasksMu.Lock()
+				task.Status = "error"
+				task.Error = rr.err.Error()
 				task.Speed = 0
 				dlTasksMu.Unlock()
 				persistTasksNow()

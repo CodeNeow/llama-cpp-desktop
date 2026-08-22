@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -172,4 +173,271 @@ func TestRetryDownloadTaskCompletesAfterError(t *testing.T) {
 	if err := app.RetryDownloadTask("dl-999"); err != nil {
 		t.Errorf("未知 id 重试应返回 nil, got %v", err)
 	}
+}
+
+// ─── Automatic internal download retries (shared policy) ────────────────────
+
+// shortRetryDelay speeds retry tests up: the production 3s backoff would make
+// each multi-retry case sleep for seconds.
+func shortRetryDelay(t *testing.T) {
+	t.Helper()
+	old := downloadRetryDelay
+	downloadRetryDelay = 5 * time.Millisecond
+	t.Cleanup(func() { downloadRetryDelay = old })
+}
+
+// pollTask waits until the task reaches a terminal-ish status (stop) or the
+// deadline passes; returns the last observed status.
+func pollTask(t *testing.T, task *DlTask, stop string) string {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	status := task.Status
+	for time.Now().Before(deadline) {
+		dlTasksMu.Lock()
+		status = task.Status
+		dlTasksMu.Unlock()
+		if status == stop {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return status
+}
+
+// TestDownloadTaskRetriesTransientThenSucceeds verifies model-download tasks
+// automatically retry transient HTTP failures (503) up to downloadRetryCount
+// times while staying in downloading state, then complete once the server
+// recovers — the user never sees an error for a transient blip.
+func TestDownloadTaskRetriesTransientThenSucceeds(t *testing.T) {
+	shortRetryDelay(t)
+	withTempCwd(t)
+	dlTasksMu.Lock()
+	dlTasks = nil
+	dlTaskCounter = 0
+	dlTasksMu.Unlock()
+	defer func() {
+		dlTasksMu.Lock()
+		dlTasks = nil
+		dlTaskCounter = 0
+		dlTasksMu.Unlock()
+	}()
+
+	payload := []byte("transient retry payload")
+	var requests int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := atomic.AddInt32(&requests, 1)
+		if n <= 2 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
+		w.Write(payload)
+	}))
+	defer srv.Close()
+
+	task := &DlTask{
+		ID: "dl-retry", ModelID: "author/model", FileName: "retry.gguf",
+		DestDir: filepath.Join(effectiveModelDownloadDir(), "author"),
+		URL:     srv.URL, Status: "downloading",
+	}
+	task.ctx, task.cancel = context.WithCancel(context.Background())
+	dlTasksMu.Lock()
+	dlTasks = append(dlTasks, task)
+	dlTasksMu.Unlock()
+	go downloadTask(task)
+
+	if status := pollTask(t, task, "done"); status != "done" {
+		t.Fatalf("task status = %q, want done after transient retries", status)
+	}
+	if got := atomic.LoadInt32(&requests); got != 3 {
+		t.Errorf("server requests = %d, want 3 (two 503 + one success)", got)
+	}
+	got, err := os.ReadFile(filepath.Join(effectiveModelDownloadDir(), "author", "retry.gguf"))
+	if err != nil || string(got) != string(payload) {
+		t.Errorf("downloaded file mismatch: %q (%v)", got, err)
+	}
+}
+
+// TestDownloadTaskFailsAfterRetriesExhausted verifies the task surfaces the
+// error for a manual retry only after the full internal retry budget
+// (initial attempt + downloadRetryCount retries) is exhausted.
+func TestDownloadTaskFailsAfterRetriesExhausted(t *testing.T) {
+	shortRetryDelay(t)
+	withTempCwd(t)
+	dlTasksMu.Lock()
+	dlTasks = nil
+	dlTaskCounter = 0
+	dlTasksMu.Unlock()
+	defer func() {
+		dlTasksMu.Lock()
+		dlTasks = nil
+		dlTaskCounter = 0
+		dlTasksMu.Unlock()
+	}()
+
+	var requests int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&requests, 1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	task := &DlTask{
+		ID: "dl-exhaust", ModelID: "author/model", FileName: "exhaust.gguf",
+		DestDir: filepath.Join(effectiveModelDownloadDir(), "author"),
+		URL:     srv.URL, Status: "downloading",
+	}
+	task.ctx, task.cancel = context.WithCancel(context.Background())
+	dlTasksMu.Lock()
+	dlTasks = append(dlTasks, task)
+	dlTasksMu.Unlock()
+	go downloadTask(task)
+
+	if status := pollTask(t, task, "error"); status != "error" {
+		t.Fatalf("task status = %q, want error after exhausted retries", status)
+	}
+	dlTasksMu.Lock()
+	taskErr := task.Error
+	dlTasksMu.Unlock()
+	if taskErr == "" {
+		t.Error("task error message should be set for the manual retry UI")
+	}
+	if got := atomic.LoadInt32(&requests); got != int32(1+downloadRetryCount) {
+		t.Errorf("server requests = %d, want %d (initial + 3 retries)", got, 1+downloadRetryCount)
+	}
+}
+
+// TestDownloadTaskPermanentStatusNotRetried verifies permanent HTTP failures
+// (404) surface immediately without burning retry attempts.
+func TestDownloadTaskPermanentStatusNotRetried(t *testing.T) {
+	shortRetryDelay(t)
+	withTempCwd(t)
+	dlTasksMu.Lock()
+	dlTasks = nil
+	dlTaskCounter = 0
+	dlTasksMu.Unlock()
+	defer func() {
+		dlTasksMu.Lock()
+		dlTasks = nil
+		dlTaskCounter = 0
+		dlTasksMu.Unlock()
+	}()
+
+	var requests int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&requests, 1)
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	task := &DlTask{
+		ID: "dl-404", ModelID: "author/model", FileName: "missing.gguf",
+		DestDir: filepath.Join(effectiveModelDownloadDir(), "author"),
+		URL:     srv.URL, Status: "downloading",
+	}
+	task.ctx, task.cancel = context.WithCancel(context.Background())
+	dlTasksMu.Lock()
+	dlTasks = append(dlTasks, task)
+	dlTasksMu.Unlock()
+	go downloadTask(task)
+
+	if status := pollTask(t, task, "error"); status != "error" {
+		t.Fatalf("task status = %q, want error", status)
+	}
+	dlTasksMu.Lock()
+	taskErr := task.Error
+	dlTasksMu.Unlock()
+	if taskErr != "HTTP 404" {
+		t.Errorf("task error = %q, want HTTP 404", taskErr)
+	}
+	if got := atomic.LoadInt32(&requests); got != 1 {
+		t.Errorf("server requests = %d, want 1 (404 is permanent, no retry)", got)
+	}
+}
+
+// TestDownloadWithResumeRetriesTransientStatus verifies the llama.cpp
+// download path auto-retries transient statuses and completes once the
+// server recovers.
+func TestDownloadWithResumeRetriesTransientStatus(t *testing.T) {
+	shortRetryDelay(t)
+	payload := []byte("llama.cpp asset bytes")
+	var requests int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := atomic.AddInt32(&requests, 1)
+		if n == 1 {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
+		w.Write(payload)
+	}))
+	defer srv.Close()
+
+	path, err := downloadWithResume(context.Background(), srv.URL, int64(len(payload)), 0)
+	if err != nil {
+		t.Fatalf("downloadWithResume should succeed after retry: %v", err)
+	}
+	defer os.Remove(path)
+	if got := atomic.LoadInt32(&requests); got != 2 {
+		t.Errorf("server requests = %d, want 2 (one 500 + one success)", got)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil || string(got) != string(payload) {
+		t.Errorf("downloaded file mismatch: %q (%v)", got, err)
+	}
+}
+
+// TestDownloadUpdateWithResumeRetriesTransient verifies the app-update
+// download path retries transient failures (each attempt restarting clean)
+// and surfaces the error only after the retry budget is exhausted.
+func TestDownloadUpdateWithResumeRetriesTransient(t *testing.T) {
+	shortRetryDelay(t)
+
+	t.Run("recovers", func(t *testing.T) {
+		payload := []byte("update exe bytes")
+		var requests int32
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			n := atomic.AddInt32(&requests, 1)
+			if n <= 2 {
+				w.WriteHeader(http.StatusBadGateway)
+				return
+			}
+			w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
+			w.Write(payload)
+		}))
+		defer srv.Close()
+
+		path, err := downloadUpdateWithResume(context.Background(), srv.URL, int64(len(payload)))
+		if err != nil {
+			t.Fatalf("downloadUpdateWithResume should succeed after retries: %v", err)
+		}
+		defer os.Remove(path)
+		if got := atomic.LoadInt32(&requests); got != 3 {
+			t.Errorf("server requests = %d, want 3", got)
+		}
+		got, err := os.ReadFile(path)
+		if err != nil || string(got) != string(payload) {
+			t.Errorf("downloaded file mismatch: %q (%v)", got, err)
+		}
+	})
+
+	t.Run("exhausted", func(t *testing.T) {
+		var requests int32
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			atomic.AddInt32(&requests, 1)
+			w.WriteHeader(http.StatusBadGateway)
+		}))
+		defer srv.Close()
+
+		path, err := downloadUpdateWithResume(context.Background(), srv.URL, 128)
+		if err == nil {
+			t.Fatal("downloadUpdateWithResume should fail after exhausted retries")
+		}
+		if path != "" {
+			os.Remove(path)
+		}
+		if got := atomic.LoadInt32(&requests); got != int32(1+downloadRetryCount) {
+			t.Errorf("server requests = %d, want %d", got, 1+downloadRetryCount)
+		}
+	})
 }
