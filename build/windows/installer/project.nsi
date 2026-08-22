@@ -30,6 +30,14 @@
 ####
 ## !define REQUEST_EXECUTION_LEVEL "admin"            # Default "admin"  see also https://nsis.sourceforge.io/Docs/Chapter4.html
 ####
+## Legacy uninstall keys: before the attribution change added an info block to
+## wails.json, CompanyName/ProductName both fell back to the project name, so
+## the uninstall key differed per era. .onInit reads them newest-first as
+## InstallLocation fallbacks; the install section deletes the superseded
+## v0.3.x-era key after writing the current one.
+!define UNINST_KEY_LEGACY_V03X "Software\Microsoft\Windows\CurrentVersion\Uninstall\llama-desktopllama-desktop"
+!define UNINST_KEY_LEGACY_V01X "Software\Microsoft\Windows\CurrentVersion\Uninstall\llama-guillama-gui"
+####
 ## Include the wails tools
 ####
 !include "wails_tools.nsh"
@@ -86,6 +94,15 @@ Function .onInit
    ; 使 MUI_PAGE_DIRECTORY 默认显示上次安装目录，实现覆盖安装记住自定义路径。
    SetRegView 64
    ReadRegStr $0 HKLM "${UNINST_KEY}" "InstallLocation"
+   ${If} $0 == ""
+       ; 卸载键名随 wails.json 归属信息变更过一次：新键读不到时依次回退到
+       ; v0.3.x 时代键与更名前 llama-gui 时代的键，取首个非空 InstallLocation，
+       ; 保证跨版本更新仍能记住自定义安装路径。
+       ReadRegStr $0 HKLM "${UNINST_KEY_LEGACY_V03X}" "InstallLocation"
+   ${EndIf}
+   ${If} $0 == ""
+       ReadRegStr $0 HKLM "${UNINST_KEY_LEGACY_V01X}" "InstallLocation"
+   ${EndIf}
    ${If} $0 != ""
        StrCpy $INSTDIR $0
    ${EndIf}
@@ -113,6 +130,9 @@ Section
     ; 供下次覆盖安装时在 .onInit 中读回 InstallLocation。
     SetRegView 64
     WriteRegStr HKLM "${UNINST_KEY}" "InstallLocation" "$INSTDIR"
+    ; 删除已被本次安装取代的 v0.3.x 时代旧键，避免“已安装应用”出现重复条目
+    ; （旧键的 UninstallString 指向的正是本次安装覆盖后的同一 uninstall.exe）。
+    DeleteRegKey HKLM "${UNINST_KEY_LEGACY_V03X}"
 SectionEnd
 
 Section "uninstall"
