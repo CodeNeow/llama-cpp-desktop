@@ -167,16 +167,20 @@
                  shift when the service starts or stops; the placeholder overlays -->
             <div class="tps-cards" :class="{ 'tps-ghost': !status.serverRunning }" :aria-hidden="!status.serverRunning">
               <div class="tps-card">
-                <span class="tps-card-name">{{ t('monitor.promptSpeed') }}</span>
-                <span class="tps-card-sub">{{ t('monitor.promptSub') }}</span>
+                <div class="tps-card-info">
+                  <span class="tps-card-name">{{ t('monitor.promptSpeed') }}</span>
+                  <span class="tps-card-sub">{{ t('monitor.promptSub') }}</span>
+                </div>
                 <div class="tps-card-value">
                   <span class="tps-value">{{ promptTpsText }}</span>
                   <span class="tps-label">tokens/s</span>
                 </div>
               </div>
               <div class="tps-card">
-                <span class="tps-card-name">{{ t('monitor.decodeSpeed') }}</span>
-                <span class="tps-card-sub">{{ t('monitor.decodeSub') }}</span>
+                <div class="tps-card-info">
+                  <span class="tps-card-name">{{ t('monitor.decodeSpeed') }}</span>
+                  <span class="tps-card-sub">{{ t('monitor.decodeSub') }}</span>
+                </div>
                 <div class="tps-card-value">
                   <span class="tps-value">{{ decodeTpsText }}</span>
                   <span class="tps-label">tokens/s</span>
@@ -998,6 +1002,13 @@ function clearLog() {
   color: var(--text-secondary);
 }
 
+/* Name + subtitle grouped so tall windows can lay them out beside the value */
+.tps-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .tps-card-sub {
   font-size: 11px;
   color: var(--text-dim);
@@ -1049,29 +1060,45 @@ function clearLog() {
   .tps-footnote { display: none; }
 }
 
-/* ─── Large mode (viewport height >= 900px, e.g. maximized windows): the
-   metric blocks rearrange side by side so the card absorbs extra height as
-   spacing around the metric group instead of per-block vertical padding, and
-   the TPS mini-cards stretch to fill the tall token card with their content
-   centered — stretching to fill the available space, chat-style. */
-@media (min-height: 900px) {
-  .metric-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px 24px;
-    align-content: center;
-  }
-  .metric-grid .metric-block { margin-bottom: 0; }
-  .metric-grid .metric-block:last-child { grid-column: 1 / -1; }
-  .tps-cards { align-content: stretch; }
-  .tps-card { justify-content: center; }
+/* ─── Proportional spacing (viewport height >= 800px): fonts stay fixed; above
+   the design baseline only paddings, gaps, margins and bar heights grow with
+   the window so one-metric-per-row blocks fill tall cards without whitespace */
+@media (min-height: 800px) {
+  .monitor-side { gap: max(12px, 1.5vh); }
+  .monitor-card { padding: max(16px, 2.5vh) max(20px, 2.5vh); }
+  .metric-block { margin-bottom: max(14px, 2.25vh); }
+  .usage-bar-wrapper { gap: max(12px, 1.75vh); }
+  .usage-bar { height: max(6px, 1vh); }
+  .metric-sub { margin-top: max(10px, 1.5vh); }
+  .gpu-row { padding: max(12px, 2vh) 0; }
+  .gpu-head { margin-bottom: max(10px, 1.5vh); }
+  .gpu-mem { margin-top: max(8px, 1.25vh); }
+  .token-card-head { margin-bottom: max(14px, 2.25vh); }
+  .tps-footnote { margin: max(12px, 2vh) 0 0; }
+  .console-line { padding: max(1px, 0.5vh) 0; }
 }
 
-/* With the raised page cap, wide-and-tall windows (>= 1500x900) get a third
-   metric column: CPU | Memory | GPU side by side, each stretching horizontally */
-@media (min-height: 900px) and (min-width: 1500px) {
-  .metric-grid { grid-template-columns: 1fr 1fr 1fr; }
-  .metric-grid .metric-block:last-child { grid-column: auto; }
+/* ─── Tall windows (>= 900px, e.g. maximized): one metric per row everywhere —
+   the page subtitle yields its space and the TPS mini-cards stack into
+   full-width rows (info left, value right) with generous vertical padding */
+@media (min-height: 900px) {
+  .page-subtitle { display: none; }
+  .tps-cards { grid-template-columns: 1fr; align-content: stretch; }
+  .tps-card {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: max(16px, 3vh) max(16px, 2.5vh);
+  }
+  .tps-card-value { margin-top: 0; }
+}
+
+/* ─── Tall windows (>= 1000px, e.g. maximized): cap the monitor grid so it
+   floats ~120px above the window bottom instead of sticking to it — the band
+   below reads as intentional breathing room */
+@media (min-height: 1000px) {
+  .monitor-grid { max-height: calc(100vh - 380px); }
 }
 
 /* ─── Empty ─── */
