@@ -13,6 +13,7 @@ v0.3.4:API 路由页监控区精简与固定布局。核心变化:
 - **页面底部收紧** — 监控网格与窗口底部的间距从约 80px 收窄到 24px,日志控制台与监控区可视高度增加。
 - **下载搜索示例更新** — 模型下载页搜索框占位示例改为 LLM 模型(如 Qwen3.8-27B、Qwen3.6-35B-A3B)。
 - **窗口最小尺寸提高** — 主窗口最小尺寸从 900×600 提高到 900×800,与默认高度一致,矮窗口不再裁剪监控区内容。
+- **安装路径记忆修复** — 归属信息变更使安装器卸载注册表键名改变,覆盖安装丢失自定义路径回落默认目录;现在按「当前键 → v0.3.x 旧键 → llama-gui 旧键」顺序读回上次安装路径,并清理被取代的旧键避免重复条目。
 
 ## English
 
@@ -23,6 +24,7 @@ v0.3.4: streamlined, fixed-layout monitor on the API Router page. Highlights:
 - **Tighter bottom spacing** — the monitor grid ends 24px above the window bottom (was ~80px), giving the log console and monitor more visible height.
 - **Download search examples** — the model download page's search placeholder now shows LLM examples (e.g. Qwen3.8-27B, Qwen3.6-35B-A3B).
 - **Larger minimum window** — the main window's minimum size rises from 900×600 to 900×800 (matching the default height), so short windows no longer clip the monitor cards.
+- **Install path memory fixed** — an attribution-driven rename of the uninstall registry key made updates lose the remembered custom path and fall back to the default directory; the installer now reads the previous InstallLocation from the current key, then the v0.3.x-era key, then the pre-rename llama-gui key, and removes the superseded entry.
 
 ## [v0.3.3] - 2026-08-22
 
