@@ -310,6 +310,7 @@ export namespace core {
 	    quantization: string;
 	    hasMmproj: boolean;
 	    sourceDir: string;
+	    alias: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ModelInfo(source);
@@ -326,6 +327,7 @@ export namespace core {
 	        this.quantization = source["quantization"];
 	        this.hasMmproj = source["hasMmproj"];
 	        this.sourceDir = source["sourceDir"];
+	        this.alias = source["alias"];
 	    }
 	}
 	export class MonitorGPU {
