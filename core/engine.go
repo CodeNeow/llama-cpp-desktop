@@ -150,6 +150,12 @@ type ModelInfo struct {
 	// frontend show which of the two sources a model belongs to when both are
 	// configured.
 	SourceDir string `json:"sourceDir"`
+	// Alias is the llama-server model id for this model: the display Name
+	// sanitized for INI section use with its original casing preserved, plus a
+	// deterministic -2/-3 suffix on case-insensitive collisions (see
+	// aliasDedup). The API page shows it so users copy-paste an id that
+	// llama-server matches exactly (model lookup is case-sensitive).
+	Alias string `json:"alias"`
 }
 
 // ─── Cached system info (collected once at startup) ─────────────
@@ -906,6 +912,13 @@ func scanModels() []ModelInfo {
 	sort.Slice(merged, func(i, j int) bool {
 		return merged[i].SizeBytes > merged[j].SizeBytes
 	})
+	// Assign llama-server model ids after the final ordering so the alias the
+	// UI shows (copy-paste target) is the same section name the preset writes;
+	// generateModelsPresetFrom recomputes with the same deterministic helper.
+	usedAliases := make(map[string]int)
+	for i := range merged {
+		merged[i].Alias = aliasDedup(merged[i].Name, usedAliases)
+	}
 	return merged
 }
 
@@ -2978,26 +2991,15 @@ func generateModelsPresetFrom(models []ModelInfo, cfgs map[string]ModelConfig) (
 	var buf bytes.Buffer
 	// Deterministic alias dedup: sanitizeAlias maps different characters like
 	// spaces and slashes all to '-', so distinct model names can collide into
-	// the same section name (#7.1). Aliases are uppercased so the model id
-	// exposed via GET /models and the OpenAI API is uniform regardless of the
-	// on-disk file casing (llama-server matches model ids case-sensitively);
-	// the Models page keeps showing the original m.Name casing. Append -2,
-	// -3... to already-used aliases in model order until unique; the dedup
-	// operates on the uppercase names, so the result is deterministic and
-	// suffix-consistent, independent of randomness/time.
+	// the same section name (#7.1). Aliases preserve the display name's casing
+	// (llama-server matches model ids case-sensitively) — what the UI shows is
+	// exactly the id the API accepts; aliasDedup appends -2, -3... to
+	// case-insensitive collisions in model order until unique. The result is
+	// deterministic, independent of randomness/time, and identical to the
+	// aliases assigned by scanModels for the same model order.
 	used := make(map[string]int)
 	for _, m := range models {
-		alias := strings.ToUpper(sanitizeAlias(m.Name))
-		if used[alias] > 0 {
-			for n := used[alias] + 1; ; n++ {
-				candidate := fmt.Sprintf("%s-%d", alias, n)
-				if used[candidate] == 0 {
-					alias = candidate
-					break
-				}
-			}
-		}
-		used[alias]++
+		alias := aliasDedup(m.Name, used)
 		buf.WriteString(fmt.Sprintf("[%s]\n", alias))
 		buf.WriteString(fmt.Sprintf("model = %s\n", filepath.ToSlash(m.Path)))
 
@@ -3144,15 +3146,39 @@ func isEmbeddingModel(m ModelInfo) bool {
 		strings.Contains(lower, "gte-") || strings.Contains(lower, "e5-")
 }
 
+// sanitizeAlias maps a display name to a llama-server INI section name: spaces
+// become hyphens, characters outside [A-Za-z0-9-_.] are replaced with hyphens.
+// Casing is preserved so the model id equals what the UI displays — users
+// copy-paste the shown name and llama-server (case-sensitive lookup) matches.
 func sanitizeAlias(name string) string {
 	name = strings.ReplaceAll(name, " ", "-")
-	name = strings.Map(func(r rune) rune {
+	return strings.Map(func(r rune) rune {
 		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.' {
 			return r
 		}
 		return '-'
 	}, name)
-	return strings.ToLower(name)
+}
+
+// aliasDedup returns a section-name-unique alias for name: the first
+// occurrence keeps the sanitized name as-is; later names colliding with it
+// case-insensitively get -2, -3... appended in order. The used map is keyed by
+// the lowercased alias so two sections can never differ only by casing (both
+// would be valid INI sections but ambiguous as copy-paste ids). Deterministic
+// for a fixed input order.
+func aliasDedup(name string, used map[string]int) string {
+	alias := sanitizeAlias(name)
+	if n := used[strings.ToLower(alias)]; n > 0 {
+		for i := n + 1; ; i++ {
+			candidate := fmt.Sprintf("%s-%d", alias, i)
+			if used[strings.ToLower(candidate)] == 0 {
+				alias = candidate
+				break
+			}
+		}
+	}
+	used[strings.ToLower(alias)]++
+	return alias
 }
 
 // ─── Config persistence ─────────────────────────────────────────

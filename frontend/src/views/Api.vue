@@ -338,7 +338,9 @@ onMounted(async () => {
   try {
     const models = await getModels() as any[]
     if (models) {
-      availableModels.value = models.map((m: any) => m.name)
+      // Show the real llama-server model id (Alias, display casing preserved)
+      // so copy-paste from this page always matches the case-sensitive lookup
+      availableModels.value = models.map((m: any) => m.alias || m.name)
       modelCount.value = models.length
     }
   } catch {}

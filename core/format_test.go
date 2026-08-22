@@ -52,15 +52,15 @@ func TestGuessQuantFromName(t *testing.T) {
 // ─── sanitizeAlias ───────────────────────────────────────────────
 
 // TestSanitizeAlias verifies alias normalization: spaces become hyphens, illegal
-// characters are replaced, and everything is lowercased — the generated alias is used
-// for llama-server preset INI section names.
+// characters are replaced, and casing is preserved — the alias equals the shown
+// display name so copy-paste ids match llama-server's case-sensitive lookup.
 func TestSanitizeAlias(t *testing.T) {
 	cases := []struct {
 		in   string
 		want string
 	}{
-		{"My Model 1", "my-model-1"},
-		{"Qwen2.5-7B", "qwen2.5-7b"},
+		{"My Model 1", "My-Model-1"},
+		{"Qwen2.5-7B", "Qwen2.5-7B"},
 		{"x/y*z", "x-y-z"},
 	}
 	for _, c := range cases {
