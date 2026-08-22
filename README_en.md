@@ -11,15 +11,17 @@ A user-friendly desktop GUI for [llama.cpp](https://github.com/ggml-org/llama.cp
 
 ## Highlights
 
-- **One endpoint, many models** — runs llama-server in router mode (`--models-dir` / `--models-preset` / `--models-max`), serving every GGUF in your models directory over a single OpenAI-compatible API (default `http://127.0.0.1:8080/v1`); models are loaded and unloaded on demand.
+- **One endpoint, many models** — runs llama-server in router mode (`--models-dir` / `--models-preset` / `--models-max`), serving every GGUF in your models directory over a single OpenAI-compatible API (default `http://127.0.0.1:8080/v1`).
+- **On-demand loading & one-click unload** — models load into VRAM / memory only when first requested, no manual preloading; loaded models are listed in the task dock, each with a one-click unload button, so switching models never requires restarting the service.
+- **Headless API-route mode** — one toggle restarts the app as a background-only process (Go backend + system tray + llama-server, no GUI): the WebView2 renderer that costs hundreds of MB of memory in GUI mode exits entirely, leaving only a ~20 MB background process; inference keeps running without interruption, the OpenAI API stays available, and the tray menu's "Show Main Window" brings the full UI back anytime.
 - **Copy-paste model IDs** — the API `model` field is exactly the name shown in the UI (e.g. `Qwen3.6-29B-REAP-Opus-Reasoning-Distill-MTP-Q4_K_M`); copy it from the Model Manager, API Router or Chat page and it just works.
 - **Hardware-aware auto-tune** — reads real GGUF metrics (block count, GQA/MLA KV geometry, trained context, MoE expert ratio) and snapshots GPU/CPU/RAM to plan GPU layers, context length, threads and cache types per model in one click.
 - **Built-in chat** — streaming conversations with markdown rendering and a live reasoning view, image attachments for multimodal models, and per-session sampling controls (temperature, top-p / top-k, repeat penalty, max tokens, system prompt).
 - **Model discovery and downloads** — search HF Mirror (hf-mirror.com) or ModelScope, expand repositories into file lists, and batch-download through a resumable queue (pause / resume / cancel) that survives restarts.
 - **Per-model inference presets** — GPU layers, KV cache types, long-context RoPE settings, speculative decoding and more, persisted per model and written into the llama-server preset on save.
-- **Live service monitor** — server log console, prompt-processing and generation token speed with charts, and CPU / memory / GPU (utilization + VRAM) sampling, refreshed every second — all pinned in the viewport, no page scrolling.
+- **Live service monitor** — server log console, prompt-processing and generation token speeds, and CPU / memory / GPU (utilization + VRAM) sampling, refreshed every second — all pinned in the viewport, no page scrolling.
 - **Task dock** — a collapsible card floating at the bottom-right corner shows download progress at a glance (llama.cpp / model files / app updates) alongside the models currently loaded in memory, each with a one-click unload button.
-- **Desktop niceties** — Windows system tray, headless API-route mode (tray + llama-server background service, no GUI), in-app update check, light / dark themes, and a zh / en / auto UI language.
+- **Desktop niceties** — Windows system tray, in-app update check, light / dark themes, and a zh / en / auto UI language.
 
 ## Screenshots
 
