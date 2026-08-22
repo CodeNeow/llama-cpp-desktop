@@ -185,16 +185,17 @@ Remaining gaps:
 
 ## Versioning and Releases
 
-- The authoritative source for changelogs is the root `CHANGELOG.md`: before a release, add the corresponding version entry (with date and per-commit core changes). **Tag annotation messages and GitHub Release bodies are copied from this entry** to keep them in sync; do not rely on GitHub "auto-generate release notes" (this repo commits directly to main with no PRs, so auto-generation only produces a compare link).
-- Entries are bilingual starting with **v0.2.7**: an `## English` section (top) followed by a `## 中文` section (bottom). The frontend update modal extracts the section matching the UI language (see `frontend/src/lib/update.ts` `extractReleaseNotes`); tag messages and Release bodies keep both sections so the in-app notes stay language-appropriate.
+- The authoritative source for changelogs is the root `CHANGELOG.md`: before a release, add the corresponding version entry (with date). **Tag annotation messages and GitHub Release bodies are copied from this entry** to keep them in sync; do not rely on GitHub "auto-generate release notes" (this repo commits directly to main with no PRs, so auto-generation only produces a compare link).
+- Entries summarize the release as a whole: a short paragraph plus a few bullets grouped by area (Backend / Frontend / Docs, etc.). Do NOT write per-commit breakdowns or commit hashes; keep each entry a concise, user-facing digest.
+- Entries are bilingual with Chinese on top: a `## 中文` section (top) followed by an `## English` section (bottom) — starting with **v0.3.3**; v0.2.7–v0.3.2 entries are English-first per-commit records and are preserved as-is. The frontend update modal extracts the section matching the UI language (see `frontend/src/lib/update.ts` `extractReleaseNotes`, which handles both marker orders); tag messages and Release bodies keep both sections so the in-app notes stay language-appropriate.
 - Version tags are annotated tags (`git tag -a vX.Y.Z`) with the message taken from the CHANGELOG entry. Before tagging, confirm quality gates pass. Pushing tags is a remote operation and requires user authorization.
 - GitHub Release bodies are not automatically synced from tag messages: when creating or updating a Release, paste the body from the corresponding CHANGELOG entry. This is a remote operation requiring explicit user authorization.
 
 ## Documentation Language
 
-- `README.md` is the English primary documentation. `README_zh.md` is the Chinese counterpart.
-- Screenshots live under `docs/screenshots/en/` and `docs/screenshots/zh/`; each document references the set matching its own language.
-- `CHANGELOG.md` entries are written in English. Historical Chinese entries are preserved as a matter of record.
+- `README.md` is the Chinese primary documentation. `README_en.md` is the English counterpart.
+- Screenshots live under `docs/screenshots/zh/` and `docs/screenshots/en/`; each document references the set matching its own language.
+- `CHANGELOG.md` entries are bilingual with Chinese on top (`## 中文` first, `## English` below) and summarize the release as a whole; historical English-first and per-commit entries are preserved as a matter of record.
 
 ## Repository Hygiene
 
