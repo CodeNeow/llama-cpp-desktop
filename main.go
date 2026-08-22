@@ -6,8 +6,7 @@ import (
 	"flag"
 	"os"
 
-	"llama-desktop/core"
-
+	"github.com/CodeNeow/llama-cpp-desktop/core"
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"

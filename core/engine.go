@@ -1789,7 +1789,7 @@ func downloadWithResume(ctx context.Context, url string, totalSize int64, baseDo
 			closeTmp()
 			return tmpPath, err
 		}
-		req.Header.Set("User-Agent", "llama-desktop")
+		req.Header.Set("User-Agent", appUserAgent())
 		if offset > 0 {
 			req.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
 		}
@@ -1992,7 +1992,7 @@ func fetchLatestReleaseAt(apiURL string) (*GitHubRelease, error) {
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "llama-desktop")
+	req.Header.Set("User-Agent", appUserAgent())
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
@@ -2464,6 +2464,14 @@ var versionFile []byte
 // name when releasing.
 var currentVersion = strings.TrimSpace(string(versionFile))
 
+// appUserAgent returns the User-Agent sent with every outbound HTTP request
+// (GitHub API, HF mirror, ModelScope, model downloads). It carries the app
+// name, the current version and the repository URL so recipients can
+// attribute the traffic to this project.
+func appUserAgent() string {
+	return "llama-cpp-desktop/" + currentVersion + " (+https://github.com/CodeNeow/llama-cpp-desktop)"
+}
+
 // updateRepoAPI points to this repository's latest release API. The URL is
 // received by CheckForUpdateAt to support test injection of a local httptest
 // server. Declared as a var so tests can replace the package-level variable to
@@ -2844,7 +2852,7 @@ func downloadUpdateWithResume(ctx context.Context, url string, totalSize int64) 
 			tmpFile.Close()
 			return tmpPath, err
 		}
-		req.Header.Set("User-Agent", "llama-desktop")
+		req.Header.Set("User-Agent", appUserAgent())
 
 		client := &http.Client{Timeout: 30 * time.Minute}
 		resp, err := client.Do(req)
@@ -3877,7 +3885,7 @@ func searchHFMirrorSortAt(baseURL, q, sort string) ([]HFSearchResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "llama-desktop")
+	req.Header.Set("User-Agent", appUserAgent())
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
@@ -3946,7 +3954,7 @@ func getModelDescription(modelID string) (string, error) {
 
 // getModelDescriptionAt fetches the README of a model on an HF-compatible base
 // and extracts its natural-language description:
-//   - GET {base}/{modelID}/raw/main/README.md (User-Agent llama-desktop, 30s timeout)
+//   - GET {base}/{modelID}/raw/main/README.md (User-Agent via appUserAgent(), 30s timeout)
 //   - non-200 returns an error; YAML front-matter (a block starting with ---) is skipped
 //   - split by blank lines, take the first paragraph that is non-empty and does
 //     not start with #, trim it and truncate to 200 runes
@@ -3959,7 +3967,7 @@ func getModelDescriptionAt(baseURL, modelID string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("User-Agent", "llama-desktop")
+	req.Header.Set("User-Agent", appUserAgent())
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
@@ -4054,7 +4062,7 @@ func getHFModelFilesAt(baseURL, modelID string) ([]HFFileOut, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "llama-desktop")
+	req.Header.Set("User-Agent", appUserAgent())
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
@@ -4106,7 +4114,7 @@ func getHFModelMaxGGUFSizeAt(baseURL, modelID string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	req.Header.Set("User-Agent", "llama-desktop")
+	req.Header.Set("User-Agent", appUserAgent())
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
@@ -4597,13 +4605,13 @@ func downloadTask(task *DlTask) {
 }
 
 // buildDownloadRequest creates a GET request for a download URL with the
-// llama-desktop User-Agent, adding a Range header when resuming from an offset.
+// appUserAgent() User-Agent, adding a Range header when resuming from an offset.
 func buildDownloadRequest(downloadURL string, offset int64) (*http.Request, error) {
 	req, err := http.NewRequest("GET", downloadURL, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "llama-desktop")
+	req.Header.Set("User-Agent", appUserAgent())
 	if offset > 0 {
 		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
 	}

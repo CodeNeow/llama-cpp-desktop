@@ -6,7 +6,12 @@
   "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "http://localhost:5173",
   "author": {
-    "name": "",
-    "email": ""
+    "name": "CodeNeow"
+  },
+  "info": {
+    "productName": "Llama Desktop",
+    "productVersion": "0.3.3",
+    "copyright": "Copyright (C) 2026 CodeNeow (https://github.com/CodeNeow/llama-cpp-desktop)",
+    "comments": "Desktop GUI for llama.cpp - https://github.com/CodeNeow/llama-cpp-desktop"
   }
 }

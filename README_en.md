@@ -135,4 +135,6 @@ The download comes from GitHub Releases; it supports pause / resume with resumab
 
 ## License
 
+Copyright © 2026 [CodeNeow](https://github.com/CodeNeow/llama-cpp-desktop)
+
 This project is licensed under the [GNU General Public License v3](LICENSE).

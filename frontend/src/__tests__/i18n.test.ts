@@ -36,6 +36,19 @@ describe('lib/i18n', () => {
     expect(t('settings.apiRouteModeError')).not.toBe('settings.apiRouteModeError')
   })
 
+  it('about settings keys render in both locales', () => {
+    setLocale('zh')
+    expect(t('settings.about')).toBe('关于')
+    expect(t('settings.version')).toBe('版本')
+    expect(t('settings.license')).toBe('开源协议')
+    expect(t('settings.repo')).toBe('项目仓库')
+    setLocale('en')
+    expect(t('settings.about')).toBe('About')
+    expect(t('settings.version')).toBe('Version')
+    expect(t('settings.license')).toBe('License')
+    expect(t('settings.repo')).toBe('Repository')
+  })
+
   it('runtime page and shared download labels render in both locales', () => {
     setLocale('zh')
     expect(t('nav.runtime')).toBe('运行环境')

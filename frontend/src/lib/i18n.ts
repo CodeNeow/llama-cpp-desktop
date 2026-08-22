@@ -294,6 +294,10 @@ export const messages: Record<Locale, Record<string, string>> = {
     'settings.apiRouteModeError': '切换 API 路由模式失败，请稍后重试',
     'settings.on': '开',
     'settings.off': '关',
+    'settings.about': '关于',
+    'settings.version': '版本',
+    'settings.license': '开源协议',
+    'settings.repo': '项目仓库',
 
     // ─── Model settings modal (ModelSettings.vue) ───
     'modelSettings.title': '模型设置',
@@ -716,6 +720,10 @@ export const messages: Record<Locale, Record<string, string>> = {
     'settings.apiRouteModeError': 'Failed to switch API route mode, please try again later',
     'settings.on': 'On',
     'settings.off': 'Off',
+    'settings.about': 'About',
+    'settings.version': 'Version',
+    'settings.license': 'License',
+    'settings.repo': 'Repository',
 
     // ─── Model settings dialog (ModelSettings.vue) ───
     'modelSettings.title': 'Model Settings',

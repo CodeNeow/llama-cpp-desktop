@@ -1,7 +1,17 @@
 {
-  "name": "llama-desktop",
-  "version": "1.0.0",
-  "description": "Llama Desktop - Desktop application with Vue 3 + Wails + Go",
+  "name": "llama-cpp-desktop",
+  "version": "0.3.3",
+  "description": "Desktop GUI for llama.cpp - manage GGUF models, serve one OpenAI-compatible endpoint",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CodeNeow/llama-cpp-desktop.git"
+  },
+  "homepage": "https://github.com/CodeNeow/llama-cpp-desktop",
+  "bugs": {
+    "url": "https://github.com/CodeNeow/llama-cpp-desktop/issues"
+  },
+  "author": "CodeNeow",
+  "license": "GPL-3.0",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",

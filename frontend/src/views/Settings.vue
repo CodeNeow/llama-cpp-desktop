@@ -282,6 +282,30 @@
         </div>
       </div>
     </section>
+
+    <!-- About: version / license / repository. The repo URL is plain
+         selectable text, NOT an <a> link: clicking a link would navigate the
+         WebView away from the app. -->
+    <section class="settings-section">
+      <h2 class="section-title">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+        </svg>
+        {{ t('settings.about') }}
+      </h2>
+      <div class="about-row">
+        <span class="setting-label">{{ t('settings.version') }}</span>
+        <span class="about-value">{{ appVersion || '—' }}</span>
+      </div>
+      <div class="about-row">
+        <span class="setting-label">{{ t('settings.license') }}</span>
+        <span class="about-value">GPL-3.0</span>
+      </div>
+      <div class="about-row">
+        <span class="setting-label">{{ t('settings.repo') }}</span>
+        <span class="about-value about-mono">https://github.com/CodeNeow/llama-cpp-desktop</span>
+      </div>
+    </section>
   </div>
 </template>
 
@@ -712,5 +736,34 @@ async function manualCheck() {
 .btn-check:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* ─── About ─── */
+.about-row {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  padding: 9px 0;
+}
+
+.about-row + .about-row {
+  border-top: 1px solid var(--border-light);
+}
+
+.about-row .setting-label {
+  min-width: 72px;
+}
+
+.about-value {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* Repository URL in monospace, kept selectable (user-select: text) so it can
+   be copied; not an <a> to avoid navigating the WebView away */
+.about-mono {
+  font-family: var(--font-mono);
+  word-break: break-all;
+  user-select: text;
 }
 </style>

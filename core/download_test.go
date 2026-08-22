@@ -311,6 +311,18 @@ func TestPickCudartAssetFor(t *testing.T) {
 	}
 }
 
+// TestAppUserAgent verifies the outbound User-Agent carries the app name, the
+// current version and the repository URL for attribution.
+func TestAppUserAgent(t *testing.T) {
+	ua := appUserAgent()
+	if !strings.HasPrefix(ua, "llama-cpp-desktop/"+currentVersion) {
+		t.Errorf("User-Agent = %q, want prefix llama-cpp-desktop/%s", ua, currentVersion)
+	}
+	if !strings.Contains(ua, "https://github.com/CodeNeow/llama-cpp-desktop") {
+		t.Errorf("User-Agent = %q, want repository URL", ua)
+	}
+}
+
 // TestBuildDownloadRequest verifies download requests carry User-Agent and add a Range
 // header for resume downloads.
 func TestBuildDownloadRequest(t *testing.T) {
@@ -318,8 +330,8 @@ func TestBuildDownloadRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if req.Header.Get("User-Agent") != "llama-desktop" {
-		t.Errorf("User-Agent = %q, want llama-desktop", req.Header.Get("User-Agent"))
+	if req.Header.Get("User-Agent") != appUserAgent() {
+		t.Errorf("User-Agent = %q, want %q", req.Header.Get("User-Agent"), appUserAgent())
 	}
 	if req.Header.Get("Range") != "" {
 		t.Errorf("no offset should not have Range header: %q", req.Header.Get("Range"))

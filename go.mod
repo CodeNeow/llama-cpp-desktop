@@ -1,4 +1,4 @@
-module llama-desktop
+module github.com/CodeNeow/llama-cpp-desktop
 
 go 1.25.0
 

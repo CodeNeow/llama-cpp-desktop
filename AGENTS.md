@@ -190,6 +190,7 @@ Remaining gaps:
 - Entries are bilingual with Chinese on top: a `## 中文` section (top) followed by an `## English` section (bottom) — starting with **v0.3.3**; v0.2.7–v0.3.2 entries are English-first per-commit records and are preserved as-is. The frontend update modal extracts the section matching the UI language (see `frontend/src/lib/update.ts` `extractReleaseNotes`, which handles both marker orders); tag messages and Release bodies keep both sections so the in-app notes stay language-appropriate.
 - Version tags are annotated tags (`git tag -a vX.Y.Z`) with the message taken from the CHANGELOG entry. Before tagging, confirm quality gates pass. Pushing tags is a remote operation and requires user authorization.
 - GitHub Release bodies are not automatically synced from tag messages: when creating or updating a Release, paste the body from the corresponding CHANGELOG entry. This is a remote operation requiring explicit user authorization.
+- Releases must keep `core/VERSION`, `wails.json` `info.productVersion` and `frontend/package.json` `version` in sync — all three carry the app version (`core/VERSION` and release tags use the `v` prefix; the other two do not).
 
 ## Documentation Language
 

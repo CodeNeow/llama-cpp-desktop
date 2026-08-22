@@ -135,4 +135,6 @@ Vite 开发服务器绑定 `localhost:5173`（见 `wails.json` 的 `frontend:dev
 
 ## 协议
 
+Copyright © 2026 [CodeNeow](https://github.com/CodeNeow/llama-cpp-desktop)
+
 本项目基于 [GNU General Public License v3](LICENSE) 开源。
