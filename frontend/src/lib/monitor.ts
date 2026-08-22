@@ -1,9 +1,8 @@
 /**
- * Monitor data pure-function utilities: used by Api.vue to maintain generation-speed
- * chart history, compute SVG polyline coordinates, and format uptime (the former
- * standalone Monitor.vue page was merged into Api.vue). All pure functions for easy
- * unit testing; the MonitorStatus interface maps one-to-one to the backend
- * GetMonitorStatus JSON contract.
+ * Monitor data pure-function utilities: used by Api.vue to format prompt/generation
+ * token speeds and uptime (the former standalone Monitor.vue page was merged into
+ * Api.vue). All pure functions for easy unit testing; the MonitorStatus interface
+ * maps one-to-one to the backend GetMonitorStatus JSON contract.
  */
 
 import type { Locale } from './i18n'
@@ -21,34 +20,6 @@ export interface MonitorStatus {
   uptimeSeconds: number
   /** Disk usage of the volume holding the models directory; null when sampling fails/is unavailable and the frontend hides the disk row */
   disk?: { path: string; used: number; total: number } | null
-}
-
-/** Append one sample to the history array; drop the oldest beyond cap, return a new array (input not mutated). */
-export function appendHistory(history: number[], value: number, cap = 60): number[] {
-  const next = [...history, value]
-  if (next.length > cap) next.splice(0, next.length - cap)
-  return next
-}
-
-/**
- * Convert a history sequence into an SVG polyline points string:
- * - x evenly distributed (single point horizontally centered);
- * - y bottom-aligned with a 2px margin, larger values higher;
- * - max defaults to the history maximum with a floor of 1, so an all-zero sequence never divides by zero.
- */
-export function chartPoints(history: number[], width: number, height: number, max?: number): string {
-  if (history.length === 0) return ''
-  const n = history.length
-  const scale = (max ?? Math.max(...history)) || 1
-  const usable = height - 4
-  return history
-    .map((v, i) => {
-      const x = n === 1 ? width / 2 : (i / (n - 1)) * width
-      const normalized = Math.max(0, Math.min(1, v / scale))
-      const y = height - 2 - normalized * usable
-      return `${x.toFixed(1)},${y.toFixed(1)}`
-    })
-    .join(' ')
 }
 
 /**

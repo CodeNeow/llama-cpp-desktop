@@ -178,15 +178,6 @@
                 </div>
               </div>
             </div>
-            <div class="tps-chart">
-              <svg :viewBox="`0 0 ${chartWidth} ${chartHeight}`" preserveAspectRatio="none">
-                <line class="tps-axis" x1="0" :y1="chartHeight - 2" :x2="chartWidth" :y2="chartHeight - 2" />
-                <polyline :points="decodePoints" />
-              </svg>
-              <div class="tps-chart-meta">
-                <span class="tps-chart-label">{{ t('monitor.chartLabel', { n: decodeHistory.length }) }}</span>
-              </div>
-            </div>
             <p class="tps-footnote">{{ t('monitor.footnote') }}</p>
           </template>
         </section>
@@ -198,7 +189,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { getMonitorStatus, getModels, getServerConfig, getServerStatus, refreshModels, saveServerConfig, startServer, stopServer } from '../wails'
-import { appendHistory, chartPoints, formatPromptTps, formatUptime, type MonitorStatus } from '../lib/monitor'
+import { formatPromptTps, formatUptime, type MonitorStatus } from '../lib/monitor'
 import { formatBytes } from '../lib/format'
 import { locale, t } from '../lib/i18n'
 
@@ -234,11 +225,6 @@ const status = ref<MonitorStatus>({
   uptimeSeconds: 0,
 })
 
-// Decode speed line chart history: appended on 1s polling, keeps latest 60 samples (appendHistory default cap=60)
-const decodeHistory = ref<number[]>([])
-const chartWidth = 560
-const chartHeight = 120
-
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
 const cpuPercent = computed(() => Math.round(status.value.cpuPercent))
@@ -252,8 +238,6 @@ const promptTpsText = computed(() => formatPromptTps(status.value.promptTps))
 
 const decodeTpsText = computed(() => status.value.decodeTps.toFixed(1))
 
-const decodePoints = computed(() => chartPoints(decodeHistory.value, chartWidth, chartHeight))
-
 // VRAM/memory may be 0 (e.g. data not yet arrived); formatBytes(0) returns empty string, fallback to "0 B"
 function memText(bytes: number): string {
   return formatBytes(bytes) || '0 B'
@@ -265,7 +249,6 @@ async function fetchMonitorStatus() {
     status.value = s
     // Polling linkage also handles llama-server being killed externally: backend sets false, frontend corrects button state and param lock within 1s
     serverRunning.value = s.serverRunning
-    decodeHistory.value = appendHistory(decodeHistory.value, s.decodeTps)
   } catch {
     // Polling failure: silently keep previous data, don't disrupt monitor display
   }
@@ -984,42 +967,6 @@ function clearLog() {
   margin: 12px 0 0;
   font-size: 12px;
   color: var(--text-dim);
-}
-
-/* ─── TPS chart ─── */
-.tps-chart {
-  margin-top: 16px;
-}
-
-.tps-chart svg {
-  display: block;
-  width: 100%;
-  height: 90px;
-}
-
-.tps-chart polyline {
-  fill: none;
-  stroke: var(--accent);
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.tps-axis {
-  stroke: var(--text-muted);
-  stroke-width: 1;
-  stroke-dasharray: 3 3;
-}
-
-.tps-chart-meta {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 4px;
-}
-
-.tps-chart-label {
-  font-size: 11px;
-  color: var(--text-muted);
 }
 
 /* ─── Empty ─── */
