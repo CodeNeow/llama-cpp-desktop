@@ -395,8 +395,10 @@ function clearLog() {
 
 <style scoped>
 .page {
-  /* No top padding: header flush with content top, title aligns with sidebar logo (see global.css .page-header) */
-  padding: 0 48px 60px;
+  /* No top padding: header flush with content top, title aligns with sidebar logo (see global.css .page-header).
+     24px bottom band matches the chat page's input-area bottom padding; the floating
+     TaskDock pill is cleared by the right column's internal --dock-reserve, not here */
+  padding: 0 48px 24px;
 }
 
 /* Fixed-viewport layout (see .page-fixed in global.css): the header + toolbar
@@ -660,7 +662,6 @@ function clearLog() {
      content so the columns' internal scrolls engage */
   flex: 1;
   min-height: 0;
-  margin-bottom: 20px;
 }
 
 /* ─── Left column: log panel ─── */
