@@ -288,7 +288,8 @@ describe('lib/update', () => {
 
 // ─── extractReleaseNotes (bilingual release notes) ─────────────────────────
 
-const BILINGUAL_BODY = `## English
+// Historical body shape (v0.2.7 – v0.3.2): English section first
+const EN_FIRST_BODY = `## English
 
 v0.2.7: Fix the blank API page. Core changes in English here.
 
@@ -302,20 +303,43 @@ v0.2.7: 修复 API 页空白。核心改动中文说明。
 1. fix(frontend): API 页监控渲染对 null gpus 防御
    - 核心：中文细节。`
 
+// Current body shape (v0.3.3+): Chinese section first
+const ZH_FIRST_BODY = `## 中文
+
+v0.3.3: 页面固定布局与模型 ID 统一。核心改动中文说明。
+
+## English
+
+v0.3.3: Fixed-viewport pages and unified model IDs. English detail here.`
+
 describe('extractReleaseNotes', () => {
-  it('zh locale returns only the Chinese section', () => {
-    const zh = extractReleaseNotes(BILINGUAL_BODY, 'zh')
+  it('zh locale returns only the Chinese section (English-first body)', () => {
+    const zh = extractReleaseNotes(EN_FIRST_BODY, 'zh')
     expect(zh).toContain('修复 API 页空白')
     expect(zh).toContain('中文细节')
     expect(zh).not.toContain('English')
   })
 
-  it('en locale returns only the English section (between the two markers)', () => {
-    const en = extractReleaseNotes(BILINGUAL_BODY, 'en')
+  it('en locale returns only the English section (English-first body)', () => {
+    const en = extractReleaseNotes(EN_FIRST_BODY, 'en')
     expect(en).toContain('Fix the blank API page')
     expect(en).toContain('English detail')
     expect(en).not.toContain('中文')
     expect(en).not.toContain('修复 API 页空白')
+  })
+
+  it('zh locale returns only the Chinese section (Chinese-first body)', () => {
+    const zh = extractReleaseNotes(ZH_FIRST_BODY, 'zh')
+    expect(zh).toContain('核心改动中文说明')
+    expect(zh).not.toContain('English')
+    expect(zh).not.toContain('unified model IDs')
+  })
+
+  it('en locale returns only the English section (Chinese-first body)', () => {
+    const en = extractReleaseNotes(ZH_FIRST_BODY, 'en')
+    expect(en).toContain('English detail here')
+    expect(en).not.toContain('中文')
+    expect(en).not.toContain('核心改动')
   })
 
   it('body without markers falls back to the full text (historical releases)', () => {

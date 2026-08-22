@@ -35,32 +35,32 @@ export interface UpdateDownloadState {
   installer: boolean // Whether the downloaded artifact is the setup installer (install-now flow)
 }
 
-/** Markers delimiting the bilingual release-notes segments (v0.2.7+ bodies:
- *  English section first, Chinese section second). The UI shows only the
- *  section matching the current locale. */
+/** Markers delimiting the bilingual release-notes segments. Since v0.3.3 the
+ *  Chinese section comes first and the English section second; historical
+ *  bodies (v0.2.7 – v0.3.2) carry English first. The extraction is
+ *  order-agnostic. The UI shows only the section matching the locale. */
 const NOTES_EN_MARKER = '## English'
 const NOTES_ZH_MARKER = '## 中文'
 
 /**
  * Extract the release-notes section matching the UI language.
  *
- * v0.2.7+ release bodies carry both an English and a Chinese section, each
- * introduced by its marker. zh returns everything after the Chinese marker;
- * en returns the English section (between the two markers). Bodies without
- * markers (historical releases / unusual bodies) fall back to the full text,
+ * Release bodies carry both an English and a Chinese section, each introduced
+ * by its marker (order varies across releases). The section runs from its
+ * marker to the other marker or the end of the body. Bodies without markers
+ * (historical releases / unusual bodies) fall back to the full text,
  * preserving the previous behavior.
  */
 export function extractReleaseNotes(body: string, lang: 'zh' | 'en'): string {
   const trimmed = body.trim()
   const zhIdx = trimmed.indexOf(NOTES_ZH_MARKER)
-  if (lang === 'zh') {
-    if (zhIdx < 0) return trimmed
-    return trimmed.slice(zhIdx + NOTES_ZH_MARKER.length).trim()
-  }
   const enIdx = trimmed.indexOf(NOTES_EN_MARKER)
-  if (enIdx < 0) return trimmed
-  const end = zhIdx > enIdx ? zhIdx : trimmed.length
-  return trimmed.slice(enIdx + NOTES_EN_MARKER.length, end).trim()
+  const marker = lang === 'zh' ? NOTES_ZH_MARKER : NOTES_EN_MARKER
+  const start = trimmed.indexOf(marker)
+  if (start < 0) return trimmed
+  const ends = [zhIdx, enIdx].filter((i) => i > start)
+  const end = ends.length > 0 ? Math.min(...ends) : trimmed.length
+  return trimmed.slice(start + marker.length, end).trim()
 }
 
 export const updateState = reactive({
