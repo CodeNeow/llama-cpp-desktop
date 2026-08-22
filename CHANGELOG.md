@@ -1,6 +1,26 @@
 # Changelog
 
-更新日志的**权威来源**（见 `AGENTS.md`「版本发布」）：发版时先在此新增版本条目（含日期与逐提交核心改动），`git tag` 注解消息与 GitHub Release 正文均从该条目复制，保持一致。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本。
+更新日志的**权威来源**（见 `AGENTS.md`「版本发布」）：发版时先在此新增版本条目（含日期），`git tag` 注解消息与 GitHub Release 正文均从该条目复制，保持一致。自 v0.3.3 起条目为概括式双语（中文在上），历史逐提交条目仅作存档。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本。
+
+## [v0.3.3] - 2026-08-22
+
+## 中文
+
+v0.3.3:模型 ID 直接复制可用、系统信息页健壮性加固、文档中文化。核心变化:
+
+- **模型 ID 所见即所得** — API 的 `model` 字段就是页面显示的模型名,从模型管理页、API 路由页或聊天页直接复制粘贴即可调用(替代 v0.3.2 的大写 ID 方案);仅大小写冲突的模型名自动加后缀区分。聊天页之前保存的模型需重新选择一次。
+- **健壮性** — 系统信息页的内存/显存格式化对缺失数据防御,显示 N/A 而非整页卡在加载骨架。
+- **应用内更新日志** — 解析兼容新的双语日志格式(中文在上、英文在下),历史格式不受影响。
+- **文档** — README 以中文为主体(英文版移至 README_en.md),移除 Linux/Ubuntu 相关内容,双语言界面截图全部重拍(含新增的运行环境页);发布规则改为概括式双语更新日志。
+
+## English
+
+v0.3.3: copy-paste model IDs, hardened System Info formatters, and Chinese-primary documentation. Highlights:
+
+- **Copy-paste model IDs** — the API `model` field is now exactly the name shown in the UI; copy it from the Model Manager, API Router or Chat page and it just works (replacing v0.3.2's uppercase scheme), with automatic suffixes only for case-insensitive collisions. A chat model selected under v0.3.2 needs re-picking once.
+- **Robustness** — System Info memory/VRAM formatting is null-safe: missing data renders N/A instead of stalling the whole page on the loading skeleton.
+- **In-app release notes** — extraction handles the new bilingual format (Chinese first, English second); historical bodies parse unchanged.
+- **Docs** — README is now Chinese-primary (English moved to README_en.md), Linux/Ubuntu content removed, both screenshot sets recaptured (including the new Runtime Environment page); changelog rules switched to concise bilingual summaries.
 
 ## [v0.3.2] - 2026-08-22
 
