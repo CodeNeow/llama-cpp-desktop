@@ -403,8 +403,11 @@ function clearLog() {
 .page {
   /* No top padding: header flush with content top, title aligns with sidebar logo (see global.css .page-header).
      24px bottom band matches the chat page's input-area bottom padding; the floating
-     TaskDock pill is cleared by the right column's internal --dock-reserve, not here */
+     TaskDock pill is cleared by the right column's internal --dock-reserve, not here.
+     Width: raised above the global 1280px cap so a maximized window has nearly no
+     side margins (chat-page feel); 1920px still bounds ultra-wide monitors. */
   padding: 0 48px 24px;
+  max-width: 1920px;
 }
 
 /* Fixed-viewport layout (see .page-fixed in global.css): the header + toolbar
@@ -1044,6 +1047,31 @@ function clearLog() {
   .tps-card-sub { display: none; }
   .tps-card-value { margin-top: 6px; }
   .tps-footnote { display: none; }
+}
+
+/* ─── Large mode (viewport height >= 900px, e.g. maximized windows): the
+   metric blocks rearrange side by side so the card absorbs extra height as
+   spacing around the metric group instead of per-block vertical padding, and
+   the TPS mini-cards stretch to fill the tall token card with their content
+   centered — stretching to fill the available space, chat-style. */
+@media (min-height: 900px) {
+  .metric-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 24px;
+    align-content: center;
+  }
+  .metric-grid .metric-block { margin-bottom: 0; }
+  .metric-grid .metric-block:last-child { grid-column: 1 / -1; }
+  .tps-cards { align-content: stretch; }
+  .tps-card { justify-content: center; }
+}
+
+/* With the raised page cap, wide-and-tall windows (>= 1500x900) get a third
+   metric column: CPU | Memory | GPU side by side, each stretching horizontally */
+@media (min-height: 900px) and (min-width: 1500px) {
+  .metric-grid { grid-template-columns: 1fr 1fr 1fr; }
+  .metric-grid .metric-block:last-child { grid-column: auto; }
 }
 
 /* ─── Empty ─── */
