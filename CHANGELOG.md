@@ -12,6 +12,7 @@ v0.3.4:API 路由页监控区精简与固定布局。核心变化:
 - **监控列固定无滚动** — 系统监控与 Token 速度两张卡始终完整填满右列,不再出现内部滚动条;启动 / 停止服务时卡片高度保持不变,未启动时仅显示占位提示。
 - **页面底部收紧** — 监控网格与窗口底部的间距从约 80px 收窄到 24px,日志控制台与监控区可视高度增加。
 - **下载搜索示例更新** — 模型下载页搜索框占位示例改为 LLM 模型(如 Qwen3.8-27B、Qwen3.6-35B-A3B)。
+- **窗口最小尺寸提高** — 主窗口最小尺寸从 900×600 提高到 900×800,与默认高度一致,矮窗口不再裁剪监控区内容。
 
 ## English
 
@@ -21,6 +22,7 @@ v0.3.4: streamlined, fixed-layout monitor on the API Router page. Highlights:
 - **Scroll-free monitor column** — the System monitor and Token speed cards always fill the right column completely with no internal scrollbar; card heights stay identical whether the service is running or stopped, with only the placeholder shown before start.
 - **Tighter bottom spacing** — the monitor grid ends 24px above the window bottom (was ~80px), giving the log console and monitor more visible height.
 - **Download search examples** — the model download page's search placeholder now shows LLM examples (e.g. Qwen3.8-27B, Qwen3.6-35B-A3B).
+- **Larger minimum window** — the main window's minimum size rises from 900×600 to 900×800 (matching the default height), so short windows no longer clip the monitor cards.
 
 ## [v0.3.3] - 2026-08-22
 
