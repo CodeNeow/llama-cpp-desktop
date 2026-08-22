@@ -91,6 +91,8 @@
             {{ t('api.sysMonitor') }}
           </h2>
 
+          <!-- Wrapper enabling the 2-column compact rearrangement on short windows -->
+          <div class="metric-grid">
           <div class="metric-block">
             <div class="metric-head">
               <span class="metric-name">{{ t('monitor.cpu') }}</span>
@@ -142,6 +144,7 @@
           </div>
           <div v-else class="info-empty">{{ t('monitor.noGpu') }}</div>
         </div>
+          </div>
       </section>
 
         <!-- c. Token speed -->
@@ -767,6 +770,15 @@ function clearLog() {
   flex-shrink: 0;
 }
 
+/* Metric blocks wrapper: flex column normally; the compact media query near the
+   end of this style block rearranges it into two columns on short windows */
+.metric-grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 /* Spacing between metric blocks inside system monitor: blocks flex-share the
    card height (basis auto, equal grow) and center their content vertically, so
    the card fills the column and compresses gracefully on short windows */
@@ -1007,6 +1019,31 @@ function clearLog() {
   margin: 12px 0 0;
   font-size: 12px;
   color: var(--text-dim);
+}
+
+/* ─── Compact mode (viewport height <= 799px): keep the fixed, scroll-free
+   layout but compress secondary elements so everything fits without clipping
+   down to the 900x600 minimum window. Above this breakpoint nothing changes. */
+@media (max-height: 799px) {
+  .page-subtitle { display: none; }
+  .page-header { padding-bottom: 14px; }
+  .toolbar { padding: 10px 16px; margin-bottom: 12px; }
+  .toolbar-models { margin-top: 6px; padding-top: 6px; }
+  .monitor-grid { gap: 12px; }
+  .monitor-side { gap: 8px; }
+  .monitor-card { padding: 10px 14px; }
+  /* CPU and Memory sit side by side; GPU keeps the full width */
+  .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
+  .metric-grid .metric-block { margin-bottom: 0; }
+  .metric-grid .metric-block:last-child { grid-column: 1 / -1; }
+  /* Used/total captions are redundant next to the usage bar in narrow columns */
+  .metric-sub { display: none; }
+  .gpu-row { padding: 6px 0; }
+  .token-card-head { margin-bottom: 8px; }
+  .tps-card { padding: 10px 12px; }
+  .tps-card-sub { display: none; }
+  .tps-card-value { margin-top: 6px; }
+  .tps-footnote { display: none; }
 }
 
 /* ─── Empty ─── */
