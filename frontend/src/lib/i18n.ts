@@ -158,7 +158,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     // ─── Downloads page (Downloads.vue) ───
     'downloads.title': '模型下载',
     'downloads.subtitle': '从 {source} 搜索和下载模型',
-    'downloads.searchPlaceholder': '搜索模型... (如 bge, all-MiniLM, gte)',
+    'downloads.searchPlaceholder': '搜索模型...（如 Qwen3.8-27B, Qwen3.6-35B-A3B）',
     'downloads.searching': '搜索中...',
     'downloads.search': '搜索',
     'downloads.download': '下载',
@@ -583,7 +583,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     // ─── Downloads (Downloads.vue) ───
     'downloads.title': 'Model Downloads',
     'downloads.subtitle': 'Search and download models from {source}',
-    'downloads.searchPlaceholder': 'Search models... (e.g. bge, all-MiniLM, gte)',
+    'downloads.searchPlaceholder': 'Search models... (e.g. Qwen3.8-27B, Qwen3.6-35B-A3B)',
     'downloads.searching': 'Searching...',
     'downloads.search': 'Search',
     'downloads.download': 'Downloads',
