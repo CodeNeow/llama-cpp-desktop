@@ -12,3 +12,16 @@ export function countActiveTasks(tasks: { status: string }[]): number {
 export function visibleTasks<T extends { status: string }>(tasks: T[]): T[] {
   return tasks.filter(t => t.status !== 'cancelled')
 }
+
+/** Active (in-flight) tasks for the task group of the downloads modal:
+ * queued / downloading / paused. Finished tasks render separately below
+ * (finishedTaskItems) so history no longer mixes into the task list. */
+export function activeTaskItems<T extends { status: string }>(tasks: T[]): T[] {
+  return tasks.filter(t => t.status === 'downloading' || t.status === 'paused' || t.status === 'queued')
+}
+
+/** Finished tasks for the download-history group (done / error, retry stays
+ * available for error); cancelled stays hidden via visibleTasks. */
+export function finishedTaskItems<T extends { status: string }>(tasks: T[]): T[] {
+  return tasks.filter(t => t.status === 'done' || t.status === 'error')
+}

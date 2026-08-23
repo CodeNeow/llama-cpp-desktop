@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { hasActiveTask, countActiveTasks, visibleTasks } from '../lib/taskStatus'
+import { hasActiveTask, countActiveTasks, visibleTasks, activeTaskItems, finishedTaskItems } from '../lib/taskStatus'
 import { MODEL_TASK_STATUSES } from '../lib/downloadStatus'
 import type { ModelTaskStatus } from '../lib/downloadStatus'
 
@@ -143,5 +143,39 @@ describe('visibleTasks', () => {
     const result = visibleTasks(tasks)
     expect(result).toHaveLength(2)
     expect(result).toStrictEqual(tasks)
+  })
+})
+
+describe('activeTaskItems', () => {
+  it('keeps only in-flight statuses (queued/downloading/paused)', () => {
+    const tasks = [
+      { id: '1', status: 'downloading' },
+      { id: '2', status: 'done' },
+      { id: '3', status: 'paused' },
+      { id: '4', status: 'error' },
+      { id: '5', status: 'queued' },
+      { id: '6', status: 'cancelled' }
+    ]
+    expect(activeTaskItems(tasks).map(t => t.id)).toEqual(['1', '3', '5'])
+  })
+
+  it('returns empty for an empty list', () => {
+    expect(activeTaskItems([])).toEqual([])
+  })
+})
+
+describe('finishedTaskItems', () => {
+  it('keeps only terminal done/error for the history group', () => {
+    const tasks = [
+      { id: '1', status: 'downloading' },
+      { id: '2', status: 'done' },
+      { id: '3', status: 'error' },
+      { id: '4', status: 'cancelled' }
+    ]
+    expect(finishedTaskItems(tasks).map(t => t.id)).toEqual(['2', '3'])
+  })
+
+  it('returns empty for an empty list', () => {
+    expect(finishedTaskItems([])).toEqual([])
   })
 })

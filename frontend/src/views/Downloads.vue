@@ -70,13 +70,24 @@
       <div v-if="showTasksModal" class="modal-overlay" @click.self="showTasksModal = false">
         <div class="modal-panel">
           <div class="modal-header">
-            <h2 class="modal-title">{{ t('downloads.tasksTitle', { n: visibleTaskList.length }) }}</h2>
+            <h2 class="modal-title">{{ t('downloads.managerTitle') }}</h2>
             <button class="modal-close" @click="showTasksModal = false" :title="t('downloads.close')">✕</button>
           </div>
           <div class="modal-body">
-            <div v-if="visibleTaskList.length === 0" class="tasks-empty">{{ t('downloads.noTasks') }}</div>
+            <!-- Tabs: in-flight tasks vs finished download history -->
+            <div class="task-tabs">
+              <button class="task-tab" :class="{ active: taskTab === 'tasks' }" @click="taskTab = 'tasks'">
+                {{ t('downloads.tasksTitle', { n: activeTaskList.length }) }}
+              </button>
+              <button class="task-tab" :class="{ active: taskTab === 'history' }" @click="taskTab = 'history'">
+                {{ t('downloads.historyTitle', { n: historyTaskList.length }) }}
+              </button>
+            </div>
+            <div v-if="displayedTaskList.length === 0" class="tasks-empty">
+              {{ taskTab === 'tasks' ? t('downloads.noActiveTasks') : t('downloads.historyEmpty') }}
+            </div>
             <div v-else class="task-list">
-              <div v-for="task in visibleTaskList" :key="task.id" class="task-card">
+              <div v-for="task in displayedTaskList" :key="task.id" class="task-card">
                 <div class="task-info">
                   <span class="task-name">{{ task.fileName }}</span>
                   <span class="task-model">{{ task.modelId }}</span>
@@ -139,7 +150,7 @@ import {
 } from '../wails'
 import { formatSpeed, formatBytes } from '../lib/format'
 import { LatestOnly } from '../lib/latestOnly'
-import { hasActiveTask, countActiveTasks, visibleTasks } from '../lib/taskStatus'
+import { hasActiveTask, countActiveTasks, visibleTasks, activeTaskItems, finishedTaskItems } from '../lib/taskStatus'
 import { LimitedQueue } from '../lib/limitedQueue'
 import { searchQuery, searched, searchResults, modelSizes, HFResult } from '../lib/downloadsState'
 import { t } from '../lib/i18n'
@@ -175,6 +186,12 @@ let lastDoneCount = 0
 const showTasksModal = ref(false)
 const activeTaskCount = computed(() => countActiveTasks(tasks.value))
 const visibleTaskList = computed(() => visibleTasks(tasks.value))
+// Tabbed split: in-flight tasks on one tab, finished downloads (done/error)
+// on a history tab, so past downloads no longer mix into the task list
+const activeTaskList = computed(() => activeTaskItems(visibleTaskList.value))
+const historyTaskList = computed(() => finishedTaskItems(visibleTaskList.value))
+const taskTab = ref<'tasks' | 'history'>('tasks')
+const displayedTaskList = computed(() => (taskTab.value === 'tasks' ? activeTaskList.value : historyTaskList.value))
 
 const statusMap = computed<Record<string, string>>(() => ({
   queued: t('downloads.statusQueued'),
@@ -644,6 +661,10 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
 .modal-panel {
   width: 100%;
   max-width: 560px;
+  /* Fixed height: switching between the tasks and history tabs never resizes
+     the modal; long lists scroll inside the body instead (80vh caps it on
+     very short windows) */
+  height: 520px;
   max-height: 80vh;
   background: var(--bg-primary);
   border: 1px solid var(--border);
@@ -690,6 +711,8 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
 .modal-body {
   padding: 16px 20px;
   overflow-y: auto;
+  flex: 1;
+  min-height: 0;
 }
 
 .tasks-empty {
@@ -697,6 +720,42 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
   text-align: center;
   color: var(--text-dim);
   font-size: 14px;
+}
+
+/* Tabs switching between in-flight tasks and download history; sticky so they
+   stay visible while the list scrolls */
+.task-tabs {
+  display: flex;
+  gap: 8px;
+  margin: -16px -20px 12px;
+  padding: 0 20px;
+  position: sticky;
+  top: -16px;
+  z-index: 1;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.task-tab {
+  padding: 8px 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.task-tab:hover {
+  color: var(--text-primary);
+}
+
+.task-tab.active {
+  color: var(--accent-light);
+  border-bottom-color: var(--accent);
 }
 
 .modal-fade-enter-active,
