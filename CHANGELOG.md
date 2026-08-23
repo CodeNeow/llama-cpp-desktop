@@ -2,6 +2,28 @@
 
 更新日志的**权威来源**（见 `AGENTS.md`「版本发布」）：发版时先在此新增版本条目（含日期），`git tag` 注解消息与 GitHub Release 正文均从该条目复制，保持一致。自 v0.3.3 起条目为概括式双语（中文在上）；v0.3.0 之前的逐提交条目已随对应 tag 与 Release 的清理移除（见文末「历史版本」）。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本。
 
+## [v0.3.5] - 2026-08-23
+
+## 中文
+
+v0.3.5:API 路由页布局重构、llama.cpp 下载修复与下载管理分页。核心变化:
+
+- **llama.cpp 下载修复** — 适配 llama.cpp 新发布策略(二进制只随每夜 prerelease 发布,latest 仅剩标记文件):自动回退到 release 列表,选取最新带平台构建的每夜版本下载。
+- **下载取消修复** — 元数据获取与传输请求全部绑定取消上下文,点击「取消」立即中断在途请求;修复「暂停后取消」状态卡死在 paused、取消与继续按钮双双失灵的问题。
+- **下载管理分页** — 下载任务与下载历史拆成两个页签,完成的历史不再混入任务列表;弹窗固定高度、切换页签尺寸不变,长列表内部滚动、页签吸顶。
+- **按钮用词统一** — llama.cpp 下载的「停止」改为「取消」,与模型下载、应用更新一致。
+- **API 路由页布局** — 宽度上限提至 1920px,全屏几乎无左右留白;大窗口下一个参数一行、间距随窗口增大,监控区离底悬浮不再贴边;矮窗口自动紧凑模式(处理器/内存并排、隐藏次要说明),最小窗口回到 900×600 仍完整无滚动。
+
+## English
+
+v0.3.5: API Router layout rework, llama.cpp download fixes and a tabbed download manager. Highlights:
+
+- **llama.cpp download fixed** — adapts to llama.cpp's new release strategy (binaries ship only in nightly prereleases while /releases/latest is an asset-less marker): the app falls back to the release list and downloads the newest nightly carrying a platform build.
+- **Download cancel fixed** — release-metadata fetches and transfer requests are all bound to the cancel context, so Cancel aborts in-flight requests immediately; also fixed stop-from-paused stranding the state machine in paused with Cancel and Resume both dead.
+- **Tabbed download manager** — download tasks and download history are separate tabs, so finished downloads no longer mix into the task list; the modal keeps a fixed height across tab switches, long lists scroll internally with a sticky tab bar.
+- **Consistent wording** — the llama.cpp download stop button now reads Cancel, matching model downloads and app updates.
+- **API Router layout** — page width cap raised to 1920px (nearly no side margins when maximized); tall windows show one metric per row with spacing that grows with the window and the monitor area floating above the bottom edge; short windows switch to a compact mode (CPU + memory side by side, secondary captions hidden) so the 900x600 minimum stays fully visible without scrolling.
+
 ## [v0.3.4] - 2026-08-22
 
 ## 中文
