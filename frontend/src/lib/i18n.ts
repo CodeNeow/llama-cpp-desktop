@@ -92,7 +92,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'runtime.customPath': '自定义路径：',
     'runtime.pause': '暂停',
     'runtime.resume': '继续',
-    'runtime.stop': '停止',
+    'runtime.stop': '取消',
     'runtime.dlPausedHint': '下载已暂停，点击"继续"恢复',
 
     // ─── Download status labels (shared: Runtime.vue / TaskDock.vue) ───
@@ -517,7 +517,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'runtime.customPath': 'Custom path:',
     'runtime.pause': 'Pause',
     'runtime.resume': 'Resume',
-    'runtime.stop': 'Stop',
+    'runtime.stop': 'Cancel',
     'runtime.dlPausedHint': 'Download paused. Click "Resume" to continue',
 
     // ─── Download status labels (shared: Runtime.vue / TaskDock.vue) ───
