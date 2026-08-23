@@ -326,7 +326,7 @@ func TestAppUserAgent(t *testing.T) {
 // TestBuildDownloadRequest verifies download requests carry User-Agent and add a Range
 // header for resume downloads.
 func TestBuildDownloadRequest(t *testing.T) {
-	req, err := buildDownloadRequest("https://example.com/model.gguf", 0)
+	req, err := buildDownloadRequest(context.Background(), "https://example.com/model.gguf", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -337,7 +337,7 @@ func TestBuildDownloadRequest(t *testing.T) {
 		t.Errorf("no offset should not have Range header: %q", req.Header.Get("Range"))
 	}
 
-	req, err = buildDownloadRequest("https://example.com/model.gguf", 1024)
+	req, err = buildDownloadRequest(context.Background(), "https://example.com/model.gguf", 1024)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -355,7 +355,7 @@ func TestFetchLatestReleaseAt(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	rel, err := fetchLatestReleaseAt(srv.URL)
+	rel, err := fetchLatestReleaseAt(context.Background(), srv.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -371,7 +371,7 @@ func TestFetchLatestReleaseAtHTTPError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if _, err := fetchLatestReleaseAt(srv.URL); err == nil {
+	if _, err := fetchLatestReleaseAt(context.Background(), srv.URL); err == nil {
 		t.Error("500 response should return error")
 	}
 }
@@ -385,7 +385,7 @@ func TestFetchReleaseListAt(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	list, err := fetchReleaseListAt(srv.URL)
+	list, err := fetchReleaseListAt(context.Background(), srv.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -401,7 +401,7 @@ func TestFetchReleaseListAtHTTPError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	if _, err := fetchReleaseListAt(srv.URL); err == nil {
+	if _, err := fetchReleaseListAt(context.Background(), srv.URL); err == nil {
 		t.Error("403 response should return error")
 	}
 }

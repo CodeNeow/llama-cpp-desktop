@@ -1525,13 +1525,26 @@ func downloadLlamaCpp() {
 		cancel()
 	}()
 
-	// Step 1: Fetch latest release info
+	// Step 1: Fetch latest release info (ctx-bound: cancel during the fetch
+	// aborts the in-flight request immediately instead of waiting out the
+	// HTTP timeout, and resets the state to idle rather than an error)
 	downloadMu.Lock()
 	downloadState.Status = "fetching"
 	downloadMu.Unlock()
 
-	release, err := fetchLatestRelease()
+	release, err := fetchLatestRelease(ctx)
 	if err != nil {
+		if ctx.Err() != nil {
+			// Cancelled by user while fetching release metadata
+			downloadMu.Lock()
+			if downloadState.Status != "paused" && downloadState.Status != "idle" {
+				downloadState.Status = "idle"
+				downloadState.Error = ""
+			}
+			downloadMu.Unlock()
+			log.Println("⏹️ llama.cpp download stopped by user")
+			return
+		}
 		setDownloadError(tr("获取发布信息失败: ", "Failed to fetch release info: ") + err.Error())
 		return
 	}
@@ -1544,7 +1557,7 @@ func downloadLlamaCpp() {
 		// — fall back to the newest listed release that actually carries a
 		// matching build. Fallback fetch errors stay silent: the final error
 		// below is the more actionable one.
-		if list, listErr := fetchReleaseListAt(githubReleasesListAPI); listErr == nil {
+		if list, listErr := fetchReleaseListAt(ctx, githubReleasesListAPI); listErr == nil {
 			if rel := newestReleaseWithAssets(list); rel != nil {
 				release = rel
 				mainAsset = pickBestAsset(release.Assets)
@@ -1552,6 +1565,17 @@ func downloadLlamaCpp() {
 		}
 	}
 	if mainAsset == nil {
+		if ctx.Err() != nil {
+			// Cancelled by user during the fallback release-list fetch
+			downloadMu.Lock()
+			if downloadState.Status != "paused" && downloadState.Status != "idle" {
+				downloadState.Status = "idle"
+				downloadState.Error = ""
+			}
+			downloadMu.Unlock()
+			log.Println("⏹️ llama.cpp download stopped by user")
+			return
+		}
 		setDownloadError(tr("未找到适用于当前平台的 llama.cpp 构建", "No llama.cpp build found for the current platform"))
 		return
 	}
@@ -1998,16 +2022,18 @@ func waitForResume(ctx context.Context, resumeCh chan struct{}) {
 	}
 }
 
-// fetchLatestRelease fetches the latest llama.cpp release from the default API URL.
-func fetchLatestRelease() (*GitHubRelease, error) {
-	return fetchLatestReleaseAt(githubReleasesAPI)
+// fetchLatestRelease fetches the latest llama.cpp release from the default API
+// URL. The request is bound to ctx so a user cancel aborts an in-flight fetch
+// immediately (the click otherwise appears dead until the HTTP timeout).
+func fetchLatestRelease(ctx context.Context) (*GitHubRelease, error) {
+	return fetchLatestReleaseAt(ctx, githubReleasesAPI)
 }
 
 // fetchLatestReleaseAt fetches and decodes a GitHub-style latest release JSON
 // document from the given URL. The URL is injectable so tests can use a local
 // httptest server instead of hitting the network.
-func fetchLatestReleaseAt(apiURL string) (*GitHubRelease, error) {
-	req, err := http.NewRequest("GET", apiURL, nil)
+func fetchLatestReleaseAt(ctx context.Context, apiURL string) (*GitHubRelease, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -2035,8 +2061,8 @@ func fetchLatestReleaseAt(apiURL string) (*GitHubRelease, error) {
 // fetchReleaseListAt fetches and decodes a GitHub-style release list document
 // (newest-first, including prereleases) from the given URL; the URL is
 // injectable for tests, mirroring fetchLatestReleaseAt.
-func fetchReleaseListAt(apiURL string) ([]GitHubRelease, error) {
-	req, err := http.NewRequest("GET", apiURL, nil)
+func fetchReleaseListAt(ctx context.Context, apiURL string) ([]GitHubRelease, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -2587,7 +2613,7 @@ type UpdateCheckResult struct {
 // compares versions. apiURL is injectable so tests can use httptest instead
 // of the real network.
 func CheckForUpdateAt(apiURL string) (*UpdateCheckResult, error) {
-	release, err := fetchLatestReleaseAt(apiURL)
+	release, err := fetchLatestReleaseAt(context.Background(), apiURL)
 	if err != nil {
 		return nil, err
 	}
@@ -2750,7 +2776,7 @@ func downloadUpdateRelease(version string) {
 	updateDownloadState.Installer = false
 	updateDownloadMu.Unlock()
 
-	release, err := fetchLatestReleaseAt(updateRepoAPI)
+	release, err := fetchLatestReleaseAt(context.Background(), updateRepoAPI)
 	if err != nil {
 		setUpdateDownloadError(tr("获取发布信息失败: ", "Failed to fetch release info: ") + err.Error())
 		return
@@ -4334,7 +4360,7 @@ func downloadTask(task *DlTask) {
 		default:
 		}
 
-		req, err := buildDownloadRequest(task.URL, offset)
+		req, err := buildDownloadRequest(task.ctx, task.URL, offset)
 		if err != nil {
 			dlTasksMu.Lock()
 			task.Status = "error"
@@ -4667,8 +4693,10 @@ func downloadTask(task *DlTask) {
 
 // buildDownloadRequest creates a GET request for a download URL with the
 // appUserAgent() User-Agent, adding a Range header when resuming from an offset.
-func buildDownloadRequest(downloadURL string, offset int64) (*http.Request, error) {
-	req, err := http.NewRequest("GET", downloadURL, nil)
+// The request is bound to the task's cancel context so cancelling the task
+// aborts an in-flight transfer immediately.
+func buildDownloadRequest(ctx context.Context, downloadURL string, offset int64) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", downloadURL, nil)
 	if err != nil {
 		return nil, err
 	}

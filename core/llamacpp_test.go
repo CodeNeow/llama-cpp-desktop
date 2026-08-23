@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 )
 
 // llamaServerBinName returns the llama-server binary filename for the current platform
@@ -565,5 +566,75 @@ func TestDownloadLlamaCppNightlyPrereleaseFallback(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join("llama-cpp", llamaServerBinName())); err != nil {
 		t.Errorf("extracted artifact missing: %v", err)
+	}
+}
+
+// TestDownloadLlamaCppCancelDuringFetch verifies that cancelling while the
+// release metadata is still being fetched (status "fetching") aborts the
+// in-flight HTTP request immediately and resets the state to idle — previously
+// the fetch request carried no cancel context, so the Cancel button appeared
+// dead until the 30s HTTP timeout elapsed.
+func TestDownloadLlamaCppCancelDuringFetch(t *testing.T) {
+	saveDownloadState(t)
+	saveServerState(t)
+	withTempCwd(t)
+
+	// /release blocks until the test signals; cancel must unblock it via ctx
+	unblock := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/release" {
+			select {
+			case <-unblock:
+			case <-r.Context().Done(): // aborted by the download's cancel ctx
+			}
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+	defer close(unblock)
+
+	origAPI := githubReleasesAPI
+	githubReleasesAPI = srv.URL + "/release"
+	defer func() { githubReleasesAPI = origAPI }()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		downloadLlamaCpp()
+	}()
+
+	// wait until the fetch is in flight (status flips to fetching), then cancel
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		downloadMu.Lock()
+		status := downloadState.Status
+		cancelDownload := downloadCancel
+		downloadMu.Unlock()
+		if status == "fetching" && cancelDownload != nil {
+			cancelDownload()
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("download never entered fetching state")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("cancel during fetch did not abort downloadLlamaCpp within 5s")
+	}
+
+	downloadMu.Lock()
+	status := downloadState.Status
+	errMsg := downloadState.Error
+	downloadMu.Unlock()
+	if status != "idle" {
+		t.Errorf("status = %q after cancel-during-fetch, want idle", status)
+	}
+	if errMsg != "" {
+		t.Errorf("Error = %q after cancel-during-fetch, want empty", errMsg)
 	}
 }
