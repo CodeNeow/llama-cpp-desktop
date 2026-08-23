@@ -376,6 +376,65 @@ func TestFetchLatestReleaseAtHTTPError(t *testing.T) {
 	}
 }
 
+// TestFetchReleaseListAt verifies fetching and parsing a newest-first release
+// list from an injected URL (the nightly-prerelease fallback data source).
+func TestFetchReleaseListAt(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`[{"tag_name":"b10588","assets":[{"name":"nightly-tag.txt","size":9}]},{"tag_name":"b10587","assets":[{"name":"a.zip","size":10}]}]`))
+	}))
+	defer srv.Close()
+
+	list, err := fetchReleaseListAt(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 2 || list[0].TagName != "b10588" || list[1].Assets[0].Name != "a.zip" {
+		t.Errorf("release list parse error: %+v", list)
+	}
+}
+
+// TestFetchReleaseListAtHTTPError verifies a non-200 response returns an error.
+func TestFetchReleaseListAtHTTPError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer srv.Close()
+
+	if _, err := fetchReleaseListAt(srv.URL); err == nil {
+		t.Error("403 response should return error")
+	}
+}
+
+// TestNewestReleaseWithAssets verifies the fallback release pick: the newest
+// release carrying a platform main-asset wins; asset-less marker releases
+// (llama.cpp's non-prerelease "latest" carries only nightly-tag.txt since
+// 2026-08) are skipped; nil when no listed release has binaries.
+func TestNewestReleaseWithAssets(t *testing.T) {
+	platformKey := map[string]string{"windows": "win", "darwin": "macos", "linux": "linux"}[runtime.GOOS]
+	archKey := map[string]string{"amd64": "x64", "arm64": "arm64"}[runtime.GOARCH]
+	matchingName := fmt.Sprintf("llama-b9999-bin-%s-%s.zip", platformKey, archKey)
+	asset := func(name string) []GitHubAsset {
+		return []GitHubAsset{{Name: name, Size: 10, BrowserDownloadURL: "https://x/" + name}}
+	}
+
+	list := []GitHubRelease{
+		{TagName: "b10588", Assets: asset("nightly-tag.txt")},            // marker, no binaries
+		{TagName: "b10587", Assets: asset("llama-b10587-bin-other.zip")}, // wrong platform/arch
+		{TagName: "b10586", Assets: asset(matchingName)},
+	}
+	rel := newestReleaseWithAssets(list)
+	if rel == nil || rel.TagName != "b10586" {
+		t.Errorf("newestReleaseWithAssets = %+v, want b10586", rel)
+	}
+	if newestReleaseWithAssets(nil) != nil {
+		t.Error("empty list should return nil")
+	}
+	if newestReleaseWithAssets([]GitHubRelease{{TagName: "b1", Assets: asset("nightly-tag.txt")}}) != nil {
+		t.Error("marker-only list should return nil")
+	}
+}
+
 // TestDownloadTaskRenameFailure verifies that when the rename in the downloadTask
 // completion branch fails, the task is marked as error (#10). Previously the os.Rename
 // return value was ignored, causing silent done status with the file not in place;

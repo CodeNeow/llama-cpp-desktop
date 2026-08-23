@@ -503,3 +503,67 @@ func TestGetLlamaCppInfoDownloadDirOverridesImported(t *testing.T) {
 		t.Errorf("Path = %q, want %q (imported dir fallback)", info.Path, filepath.Join(importedPath, binName))
 	}
 }
+
+// TestDownloadLlamaCppNightlyPrereleaseFallback verifies the full-chain fallback when
+// llama.cpp's releases/latest (non-prerelease only) is an asset-less marker — the state
+// upstream entered in 2026-08, where binaries ship only in nightly prereleases. The
+// injected "latest" release carries only nightly-tag.txt; the injected release list has
+// a marker-only newest entry followed by one with a platform-matching zip, and the
+// download must complete from that fallback release instead of failing with
+// "no llama.cpp build found".
+func TestDownloadLlamaCppNightlyPrereleaseFallback(t *testing.T) {
+	saveDownloadState(t)
+	saveServerState(t)
+	withTempCwd(t)
+
+	zipBytes := makeZip(t, map[string]string{llamaServerBinName(): "stub"})
+
+	platformKey := map[string]string{"windows": "win", "darwin": "macos", "linux": "linux"}[runtime.GOOS]
+	archKey := map[string]string{"amd64": "x64", "arm64": "arm64"}[runtime.GOARCH]
+	assetName := fmt.Sprintf("llama-b10586-bin-%s-%s.zip", platformKey, archKey)
+
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/release": // releases/latest: asset-less marker
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(GitHubRelease{
+				TagName: "b10590",
+				Assets:  []GitHubAsset{{Name: "nightly-tag.txt", Size: 9, BrowserDownloadURL: srv.URL + "/tag.txt"}},
+			})
+		case "/releases": // list newest-first: marker, then the binary release
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode([]GitHubRelease{
+				{TagName: "b10588", Assets: []GitHubAsset{{Name: "nightly-tag.txt", Size: 9}}},
+				{TagName: "b10586", Assets: []GitHubAsset{{
+					Name: assetName, Size: int64(len(zipBytes)), BrowserDownloadURL: srv.URL + "/llama.zip",
+				}}},
+			})
+		case "/llama.zip":
+			w.Write(zipBytes)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	origAPI, origList := githubReleasesAPI, githubReleasesListAPI
+	githubReleasesAPI = srv.URL + "/release"
+	githubReleasesListAPI = srv.URL + "/releases"
+	defer func() {
+		githubReleasesAPI = origAPI
+		githubReleasesListAPI = origList
+	}()
+
+	downloadLlamaCpp()
+
+	downloadMu.Lock()
+	status := downloadState.Status
+	downloadMu.Unlock()
+	if status != "done" {
+		t.Fatalf("download status = %q, want done (nightly prerelease fallback)", status)
+	}
+	if _, err := os.Stat(filepath.Join("llama-cpp", llamaServerBinName())); err != nil {
+		t.Errorf("extracted artifact missing: %v", err)
+	}
+}

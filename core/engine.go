@@ -1402,6 +1402,13 @@ func formatBytes(bytes int64) string {
 // httptest server (same style as updateRepoAPI).
 var githubReleasesAPI = "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest"
 
+// githubReleasesListAPI lists recent llama.cpp releases newest-first (including
+// prereleases), declared as a var for test injection like githubReleasesAPI.
+// Since 2026-08 upstream ships binaries only in nightly prereleases while
+// releases/latest (non-prerelease only) points to an asset-less marker, so the
+// download flow falls back to this list to find the newest release with binaries.
+var githubReleasesListAPI = "https://api.github.com/repos/ggml-org/llama.cpp/releases?per_page=10"
+
 const downloadDir = "llama-cpp"
 
 // llamaCppDownloadDir returns the target directory for llama.cpp download
@@ -1531,6 +1538,19 @@ func downloadLlamaCpp() {
 
 	// Step 2: Find best asset (the main-program asset; the cudart runtime is an additional asset)
 	mainAsset := pickBestAsset(release.Assets)
+	if mainAsset == nil {
+		// Since 2026-08 llama.cpp ships binaries only in nightly prereleases;
+		// releases/latest (non-prerelease only) points to an asset-less marker
+		// — fall back to the newest listed release that actually carries a
+		// matching build. Fallback fetch errors stay silent: the final error
+		// below is the more actionable one.
+		if list, listErr := fetchReleaseListAt(githubReleasesListAPI); listErr == nil {
+			if rel := newestReleaseWithAssets(list); rel != nil {
+				release = rel
+				mainAsset = pickBestAsset(release.Assets)
+			}
+		}
+	}
 	if mainAsset == nil {
 		setDownloadError(tr("未找到适用于当前平台的 llama.cpp 构建", "No llama.cpp build found for the current platform"))
 		return
@@ -2010,6 +2030,47 @@ func fetchLatestReleaseAt(apiURL string) (*GitHubRelease, error) {
 		return nil, err
 	}
 	return &release, nil
+}
+
+// fetchReleaseListAt fetches and decodes a GitHub-style release list document
+// (newest-first, including prereleases) from the given URL; the URL is
+// injectable for tests, mirroring fetchLatestReleaseAt.
+func fetchReleaseListAt(apiURL string) ([]GitHubRelease, error) {
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", appUserAgent())
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GitHub API returned status %d", resp.StatusCode)
+	}
+
+	var list []GitHubRelease
+	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
+// newestReleaseWithAssets returns the newest release of a newest-first list
+// that carries a main-asset candidate for the current platform, or nil when
+// no listed release has binaries for this host.
+func newestReleaseWithAssets(list []GitHubRelease) *GitHubRelease {
+	for i := range list {
+		if pickBestAsset(list[i].Assets) != nil {
+			return &list[i]
+		}
+	}
+	return nil
 }
 
 // pickBestAsset picks the most suitable release asset for the current platform.
