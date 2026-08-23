@@ -638,3 +638,112 @@ func TestDownloadLlamaCppCancelDuringFetch(t *testing.T) {
 		t.Errorf("Error = %q after cancel-during-fetch, want empty", errMsg)
 	}
 }
+
+// TestDownloadLlamaCppStopWhilePaused verifies that stopping from the paused
+// state resets the download to idle. The previous reset guard skipped the
+// status change when it was "paused", stranding the state machine in paused
+// with the download goroutine already exited — afterwards both Cancel and
+// Resume appeared dead (the user-visible "no reaction" bug).
+func TestDownloadLlamaCppStopWhilePaused(t *testing.T) {
+	saveDownloadState(t)
+	saveServerState(t)
+	withTempCwd(t)
+
+	zipBytes := makeZip(t, map[string]string{llamaServerBinName(): "stub"})
+	platformKey := map[string]string{"windows": "win", "darwin": "macos", "linux": "linux"}[runtime.GOOS]
+	archKey := map[string]string{"amd64": "x64", "arm64": "arm64"}[runtime.GOARCH]
+	assetName := fmt.Sprintf("llama-b9999-bin-%s-%s.zip", platformKey, archKey)
+
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/release":
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(GitHubRelease{
+				TagName: "b9999",
+				Assets: []GitHubAsset{{
+					Name: assetName, Size: 1 << 20, BrowserDownloadURL: srv.URL + "/llama.zip",
+				}},
+			})
+		case "/llama.zip":
+			// slow trickle so the download stays in flight until paused
+			for i := 0; i < 500; i++ {
+				select {
+				case <-r.Context().Done():
+					return
+				default:
+				}
+				if _, err := w.Write(zipBytes); err != nil {
+					return
+				}
+				if f, ok := w.(http.Flusher); ok {
+					f.Flush()
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	origAPI := githubReleasesAPI
+	githubReleasesAPI = srv.URL + "/release"
+	defer func() { githubReleasesAPI = origAPI }()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		downloadLlamaCpp()
+	}()
+
+	waitFor := func(want string) {
+		deadline := time.Now().Add(5 * time.Second)
+		for {
+			downloadMu.Lock()
+			status := downloadState.Status
+			downloadMu.Unlock()
+			if status == want {
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("status never reached %q", want)
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
+
+	waitFor("downloading")
+	(&App{}).PauseLlamaCppDownload()
+	waitFor("paused")
+	time.Sleep(100 * time.Millisecond) // let the goroutine settle into waitForResume
+
+	downloadMu.Lock()
+	cancelDownload := downloadCancel
+	downloadMu.Unlock()
+	if cancelDownload == nil {
+		t.Fatal("downloadCancel is nil while paused")
+	}
+	cancelDownload()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("stop from paused did not end the download goroutine within 5s")
+	}
+
+	downloadMu.Lock()
+	status := downloadState.Status
+	paused := downloadState.Paused
+	errMsg := downloadState.Error
+	downloadMu.Unlock()
+	if status != "idle" {
+		t.Errorf("status = %q after stop-from-paused, want idle", status)
+	}
+	if paused {
+		t.Error("Paused flag should be cleared after stop-from-paused")
+	}
+	if errMsg != "" {
+		t.Errorf("Error = %q after stop-from-paused, want empty", errMsg)
+	}
+}

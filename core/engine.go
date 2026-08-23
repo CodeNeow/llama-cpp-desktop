@@ -1537,9 +1537,10 @@ func downloadLlamaCpp() {
 		if ctx.Err() != nil {
 			// Cancelled by user while fetching release metadata
 			downloadMu.Lock()
-			if downloadState.Status != "paused" && downloadState.Status != "idle" {
+			if downloadState.Status != "idle" {
 				downloadState.Status = "idle"
 				downloadState.Error = ""
+				downloadState.Paused = false
 			}
 			downloadMu.Unlock()
 			log.Println("⏹️ llama.cpp download stopped by user")
@@ -1568,9 +1569,10 @@ func downloadLlamaCpp() {
 		if ctx.Err() != nil {
 			// Cancelled by user during the fallback release-list fetch
 			downloadMu.Lock()
-			if downloadState.Status != "paused" && downloadState.Status != "idle" {
+			if downloadState.Status != "idle" {
 				downloadState.Status = "idle"
 				downloadState.Error = ""
+				downloadState.Paused = false
 			}
 			downloadMu.Unlock()
 			log.Println("⏹️ llama.cpp download stopped by user")
@@ -1642,11 +1644,16 @@ func downloadLlamaCpp() {
 		tmpPath, err := downloadWithResume(ctx, asset.BrowserDownloadURL, asset.Size, baseDownloaded)
 		if err != nil {
 			if ctx.Err() != nil {
-				// Cancelled by user (stop)
+				// Cancelled by user (stop) — also from the paused state: the
+				// previous guard skipped the reset when status was "paused",
+				// leaving the state machine stranded in paused with the
+				// download goroutine already gone (Cancel and Resume both
+				// appeared dead afterwards)
 				downloadMu.Lock()
-				if downloadState.Status != "paused" && downloadState.Status != "idle" {
+				if downloadState.Status != "idle" {
 					downloadState.Status = "idle"
 					downloadState.Error = ""
+					downloadState.Paused = false
 				}
 				downloadMu.Unlock()
 				log.Println("⏹️ llama.cpp download stopped by user")
