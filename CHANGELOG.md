@@ -2,6 +2,28 @@
 
 更新日志的**权威来源**（见 `AGENTS.md`「版本发布」）：发版时先在此新增版本条目（含日期），`git tag` 注解消息与 GitHub Release 正文均从该条目复制，保持一致。自 v0.3.3 起条目为概括式双语（中文在上）；v0.3.0 之前的逐提交条目已随对应 tag 与 Release 的清理移除（见文末「历史版本」）。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本。
 
+## [v0.3.6] - 2026-08-25
+
+## 中文
+
+v0.3.6:系统信息页增强与布局优化。核心变化:
+
+- **GPU 显存使用率** — 系统信息页的 GPU 卡片新增显存已用/总量、使用率百分比与进度条，方便评估当前显存占用。
+- **Compute Capability 显示** — GPU 卡片显示 NVIDIA 计算能力版本，Blackwell 架构（Compute Cap 12.x）自动提示需要 CUDA 12.8+。
+- **Toolkit 版本显示优化** — CUDA Toolkit 未安装（无 nvcc）时不再显示"未安装"造成误导，改为隐藏该卡片（驱动已足够推理使用）。
+- **磁盘空间信息** — 新增磁盘使用率卡片，显示下载路径所在卷的总容量、已用和可用空间。
+- **首页布局优化** — 移除首页内部滚动条，改用弹性换行布局，卡片自动两列等高排列，窗口自适应。
+
+## English
+
+v0.3.6: System info page enhancements and layout improvements. Highlights:
+
+- **GPU VRAM usage** — the GPU card on the system info page now shows used/total memory, usage percentage with a progress bar, helping assess current VRAM consumption.
+- **Compute Capability display** — the GPU card shows NVIDIA compute capability version; Blackwell architecture (Compute Cap 12.x) gets an automatic hint requiring CUDA 12.8+.
+- **Toolkit version display improved** — when CUDA Toolkit is not installed (no nvcc), the card is hidden instead of showing "Not installed" to avoid confusion (the driver alone is sufficient for inference).
+- **Disk space info** — a new disk usage card shows total, used, and free space for the volume containing the download path.
+- **Home page layout improved** — removed the internal scrollbar from the Home page; cards now flow in a flex-wrap two-column equal-height layout that adapts to window size.
+
 ## [v0.3.5] - 2026-08-23
 
 ## 中文
