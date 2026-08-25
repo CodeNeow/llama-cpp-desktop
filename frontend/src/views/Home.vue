@@ -139,7 +139,7 @@
               </div>
               <div class="info-item">
                 <span class="info-label">{{ t('home.cuda.toolkit') }}</span>
-                <span class="info-value">{{ info.cuda.toolkitVersion || t('home.cuda.notInstalled') }}</span>
+                <span class="info-value">{{ info.cuda.toolkitVersion || (info.cuda.available ? t('home.cuda.na') : t('home.cuda.notInstalled')) }}</span>
               </div>
             </div>
           </section>
