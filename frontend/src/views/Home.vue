@@ -106,8 +106,20 @@
                   <span class="info-value">{{ formatMB(gpu.memoryMb) }}</span>
                 </div>
                 <div class="info-item">
+                  <span class="info-label">{{ t('home.gpu.memoryUsed') }}</span>
+                  <span class="info-value">{{ formatMB(gpu.memoryUsedMb) }}</span>
+                </div>
+                <div class="info-item">
+                  <span class="info-label">{{ t('home.gpu.memoryUsage') }}</span>
+                  <span class="info-value">{{ t('home.gpu.memoryUsageValue', { pct: usagePercent(gpu.memoryUsedMb, gpu.memoryMb) }) }}</span>
+                </div>
+                <div class="info-item">
                   <span class="info-label">{{ t('home.gpu.driver') }}</span>
                   <span class="info-value">{{ gpu.driverVersion }}</span>
+                </div>
+                <div class="info-item">
+                  <span class="info-label">{{ t('home.gpu.computeCap') }}</span>
+                  <span class="info-value">{{ gpu.computeCapability > 0 ? gpu.computeCapability.toFixed(1) : 'N/A' }}</span>
                 </div>
               </div>
             </div>
@@ -141,6 +153,41 @@
                 <span class="info-label">{{ t('home.cuda.toolkit') }}</span>
                 <span class="info-value">{{ info.cuda.toolkitVersion || (info.cuda.available ? t('home.cuda.na') : t('home.cuda.notInstalled')) }}</span>
               </div>
+              <div class="info-item" v-if="info.cuda.available && firstGpuComputeCap > 0">
+                <span class="info-label">{{ t('home.cuda.compat') }}</span>
+                <span class="info-value" :class="cudaCompatClass">{{ t('home.cuda.compatValue', { compat: cudaCompatText }) }}</span>
+              </div>
+            </div>
+          </section>
+
+          <!-- Disk Card -->
+          <section class="info-section">
+            <h2 class="section-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>
+              </svg>
+              {{ t('home.disk') }}
+            </h2>
+            <div v-if="info.disk" class="info-grid">
+              <div class="info-item">
+                <span class="info-label">{{ t('home.disk.path') }}</span>
+                <span class="info-value">{{ info.disk.path }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{ t('home.disk.total') }}</span>
+                <span class="info-value">{{ formatBytes(info.disk.total) }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{ t('home.disk.used') }}</span>
+                <span class="info-value">{{ formatBytes(info.disk.used) }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{ t('home.disk.free') }}</span>
+                <span class="info-value">{{ formatBytes(info.disk.total - info.disk.used) }}</span>
+              </div>
+            </div>
+            <div v-else class="info-empty">
+              <span>{{ t('home.disk.notAvailable') }}</span>
             </div>
           </section>
 
@@ -171,17 +218,18 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
-import { getCPU, getMemory, getGPU, getCUDA, getOS } from '../wails'
+import { getCPU, getMemory, getGPU, getCUDA, getOS, getDisk } from '../wails'
 import { t } from '../lib/i18n'
-import { usagePercent, formatGB, formatMB } from '../lib/format'
+import { usagePercent, formatGB, formatMB, formatBytes } from '../lib/format'
 
 interface SystemInfo {
   os: string
   arch: string
   cpu: { model: string; cores: number; logicalCpus: number }
   memory: { totalGb: number; freeGb: number }
-  gpu: { name: string; memoryMb: number; driverVersion: string }[]
+  gpu: { name: string; memoryMb: number; memoryUsedMb: number; driverVersion: string; computeCapability: number }[]
   cuda: { available: boolean; driverVersion: string; toolkitVersion: string }
+  disk: { path: string; used: number; total: number } | null
 }
 
 const info = ref<SystemInfo>({
@@ -189,10 +237,11 @@ const info = ref<SystemInfo>({
   cpu: { model: '', cores: 0, logicalCpus: 0 },
   memory: { totalGb: 0, freeGb: 0 },
   gpu: [],
-  cuda: { available: false, driverVersion: '', toolkitVersion: '' }
+  cuda: { available: false, driverVersion: '', toolkitVersion: '' },
+  disk: null
 })
 const sectionsReady = reactive({
-  cpu: false, memory: false, gpu: false, cuda: false, os: false
+  cpu: false, memory: false, gpu: false, cuda: false, disk: false, os: false
 })
 const loading = ref(true)
 const error = ref('')
@@ -206,6 +255,30 @@ const osLabel = computed(() => {
   return labels[info.value.os] || info.value.os || '...'
 })
 
+// First GPU compute capability (for CUDA compatibility hint)
+const firstGpuComputeCap = computed(() => {
+  if (info.value.gpu && info.value.gpu.length > 0) {
+    return info.value.gpu[0].computeCapability
+  }
+  return 0
+})
+
+// CUDA compatibility hint: based on GPU compute capability, suggest the
+// required CUDA runtime version for llama.cpp binaries.
+const cudaCompatText = computed(() => {
+  if (info.value.cuda.available && firstGpuComputeCap.value >= 12.0) {
+    return t('home.cuda.compatBlackwell')
+  }
+  return t('home.cuda.compatOk')
+})
+
+const cudaCompatClass = computed(() => {
+  if (info.value.cuda.available && firstGpuComputeCap.value >= 12.0) {
+    return 'warning-text'
+  }
+  return ''
+})
+
 async function fetchSystemInfo() {
   loading.value = true
   error.value = ''
@@ -216,6 +289,7 @@ async function fetchSystemInfo() {
     [getGPU, 'gpu', (d) => { info.value.gpu = d || [] }],
     [getCUDA, 'cuda', (d) => { info.value.cuda = d }],
     [getOS, 'os', (d) => { info.value.os = d.os; info.value.arch = d.arch }],
+    [getDisk, 'disk', (d) => { info.value.disk = d }],
   ]
 
   // Fire all fetches in parallel, resolve each independently
@@ -379,6 +453,11 @@ onMounted(() => {
 
 .gpu-name {
   color: #a78bfa;
+  font-weight: 600;
+}
+
+.warning-text {
+  color: #f59e0b;
   font-weight: 600;
 }
 

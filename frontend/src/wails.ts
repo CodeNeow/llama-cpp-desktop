@@ -84,6 +84,10 @@ export async function getOS(): Promise<{ os: string; arch: string }> {
   return app().GetOS()
 }
 
+export async function getDisk(): Promise<{ path: string; used: number; total: number } | null> {
+  return app().GetDisk()
+}
+
 // ─── Monitor ─────────────────────────────────────────────────────
 
 // Real-time monitoring (CPU / memory / GPU / inference prompt processing and generation

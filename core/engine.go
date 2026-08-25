@@ -39,6 +39,7 @@ type SystemInfo struct {
 	GPU      []GPUInfo    `json:"gpu"`
 	CUDA     CUDAInfo     `json:"cuda"`
 	LlamaCpp LlamaCppInfo `json:"llamaCpp"`
+	Disk     *DiskUsage   `json:"disk,omitempty"`
 }
 
 // ─── GitHub API structs ──────────────────────────────────────────
@@ -69,10 +70,12 @@ type MemoryInfo struct {
 }
 
 type GPUInfo struct {
-	Name          string `json:"name"`
-	MemoryMB      int    `json:"memoryMb"`
-	DriverVersion string `json:"driverVersion"`
-	CUDACores     int    `json:"cudaCores"`
+	Name              string  `json:"name"`
+	MemoryMB          int     `json:"memoryMb"`
+	MemoryUsedMB      int     `json:"memoryUsedMb"`
+	DriverVersion     string  `json:"driverVersion"`
+	CUDACores         int     `json:"cudaCores"`
+	ComputeCapability float64 `json:"computeCapability"`
 }
 
 type CUDAInfo struct {
@@ -283,6 +286,10 @@ func collectSystemInfo() SystemInfo {
 	// Free memory
 	info.Memory.FreeGB = getFreeMemoryGB()
 
+	// Disk usage (sampleDiskUsage returns nil on failure so it never blocks
+	// other metrics)
+	info.Disk = sampleDiskUsage()
+
 	return info
 }
 
@@ -382,7 +389,7 @@ func getFreeMemoryGB() float64 {
 
 func getGPUInfo() []GPUInfo {
 	out := runCmd("nvidia-smi",
-		"--query-gpu=name,memory.total,driver_version",
+		"--query-gpu=name,memory.used,memory.total,driver_version,compute_cap",
 		"--format=csv,noheader,nounits",
 	)
 	if out == "" {
@@ -396,16 +403,38 @@ func getGPUInfo() []GPUInfo {
 			continue
 		}
 		name := strings.TrimSpace(parts[0])
-		memStr := strings.TrimSpace(parts[1])
-		driver := strings.TrimSpace(parts[2])
+		memUsedStr := strings.TrimSpace(parts[1])
+		memStr := strings.TrimSpace(parts[2])
+		driver := strings.TrimSpace(parts[3])
 
-		memMB, _ := strconv.Atoi(memStr)
+		memUsedMB := 0
+		if memUsedStr != "" {
+			if v, err := strconv.Atoi(memUsedStr); err == nil {
+				memUsedMB = v
+			}
+		}
+		memMB := 0
+		if memStr != "" {
+			if v, err := strconv.Atoi(memStr); err == nil {
+				memMB = v
+			}
+		}
 
-		gpus = append(gpus, GPUInfo{
+		gpu := GPUInfo{
 			Name:          name,
 			MemoryMB:      memMB,
+			MemoryUsedMB:  memUsedMB,
 			DriverVersion: driver,
-		})
+		}
+
+		// Compute capability (5th column, index 4)
+		if len(parts) >= 5 {
+			if cc, err := strconv.ParseFloat(strings.TrimSpace(parts[4]), 64); err == nil {
+				gpu.ComputeCapability = cc / 10.0 // e.g. "50" -> 5.0, "120" -> 12.0
+			}
+		}
+
+		gpus = append(gpus, gpu)
 	}
 	return gpus
 }

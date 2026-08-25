@@ -486,6 +486,11 @@ func (a *App) GetOS() map[string]string {
 	return map[string]string{"os": runtime.GOOS, "arch": runtime.GOARCH}
 }
 
+func (a *App) GetDisk() *DiskUsage {
+	// sampleDiskUsage returns nil on failure, so this is safe.
+	return sampleDiskUsage()
+}
+
 // ─── Models ──────────────────────────────────────────────────────
 
 func (a *App) GetModels() []ModelInfo {
