@@ -333,34 +333,14 @@ onMounted(() => {
   padding-bottom: 36px;
 }
 
-/* Scrollable content band: absorbs the remaining viewport height and scrolls
-   internally, so the page itself never scrolls */
+/* Scrollable content band: absorbs the remaining viewport height and flows
+   content with flex layout — no internal scrollbar, cards wrap naturally
+   within the available space. */
 .page-scroll {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  /* Bottom clearance so the last card row clears the floating TaskDock pill
-     (--dock-reserve is 0 while the dock is hidden) */
-  padding-bottom: calc(24px + var(--dock-reserve, 0px));
-}
-
-/* Thin scrollbar matching .content-area (App.vue) so the inner band does not
-   render a full-width system scrollbar */
-.page-scroll::-webkit-scrollbar {
-  width: 6px;
-}
-
-.page-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.page-scroll::-webkit-scrollbar-thumb {
-  background: var(--overlay-10);
-  border-radius: 3px;
-}
-
-.page-scroll::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover);
+  display: flex;
+  flex-direction: column;
 }
 
 .page-title {
@@ -376,20 +356,6 @@ onMounted(() => {
   font-size: 14px;
   color: var(--text-dim);
   margin: 0;
-}
-
-/* ─── Section ─── */
-.info-section {
-  margin-bottom: 0;
-  padding: 24px 28px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  transition: border-color 0.2s;
-}
-
-.info-section:hover {
-  border-color: var(--overlay-10);
 }
 
 .section-title {
@@ -530,9 +496,28 @@ onMounted(() => {
 
 /* ─── Cards grid ─── */
 .cards-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  display: flex;
+  flex-wrap: wrap;
   gap: 20px;
+  flex: 1;
+}
+
+/* Each info-section takes half the row width (minus gap), then stretches
+   vertically so both columns in the same row share the same height.
+   flex-direction: column on the card lets content fill freely. */
+.info-section {
+  flex: 0 0 calc(50% - 10px);
+  padding: 24px 28px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  transition: border-color 0.2s;
+  display: flex;
+  flex-direction: column;
+}
+
+.info-section:hover {
+  border-color: var(--overlay-10);
 }
 
 /* ─── Memory usage bar ─── */
