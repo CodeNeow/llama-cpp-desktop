@@ -119,7 +119,7 @@
                 :class="{ divided: i > 0 }"
               >
                 <div class="usage-row">
-                  <span class="usage-name gpu-name">{{ gpu.name }}</span>
+                  <span class="usage-name gpu-name" :title="gpu.name">{{ gpu.name }}</span>
                   <span class="usage-caption">{{ formatMB(gpu.usedMb) }} / {{ formatMB(gpu.totalMb) }}</span>
                   <span class="usage-pct">{{ t('home.usagePercent', { pct: usagePercent(gpu.usedMb, gpu.totalMb) }) }}</span>
                 </div>
@@ -156,7 +156,8 @@
             </h2>
             <div class="usage-block">
               <div class="usage-row">
-                <span class="usage-name">{{ t('home.usageLabel', { used: formatGB(memoryView.usedGb), total: formatGB(memoryView.totalGb) }) }}</span>
+                <span class="usage-name">{{ t('home.memory.used') }}</span>
+                <span class="usage-caption">{{ formatGB(memoryView.usedGb) }} / {{ formatGB(memoryView.totalGb) }}</span>
                 <span class="usage-pct">{{ t('home.usagePercent', { pct: memoryView.pct }) }}</span>
               </div>
               <div
@@ -169,10 +170,13 @@
               >
                 <div class="usage-fill" :style="{ width: memoryView.pct + '%' }"></div>
               </div>
-            </div>
-            <div class="meta-row spaced">
-              <span>{{ t('home.memory.total') }} {{ formatGB(memoryView.totalGb) }}</span>
-              <span>{{ t('home.memory.available') }} {{ formatGB(memoryView.freeGb) }}</span>
+              <!-- Inside the block on purpose: keeps the bar→details gap at
+                   .meta-row's own margin-top, matching the GPU blocks (an
+                   outside placement would stack the block's bottom margin) -->
+              <div class="meta-row">
+                <span>{{ t('home.memory.total') }} {{ formatGB(memoryView.totalGb) }}</span>
+                <span>{{ t('home.memory.available') }} {{ formatGB(memoryView.freeGb) }}</span>
+              </div>
             </div>
           </section>
 
@@ -263,7 +267,8 @@
             <template v-if="diskView">
               <div class="usage-block">
                 <div class="usage-row">
-                  <span class="usage-name">{{ t('home.usageLabel', { used: formatBytes(diskView.used), total: formatBytes(diskView.total) }) }}</span>
+                  <span class="usage-name">{{ t('home.disk.used') }}</span>
+                  <span class="usage-caption">{{ formatBytes(diskView.used) }} / {{ formatBytes(diskView.total) }}</span>
                   <span class="usage-pct">{{ t('home.usagePercent', { pct: diskPct }) }}</span>
                 </div>
                 <div
@@ -276,10 +281,11 @@
                 >
                   <div class="usage-fill" :style="{ width: diskPct + '%' }"></div>
                 </div>
-              </div>
-              <div class="meta-row spaced">
-                <span class="meta-path">{{ t('home.disk.path') }} {{ diskView.path }}</span>
-                <span>{{ t('home.disk.free') }} {{ formatBytes(diskView.total - diskView.used) }}</span>
+                <!-- Inside the block: same bar→details gap as GPU/memory blocks -->
+                <div class="meta-row">
+                  <span class="meta-path">{{ t('home.disk.path') }} {{ diskView.path }}</span>
+                  <span>{{ t('home.disk.free') }} {{ formatBytes(diskView.total - diskView.used) }}</span>
+                </div>
               </div>
             </template>
             <div v-else class="info-empty">
@@ -611,6 +617,7 @@ onUnmounted(() => {
   font-size: 12px;
   color: var(--text-dim);
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .refresh-btn {
@@ -820,7 +827,10 @@ onUnmounted(() => {
   font-size: 14px;
   color: var(--text-secondary);
   font-weight: 500;
-  word-break: break-all;
+  /* Break anywhere but without the mid-glyph harshness of break-all for
+     long model names / versions */
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ─── Usage bars (shared visual language: RAM / VRAM / disk / CPU) ─── */
@@ -839,6 +849,9 @@ onUnmounted(() => {
   gap: 12px;
   margin-bottom: 8px;
   font-size: 13px;
+  /* Live metrics refresh every few seconds; monospaced digits stop the
+     values from jittering horizontally as they change */
+  font-variant-numeric: tabular-nums;
 }
 
 .usage-name {
@@ -886,10 +899,10 @@ onUnmounted(() => {
   gap: 4px 16px;
   font-size: 12px;
   color: var(--text-dim);
-}
-
-.meta-row.spaced {
-  margin-top: 2px;
+  /* Uniform breathing room below the usage bar in every card (GPU blocks
+     previously sat flush against it while memory/disk used a .spaced hack) */
+  margin-top: 10px;
+  font-variant-numeric: tabular-nums;
 }
 
 .meta-path {
