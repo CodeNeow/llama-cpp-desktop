@@ -828,29 +828,25 @@ function clearLog() {
   flex-shrink: 0;
 }
 
-/* Metric blocks wrapper: flex column normally; the compact media query near the
-   end of this style block rearranges it into two columns on short windows */
+/* Metric blocks wrapper: flex column with real gaps; scrolls internally when
+   content (e.g. several GPUs) exceeds the card height instead of clipping */
 .metric-grid {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
 }
 
-/* Spacing between metric blocks inside system monitor: blocks flex-share the
-   card height (basis auto, equal grow) and center their content vertically, so
-   the card fills the column and compresses gracefully on short windows */
+/* Spacing between metric blocks inside system monitor: blocks take their
+   natural height and stack with the gap above, so CPU / Memory / GPU are never
+   forced into equal-height slices that cram and clip on short windows */
 .metric-block {
-  margin-bottom: 14px;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-}
-
-.metric-block:last-child {
-  margin-bottom: 0;
 }
 
 /* ─── Models ─── */
@@ -1028,6 +1024,7 @@ function clearLog() {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
 }
 
 /* visibility (not display) keeps the stopped state reserving exactly the
@@ -1049,13 +1046,15 @@ function clearLog() {
 /* ─── TPS metric cards ─── */
 .tps-cards {
   /* Elastic pair: the two mini-cards sit side by side while both fit, and the
-     second wraps under the first on narrow columns (auto-fit, no media query) */
+     second wraps under the first on narrow columns (auto-fit, no media query).
+     Natural height (flex: 0 0 auto) + top alignment so the cards never get
+     forced into an equal-height slice that cramps/clips on short windows */
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
   gap: 16px;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   min-height: 0;
-  align-content: center;
+  align-content: start;
 }
 
 .tps-card {
