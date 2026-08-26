@@ -60,3 +60,47 @@ func TestRunCmdTimeout(t *testing.T) {
 		t.Fatalf("runCmd blocked for %v, want close to cmdTimeout=%v", elapsed, cmdTimeout)
 	}
 }
+
+// TestParseGPUComputeCapability verifies the decimal compute-capability field
+// from nvidia-smi (e.g. "9.0", "8.9", "12.0") is parsed directly, without the
+// former /10.0 bug that turned 9.0 into 0.9.
+func TestParseGPUComputeCapability(t *testing.T) {
+	cases := []struct {
+		in   string
+		want float64
+	}{
+		{"9.0", 9.0},
+		{"8.9", 8.9},
+		{"12.0", 12.0},
+		{"  7.5  ", 7.5},
+		{"", 0},
+		{"not-a-number", 0},
+	}
+	for _, c := range cases {
+		if got := parseGPUComputeCapability(c.in); got != c.want {
+			t.Errorf("parseGPUComputeCapability(%q) = %v, want %v", c.in, got, c.want)
+		}
+	}
+}
+
+// TestParseWindowsSystemJSON verifies the batched Windows PowerShell JSON
+// (one process for CPU model, cores, total/free memory) parses into the
+// snapshot, and that garbage yields a zero snapshot instead of panicking.
+func TestParseWindowsSystemJSON(t *testing.T) {
+	got := parseWindowsSystemJSON(`{"cpuModel":"Intel(R) Core(TM) i7-13700K","cpuCores":16,"totalMem":34359738368,"freeMem":16777216}`)
+	want := windowsSystemSnapshot{
+		cpuModel:      "Intel(R) Core(TM) i7-13700K",
+		cpuCores:      16,
+		totalMemBytes: 34359738368,
+		freeMemKB:     16777216,
+	}
+	if got != want {
+		t.Errorf("parseWindowsSystemJSON valid = %+v, want %+v", got, want)
+	}
+	if s := parseWindowsSystemJSON("not json"); s != (windowsSystemSnapshot{}) {
+		t.Errorf("parseWindowsSystemJSON garbage = %+v, want zero snapshot", s)
+	}
+	if s := parseWindowsSystemJSON(""); s != (windowsSystemSnapshot{}) {
+		t.Errorf("parseWindowsSystemJSON empty = %+v, want zero snapshot", s)
+	}
+}

@@ -459,32 +459,28 @@ func (a *App) BrowseLlamaCppDownloadDir() (string, error) {
 // ─── System Info ─────────────────────────────────────────────────
 
 func (a *App) GetSystemInfo() *SystemInfo {
-	systemInfoOnce.Do(func() {
-		cachedSystemInfo = collectSystemInfo()
-	})
-	return &cachedSystemInfo
+	s := systemInfo()
+	return &s
 }
 
 func (a *App) GetCPU() *CPUInfo {
-	cpuOnce.Do(func() { cachedCPU = getCPUInfo() })
-	return &cachedCPU
+	s := systemInfo()
+	return &s.CPU
 }
 
 func (a *App) GetMemory() *MemoryInfo {
-	memOnce.Do(func() {
-		cachedMemory = MemoryInfo{TotalGB: getTotalMemoryGB(), FreeGB: getFreeMemoryGB()}
-	})
-	return &cachedMemory
+	s := systemInfo()
+	return &s.Memory
 }
 
 func (a *App) GetGPU() []GPUInfo {
-	gpuOnce.Do(func() { cachedGPU = getGPUInfo() })
-	return cachedGPU
+	s := systemInfo()
+	return s.GPU
 }
 
 func (a *App) GetCUDA() *CUDAInfo {
-	cudaOnce.Do(func() { cachedCUDA = getCUDAInfo() })
-	return &cachedCUDA
+	s := systemInfo()
+	return &s.CUDA
 }
 
 func (a *App) GetLlamaCpp() *LlamaCppInfo {
