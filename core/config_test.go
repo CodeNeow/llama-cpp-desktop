@@ -47,6 +47,7 @@ func saveConfigState(t *testing.T) (origModels map[string]ModelConfig, origServe
 	origTheme = currentTheme
 	origTray := trayEnabled
 	origSidebarCollapsed := currentSidebarCollapsed
+	origOnboardingDismissed := currentOnboardingDismissed
 	origApiRouteMode := apiRouteMode
 	configMu.Unlock()
 	customLlamaCppMu.Lock()
@@ -75,6 +76,7 @@ func saveConfigState(t *testing.T) (origModels map[string]ModelConfig, origServe
 		currentTheme = origTheme
 		trayEnabled = origTray
 		currentSidebarCollapsed = origSidebarCollapsed
+		currentOnboardingDismissed = origOnboardingDismissed
 		apiRouteMode = origApiRouteMode
 		configMu.Unlock()
 		customLlamaCppMu.Lock()
@@ -354,6 +356,53 @@ func TestConfigSidebarCollapsedRoundtrip(t *testing.T) {
 	configMu.Lock()
 	if currentSidebarCollapsed != true {
 		t.Errorf("old config missing sidebarCollapsed should fall back to true (collapsed), got %v", currentSidebarCollapsed)
+	}
+	configMu.Unlock()
+}
+
+// TestConfigOnboardingDismissedRoundtrip verifies the quick-start checklist
+// preference round-trips losslessly:
+// config file explicitly writes "onboardingDismissed": true → loadConfig reads it →
+// saveConfig writes it back (load→save chain does not drop fields).
+// Unlike trayEnabled/sidebarCollapsed, false is the intended default (checklist
+// visible), so the Go zero value already covers "old config missing field" — no
+// pre-population needed; the test asserts the missing-field case falls back to false.
+func TestConfigOnboardingDismissedRoundtrip(t *testing.T) {
+	withTempCwd(t)
+	saveConfigState(t)
+
+	// explicit true round-trip: load reads true, save retains it in the file
+	if err := os.WriteFile(configFile, []byte(`{"onboardingDismissed":true}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	loadConfig()
+	configMu.Lock()
+	if currentOnboardingDismissed != true {
+		t.Errorf("after loadConfig currentOnboardingDismissed = %v, want true", currentOnboardingDismissed)
+	}
+	configMu.Unlock()
+
+	saveConfig()
+	data, err := os.ReadFile(configFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"onboardingDismissed": true`) {
+		t.Errorf("after saveConfig file should retain onboardingDismissed: true, actual: %s", data)
+	}
+
+	// missing-field old config: zero-value fallback false (checklist visible again),
+	// verified from a non-default state so a stale global cannot pass vacuously
+	if err := os.WriteFile(configFile, []byte(`{"theme":"light"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	configMu.Lock()
+	currentOnboardingDismissed = true // set non-default first to verify missing-field fallback resets it
+	configMu.Unlock()
+	loadConfig()
+	configMu.Lock()
+	if currentOnboardingDismissed != false {
+		t.Errorf("old config missing onboardingDismissed should fall back to false (visible), got %v", currentOnboardingDismissed)
 	}
 	configMu.Unlock()
 }

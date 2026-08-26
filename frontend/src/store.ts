@@ -1,5 +1,5 @@
 import { reactive } from 'vue'
-import { getConfig, setTheme as setThemeBackend, setSidebarCollapsed as setSidebarCollapsedBackend, setDownloadSource as setDownloadSourceBackend, setLanguage as setLanguageBackend, setTrayEnabled as setTrayEnabledBackend, getServerConfig, saveServerConfig as saveServerConfigBackend } from './wails'
+import { getConfig, setTheme as setThemeBackend, setSidebarCollapsed as setSidebarCollapsedBackend, setOnboardingDismissed as setOnboardingDismissedBackend, setDownloadSource as setDownloadSourceBackend, setLanguage as setLanguageBackend, setTrayEnabled as setTrayEnabledBackend, getServerConfig, saveServerConfig as saveServerConfigBackend } from './wails'
 import { setLocale } from './lib/i18n'
 
 // Theme localStorage key: after the llama-gui → llama-desktop rename the legacy key is read-only fallback
@@ -48,6 +48,10 @@ export const appConfig = reactive({
   // async loadConfig returns; defaults to collapsed when the key is missing (matching
   // the backend's preset true fallback).
   sidebarCollapsed: readStoredSidebarCollapsed(),
+  // Quick-start checklist dismissed state: default false (visible) until the
+  // backend config reports an explicit true (user closed it or completed all
+  // steps); same missing-field fallback pattern as apiRouteMode.
+  onboardingDismissed: false,
   loaded: false,
 })
 
@@ -71,6 +75,9 @@ export async function loadConfig() {
     // (user's expanded preference) yields false; on success sync back to localStorage
     // so the "persisted backend value" and the "local UI cache" stay consistent.
     appConfig.sidebarCollapsed = config.sidebarCollapsed !== false
+    // Checklist dismissal: default false when the backend omits the field
+    // (legacy backend / fresh install); only an explicit true hides it.
+    appConfig.onboardingDismissed = config.onboardingDismissed === true
     setLocale(appConfig.resolvedLanguage)
     localStorage.setItem(THEME_KEY, appConfig.theme)
     localStorage.setItem(SIDEBAR_KEY, appConfig.sidebarCollapsed ? '1' : '0')
@@ -100,6 +107,16 @@ export async function setSidebarCollapsed(collapsed: boolean) {
   localStorage.setItem(SIDEBAR_KEY, collapsed ? '1' : '0')
   try {
     await setSidebarCollapsedBackend(collapsed)
+  } catch {}
+}
+
+/** Dismiss the quick-start checklist: optimistic local update, backend persist
+ * swallowed on failure — a pure UI preference like the sidebar toggle; failure
+ * only affects the value restored on next launch. */
+export async function setOnboardingDismissed(dismissed: boolean) {
+  appConfig.onboardingDismissed = dismissed
+  try {
+    await setOnboardingDismissedBackend(dismissed)
   } catch {}
 }
 

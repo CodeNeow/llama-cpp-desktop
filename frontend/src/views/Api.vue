@@ -61,13 +61,18 @@
           <div class="model-tags">
             <span v-for="m in availableModels" :key="m" class="model-tag">{{ m }}</span>
           </div>
-          <div v-if="modelCount === 0" class="empty-hint">{{ t('api.emptyHint') }}</div>
+          <span v-if="modelCount === 0" class="empty-hint">
+            {{ t('api.emptyHint') }}
+            <button class="empty-cta" @click="goDownloads">{{ t('action.gotoDownloads') }}</button>
+          </span>
         </div>
       </section>
     </div>
 
-    <!-- Main area two-column: left log console + right monitor cards -->
-    <div class="monitor-grid">
+    <!-- Main area: scrollable band wrapping the monitor grid — stretches to
+         fill tall windows, scrolls once the window is too short -->
+    <div class="page-scroll">
+      <div class="monitor-grid">
       <!-- Left column: service log console (dark console look in both themes) -->
       <section class="log-panel">
         <div class="panel-header">
@@ -192,12 +197,14 @@
           </div>
         </section>
       </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { getMonitorStatus, getModels, getServerConfig, getServerStatus, refreshModels, saveServerConfig, startServer, stopServer } from '../wails'
 import { formatPromptTps, formatUptime, type MonitorStatus } from '../lib/monitor'
 import { formatBytes } from '../lib/format'
@@ -208,6 +215,13 @@ const serverLog = ref<string[]>([])
 const logEl = ref<HTMLElement | null>(null)
 // Disable all buttons during start/stop/restart to prevent double-clicks
 const busy = ref(false)
+
+const router = useRouter()
+
+/** Empty-model hint CTA: jump to the downloads page to fetch a first model */
+function goDownloads() {
+  router.push('/downloads')
+}
 
 const cfg = reactive({
   host: '127.0.0.1',
@@ -458,6 +472,9 @@ function clearLog() {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  /* Elastic: status text / URL / buttons reflow onto extra rows on narrow
+     windows instead of squeezing or clipping */
+  flex-wrap: wrap;
 }
 
 .status-indicator {
@@ -660,28 +677,62 @@ function clearLog() {
   font-size: 12px;
 }
 
+/* ─── Scrollable content band ─── */
+.page-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  /* TaskDock pill clearance while the band scrolls (--dock-reserve is bound
+     globally by App.vue; 0 while hidden) */
+  padding-bottom: calc(24px + var(--dock-reserve, 0px));
+}
+
+/* Thin scrollbar matching .content-area (App.vue) so the inner band does not
+   render a full-width system scrollbar */
+.page-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.page-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.page-scroll::-webkit-scrollbar-thumb {
+  background: var(--overlay-10);
+  border-radius: 3px;
+}
+
+.page-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
 /* ─── Main area two-column: left log console + right monitor cards ─── */
 .monitor-grid {
   display: grid;
-  grid-template-columns: 6fr 4fr;
-  /* Row height must strictly equal the container height: startup log lines are
-     unbounded, so minmax(0, 1fr) plus min-height: 0 on children must lock the
-     container height; excess logs scroll inside the console instead of stretching
-     the layout and pushing the config block below away */
+  /* minmax(0, Nfr): floor the tracks at 0 (not auto) so long unbreakable
+     strings cannot widen a column past its share; the narrow-viewport block
+     at the end of this style sheet collapses the grid to one column */
+  grid-template-columns: minmax(0, 6fr) minmax(0, 4fr);
+  /* Rows share the track height exactly: startup log lines are unbounded, so
+     minmax(0, 1fr) plus min-height: 0 on children locks the row height and
+     excess logs scroll inside the console */
   grid-template-rows: minmax(0, 1fr);
   gap: 16px;
-  /* Fixed-viewport layout: the grid flexes to fill the remaining viewport
-     height (page itself never scrolls); min-height: 0 lets it shrink below its
-     content so the columns' internal scrolls engage */
+  /* Stretch to fill the scroll band on tall windows, but never shrink below
+     MIN-HEIGHT: smaller windows scroll the band instead of clipping panels */
   flex: 1;
-  min-height: 0;
+  min-height: 460px;
 }
 
 /* ─── Left column: log panel ─── */
 .log-panel {
   height: 100%;
-  /* Release the grid child default min-height:auto so oversized content shrinks and scrolls internally */
+  /* Release the grid child default min sizes so oversized content shrinks
+     and scrolls internally instead of blowing out the track */
   min-height: 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   padding: 18px 20px;
@@ -757,10 +808,10 @@ function clearLog() {
   gap: 12px;
   height: 100%;
   min-height: 0;
+  min-width: 0;
   /* Fixed, scroll-free column: the two cards share the column height and stretch
-     to fill it; metric blocks distribute the leftover space inside their card, so
-     no scrollbar appears. The floating TaskDock pill may overlap the footnote
-     band when active — no interactive control lives there. */
+     to fill it; metric blocks distribute the leftover space inside their card,
+     so no scrollbar appears while the window stays above the grid's floor */
 }
 
 .monitor-card {
@@ -822,6 +873,24 @@ function clearLog() {
 .empty-hint {
   font-size: 13px;
   color: var(--text-dim);
+}
+
+/* Inline CTA next to the empty-models hint */
+.empty-cta {
+  margin-left: 8px;
+  padding: 2px 10px;
+  background: var(--active-bg);
+  color: var(--accent-light);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.empty-cta:hover {
+  background: var(--accent-glow);
 }
 
 /* ─── Monitor block (ported from Monitor.vue) ─── */
@@ -979,8 +1048,10 @@ function clearLog() {
 
 /* ─── TPS metric cards ─── */
 .tps-cards {
+  /* Elastic pair: the two mini-cards sit side by side while both fit, and the
+     second wraps under the first on narrow columns (auto-fit, no media query) */
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
   gap: 16px;
   flex: 1 1 auto;
   min-height: 0;
@@ -1037,7 +1108,8 @@ function clearLog() {
 
 /* ─── Compact mode (viewport height <= 799px): keep the fixed, scroll-free
    layout but compress secondary elements so everything fits without clipping
-   down to the 900x600 minimum window. Above this breakpoint nothing changes. */
+   down to the 900x600 minimum window. Fixed values only — nothing scales
+   continuously with the window size. */
 @media (max-height: 799px) {
   .page-subtitle { display: none; }
   .page-header { padding-bottom: 14px; }
@@ -1060,52 +1132,37 @@ function clearLog() {
   .tps-footnote { display: none; }
 }
 
-/* ─── Proportional spacing (viewport height >= 800px): fonts stay fixed; above
-   the design baseline only paddings, gaps, margins and bar heights grow with
-   the window so one-metric-per-row blocks fill tall cards without whitespace */
-@media (min-height: 800px) {
-  .monitor-side { gap: max(12px, 1.5vh); }
-  .monitor-card { padding: max(16px, 2.5vh) max(20px, 2.5vh); }
-  .metric-block { margin-bottom: max(14px, 2.25vh); }
-  .usage-bar-wrapper { gap: max(12px, 1.75vh); }
-  .usage-bar { height: max(6px, 1vh); }
-  .metric-sub { margin-top: max(10px, 1.5vh); }
-  .gpu-row { padding: max(12px, 2vh) 0; }
-  .gpu-head { margin-bottom: max(10px, 1.5vh); }
-  .gpu-mem { margin-top: max(8px, 1.25vh); }
-  .token-card-head { margin-bottom: max(14px, 2.25vh); }
-  .tps-footnote { margin: max(12px, 2vh) 0 0; }
-  .console-line { padding: max(1px, 0.5vh) 0; }
-}
-
-/* ─── Tall windows (>= 900px, e.g. maximized): one metric per row everywhere —
-   the page subtitle yields its space and the TPS mini-cards stack into
-   full-width rows (info left, value right) with generous vertical padding */
-@media (min-height: 900px) {
-  .page-subtitle { display: none; }
-  .tps-cards { grid-template-columns: 1fr; align-content: stretch; }
-  .tps-card {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    padding: max(16px, 3vh) max(16px, 2.5vh);
-  }
-  .tps-card-value { margin-top: 0; }
-}
-
-/* ─── Tall windows (>= 1000px, e.g. maximized): cap the monitor grid so it
-   floats ~120px above the window bottom instead of sticking to it — the band
-   below reads as intentional breathing room */
-@media (min-height: 1000px) {
-  .monitor-grid { max-height: calc(100vh - 380px); }
-}
-
 /* ─── Empty ─── */
 .info-empty {
   padding: 16px 0;
   color: var(--text-dim);
   font-size: 13px;
   text-align: center;
+}
+
+/* ─── Narrow viewports (< 1100px): collapse to a single column ──────────────
+   Keeping both panels side by side would cram them into unusable slivers.
+   The log console takes a bounded proportional band, the monitor cards flow
+   below it, and the shared .page-scroll band owns scrolling + dock clearance. */
+@media (max-width: 1099px) {
+  .monitor-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    align-content: start;
+    /* Content-driven height: the band scrolls, the grid does not stretch */
+    flex: none;
+    min-height: 0;
+  }
+
+  /* Auto-sized rows cannot resolve height:100% — give the console an
+     explicit proportional band so its internal log scroll still engages */
+  .log-panel {
+    height: clamp(200px, 40vh, 380px);
+  }
+
+  /* Content-driven column: cards stack and size to their content */
+  .monitor-side {
+    height: auto;
+  }
 }
 </style>

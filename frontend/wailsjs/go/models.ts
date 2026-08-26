@@ -111,8 +111,10 @@ export namespace core {
 	export class GPUInfo {
 	    name: string;
 	    memoryMb: number;
+	    memoryUsedMb: number;
 	    driverVersion: string;
 	    cudaCores: number;
+	    computeCapability: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new GPUInfo(source);
@@ -122,8 +124,10 @@ export namespace core {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
 	        this.memoryMb = source["memoryMb"];
+	        this.memoryUsedMb = source["memoryUsedMb"];
 	        this.driverVersion = source["driverVersion"];
 	        this.cudaCores = source["cudaCores"];
+	        this.computeCapability = source["computeCapability"];
 	    }
 	}
 	export class HFFile {
@@ -424,6 +428,7 @@ export namespace core {
 	    gpu: GPUInfo[];
 	    cuda: CUDAInfo;
 	    llamaCpp: LlamaCppInfo;
+	    disk?: DiskUsage;
 	
 	    static createFrom(source: any = {}) {
 	        return new SystemInfo(source);
@@ -438,6 +443,7 @@ export namespace core {
 	        this.gpu = this.convertValues(source["gpu"], GPUInfo);
 	        this.cuda = this.convertValues(source["cuda"], CUDAInfo);
 	        this.llamaCpp = this.convertValues(source["llamaCpp"], LlamaCppInfo);
+	        this.disk = this.convertValues(source["disk"], DiskUsage);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

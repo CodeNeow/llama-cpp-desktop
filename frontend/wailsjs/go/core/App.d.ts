@@ -23,6 +23,8 @@ export function GetCUDA():Promise<core.CUDAInfo>;
 
 export function GetConfig():Promise<Record<string, any>>;
 
+export function GetDisk():Promise<core.DiskUsage>;
+
 export function GetDownloadSource():Promise<string>;
 
 export function GetDownloadTasks():Promise<Array<core.DlTask>>;
@@ -90,6 +92,8 @@ export function SetLlamaCppDownloadDir(arg1:string):Promise<void>;
 export function SetModelDownloadDir(arg1:string):Promise<void>;
 
 export function SetModelsDir(arg1:string):Promise<void>;
+
+export function SetOnboardingDismissed(arg1:boolean):Promise<void>;
 
 export function SetSidebarCollapsed(arg1:boolean):Promise<void>;
 

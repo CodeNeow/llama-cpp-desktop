@@ -32,6 +32,8 @@
   --accent-light: #a78bfa;
   --accent-glow: rgba(99, 102, 241, 0.3);
   --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #ef4444;
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
@@ -68,6 +70,8 @@ html[data-theme='dark'] { color-scheme: dark; }
   --accent-light: #6366f1;
   --accent-glow: rgba(79, 70, 229, 0.15);
   --success: #16a34a;
+  --warning: #b45309;
+  --danger: #dc2626;
 }
 
 html, body {

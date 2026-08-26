@@ -42,6 +42,10 @@ export function GetConfig() {
   return window['go']['core']['App']['GetConfig']();
 }
 
+export function GetDisk() {
+  return window['go']['core']['App']['GetDisk']();
+}
+
 export function GetDownloadSource() {
   return window['go']['core']['App']['GetDownloadSource']();
 }
@@ -176,6 +180,10 @@ export function SetModelDownloadDir(arg1) {
 
 export function SetModelsDir(arg1) {
   return window['go']['core']['App']['SetModelsDir'](arg1);
+}
+
+export function SetOnboardingDismissed(arg1) {
+  return window['go']['core']['App']['SetOnboardingDismissed'](arg1);
 }
 
 export function SetSidebarCollapsed(arg1) {

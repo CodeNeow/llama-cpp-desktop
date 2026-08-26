@@ -3440,6 +3440,10 @@ type appConfig struct {
 	Language            string                 `json:"language"`         // language preference: zh / en / auto (empty or invalid falls back to auto)
 	TrayEnabled         bool                   `json:"trayEnabled"`      // Windows system tray toggle, default true
 	SidebarCollapsed    bool                   `json:"sidebarCollapsed"` // sidebar collapsed state, default true (collapsed)
+	// OnboardingDismissed records that the user closed (or auto-completed) the
+	// Home page quick-start checklist. False is the Go zero value, so old
+	// configs missing the field fall back to false (checklist shown) naturally.
+	OnboardingDismissed bool `json:"onboardingDismissed"`
 	// ApiRouteMode is the API-route (headless) mode toggle, default false:
 	// when true, the next app start skips the GUI and runs as tray +
 	// llama-server only (Windows; see core/headless.go). False is the Go zero
@@ -3695,6 +3699,10 @@ func loadConfig() {
 	// pattern as trayEnabled.
 	configMu.Lock()
 	currentSidebarCollapsed = cfg.SidebarCollapsed
+	// Onboarding checklist: Go zero value false is already the intended
+	// default for configs missing the field (checklist visible until the user
+	// dismisses it or completes all steps), no pre-population needed.
+	currentOnboardingDismissed = cfg.OnboardingDismissed
 	configMu.Unlock()
 
 	// Restore the download task queue (after a process restart there are no
@@ -3803,6 +3811,12 @@ func ApiRouteMode() bool {
 // trayEnabled.
 var currentSidebarCollapsed = true
 
+// currentOnboardingDismissed indicates whether the Home page quick-start
+// checklist has been dismissed (manually closed or auto-completed); guarded
+// by configMu and persisted to the config file's onboardingDismissed field.
+// Default false: old configs lacking the field show the checklist.
+var currentOnboardingDismissed = false
+
 // TrayEnabled returns the current tray preference (concurrency-safe, guarded
 // by configMu). Used by main.go's OnStartup to decide whether to start the
 // tray per the persisted config.
@@ -3859,6 +3873,7 @@ func saveConfig() {
 	configMu.Lock()
 	sidebarCollapsed := currentSidebarCollapsed
 	apiRoute := apiRouteMode
+	onboardingDismissed := currentOnboardingDismissed
 	configMu.Unlock()
 
 	// Lock-ordering iron rule: inside saveConfig, dlTasksMu must be the last
@@ -3898,6 +3913,7 @@ func saveConfig() {
 		Language:            lang,
 		TrayEnabled:         tray,
 		SidebarCollapsed:    sidebarCollapsed,
+		OnboardingDismissed: onboardingDismissed,
 		ApiRouteMode:        apiRoute,
 		DownloadTasks:       persistedTasks,
 	}

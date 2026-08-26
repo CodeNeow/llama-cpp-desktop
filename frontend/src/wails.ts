@@ -17,7 +17,7 @@ function app(): any {
 
 // ─── Config ─────────────────────────────────────────────────────
 
-export async function getConfig(): Promise<{ theme: string; llamaCppDir: string; modelsDir: string; llamaCppDownloadDir?: string; modelDownloadDir?: string; downloadSource: string; language: string; resolvedLanguage: 'zh' | 'en'; trayEnabled: boolean; apiRouteMode?: boolean; sidebarCollapsed?: boolean }> {
+export async function getConfig(): Promise<{ theme: string; llamaCppDir: string; modelsDir: string; llamaCppDownloadDir?: string; modelDownloadDir?: string; downloadSource: string; language: string; resolvedLanguage: 'zh' | 'en'; trayEnabled: boolean; apiRouteMode?: boolean; sidebarCollapsed?: boolean; onboardingDismissed?: boolean }> {
   return app().GetConfig()
 }
 
@@ -28,6 +28,12 @@ export async function setTheme(theme: string): Promise<void> {
 // Set the sidebar collapsed/expanded preference (pure UI state, no window-related side effects)
 export async function setSidebarCollapsed(collapsed: boolean): Promise<void> {
   return app().SetSidebarCollapsed(collapsed)
+}
+
+// Dismiss the Home page quick-start checklist ("Don't show again" or auto-completed):
+// pure UI preference persisted via the backend config's onboardingDismissed field.
+export async function setOnboardingDismissed(dismissed: boolean): Promise<void> {
+  return app().SetOnboardingDismissed(dismissed)
 }
 
 // Set the Windows system tray toggle (settings item rendered on Windows only; on other

@@ -133,6 +133,7 @@ func (a *App) GetConfig() map[string]interface{} {
 	tray := trayEnabled
 	apiRoute := apiRouteMode
 	sidebarCollapsed := currentSidebarCollapsed
+	onboardingDismissed := currentOnboardingDismissed
 	configMu.Unlock()
 
 	downloadSourceMu.Lock()
@@ -158,6 +159,7 @@ func (a *App) GetConfig() map[string]interface{} {
 		"trayEnabled":         tray,                // Windows system tray toggle
 		"apiRouteMode":        apiRoute,            // API-route (headless) mode toggle
 		"sidebarCollapsed":    sidebarCollapsed,    // sidebar collapsed state (default true = collapsed)
+		"onboardingDismissed": onboardingDismissed, // quick-start checklist dismissed / auto-completed (default false = visible)
 	}
 }
 
@@ -235,6 +237,17 @@ func (a *App) SetTheme(theme string) {
 func (a *App) SetSidebarCollapsed(collapsed bool) {
 	configMu.Lock()
 	currentSidebarCollapsed = collapsed
+	configMu.Unlock()
+	saveConfig()
+}
+
+// SetOnboardingDismissed marks the Home page quick-start checklist as
+// dismissed (manually closed or auto-completed): writes to global state and
+// persists to config. Pure UI preference with no side effects, mirroring
+// SetSidebarCollapsed.
+func (a *App) SetOnboardingDismissed(dismissed bool) {
+	configMu.Lock()
+	currentOnboardingDismissed = dismissed
 	configMu.Unlock()
 	saveConfig()
 }

@@ -64,6 +64,7 @@
       </div>
       <h2>{{ t('models.emptyTitle') }}</h2>
       <p>{{ t('models.emptyHint', { dir: downloadDir || t('settings.dirDefaultModels') }) }}</p>
+      <button class="empty-cta" @click="router.push('/downloads')">{{ t('action.gotoDownloads') }}</button>
     </div>
 
     <!-- Model list -->
@@ -620,6 +621,23 @@ onUnmounted(clearTuneTimers)
   border-radius: 4px;
   font-size: 12px;
   color: var(--text-secondary);
+}
+
+/* Empty-state CTA: jump to the downloads page */
+.empty-cta {
+  padding: 8px 24px;
+  background: var(--active-bg);
+  color: var(--accent-light);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.empty-cta:hover {
+  background: var(--accent-glow);
 }
 
 /* ─── Loading skeleton ─── */

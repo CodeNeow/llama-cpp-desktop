@@ -2,58 +2,147 @@
   <div class="page page-fixed">
     <div class="sticky-top">
       <div class="page-header">
-        <h1 class="page-title">{{ t('home.title') }}</h1>
-        <p class="page-subtitle">{{ t('home.subtitle') }}</p>
+        <div class="page-header-row">
+          <div>
+            <h1 class="page-title">{{ t('home.title') }}</h1>
+            <p class="page-subtitle">{{ t('home.subtitle') }}</p>
+          </div>
+          <div class="header-actions">
+            <span v-if="lastUpdated" class="updated-at">{{ t('home.updatedAt', { time: lastUpdated }) }}</span>
+            <button class="refresh-btn" :disabled="refreshing" @click="fetchSystemInfo(true)">
+              <svg :class="{ spinning: refreshing }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+              </svg>
+              {{ refreshing ? t('home.refreshing') : t('home.refresh') }}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
     <!-- Scrollable content band: only this region scrolls, never the page -->
     <div class="page-scroll">
       <!-- Loading skeleton -->
-      <div v-if="loading" class="loading-grid">
-        <div v-for="i in 5" :key="i" class="skeleton-card">
+      <div v-if="loading" class="cards-grid">
+        <div v-for="i in 6" :key="i" class="info-section skeleton-card">
           <div class="skeleton-line skeleton-title"></div>
           <div class="skeleton-line"></div>
           <div class="skeleton-line skeleton-short"></div>
         </div>
       </div>
 
-      <!-- Error state -->
-      <div v-else-if="error" class="error-card">
+      <!-- Error state: every core probe failed (e.g. backend bridge missing) -->
+      <div v-else-if="loadError" class="error-card">
         <div class="error-icon">
           <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
           </svg>
         </div>
         <h2>{{ t('home.errorTitle') }}</h2>
-        <p>{{ error }}</p>
-        <button class="retry-btn" @click="fetchSystemInfo">{{ t('home.retry') }}</button>
+        <p>{{ loadError }}</p>
+        <button class="retry-btn" @click="fetchSystemInfo(true)">{{ t('home.retry') }}</button>
       </div>
 
       <!-- Data -->
       <template v-else>
         <div class="cards-grid">
-          <!-- CPU Card -->
+          <!-- Quick-start checklist: full-width card, hides once every step
+               completes or the user dismisses it -->
+          <section v-if="onboardingView.visible" class="info-section onboarding-card">
+            <div class="onboarding-head">
+              <h2 class="section-title">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>
+                </svg>
+                {{ t('onboarding.title') }}
+              </h2>
+              <button class="onboarding-dismiss" @click="dismissOnboarding">{{ t('onboarding.dismiss') }}</button>
+            </div>
+            <ol class="onboarding-steps">
+              <li
+                v-for="(step, idx) in onboardingView.steps"
+                :key="step.id"
+                class="onboarding-step"
+                :class="{ done: step.done }"
+              >
+                <span class="step-marker">
+                  <svg v-if="step.done" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                  <template v-else>{{ idx + 1 }}</template>
+                </span>
+                <span class="step-label">{{ t(ONBOARDING_LABELS[step.id]) }}</span>
+                <button v-if="!step.done" class="step-action" @click="goStep(step.route)">
+                  {{ t('onboarding.goto') }}
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+                  </svg>
+                </button>
+                <span v-else class="step-done-label">{{ t('onboarding.done') }}</span>
+              </li>
+            </ol>
+          </section>
+
+          <!-- GPU Card -->
           <section class="info-section">
             <h2 class="section-title">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/>
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
               </svg>
-              {{ t('home.cpu') }}
+              {{ t('home.gpu') }}
+              <span v-if="multiGpu" class="title-chip">×{{ gpuViews.length }}</span>
             </h2>
-            <div class="info-grid">
-              <div class="info-item info-item-full">
-                <span class="info-label">{{ t('home.cpu.model') }}</span>
-                <span class="info-value">{{ info.cpu.model }}</span>
+            <div v-if="gpuViews.length > 0">
+              <!-- Aggregate VRAM across GPUs: the number that matters for model offloading -->
+              <div v-if="multiGpu && vramTotals" class="usage-block">
+                <div class="usage-row">
+                  <span class="usage-name">{{ t('home.gpu.vramTotal') }}</span>
+                  <span class="usage-caption">{{ formatMB(vramTotals.usedMb) }} / {{ formatMB(vramTotals.totalMb) }}</span>
+                  <span class="usage-pct">{{ t('home.usagePercent', { pct: usagePercent(vramTotals.usedMb, vramTotals.totalMb) }) }}</span>
+                </div>
+                <div
+                  class="usage-bar"
+                  role="progressbar"
+                  :aria-valuenow="usagePercent(vramTotals.usedMb, vramTotals.totalMb)"
+                  aria-valuemin="0"
+                  aria-valuemax="100"
+                  :aria-label="t('home.gpu.vramTotal')"
+                >
+                  <div class="usage-fill" :style="{ width: usagePercent(vramTotals.usedMb, vramTotals.totalMb) + '%' }"></div>
+                </div>
               </div>
-              <div class="info-item">
-                <span class="info-label">{{ t('home.cpu.cores') }}</span>
-                <span class="info-value">{{ t('home.cpu.coresValue', { n: info.cpu.cores }) }}</span>
+              <div
+                v-for="(gpu, i) in gpuViews"
+                :key="i"
+                class="gpu-block"
+                :class="{ divided: i > 0 }"
+              >
+                <div class="usage-row">
+                  <span class="usage-name gpu-name">{{ gpu.name }}</span>
+                  <span class="usage-caption">{{ formatMB(gpu.usedMb) }} / {{ formatMB(gpu.totalMb) }}</span>
+                  <span class="usage-pct">{{ t('home.usagePercent', { pct: usagePercent(gpu.usedMb, gpu.totalMb) }) }}</span>
+                </div>
+                <div
+                  class="usage-bar"
+                  role="progressbar"
+                  :aria-valuenow="usagePercent(gpu.usedMb, gpu.totalMb)"
+                  aria-valuemin="0"
+                  aria-valuemax="100"
+                  :aria-label="gpu.name"
+                >
+                  <div class="usage-fill" :style="{ width: usagePercent(gpu.usedMb, gpu.totalMb) + '%' }"></div>
+                </div>
+                <div class="meta-row">
+                  <span>{{ t('home.gpu.memory') }} {{ formatMB(gpu.totalMb) }}</span>
+                  <span v-if="gpu.utilPercent !== null">{{ t('home.gpu.util') }} {{ t('home.usagePercent', { pct: gpu.utilPercent }) }}</span>
+                  <span>{{ t('home.gpu.computeCap') }} {{ gpu.computeCapability > 0 ? gpu.computeCapability.toFixed(1) : 'N/A' }}</span>
+                  <span>{{ t('home.gpu.driver') }} {{ gpu.driverVersion || 'N/A' }}</span>
+                </div>
               </div>
-              <div class="info-item">
-                <span class="info-label">{{ t('home.cpu.threads') }}</span>
-                <span class="info-value">{{ t('home.cpu.threadsValue', { n: info.cpu.logicalCpus }) }}</span>
-              </div>
+            </div>
+            <div v-else class="info-empty">
+              <span>{{ t('home.gpu.none') }}</span>
             </div>
           </section>
 
@@ -65,66 +154,25 @@
               </svg>
               {{ t('home.memory') }}
             </h2>
-            <!-- Usage progress bar -->
-            <div class="memory-usage">
-              <div class="memory-usage-header">
-                <span class="memory-usage-label">{{ t('home.memory.usageLabel', { used: formatGB(info.memory.totalGb - info.memory.freeGb), total: formatGB(info.memory.totalGb) }) }}</span>
-                <span class="memory-usage-pct">{{ t('home.memory.usagePercent', { pct: usagePercent(info.memory.totalGb - info.memory.freeGb, info.memory.totalGb) }) }}</span>
+            <div class="usage-block">
+              <div class="usage-row">
+                <span class="usage-name">{{ t('home.usageLabel', { used: formatGB(memoryView.usedGb), total: formatGB(memoryView.totalGb) }) }}</span>
+                <span class="usage-pct">{{ t('home.usagePercent', { pct: memoryView.pct }) }}</span>
               </div>
-              <div class="usage-bar">
-                <div class="usage-fill" :style="{ width: usagePercent(info.memory.totalGb - info.memory.freeGb, info.memory.totalGb) + '%' }"></div>
-              </div>
-            </div>
-            <div class="info-grid">
-              <div class="info-item">
-                <span class="info-label">{{ t('home.memory.total') }}</span>
-                <span class="info-value">{{ formatGB(info.memory.totalGb) }}</span>
-              </div>
-              <div class="info-item">
-                <span class="info-label">{{ t('home.memory.available') }}</span>
-                <span class="info-value">{{ formatGB(info.memory.freeGb) }}</span>
+              <div
+                class="usage-bar"
+                role="progressbar"
+                :aria-valuenow="memoryView.pct"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                :aria-label="t('home.memory')"
+              >
+                <div class="usage-fill" :style="{ width: memoryView.pct + '%' }"></div>
               </div>
             </div>
-          </section>
-
-          <!-- GPU Card -->
-          <section class="info-section">
-            <h2 class="section-title">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
-              </svg>
-              {{ t('home.gpu') }}
-            </h2>
-            <div v-if="info.gpu && info.gpu.length > 0">
-              <div v-for="(gpu, i) in info.gpu" :key="i" class="info-grid gpu-grid">
-                <div class="info-item info-item-full">
-                  <span class="info-label">{{ t('home.gpu.model') }}</span>
-                  <span class="info-value gpu-name">{{ gpu.name }}</span>
-                </div>
-                <div class="info-item">
-                  <span class="info-label">{{ t('home.gpu.memory') }}</span>
-                  <span class="info-value">{{ formatMB(gpu.memoryMb) }}</span>
-                </div>
-                <div class="info-item">
-                  <span class="info-label">{{ t('home.gpu.memoryUsed') }}</span>
-                  <span class="info-value">{{ formatMB(gpu.memoryUsedMb) }}</span>
-                </div>
-                <div class="info-item">
-                  <span class="info-label">{{ t('home.gpu.memoryUsage') }}</span>
-                  <span class="info-value">{{ t('home.gpu.memoryUsageValue', { pct: usagePercent(gpu.memoryUsedMb, gpu.memoryMb) }) }}</span>
-                </div>
-                <div class="info-item">
-                  <span class="info-label">{{ t('home.gpu.driver') }}</span>
-                  <span class="info-value">{{ gpu.driverVersion }}</span>
-                </div>
-                <div class="info-item">
-                  <span class="info-label">{{ t('home.gpu.computeCap') }}</span>
-                  <span class="info-value">{{ gpu.computeCapability > 0 ? gpu.computeCapability.toFixed(1) : 'N/A' }}</span>
-                </div>
-              </div>
-            </div>
-            <div v-else class="info-empty">
-              <span>{{ t('home.gpu.none') }}</span>
+            <div class="meta-row spaced">
+              <span>{{ t('home.memory.total') }} {{ formatGB(memoryView.totalGb) }}</span>
+              <span>{{ t('home.memory.available') }} {{ formatGB(memoryView.freeGb) }}</span>
             </div>
           </section>
 
@@ -155,9 +203,53 @@
               </div>
               <div class="info-item" v-if="info.cuda.available && firstGpuComputeCap > 0">
                 <span class="info-label">{{ t('home.cuda.compat') }}</span>
-                <span class="info-value" :class="cudaCompatClass">{{ t('home.cuda.compatValue', { compat: cudaCompatText }) }}</span>
+                <span class="info-value" :class="{ 'warning-text': cudaLevel === 'blackwell' }">
+                  {{ cudaLevel === 'blackwell' ? t('home.cuda.compatBlackwell') : t('home.cuda.compatOk') }}
+                </span>
               </div>
             </div>
+          </section>
+
+          <!-- CPU Card -->
+          <section class="info-section">
+            <h2 class="section-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/>
+              </svg>
+              {{ t('home.cpu') }}
+            </h2>
+            <div class="info-grid">
+              <div class="info-item info-item-full">
+                <span class="info-label">{{ t('home.cpu.model') }}</span>
+                <span class="info-value">{{ info.cpu.model || 'N/A' }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{ t('home.cpu.cores') }}</span>
+                <span class="info-value">{{ t('home.cpu.coresValue', { n: info.cpu.cores }) }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{ t('home.cpu.threads') }}</span>
+                <span class="info-value">{{ t('home.cpu.threadsValue', { n: info.cpu.logicalCpus }) }}</span>
+              </div>
+            </div>
+            <template v-if="liveCpuPct !== null">
+              <div class="usage-block">
+                <div class="usage-row">
+                  <span class="usage-name">{{ t('home.cpu.load') }}</span>
+                  <span class="usage-pct">{{ t('home.usagePercent', { pct: liveCpuPct }) }}</span>
+                </div>
+                <div
+                  class="usage-bar"
+                  role="progressbar"
+                  :aria-valuenow="liveCpuPct"
+                  aria-valuemin="0"
+                  aria-valuemax="100"
+                  :aria-label="t('home.cpu.load')"
+                >
+                  <div class="usage-fill" :style="{ width: liveCpuPct + '%' }"></div>
+                </div>
+              </div>
+            </template>
           </section>
 
           <!-- Disk Card -->
@@ -168,34 +260,38 @@
               </svg>
               {{ t('home.disk') }}
             </h2>
-            <div v-if="info.disk" class="info-grid">
-              <div class="info-item">
-                <span class="info-label">{{ t('home.disk.path') }}</span>
-                <span class="info-value">{{ info.disk.path }}</span>
+            <template v-if="diskView">
+              <div class="usage-block">
+                <div class="usage-row">
+                  <span class="usage-name">{{ t('home.usageLabel', { used: formatBytes(diskView.used), total: formatBytes(diskView.total) }) }}</span>
+                  <span class="usage-pct">{{ t('home.usagePercent', { pct: diskPct }) }}</span>
+                </div>
+                <div
+                  class="usage-bar"
+                  role="progressbar"
+                  :aria-valuenow="diskPct"
+                  aria-valuemin="0"
+                  aria-valuemax="100"
+                  :aria-label="t('home.disk')"
+                >
+                  <div class="usage-fill" :style="{ width: diskPct + '%' }"></div>
+                </div>
               </div>
-              <div class="info-item">
-                <span class="info-label">{{ t('home.disk.total') }}</span>
-                <span class="info-value">{{ formatBytes(info.disk.total) }}</span>
+              <div class="meta-row spaced">
+                <span class="meta-path">{{ t('home.disk.path') }} {{ diskView.path }}</span>
+                <span>{{ t('home.disk.free') }} {{ formatBytes(diskView.total - diskView.used) }}</span>
               </div>
-              <div class="info-item">
-                <span class="info-label">{{ t('home.disk.used') }}</span>
-                <span class="info-value">{{ formatBytes(info.disk.used) }}</span>
-              </div>
-              <div class="info-item">
-                <span class="info-label">{{ t('home.disk.free') }}</span>
-                <span class="info-value">{{ formatBytes(info.disk.total - info.disk.used) }}</span>
-              </div>
-            </div>
+            </template>
             <div v-else class="info-empty">
               <span>{{ t('home.disk.notAvailable') }}</span>
             </div>
           </section>
 
-          <!-- OS Info -->
+          <!-- System Card -->
           <section class="info-section">
             <h2 class="section-title">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+                <rect x="3" y="4" width="18" height="12" rx="2"/><line x1="2" y1="20" x2="22" y2="20"/>
               </svg>
               {{ t('home.os') }}
             </h2>
@@ -206,7 +302,11 @@
               </div>
               <div class="info-item">
                 <span class="info-label">{{ t('home.os.arch') }}</span>
-                <span class="info-value">{{ info.arch }}</span>
+                <span class="info-value">{{ info.arch || 'N/A' }}</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">{{ t('home.appVersion') }}</span>
+                <span class="info-value">{{ info.appVersion || 'N/A' }}</span>
               </div>
             </div>
           </section>
@@ -217,19 +317,47 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
-import { getCPU, getMemory, getGPU, getCUDA, getOS, getDisk } from '../wails'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { getCPU, getMemory, getGPU, getCUDA, getOS, getDisk, getLlamaCpp, getModels, getMonitorStatus, getAppVersion } from '../wails'
 import { t } from '../lib/i18n'
 import { usagePercent, formatGB, formatMB, formatBytes } from '../lib/format'
+import { aggregateVram, buildGpuDisplays, cudaCompatLevel, type GpuStaticInfo } from '../lib/sysinfo'
+import { buildOnboardingView, type OnboardingStepId } from '../lib/onboarding'
+import type { MonitorStatus } from '../lib/monitor'
+import { appConfig, setOnboardingDismissed } from '../store'
 
 interface SystemInfo {
   os: string
   arch: string
   cpu: { model: string; cores: number; logicalCpus: number }
   memory: { totalGb: number; freeGb: number }
-  gpu: { name: string; memoryMb: number; memoryUsedMb: number; driverVersion: string; computeCapability: number }[]
+  gpu: GpuStaticInfo[]
   cuda: { available: boolean; driverVersion: string; toolkitVersion: string }
   disk: { path: string; used: number; total: number } | null
+  appVersion: string
+}
+
+/** Live metrics sampled periodically via GetMonitorStatus (byte units); falls back to the static snapshot. */
+interface LiveSnapshot {
+  cpuPercent: number | null
+  memUsedBytes: number
+  memTotalBytes: number
+  gpus: MonitorStatus['gpus']
+  disk: { path: string; used: number; total: number } | null
+  serverRunning: boolean
+}
+
+// Quick-start checklist facts probed alongside the system info
+const runtimeInstalled = ref(false)
+const hasModels = ref(false)
+
+const router = useRouter()
+
+const ONBOARDING_LABELS: Record<OnboardingStepId, string> = {
+  runtime: 'onboarding.step.runtime',
+  models: 'onboarding.step.models',
+  service: 'onboarding.step.service'
 }
 
 const info = ref<SystemInfo>({
@@ -238,13 +366,56 @@ const info = ref<SystemInfo>({
   memory: { totalGb: 0, freeGb: 0 },
   gpu: [],
   cuda: { available: false, driverVersion: '', toolkitVersion: '' },
-  disk: null
+  disk: null,
+  appVersion: ''
 })
-const sectionsReady = reactive({
-  cpu: false, memory: false, gpu: false, cuda: false, disk: false, os: false
-})
+const live = ref<LiveSnapshot | null>(null)
 const loading = ref(true)
-const error = ref('')
+const refreshing = ref(false)
+const loadError = ref('')
+const lastUpdated = ref('')
+
+let pollTimer: ReturnType<typeof setInterval> | null = null
+
+// ─── Derived views ───────────────────────────────────────────────
+
+const gpuViews = computed(() => buildGpuDisplays(info.value.gpu, live.value?.gpus ?? null))
+const multiGpu = computed(() => gpuViews.value.length > 1)
+const vramTotals = computed(() => aggregateVram(gpuViews.value))
+
+const memoryView = computed(() => {
+  const l = live.value
+  if (l && l.memTotalBytes > 0) {
+    const gb = 1024 ** 3
+    const usedGb = l.memUsedBytes / gb
+    const totalGb = l.memTotalBytes / gb
+    return {
+      usedGb,
+      totalGb,
+      freeGb: Math.max(0, totalGb - usedGb),
+      pct: usagePercent(l.memUsedBytes, l.memTotalBytes)
+    }
+  }
+  const total = info.value.memory.totalGb
+  const free = info.value.memory.freeGb
+  return {
+    usedGb: Math.max(0, total - free),
+    totalGb: total,
+    freeGb: free,
+    pct: usagePercent(total - free, total)
+  }
+})
+
+const diskView = computed(() => live.value?.disk ?? info.value.disk)
+const diskPct = computed(() => {
+  const d = diskView.value
+  return d ? usagePercent(d.used, d.total) : 0
+})
+
+const liveCpuPct = computed(() => {
+  const p = live.value?.cpuPercent
+  return p === null || p === undefined ? null : Math.round(p * 10) / 10
+})
 
 const osLabel = computed(() => {
   const labels: Record<string, string> = {
@@ -252,65 +423,124 @@ const osLabel = computed(() => {
     linux: 'Linux',
     darwin: 'macOS'
   }
-  return labels[info.value.os] || info.value.os || '...'
+  return labels[info.value.os] || info.value.os || 'N/A'
 })
 
-// First GPU compute capability (for CUDA compatibility hint)
-const firstGpuComputeCap = computed(() => {
-  if (info.value.gpu && info.value.gpu.length > 0) {
-    return info.value.gpu[0].computeCapability
+const firstGpuComputeCap = computed(() => info.value.gpu[0]?.computeCapability ?? 0)
+const cudaLevel = computed(() => cudaCompatLevel(firstGpuComputeCap.value))
+
+// Quick-start checklist: derives visibility/steps from probed facts + persisted dismissal
+const onboardingView = computed(() => buildOnboardingView({
+  runtimeInstalled: runtimeInstalled.value,
+  hasModels: hasModels.value,
+  serviceRunning: live.value?.serverRunning === true,
+  dismissed: appConfig.onboardingDismissed
+}))
+
+// Auto-complete: once every step is satisfied, persist the dismissal so the
+// card never reappears after the user later stops the service
+watch(() => onboardingView.value.allDone, (allDone) => {
+  if (allDone && !appConfig.onboardingDismissed) {
+    setOnboardingDismissed(true)
   }
-  return 0
 })
 
-// CUDA compatibility hint: based on GPU compute capability, suggest the
-// required CUDA runtime version for llama.cpp binaries.
-const cudaCompatText = computed(() => {
-  if (info.value.cuda.available && firstGpuComputeCap.value >= 12.0) {
-    return t('home.cuda.compatBlackwell')
+function dismissOnboarding() {
+  setOnboardingDismissed(true)
+}
+
+function goStep(route: string) {
+  router.push(route)
+}
+
+// ─── Data loading ────────────────────────────────────────────────
+
+function stampUpdated() {
+  lastUpdated.value = new Date().toLocaleTimeString([], { hour12: false })
+}
+
+/**
+ * Full probe of the static system info (hardware identity, versions).
+ * Probes run in parallel and settle independently; partial failures render
+ * as N/A values while an all-fail result switches to the error card.
+ */
+async function fetchSystemInfo(manual = false) {
+  if (manual) {
+    refreshing.value = true
+  } else {
+    loading.value = true
   }
-  return t('home.cuda.compatOk')
-})
+  loadError.value = ''
 
-const cudaCompatClass = computed(() => {
-  if (info.value.cuda.available && firstGpuComputeCap.value >= 12.0) {
-    return 'warning-text'
-  }
-  return ''
-})
+  // Best-effort, not part of the all-failed detection (cosmetic field)
+  getAppVersion()
+    .then(v => { info.value.appVersion = v })
+    .catch(() => {})
+  // Quick-start checklist facts: best-effort probes (cosmetic as well)
+  getLlamaCpp()
+    .then(d => { runtimeInstalled.value = d?.installed === true })
+    .catch(() => {})
+  getModels()
+    .then(list => { hasModels.value = Array.isArray(list) && list.length > 0 })
+    .catch(() => {})
 
-async function fetchSystemInfo() {
-  loading.value = true
-  error.value = ''
-
-  const fetchers: [() => Promise<any>, keyof typeof sectionsReady, (data: any) => void][] = [
-    [getCPU, 'cpu', (d) => { info.value.cpu = d }],
-    [getMemory, 'memory', (d) => { info.value.memory = d }],
-    [getGPU, 'gpu', (d) => { info.value.gpu = d || [] }],
-    [getCUDA, 'cuda', (d) => { info.value.cuda = d }],
-    [getOS, 'os', (d) => { info.value.os = d.os; info.value.arch = d.arch }],
-    [getDisk, 'disk', (d) => { info.value.disk = d }],
+  // Each probe applies its result with an explicit narrowing cast: the Wails
+  // bridge is untyped (Promise<any>), so the target shape comes from SystemInfo.
+  const probes: [Promise<unknown>, (data: unknown) => void][] = [
+    [getCPU(), d => { info.value.cpu = d as SystemInfo['cpu'] }],
+    [getMemory(), d => { info.value.memory = d as SystemInfo['memory'] }],
+    [getGPU(), d => { info.value.gpu = (d as GpuStaticInfo[] | null) || [] }],
+    [getCUDA(), d => { info.value.cuda = d as SystemInfo['cuda'] }],
+    [getOS(), d => { const o = d as { os: string; arch: string }; info.value.os = o.os; info.value.arch = o.arch }],
+    [getDisk(), d => { info.value.disk = d as SystemInfo['disk'] }]
   ]
 
-  // Fire all fetches in parallel, resolve each independently
-  let pending = fetchers.length
-  fetchers.forEach(([fn, key, setter]) => {
-    fn()
-      .then(data => { setter(data) })
-      .catch(() => {})
-      .finally(() => {
-        sectionsReady[key] = true
-        pending--
-        if (pending <= 0) loading.value = false
-      })
+  const settled = await Promise.allSettled(probes.map(([p]) => p))
+  probes.forEach(([, setter], i) => {
+    const r = settled[i]
+    if (r.status === 'fulfilled') setter(r.value)
   })
 
-  // Show content after 600ms even if not all done
-  setTimeout(() => { if (pending > 0) loading.value = false }, 600)
+  const firstFailure = settled.find((r): r is PromiseRejectedResult => r.status === 'rejected')
+  if (firstFailure && settled.every(r => r.status === 'rejected')) {
+    const reason = firstFailure.reason
+    loadError.value = t('home.backendError', { msg: reason instanceof Error ? reason.message : String(reason ?? '') })
+  }
+
+  loading.value = false
+  refreshing.value = false
+  stampUpdated()
+}
+
+/** Poll live metrics (RAM / VRAM / utilization / disk) while the page is mounted. */
+async function pollLive() {
+  try {
+    const s = await getMonitorStatus()
+    live.value = {
+      cpuPercent: Number.isFinite(s.cpuPercent) ? s.cpuPercent : null,
+      memUsedBytes: s.memUsed,
+      memTotalBytes: s.memTotal,
+      gpus: Array.isArray(s.gpus) ? s.gpus : [],
+      disk: s.disk ?? null,
+      serverRunning: s.serverRunning === true
+    }
+    stampUpdated()
+  } catch {
+    // Transient sampling failure: keep displaying the last good sample
+  }
 }
 
 onMounted(() => {
   fetchSystemInfo()
+  pollLive()
+  pollTimer = setInterval(pollLive, 3000)
+})
+
+onUnmounted(() => {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
 })
 </script>
 
@@ -333,14 +563,89 @@ onMounted(() => {
   padding-bottom: 36px;
 }
 
-/* Scrollable content band: absorbs the remaining viewport height and flows
-   content with flex layout — no internal scrollbar, cards wrap naturally
-   within the available space. */
+/* Scrollable content band: absorbs the remaining viewport height and scrolls
+   internally, so the page itself never scrolls */
 .page-scroll {
   flex: 1;
   min-height: 0;
+  overflow-y: auto;
+  /* Bottom clearance so the last row of cards clears the floating TaskDock
+     pill (--dock-reserve is bound globally by App.vue; 0 while hidden) */
+  padding-bottom: calc(24px + var(--dock-reserve, 0px));
+}
+
+/* Thin scrollbar matching .content-area (App.vue) so the inner band does not
+   render a full-width system scrollbar */
+.page-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.page-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.page-scroll::-webkit-scrollbar-thumb {
+  background: var(--overlay-10);
+  border-radius: 3px;
+}
+
+.page-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+.page-header-row {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.updated-at {
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.refresh-btn:hover:not(:disabled) {
+  background: var(--hover-bg);
+  border-color: var(--overlay-20);
+  color: var(--text-primary);
+}
+
+.refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.refresh-btn svg.spinning {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .page-title {
@@ -369,7 +674,120 @@ onMounted(() => {
 }
 
 .section-title svg {
-  color: #a78bfa;
+  color: var(--accent-light);
+  flex-shrink: 0;
+}
+
+.title-chip {
+  padding: 0 8px;
+  border-radius: 10px;
+  background: var(--active-bg);
+  color: var(--accent-light);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+/* ─── Quick-start checklist ─── */
+.onboarding-card {
+  grid-column: 1 / -1;
+}
+
+.onboarding-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.onboarding-head .section-title {
+  margin-bottom: 14px;
+}
+
+.onboarding-dismiss {
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  transition: color 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+
+.onboarding-dismiss:hover {
+  color: var(--text-secondary);
+  background: var(--hover-bg);
+}
+
+.onboarding-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.onboarding-step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.step-marker {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.onboarding-step.done .step-marker {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: transparent;
+  color: var(--success);
+}
+
+.onboarding-step.done .step-label {
+  color: var(--text-dim);
+}
+
+.step-action {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  background: var(--active-bg);
+  color: var(--accent-light);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.step-action:hover {
+  background: var(--accent-glow);
+}
+
+.step-done-label {
+  margin-left: auto;
+  color: var(--success);
+  font-size: 12px;
+  font-weight: 600;
   flex-shrink: 0;
 }
 
@@ -378,18 +796,6 @@ onMounted(() => {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 14px;
-}
-
-.gpu-grid {
-  margin-bottom: 12px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--border-light);
-}
-
-.gpu-grid:last-child {
-  margin-bottom: 0;
-  padding-bottom: 0;
-  border-bottom: none;
 }
 
 .info-item {
@@ -417,13 +823,99 @@ onMounted(() => {
   word-break: break-all;
 }
 
+/* ─── Usage bars (shared visual language: RAM / VRAM / disk / CPU) ─── */
+.usage-block {
+  margin-bottom: 14px;
+}
+
+.usage-block:last-child {
+  margin-bottom: 0;
+}
+
+.usage-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.usage-name {
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-caption {
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.usage-pct {
+  font-weight: 700;
+  color: var(--accent-light);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.usage-bar {
+  height: 6px;
+  background: var(--overlay-8);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.usage-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-light));
+  transition: width 0.6s ease;
+}
+
 .gpu-name {
-  color: #a78bfa;
+  color: var(--accent-light);
   font-weight: 600;
 }
 
+.meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.meta-row.spaced {
+  margin-top: 2px;
+}
+
+.meta-path {
+  word-break: break-all;
+}
+
+.gpu-block {
+  padding: 14px 0;
+}
+
+/* Tight rhythm against the card title / card bottom edge */
+.gpu-block:first-child {
+  padding-top: 0;
+}
+
+.gpu-block:last-child {
+  padding-bottom: 0;
+}
+
+/* Divider only between consecutive GPU blocks */
+.gpu-block.divided {
+  border-top: 1px solid var(--border-light);
+}
+
 .warning-text {
-  color: #f59e0b;
+  color: var(--warning);
   font-weight: 600;
 }
 
@@ -440,13 +932,13 @@ onMounted(() => {
 
 .status-badge.available {
   background: rgba(34, 197, 94, 0.12);
-  color: #22c55e;
+  color: var(--success);
   border: 1px solid rgba(34, 197, 94, 0.2);
 }
 
 .status-badge.unavailable {
   background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
+  color: var(--danger);
   border: 1px solid rgba(239, 68, 68, 0.15);
 }
 
@@ -459,17 +951,8 @@ onMounted(() => {
 }
 
 /* ─── Loading skeleton ─── */
-.loading-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 20px;
-}
-
 .skeleton-card {
-  padding: 24px 28px;
-  background: var(--surface);
-  border: 1px solid var(--skeleton-bg);
-  border-radius: 14px;
+  min-height: 140px;
 }
 
 .skeleton-line {
@@ -496,17 +979,20 @@ onMounted(() => {
 
 /* ─── Cards grid ─── */
 .cards-grid {
-  display: flex;
-  flex-wrap: wrap;
+  /* Fully elastic: tracks appear only while a 400px card fits, so the grid
+     collapses 2 → 1 columns on its own on narrow windows (no media queries).
+     auto-fill keeps every card the same width instead of letting the last
+     incomplete row stretch. */
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 400px), 1fr));
   gap: 20px;
-  flex: 1;
+  align-content: start;
 }
 
-/* Each info-section takes half the row width (minus gap), then stretches
-   vertically so both columns in the same row share the same height.
-   flex-direction: column on the card lets content fill freely. */
+/* min-width: 0 lets long unbreakable strings (GPU names, disk paths) shrink
+   inside the track instead of blowing the grid past the viewport */
 .info-section {
-  flex: 0 0 calc(50% - 10px);
+  min-width: 0;
   padding: 24px 28px;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -518,43 +1004,6 @@ onMounted(() => {
 
 .info-section:hover {
   border-color: var(--overlay-10);
-}
-
-/* ─── Memory usage bar ─── */
-.memory-usage {
-  margin-bottom: 16px;
-}
-
-.memory-usage-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-  font-size: 13px;
-}
-
-.memory-usage-label {
-  color: var(--text-dim);
-}
-
-.memory-usage-pct {
-  font-weight: 700;
-  color: #a78bfa;
-  font-size: 13px;
-}
-
-.usage-bar {
-  height: 6px;
-  background: var(--overlay-8);
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.usage-fill {
-  height: 100%;
-  border-radius: 3px;
-  background: linear-gradient(90deg, #6366f1, #a78bfa);
-  transition: width 0.3s ease;
 }
 
 /* ─── Error ─── */
@@ -589,9 +1038,9 @@ onMounted(() => {
 
 .retry-btn {
   padding: 8px 24px;
-  background: rgba(99, 102, 241, 0.15);
-  color: #a78bfa;
-  border: 1px solid rgba(99, 102, 241, 0.25);
+  background: var(--active-bg);
+  color: var(--accent-light);
+  border: 1px solid var(--overlay-20);
   border-radius: 8px;
   font-size: 13px;
   font-weight: 500;
@@ -600,7 +1049,6 @@ onMounted(() => {
 }
 
 .retry-btn:hover {
-  background: rgba(99, 102, 241, 0.25);
-  border-color: rgba(99, 102, 241, 0.4);
+  background: var(--accent-glow);
 }
 </style>
