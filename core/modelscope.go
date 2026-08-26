@@ -15,8 +15,10 @@ import (
 // ─── ModelScope API Client ─────────────────────────────────────────
 //
 // ModelScope exposes two endpoint sets:
-//   - OpenAPI (modelscope.ai/openapi/v1): model search, returns
-//     {success, data:{models}};
+//   - OpenAPI (modelscope.cn/openapi/v1): model search, returns
+//     {success, data:{models}}. modelscope.cn is the China-accessible host and
+//     is used as the primary; modelscope.ai is kept as a fallback for
+//     international reachability.
 //   - Legacy API (modelscope.cn/api/v1/models): file listing and file download
 //     (repo endpoint).
 // Both bases are declared as package-level vars so tests can swap in a local
@@ -24,7 +26,8 @@ import (
 // ModelScope uses var injection because buildModelDownloadURL and friends do
 // not take a base parameter).
 
-var modelscopeOpenAPIBase = "https://modelscope.ai/openapi/v1"
+var modelscopeOpenAPIBase = "https://modelscope.cn/openapi/v1"
+var modelscopeOpenAPIFallback = "https://modelscope.ai/openapi/v1"
 var modelscopeLegacyBase = "https://modelscope.cn/api/v1/models"
 
 // modelscopeSearchResponse is the top-level response structure for ModelScope
@@ -37,13 +40,16 @@ type modelscopeSearchResponse struct {
 }
 
 // modelscopeModel is a single model item returned by OpenAPI search.
-// downloads / likes may be numbers or numeric strings in real ModelScope
-// responses, so json.RawMessage is used with parseLenientInt for loose parsing;
-// this avoids discarding entire results due to type mismatches.
+// The OpenAPI response uses "id" (e.g. "Qwen/Qwen2.5-0.5B") for the repo path;
+// the legacy endpoint used "Path", so both are parsed with "id" winning and
+// "Path" as a fallback. downloads / likes may be numbers or numeric strings,
+// so json.RawMessage is used with parseLenientInt for loose parsing.
 type modelscopeModel struct {
+	ID        string          `json:"id"`
 	Path      string          `json:"Path"`
 	Downloads json.RawMessage `json:"downloads"`
 	Likes     json.RawMessage `json:"likes"`
+	Tasks     []string        `json:"tasks"`
 	Tags      []string        `json:"tags"`
 }
 
@@ -69,22 +75,52 @@ func parseLenientInt(raw json.RawMessage) int {
 	return 0
 }
 
-// searchModelScope searches ModelScope models using the default OpenAPI base.
+// modelScopeIsGGUF reports whether a ModelScope model is a GGUF repository,
+// using the only GGUF signals available at search time (the search response
+// does not include file lists): the repo id or any tag contains "gguf"
+// (case-insensitive). This covers library:gguf, custom_tag:gguf, and -GGUF
+// repo names, keeping ModelScope search aligned with HF's GGUF-only results.
+func modelScopeIsGGUF(modelID string, tags []string) bool {
+	if strings.Contains(strings.ToLower(modelID), "gguf") {
+		return true
+	}
+	for _, tag := range tags {
+		if strings.Contains(strings.ToLower(tag), "gguf") {
+			return true
+		}
+	}
+	return false
+}
+
+// searchModelScope searches ModelScope models using the default OpenAPI base,
+// falling back to the alternate host when the primary fails (covers
+// region-specific reachability differences between modelscope.cn and
+// modelscope.ai).
 func searchModelScope(q string) ([]HFSearchResult, error) {
-	return searchModelScopeAt(modelscopeOpenAPIBase, q)
+	res, err := searchModelScopeAt(modelscopeOpenAPIBase, q)
+	if err == nil {
+		return res, nil
+	}
+	return searchModelScopeAt(modelscopeOpenAPIFallback, q)
 }
 
 // searchModelScopeAt fetches the model list from the ModelScope OpenAPI search
 // endpoint (page_number=1&page_size=50). Response
 // {success, data:{models:[...]}}: success!=true returns error; each model maps
-// modelId=id=Path, author=first segment of Path, downloads/likes are parsed
-// loosely, tags are passed through. **No hasGGUF filtering here**: ModelScope
-// search responses do not include file lists, so hasGGUF filtering would empty
-// the results; GGUF filtering happens at the file-list stage
-// (listModelScopeFilesAt).
+// modelId=id (Path fallback), author=first segment of the id, downloads/likes
+// are parsed loosely, the first task becomes the pipeline tag, and tags pass
+// through. The query is biased toward GGUF (see below) and results are further
+// filtered to GGUF repositories (modelScopeIsGGUF) as a safety net, so the
+// search stays aligned with HF's GGUF-only results and the detail page always
+// has downloadable files.
 func searchModelScopeAt(openAPIBase, q string) ([]HFSearchResult, error) {
+	// Append " GGUF" to the query so ModelScope ranks GGUF repositories first.
+	// The OpenAPI search has no server-side GGUF/tag filter (the tags= param is
+	// ignored), so biasing the query is the lightweight way to surface GGUF
+	// models; the name/tag post-filter below is a safety net for any non-GGUF
+	// result that still slips in.
 	apiURL := fmt.Sprintf("%s/models?search=%s&page_number=1&page_size=50",
-		openAPIBase, url.QueryEscape(q))
+		openAPIBase, url.QueryEscape(q+" GGUF"))
 
 	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
@@ -113,22 +149,37 @@ func searchModelScopeAt(openAPIBase, q string) ([]HFSearchResult, error) {
 
 	results := make([]HFSearchResult, 0, len(raw.Data.Models))
 	for _, m := range raw.Data.Models {
-		path := m.Path
+		// OpenAPI uses "id"; fall back to legacy "Path" for robustness.
+		path := m.ID
 		if path == "" {
+			path = m.Path
+		}
+		if path == "" {
+			continue
+		}
+		// Keep only GGUF repositories: ModelScope search does not return file
+		// lists, so GGUF presence is inferred from the repo id or tags. This
+		// matches HF search (GGUF-only) and prevents detail pages that show
+		// "no files" for Transformer-format models.
+		if !modelScopeIsGGUF(path, m.Tags) {
 			continue
 		}
 		author := path
 		if parts := strings.SplitN(path, "/", 2); len(parts) == 2 {
 			author = parts[0]
 		}
-		results = append(results, HFSearchResult{
+		result := HFSearchResult{
 			ID:        path,
 			ModelID:   path,
 			Author:    author,
 			Downloads: parseLenientInt(m.Downloads),
 			Likes:     parseLenientInt(m.Likes),
 			Tags:      m.Tags,
-		})
+		}
+		if len(m.Tasks) > 0 {
+			result.PipelineTag = m.Tasks[0]
+		}
+		results = append(results, result)
 	}
 	return results, nil
 }

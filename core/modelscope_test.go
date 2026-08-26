@@ -15,19 +15,26 @@ import (
 func withModelScopeBases(t *testing.T, openAPI, legacy string) {
 	t.Helper()
 	origOpenAPI := modelscopeOpenAPIBase
+	origFallback := modelscopeOpenAPIFallback
 	origLegacy := modelscopeLegacyBase
 	modelscopeOpenAPIBase = openAPI
+	modelscopeOpenAPIFallback = openAPI
 	modelscopeLegacyBase = legacy
 	t.Cleanup(func() {
 		modelscopeOpenAPIBase = origOpenAPI
+		modelscopeOpenAPIFallback = origFallback
 		modelscopeLegacyBase = origLegacy
 	})
 }
 
 // TestSearchModelScopeAt verifies ModelScope OpenAPI search:
-//   - author is taken from the first segment of Path; Path without "/" uses the whole string as author;
+//   - the OpenAPI response uses "id" (not "Path"); "Path" is still accepted as a fallback;
+//   - author is taken from the first segment of id; id without "/" uses the whole string as author;
 //   - downloads/likes in both numeric and numeric-string forms are leniently parsed;
-//   - entries with empty Path are skipped.
+//   - the first task populates PipelineTag;
+//   - entries with empty id (and Path) are skipped;
+//   - non-GGUF models (no "gguf" in id or tags) are filtered out so only
+//     downloadable GGUF repositories are returned.
 func TestSearchModelScopeAt(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -35,10 +42,12 @@ func TestSearchModelScopeAt(t *testing.T) {
 			"success": true,
 			"data": {
 				"models": [
-					{"Path": "author/model-one", "downloads": 100, "likes": "10", "tags": ["llm"]},
-					{"Path": "author/model-two", "downloads": "200", "likes": 20, "tags": []},
-					{"Path": "", "downloads": 1, "likes": 1},
-					{"Path": "no-slash-model", "downloads": 1, "likes": 1}
+					{"id": "author/gguf-model-one", "downloads": 100, "likes": "10", "tags": ["llm"], "tasks": ["text-generation"]},
+					{"id": "author/model-two", "downloads": "200", "likes": 20, "tags": ["library:gguf"]},
+					{"id": "", "downloads": 1, "likes": 1},
+					{"id": "gguf-noslash-model", "downloads": 1, "likes": 1},
+					{"id": "author/plain-model", "downloads": 1, "likes": 1, "tags": ["llm"]},
+					{"Path": "legacy/owner-gguf-model", "downloads": 7, "likes": 3}
 				]
 			}
 		}`))
@@ -50,15 +59,17 @@ func TestSearchModelScopeAt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(results) != 3 {
-		t.Fatalf("result count = %d, want 3 (empty Path entries should be skipped)", len(results))
+	// kept: gguf-model-one, model-two (tag library:gguf), gguf-noslash-model,
+	// legacy/owner-gguf-model. dropped: empty id, author/plain-model (non-GGUF).
+	if len(results) != 4 {
+		t.Fatalf("result count = %d, want 4 (empty id and non-GGUF entries should be skipped)", len(results))
 	}
 	m1 := results[0]
-	if m1.ModelID != "author/model-one" || m1.ID != "author/model-one" {
+	if m1.ModelID != "author/gguf-model-one" || m1.ID != "author/gguf-model-one" {
 		t.Errorf("model-one ModelID/ID = %q/%q", m1.ModelID, m1.ID)
 	}
 	if m1.Author != "author" {
-		t.Errorf("model-one author = %q, want author (first Path segment)", m1.Author)
+		t.Errorf("model-one author = %q, want author (first id segment)", m1.Author)
 	}
 	if m1.Downloads != 100 || m1.Likes != 10 {
 		t.Errorf("model-one downloads/likes = %d/%d, want 100/10 (numeric and string forms must both parse)", m1.Downloads, m1.Likes)
@@ -66,13 +77,20 @@ func TestSearchModelScopeAt(t *testing.T) {
 	if len(m1.Tags) != 1 || m1.Tags[0] != "llm" {
 		t.Errorf("model-one tags = %v, want [llm]", m1.Tags)
 	}
+	if m1.PipelineTag != "text-generation" {
+		t.Errorf("model-one PipelineTag = %q, want text-generation (from tasks[0])", m1.PipelineTag)
+	}
 	m2 := results[1]
 	if m2.Downloads != 200 || m2.Likes != 20 {
 		t.Errorf("model-two downloads/likes = %d/%d, want 200/20 (string downloads and numeric likes)", m2.Downloads, m2.Likes)
 	}
-	// Path without "/": author is the whole string
-	if results[2].Author != "no-slash-model" {
-		t.Errorf("no-slash-model author = %q, want whole string no-slash-model", results[2].Author)
+	// id without "/": author is the whole string
+	if results[2].Author != "gguf-noslash-model" {
+		t.Errorf("gguf-noslash-model author = %q, want whole string gguf-noslash-model", results[2].Author)
+	}
+	// legacy "Path" fallback is still parsed
+	if results[3].ModelID != "legacy/owner-gguf-model" || results[3].Author != "legacy" {
+		t.Errorf("legacy Path fallback = %q/%q, want legacy/owner-gguf-model/legacy", results[3].ModelID, results[3].Author)
 	}
 }
 
