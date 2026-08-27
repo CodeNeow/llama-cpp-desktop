@@ -406,6 +406,7 @@ export namespace core {
 	    port: number;
 	    maxModels: number;
 	    cacheRam: number;
+	    apiKey: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ServerConfig(source);
@@ -418,6 +419,7 @@ export namespace core {
 	        this.port = source["port"];
 	        this.maxModels = source["maxModels"];
 	        this.cacheRam = source["cacheRam"];
+	        this.apiKey = source["apiKey"];
 	    }
 	}
 	export class SystemInfo {
