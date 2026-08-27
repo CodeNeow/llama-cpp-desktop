@@ -233,6 +233,7 @@ var dlTaskCounter int
 
 const (
 	sourceHF              = "hf"
+	sourceHuggingFace     = "huggingface"
 	sourceModelScope      = "modelscope"
 	defaultDownloadSource = sourceHF
 )
@@ -3757,7 +3758,7 @@ func loadConfig() {
 
 	// Download source: empty or invalid values fall back to the default hf
 	// (no error when old configs lack this field or data is corrupt).
-	if cfg.DownloadSource != sourceHF && cfg.DownloadSource != sourceModelScope {
+	if cfg.DownloadSource != sourceHF && cfg.DownloadSource != sourceHuggingFace && cfg.DownloadSource != sourceModelScope {
 		cfg.DownloadSource = defaultDownloadSource
 	}
 	downloadSourceMu.Lock()
@@ -4022,15 +4023,30 @@ func saveConfig() {
 // ─── HF Mirror API ───────────────────────────────────────────────
 
 const hfMirrorBase = "https://hf-mirror.com"
+const hfDirectBase = "https://huggingface.co"
+
+// activeHFBase returns the HF-compatible API base for the active non-ModelScope
+// source: the official Hugging Face host for "huggingface", otherwise the
+// hf-mirror.com mirror. Both expose identical Hub API paths, so the same
+// request code serves either host.
+func activeHFBase() string {
+	if activeDownloadSource() == sourceHuggingFace {
+		return hfDirectBase
+	}
+	return hfMirrorBase
+}
 
 // buildModelDownloadURL builds the model file download URL per download source:
 //   - hf: {hfMirrorBase}/{modelID}/resolve/main/{fileName} (filename PathEscaped)
+//   - huggingface: same path on the official Hugging Face host (hfDirectBase)
 //   - modelscope: delegates to buildModelScopeDownloadURL (the legacy API repo endpoint)
 //   - unknown source returns an error (defense in depth; callers must not pass invalid values)
 func buildModelDownloadURL(source, modelID, fileName string) (string, error) {
 	switch source {
 	case sourceHF:
 		return fmt.Sprintf("%s/%s/resolve/main/%s", hfMirrorBase, modelID, url.PathEscape(fileName)), nil
+	case sourceHuggingFace:
+		return fmt.Sprintf("%s/%s/resolve/main/%s", hfDirectBase, modelID, url.PathEscape(fileName)), nil
 	case sourceModelScope:
 		return buildModelScopeDownloadURL(modelscopeLegacyBase, modelID, fileName), nil
 	default:
@@ -4040,7 +4056,7 @@ func buildModelDownloadURL(source, modelID, fileName string) (string, error) {
 
 // searchHFMirror queries the default HF Mirror endpoint.
 func searchHFMirror(q string, filter string) ([]HFSearchResult, error) {
-	return searchHFMirrorAt(hfMirrorBase, q, filter)
+	return searchHFMirrorAt(activeHFBase(), q, filter)
 }
 
 // searchHFMirrorAt queries an HF-compatible API base for models matching q,
@@ -4180,7 +4196,7 @@ func hasGGUF(r HFSearchResult) bool {
 
 // getModelDescription fetches a model's README description via the default mirror.
 func getModelDescription(modelID string) (string, error) {
-	return getModelDescriptionAt(hfMirrorBase, modelID)
+	return getModelDescriptionAt(activeHFBase(), modelID)
 }
 
 // getModelDescriptionAt fetches the README of a model on an HF-compatible base
@@ -4280,7 +4296,7 @@ func extractDescription(body string) string {
 
 // getHFModelFiles lists downloadable GGUF files for a model via the default mirror.
 func getHFModelFiles(modelID string) ([]HFFileOut, error) {
-	return getHFModelFilesAt(hfMirrorBase, modelID)
+	return getHFModelFilesAt(activeHFBase(), modelID)
 }
 
 // getHFModelFilesAt lists the GGUF siblings of a model on an HF-compatible API base.
@@ -4328,7 +4344,7 @@ func getHFModelFilesAt(baseURL, modelID string) ([]HFFileOut, error) {
 // getHFModelMaxGGUFSize returns the size of the model's largest GGUF file
 // (via the default mirror).
 func getHFModelMaxGGUFSize(modelID string) (int64, error) {
-	return getHFModelMaxGGUFSizeAt(hfMirrorBase, modelID)
+	return getHFModelMaxGGUFSizeAt(activeHFBase(), modelID)
 }
 
 // getHFModelMaxGGUFSizeAt queries the model detail API (blobs=true is required

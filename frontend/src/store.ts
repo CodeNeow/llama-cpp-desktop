@@ -120,7 +120,7 @@ export async function setOnboardingDismissed(dismissed: boolean) {
   } catch {}
 }
 
-/** Switch model download source ("hf" | "modelscope"): update local state first; on backend failure roll back and rethrow for UI feedback. */
+/** Switch model download source ("hf" | "huggingface" | "modelscope"): update local state first; on backend failure roll back and rethrow for UI feedback. */
 export async function setDownloadSource(source: string) {
   const previous = appConfig.downloadSource
   appConfig.downloadSource = source

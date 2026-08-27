@@ -174,7 +174,11 @@ const router = useRouter()
 const searching = ref(false)
 // Current download source ("hf" | "modelscope"), read from backend on mount; switching done in Settings
 const downloadSource = ref('')
-const sourceLabel = computed(() => downloadSource.value === 'modelscope' ? t('downloads.sourceModelScope') : t('downloads.sourceHf'))
+const sourceLabel = computed(() => {
+  if (downloadSource.value === 'modelscope') return t('downloads.sourceModelScope')
+  if (downloadSource.value === 'huggingface') return t('downloads.sourceHuggingFace')
+  return t('downloads.sourceHf')
+})
 // Concurrency-limited queue for search cards' batched size requests
 let sizeQueue = new LimitedQueue(4)
 

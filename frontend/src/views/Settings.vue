@@ -119,6 +119,18 @@
           <span class="source-name">{{ t('settings.sourceModelScope') }}</span>
           <span v-if="downloadSource === 'modelscope'" class="source-check">✓</span>
         </div>
+        <div
+          class="source-card"
+          :class="{ active: downloadSource === 'huggingface' }"
+          role="radio"
+          :aria-checked="downloadSource === 'huggingface'"
+          tabindex="0"
+          @click="setSource('huggingface')"
+          @keydown.enter="setSource('huggingface')"
+        >
+          <span class="source-name">{{ t('settings.sourceHuggingFace') }}</span>
+          <span v-if="downloadSource === 'huggingface'" class="source-check">✓</span>
+        </div>
       </div>
       <p class="source-hint">{{ t('settings.sourceHint') }}</p>
       <p v-if="sourceError" class="source-error">{{ sourceError }}</p>

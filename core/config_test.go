@@ -1174,3 +1174,29 @@ func TestDownloadTaskCounterNoConflict(t *testing.T) {
 	// restored dl-3 is paused with no goroutine and is not waited on.
 	waitTaskTerminal(t, "dl-4", 5*time.Second)
 }
+
+// TestBuildModelDownloadURLHuggingFace verifies the huggingface source builds
+// download URLs on the official Hugging Face host (huggingface.co), and that
+// activeHFBase switches between the mirror and the official host by source.
+func TestBuildModelDownloadURLHuggingFace(t *testing.T) {
+	url, err := buildModelDownloadURL(sourceHuggingFace, "author/model", "a.gguf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := hfDirectBase + "/author/model/resolve/main/a.gguf"
+	if url != want {
+		t.Errorf("huggingface download URL = %q, want %q", url, want)
+	}
+
+	prev := downloadSource
+	defer func() { downloadSource = prev }()
+
+	downloadSource = sourceHuggingFace
+	if got := activeHFBase(); got != hfDirectBase {
+		t.Errorf("activeHFBase() with huggingface source = %q, want %q", got, hfDirectBase)
+	}
+	downloadSource = sourceHF
+	if got := activeHFBase(); got != hfMirrorBase {
+		t.Errorf("activeHFBase() with hf source = %q, want %q", got, hfMirrorBase)
+	}
+}

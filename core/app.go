@@ -181,12 +181,12 @@ func (a *App) GetDownloadSource() string {
 	return activeDownloadSource()
 }
 
-// SetDownloadSource sets the model download source: only hf / modelscope
-// allowlist values are permitted; illegal values return an error without
-// mutating state; valid values are written to the global and persisted.
+// SetDownloadSource sets the model download source: only hf / huggingface /
+// modelscope allowlist values are permitted; illegal values return an error
+// without mutating state; valid values are written to the global and persisted.
 func (a *App) SetDownloadSource(source string) error {
-	if source != sourceHF && source != sourceModelScope {
-		return fmt.Errorf(tr("非法下载源 %q：仅允许 hf 或 modelscope", "invalid download source %q: only hf or modelscope are allowed"), source)
+	if source != sourceHF && source != sourceHuggingFace && source != sourceModelScope {
+		return fmt.Errorf(tr("非法下载源 %q：仅允许 hf、huggingface 或 modelscope", "invalid download source %q: only hf, huggingface or modelscope are allowed"), source)
 	}
 	downloadSourceMu.Lock()
 	downloadSource = source

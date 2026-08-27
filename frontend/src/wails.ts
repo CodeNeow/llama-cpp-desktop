@@ -280,7 +280,7 @@ export async function resumeDownloadTask(id: string): Promise<void> {
 
 // ─── Download Source ─────────────────────────────────────────────
 
-// Current model download source ("hf" | "modelscope"); decides which mirror backend search and download use
+// Current model download source ("hf" | "huggingface" | "modelscope"); decides which mirror backend search and download use
 export async function getDownloadSource(): Promise<string> {
   return app().GetDownloadSource()
 }
