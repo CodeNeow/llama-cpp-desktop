@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { renderMarkdown } from '../lib/markdown'
+import { renderMarkdown, renderDescription } from '../lib/markdown'
 
 describe('renderMarkdown', () => {
   it('renders headings as heading tags', () => {
@@ -68,5 +68,27 @@ describe('renderMarkdown', () => {
     expect(renderMarkdown('')).toBe('')
     expect(renderMarkdown('   ')).toBe('')
     expect(renderMarkdown('\n\t  \n')).toBe('')
+  })
+})
+
+describe('renderDescription', () => {
+  it('strips embedded HTML wrappers, keeping the inner text rendered', () => {
+    // HF READMEs commonly wrap content in tags like <h1 align="center">Title</h1>
+    const out = renderDescription('<h1 align="center">Title</h1>')
+    expect(out).toContain('Title')
+    expect(out).not.toContain('<h1')
+  })
+
+  it('renders markdown syntax after stripping HTML', () => {
+    const out = renderDescription('<p>intro</p>\n**bold** claim')
+    expect(out).toContain('intro')
+    expect(out).toContain('<strong>bold</strong>')
+  })
+
+  it('empty or whitespace-only input returns an empty string', () => {
+    expect(renderDescription('')).toBe('')
+    expect(renderDescription('   ')).toBe('')
+    // input consisting only of HTML tags renders nothing after stripping
+    expect(renderDescription('<img src="x.png">')).toBe('')
   })
 })

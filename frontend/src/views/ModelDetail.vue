@@ -45,7 +45,7 @@
     <section class="desc-section">
       <h2 class="section-title">{{ t('downloads.descTitle') }}</h2>
       <div v-if="descLoading" class="desc-loading">{{ t('downloads.loadingDesc') }}</div>
-      <div v-else-if="description" class="desc-text">{{ description }}</div>
+      <div v-else-if="description" class="desc-text" v-html="renderDescription(description)"></div>
       <div v-else class="desc-empty">{{ t('downloads.noDesc') }}</div>
     </section>
 
@@ -81,6 +81,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { getModelFiles, getModelDescription, startDownload } from '../wails'
 import { sortModelFiles, guessQuant } from '../lib/modelFiles'
 import { formatBytes } from '../lib/format'
+import { renderDescription } from '../lib/markdown'
 import { t } from '../lib/i18n'
 
 const router = useRouter()
@@ -353,8 +354,59 @@ onMounted(() => {
   padding: 12px 16px;
   background: var(--bg-card);
   border-radius: 8px;
-  white-space: pre-wrap;
   word-break: break-all;
+}
+
+/* ─── Markdown-rendered description content ───
+   v-html content does not carry the scope attribute, so child selectors need
+   :deep(). Compact spacing so rendered blocks keep the card look (same
+   approach as Chat.vue's .markdown-body rules). */
+.desc-text :deep(h1),
+.desc-text :deep(h2),
+.desc-text :deep(h3),
+.desc-text :deep(h4) {
+  margin: 12px 0 6px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.desc-text :deep(h1) { font-size: 16px; }
+.desc-text :deep(h2) { font-size: 15px; }
+.desc-text :deep(h3),
+.desc-text :deep(h4) { font-size: 14px; }
+
+.desc-text :deep(h1:first-child),
+.desc-text :deep(h2:first-child),
+.desc-text :deep(h3:first-child),
+.desc-text :deep(h4:first-child) {
+  margin-top: 0;
+}
+
+.desc-text :deep(p) {
+  margin: 6px 0;
+}
+
+.desc-text :deep(ul),
+.desc-text :deep(ol) {
+  margin: 6px 0;
+  padding-left: 1.4em;
+}
+
+.desc-text :deep(li) {
+  margin: 2px 0;
+}
+
+.desc-text :deep(a) {
+  color: var(--accent-light);
+  word-break: break-all;
+}
+
+.desc-text :deep(code) {
+  background: var(--surface);
+  border-radius: 4px;
+  padding: 0.5px 5px;
+  font-family: var(--font-mono);
+  font-size: 12px;
 }
 
 /* ─── Files ─── */

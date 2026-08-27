@@ -24,3 +24,17 @@ export function renderMarkdown(text: string): string {
   if (!text.trim()) return ''
   return md.render(text)
 }
+
+/**
+ * Render a model README description for the model detail page. HF/ModelScope
+ * READMEs wrap their content in HTML tags like <h1 align="center">, <img> or
+ * <p>; strip them first so the inner text survives as plain markdown, then
+ * render it with renderMarkdown. markdown-it runs with html:false, so any
+ * leftover markup is escaped instead of rendered and javascript: link targets
+ * are refused — the same trust posture as chat messages. Empty input returns
+ * '' (renderMarkdown's whitespace-only guard).
+ */
+export function renderDescription(text: string): string {
+  const stripped = text.replace(/<[^>]*>/g, '')
+  return renderMarkdown(stripped)
+}
