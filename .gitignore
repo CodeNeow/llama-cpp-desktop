@@ -18,3 +18,4 @@ llama-desktop-server-handover.json
 llama-gui-config.json
 .codegraph
 .zcode/plans/
+.mimosa/

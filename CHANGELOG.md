@@ -2,6 +2,34 @@
 
 更新日志的**权威来源**（见 `AGENTS.md`「版本发布」）：发版时先在此新增版本条目（含日期），`git tag` 注解消息与 GitHub Release 正文均从该条目复制，保持一致。自 v0.3.3 起条目为概括式双语（中文在上）；v0.3.0 之前的逐提交条目已随对应 tag 与 Release 的清理移除（见文末「历史版本」）。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本。
 
+## [v0.3.7] - 2026-08-27
+
+## 中文
+
+v0.3.7:快速上手引导、官方 Hugging Face 下载源、可选 API Key 与无障碍修复。核心变化:
+
+- **快速上手清单** — 首页新增三步引导卡(安装运行时 → 下载模型 → 启动服务),全部完成或手动关闭后不再显示。
+- **官方 Hugging Face 下载源** — 模型下载源在 HF Mirror、ModelScope 之外新增「Hugging Face 官方」选项。
+- **ModelScope 修复** — 修复 ModelScope 搜索与下载不可用的问题。
+- **可选 API Key** — 设置页「服务访问范围」新增可选 API Key:非空时 llama-server 以 `--api-key` 启动,调用推理接口需携带 Bearer Token(无凭据请求返回 401),留空保持无认证;局域网暴露时可防止同网段无凭据调用。
+- **下拉框键盘导航** — 全部下拉(模型设置页推理参数 + 聊天模型选择)支持键盘操作:方向键移动高亮、Enter 选择、Esc 关闭、Home/End 跳转,修复键盘与读屏用户无法操作下拉的问题。
+- **模型说明渲染** — 下载详情页「模型说明」不再原样显示 README 中的 HTML/Markdown 标记,改为剥离内嵌 HTML 后渲染。
+- **系统信息修正** — 修正 GPU Compute Capability 识别与系统信息缓存探测的问题。
+- **启动与界面细节** — 补应用图标消除启动时 favicon.ico 404;首页卡片排版统一;API 页监控与 Token 布局修正。
+
+## English
+
+v0.3.7: quick-start onboarding, official Hugging Face download source, optional API key and accessibility fixes. Highlights:
+
+- **Quick-start checklist** — the Home page gains a three-step onboarding card (install the runtime → download a model → start the service) that hides once every step is done or the user dismisses it.
+- **Official Hugging Face source** — model downloads gain an "official Hugging Face" option alongside HF Mirror and ModelScope.
+- **ModelScope fixed** — ModelScope search and downloads are usable again.
+- **Optional API key** — the Settings access-scope section gains an optional API key: when set, llama-server starts with `--api-key` and inference requests must carry the bearer token (unauthenticated requests get 401); leaving it empty keeps today's no-authentication behavior — useful to stop credential-free calls when the service is exposed to the LAN.
+- **Dropdown keyboard navigation** — all dropdowns (ModelSettings inference params + the chat model picker) are fully keyboard-operable: arrow keys move the highlight, Enter selects, Escape closes, Home/End jump — fixing keyboard and screen-reader accessibility.
+- **Model description rendering** — the download detail page no longer shows raw HTML/Markdown source in the description; embedded HTML is stripped and the remainder is rendered.
+- **System info fixes** — corrected GPU compute capability detection and cached system-info probing.
+- **Startup & UI polish** — added the app icon to remove the per-startup favicon.ico 404; Home card typography unified; API page monitor and token layout fixed.
+
 ## [v0.3.6] - 2026-08-25
 
 ## 中文
