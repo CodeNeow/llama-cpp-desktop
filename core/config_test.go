@@ -117,7 +117,7 @@ func TestSaveLoadConfigRoundTrip(t *testing.T) {
 	}
 	modelConfigsMu.Unlock()
 	serverConfigMu.Lock()
-	cachedServerConfig = ServerConfig{AccessMode: accessLAN, Host: "0.0.0.0", Port: 9000, MaxModels: 2, CacheRAM: 4096}
+	cachedServerConfig = ServerConfig{AccessMode: accessLAN, Host: "0.0.0.0", Port: 9000, MaxModels: 2, CacheRAM: 4096, APIKey: "sk-test"}
 	serverConfigMu.Unlock()
 	configMu.Lock()
 	currentTheme = "light"
@@ -177,6 +177,11 @@ func TestSaveLoadConfigRoundTrip(t *testing.T) {
 	if scfg.AccessMode != accessLAN || scfg.Host != "0.0.0.0" || scfg.Port != 9000 || scfg.MaxModels != 2 {
 		t.Errorf("server config round-trip failed (accessMode and derived host must match): %+v", scfg)
 	}
+	// optional API key round-trips through persistence (empty would silently
+	// disable authentication on restart)
+	if scfg.APIKey != "sk-test" {
+		t.Errorf("server config apiKey round-trip failed: %q, want %q", scfg.APIKey, "sk-test")
+	}
 	configMu.Lock()
 	if currentTheme != "light" {
 		t.Errorf("theme round-trip failed: %q", currentTheme)
@@ -226,6 +231,10 @@ func TestLoadConfigDefaults(t *testing.T) {
 	// old config has no accessMode field: fallback to local and host derived as 127.0.0.1
 	if scfg.AccessMode != accessLocal || scfg.Host != "127.0.0.1" {
 		t.Errorf("missing accessMode should fall back to local with host=127.0.0.1, got %+v", scfg)
+	}
+	// old config has no apiKey field: zero value "" = authentication disabled (current behavior)
+	if scfg.APIKey != "" {
+		t.Errorf("missing apiKey should load as empty (no authentication), got %q", scfg.APIKey)
 	}
 	configMu.Lock()
 	if currentTheme != "light" {

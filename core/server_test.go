@@ -171,6 +171,38 @@ func TestBuildServerCommandOmitsModelsDir(t *testing.T) {
 	}
 }
 
+// TestBuildServerCommandAPIKey verifies the optional --api-key flag: an empty
+// APIKey (default, no authentication) omits the flag entirely; a non-empty one
+// appends the adjacent "--api-key <value>" argument pair.
+func TestBuildServerCommandAPIKey(t *testing.T) {
+	saveServerState(t)
+
+	// empty APIKey → no --api-key flag
+	cfg := ServerConfig{AccessMode: accessLocal, Host: "127.0.0.1", Port: 8080, MaxModels: 1, CacheRAM: 0}
+	_, args := buildServerCommand(cfg, "/tmp/preset.ini")
+	for _, a := range args {
+		if a == "--api-key" {
+			t.Fatalf("empty APIKey should omit --api-key, actual args = %v", args)
+		}
+	}
+
+	// non-empty APIKey → adjacent "--api-key" value pair
+	cfg.APIKey = "sk-secret"
+	_, args = buildServerCommand(cfg, "/tmp/preset.ini")
+	found := false
+	for i, a := range args {
+		if a == "--api-key" {
+			found = true
+			if i+1 >= len(args) || args[i+1] != "sk-secret" {
+				t.Fatalf("--api-key should be followed by its value, actual args = %v", args)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("non-empty APIKey should add --api-key, actual args = %v", args)
+	}
+}
+
 // TestAddServerLogRingBuffer verifies the service-log ring buffer: after exceeding 200
 // entries it is trimmed to the most recent 100, and the latest log is always at the end.
 func TestAddServerLogRingBuffer(t *testing.T) {

@@ -131,13 +131,15 @@ export async function tuneModelConfig(modelID: string): Promise<any> {
 // ─── Server ──────────────────────────────────────────────────────
 
 // ServerConfig mirrors the backend core.ServerConfig: accessMode is the service access
-// scope ("local" | "lan"), host is the actual listen address derived from accessMode.
+// scope ("local" | "lan"), host is the actual listen address derived from accessMode,
+// apiKey is the optional llama-server bearer token (empty = no authentication).
 export interface ServerConfig {
   accessMode: string
   host: string
   port: number
   maxModels: number
   cacheRam: number
+  apiKey: string
 }
 
 export async function getServerConfig(): Promise<ServerConfig> {

@@ -3579,6 +3579,9 @@ type ServerConfig struct {
 	Port       int    `json:"port"`
 	MaxModels  int    `json:"maxModels"`
 	CacheRAM   int    `json:"cacheRam"`
+	// APIKey is the optional llama-server --api-key bearer token; empty means
+	// no authentication (default, current behavior).
+	APIKey string `json:"apiKey"`
 }
 
 // effectiveHost derives the actual listen address from the access scope:
@@ -3745,6 +3748,9 @@ func loadConfig() {
 	}
 	scfg.AccessMode = cfg.ServerConfig.AccessMode
 	scfg.Host = effectiveHost(scfg.AccessMode)
+	// APIKey: Go zero value "" (no authentication) already covers old configs
+	// missing the field, no fallback needed.
+	scfg.APIKey = cfg.ServerConfig.APIKey
 	if cfg.ServerConfig.Port != 0 {
 		scfg.Port = cfg.ServerConfig.Port
 	}

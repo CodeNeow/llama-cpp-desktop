@@ -132,6 +132,11 @@ func buildServerCommand(cfg ServerConfig, presetPath string) (string, []string) 
 	if cfg.CacheRAM > 0 {
 		args = append(args, "--cache-ram", strconv.Itoa(cfg.CacheRAM))
 	}
+	// Optional bearer-token authentication for the inference API: only passed
+	// when set; empty keeps llama-server's default no-authentication behavior.
+	if cfg.APIKey != "" {
+		args = append(args, "--api-key", cfg.APIKey)
+	}
 	return llamaServer, args
 }
 

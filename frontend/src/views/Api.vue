@@ -226,6 +226,7 @@ function goDownloads() {
 const cfg = reactive({
   host: '127.0.0.1',
   accessMode: 'local', // Access scope comes from backend config (changed on Settings page); here it is only passed through on save
+  apiKey: '', // Optional API key comes from backend config (changed on Settings page); passed through on save only — never edited here, so saving this page cannot wipe it
   port: 8080,
   maxModels: 1,
   cacheRam: 8192,
@@ -306,6 +307,7 @@ watch(cfg, () => {
     saveServerConfig({
       host: cfg.host,
       accessMode: cfg.accessMode,
+      apiKey: cfg.apiKey,
       port: cfg.port,
       maxModels: cfg.maxModels,
       cacheRam: cfg.cacheRam,

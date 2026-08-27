@@ -34,6 +34,10 @@ export const appConfig = reactive({
   modelDownloadDir: '',
   downloadSource: 'hf',
   serverAccessMode: 'local',
+  // Optional llama-server API key (bearer token for inference requests); empty
+  // means no authentication (backend default). Mirrored from the server config
+  // so the Settings input can roll back on save failure.
+  serverApiKey: '',
   language: 'auto',
   resolvedLanguage: 'zh' as 'zh' | 'en',
   // Windows system tray toggle: default true (matches the backend loadConfig fallback);
@@ -146,6 +150,24 @@ export async function setServerAccessMode(mode: string) {
     await saveServerConfigBackend(scfg)
   } catch (e) {
     appConfig.serverAccessMode = previous
+    throw e
+  }
+}
+
+/** Set the optional llama-server API key (bearer token; empty = no authentication,
+ * current default): optimistically update local state, then fetch the latest full
+ * serverConfig from the backend, change apiKey, and save it whole (avoiding
+ * clobbering other fields the user set on the same page); on backend failure roll
+ * back local state and rethrow for UI feedback (same pattern as setServerAccessMode). */
+export async function setApiKey(value: string) {
+  const previous = appConfig.serverApiKey
+  appConfig.serverApiKey = value
+  try {
+    const scfg = await getServerConfig()
+    scfg.apiKey = value
+    await saveServerConfigBackend(scfg)
+  } catch (e) {
+    appConfig.serverApiKey = previous
     throw e
   }
 }

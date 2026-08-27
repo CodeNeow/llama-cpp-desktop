@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 ) // App is the Wails application struct whose methods are bound to the frontend.
@@ -647,6 +648,9 @@ func (a *App) SaveServerConfig(cfg ServerConfig) error {
 		return fmt.Errorf(tr("非法访问范围 %q：仅允许 local/lan", "invalid access mode %q: only local/lan"), cfg.AccessMode)
 	}
 	cfg.Host = effectiveHost(cfg.AccessMode)
+	// APIKey normalization only (no charset restriction): trimmed whitespace in,
+	// empty means authentication disabled.
+	cfg.APIKey = strings.TrimSpace(cfg.APIKey)
 	if cfg.Port < 1024 || cfg.Port > 65535 {
 		return fmt.Errorf(tr("非法 Port %d：端口范围应为 1024-65535", "invalid Port %d: port must be in range 1024-65535"), cfg.Port)
 	}

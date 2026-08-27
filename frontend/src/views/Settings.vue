@@ -204,6 +204,24 @@
       </div>
       <p class="source-hint">{{ t('settings.accessDesc') }}</p>
       <p v-if="accessError" class="source-error">{{ accessError }}</p>
+      <!-- API key always visible: it also protects the inference API in local mode,
+           not only when the service is exposed to the LAN -->
+      <div class="setting-row api-key-row">
+        <div class="setting-info">
+          <span class="setting-label">{{ t('settings.apiKey') }}</span>
+          <span class="setting-desc">{{ t('settings.apiKeyDesc') }}</span>
+        </div>
+        <input
+          v-model="apiKeyInput"
+          type="password"
+          class="api-key-input"
+          autocomplete="off"
+          spellcheck="false"
+          :disabled="apiKeySwitching"
+          @change="saveApiKey"
+        />
+      </div>
+      <p v-if="apiKeyError" class="source-error">{{ apiKeyError }}</p>
     </section>
 
     <!-- System tray (Windows only; other platforms exit directly on close) -->
@@ -323,7 +341,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { appConfig, setTheme, loadConfig, setDownloadSource as applyDownloadSource, setLanguage as applyLanguage, setServerAccessMode as applyServerAccessMode, setTrayEnabled as applyTrayEnabled } from '../store'
+import { appConfig, setTheme, loadConfig, setDownloadSource as applyDownloadSource, setLanguage as applyLanguage, setServerAccessMode as applyServerAccessMode, setApiKey as applyApiKey, setTrayEnabled as applyTrayEnabled } from '../store'
 import { updateState, checkForUpdate } from '../lib/update'
 import { getAppVersion, getOS, getServerConfig, browseLlamaCppDownloadDir, browseModelDownloadDir, setApiRouteMode } from '../wails'
 import { t } from '../lib/i18n'
@@ -399,6 +417,26 @@ async function setAccessScope(mode: string) {
   }
 }
 
+// Optional llama-server API key (bearer token; empty = no authentication): saved on
+// change through setApiKey (whole serverConfig round-trip, same as the access scope).
+// The input keeps the user's text on failure so they can fix and retry.
+const apiKeyInput = ref('')
+const apiKeyError = ref('')
+const apiKeySwitching = ref(false)
+
+async function saveApiKey() {
+  if (apiKeySwitching.value) return
+  apiKeySwitching.value = true
+  apiKeyError.value = ''
+  try {
+    await applyApiKey(apiKeyInput.value)
+  } catch {
+    apiKeyError.value = t('settings.apiKeyError')
+  } finally {
+    apiKeySwitching.value = false
+  }
+}
+
 // System tray toggle: rendered on Windows only. Disabling takes effect immediately (backend removes icon and
 // persists); systray cannot restart in same process, so re-enabling requires app restart (hint shown below toggle).
 const isWindows = ref(false)
@@ -457,6 +495,8 @@ onMounted(async () => {
     if (scfg.accessMode === 'local' || scfg.accessMode === 'lan') {
       appConfig.serverAccessMode = scfg.accessMode
     }
+    // seed the API key input from the persisted server config (empty = no authentication)
+    apiKeyInput.value = scfg.apiKey || ''
   }).catch(() => {})
   getAppVersion().then((v) => { appVersion.value = v }).catch(() => {})
 })
@@ -659,6 +699,34 @@ async function manualCheck() {
   margin: 10px 0 0;
   font-size: 12px;
   color: #ef4444;
+}
+
+/* ─── API key input (inside the access-scope section) ─── */
+.api-key-row {
+  margin-top: 16px;
+  align-items: flex-start;
+}
+
+.api-key-input {
+  width: 260px;
+  padding: 8px 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: var(--font-mono);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.api-key-input:focus {
+  border-color: var(--accent);
+}
+
+.api-key-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* ─── Directories ─── */
