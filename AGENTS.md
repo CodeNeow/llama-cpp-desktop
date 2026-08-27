@@ -40,7 +40,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check.ps1  # Combi
 | --- | --- |
 | `main.go` | Wails entry point: window config (1200×800, Frameless), asset embedding, binding `core.App`, tray icon embed + startup/shutdown wiring, `--headless` / `--gui` mode flags (API-route headless mode vs forced GUI) and the single-instance mutex (only source file at repo root) |
 | `core/app.go` | All Wails binding methods: config / system info / models / service / download / monitor / update / router models (thin wrappers), plus `Startup` / `Shutdown` lifecycle |
-| `core/engine.go` | Core logic: environment detection, GGUF scanning, llama.cpp download (resumable; main program + CUDA runtime packages), model download task queue, HF Mirror search, config persistence, model preset generation, app version (embedded `core/VERSION`) |
+| `core/config.go` | Config persistence: `llama-desktop-config.json` schema types, `loadConfig` / `saveConfig` with legacy-file migration, and the guarded in-memory app-state vars (theme, directories, download source, tray, API-route mode, sidebar, onboarding dismissal) |
+| `core/sysinfo.go` | Hardware/system detection: CPU / memory / GPU / CUDA probes collected once per process and cached; platform output parsers are pure functions |
+| `core/gguf.go` | Model scanning (download + imported directories) and GGUF header metadata parsing: display name, architecture and quantization resolution |
+| `core/llamacpp.go` | llama.cpp environment detection (binary lookup, version probe, CUDA runtime) and the resumable GitHub release download (main program + cudart runtime), including the download retry policy shared with the other download paths |
+| `core/archive.go` | Safe zip / tar.gz extraction with per-file and total size caps (extraction-bomb defense) |
+| `core/preset.go` | llama-server INI preset generation from the scanned models and per-model configs, with INI value validation helpers |
+| `core/server.go` | llama-server lifecycle state: process handle vars, log ring buffer, line-reassembling `serverLogWriter` (start/stop logic lives in `bridge.go`) |
+| `core/hf.go` | HF-compatible source API (hf-mirror.com / huggingface.co): search, file listing, README description and download URL construction |
+| `core/tasks.go` | Model download task queue: task state, throttled queue persistence, resumable per-task download goroutine |
+| `core/update.go` | App self-update: release check (embedded `core/VERSION`), resumable update download, install-kind detection and installer launch flow |
+| `core/fsutil.go` | Cross-domain small helpers: `runCmd`, `copyFile`, `moveFile`, `formatBytes`, `countString` |
 | `core/autotune.go` | One-click auto-tuning of per-model inference params: reads real GGUF metrics (layer count, attention head counts, KV geometry, trained context) plus the local hardware snapshot (GPU vendor / VRAM, RAM, CPU cores) and computes optimal llama-server parameters (full offload / MoE `--cpu-moe` split / partial offload / CPU-only); sizing core is the pure function `tuneModelConfig` (exposed via the `TuneModelConfig` binding in app.go) |
 | `core/monitor.go` | Real-time monitoring: service log TPS parsing and CPU / memory / GPU / disk sampling |
 | `core/modelscope.go` | ModelScope source: search, file listing, description and download URL construction |
@@ -67,6 +77,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check.ps1  # Combi
 | `frontend/src/styles/` | Contains `global.css` (CSS variable theming: semantic tokens like `--bg-primary` / `--surface`, light/dark switched via `html[data-theme]`) |
 | `frontend/src/__tests__/` | Frontend unit tests (vitest, covering `store.ts` config loading and `lib/` pure functions: formatting, download queue / task status, chat SSE, monitor sampling, update, system readiness, i18n, etc.) |
 | `frontend/wailsjs/` | Wails auto-generated bindings — **do not edit manually**; regenerated on `wails build` |
+
+> Note: core/engine.go was dissolved into the per-domain files above (config / sysinfo / gguf / llamacpp / archive / preset / server / hf / tasks / update / fsutil). New functional domains must get their own file in core/ — do not grow any single file into a catch-all and do not recreate a generic engine.go.
 
 ## Wails Binding Mechanism (Important)
 

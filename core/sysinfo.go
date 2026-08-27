@@ -1,0 +1,458 @@
+package core
+
+import (
+	"encoding/json"
+	"fmt"
+	"runtime"
+	"strconv"
+	"strings"
+	"sync"
+)
+
+// ─── System info ────────────────────────────────────────────────
+// Hardware/system detection: CPU, memory, GPU and CUDA probes collected once
+// per process and cached; the output parsers are pure, unit-testable functions.
+
+type SystemInfo struct {
+	OS       string       `json:"os"`
+	Arch     string       `json:"arch"`
+	CPU      CPUInfo      `json:"cpu"`
+	Memory   MemoryInfo   `json:"memory"`
+	GPU      []GPUInfo    `json:"gpu"`
+	CUDA     CUDAInfo     `json:"cuda"`
+	LlamaCpp LlamaCppInfo `json:"llamaCpp"`
+	Disk     *DiskUsage   `json:"disk,omitempty"`
+}
+
+type CPUInfo struct {
+	Model       string `json:"model"`
+	Cores       int    `json:"cores"`
+	LogicalCPUs int    `json:"logicalCpus"`
+}
+
+type MemoryInfo struct {
+	TotalGB float64 `json:"totalGb"`
+	FreeGB  float64 `json:"freeGb"`
+}
+
+type GPUInfo struct {
+	Name              string  `json:"name"`
+	MemoryMB          int     `json:"memoryMb"`
+	MemoryUsedMB      int     `json:"memoryUsedMb"`
+	DriverVersion     string  `json:"driverVersion"`
+	CUDACores         int     `json:"cudaCores"`
+	ComputeCapability float64 `json:"computeCapability"`
+}
+
+type CUDAInfo struct {
+	Available      bool   `json:"available"`
+	DriverVersion  string `json:"driverVersion"`
+	ToolkitVersion string `json:"toolkitVersion"`
+}
+
+// sysInfoCacheMu guards sysInfoCache so the six Home-page probes (fired in
+// parallel by the frontend) trigger exactly one collectSystemInfo instead of
+// six concurrent shell-outs.
+var sysInfoCacheMu sync.Mutex
+var sysInfoCache *SystemInfo
+
+// windowsSysOnce guards the batched Windows PowerShell probe (CPU model,
+// cores, total/free memory) so all Windows getters share a single process.
+var windowsSysOnce sync.Once
+var windowsSys windowsSystemSnapshot
+
+// systemInfo returns the static system snapshot, computing it once. Static
+// hardware facts (CPU model, GPU identity, CUDA driver) do not change during a
+// session, so every binding and manual refresh reuses the same collection.
+func systemInfo() SystemInfo {
+	sysInfoCacheMu.Lock()
+	defer sysInfoCacheMu.Unlock()
+	if sysInfoCache != nil {
+		return *sysInfoCache
+	}
+	s := collectSystemInfo()
+	sysInfoCache = &s
+	return s
+}
+
+func collectSystemInfo() SystemInfo {
+	info := SystemInfo{
+		OS:   runtime.GOOS,
+		Arch: runtime.GOARCH,
+		CPU:  getCPUInfo(),
+		Memory: MemoryInfo{
+			TotalGB: getTotalMemoryGB(),
+		},
+		GPU:      getGPUInfo(),
+		LlamaCpp: getLlamaCppInfo(),
+	}
+
+	// Free memory
+	info.Memory.FreeGB = getFreeMemoryGB()
+
+	// CUDA: reuse the driver version already fetched by the GPU probe so the
+	// collection avoids a redundant nvidia-smi call.
+	var driverHint string
+	if len(info.GPU) > 0 {
+		driverHint = info.GPU[0].DriverVersion
+	}
+	info.CUDA = getCUDAInfoWithDriver(driverHint)
+
+	// Disk usage (sampleDiskUsage returns nil on failure so it never blocks
+	// other metrics)
+	info.Disk = sampleDiskUsage()
+
+	return info
+}
+
+// ─── CPU ─────────────────────────────────────────────────────────
+
+func getCPUInfo() CPUInfo {
+	info := CPUInfo{
+		LogicalCPUs: runtime.NumCPU(),
+	}
+
+	switch runtime.GOOS {
+	case "windows":
+		w := getWindowsSystem()
+		info.Model = w.cpuModel
+		if w.cpuCores > 0 {
+			info.Cores = w.cpuCores
+		}
+	case "linux":
+		info.Model = parseLinuxCPUModel(runCmd("cat", "/proc/cpuinfo"))
+		info.Cores = countString(runCmd("cat", "/proc/cpuinfo"), "processor")
+	case "darwin":
+		info.Model = runCmd("sysctl", "-n", "machdep.cpu.brand_string")
+		info.Cores = parseCoresDarwin(runCmd("sysctl", "-n", "machdep.cpu.core_count"))
+	}
+
+	if info.Model == "" {
+		info.Model = fmt.Sprintf("%s %s (unknown model)", runtime.GOOS, runtime.GOARCH)
+	}
+	if info.Cores == 0 {
+		info.Cores = runtime.NumCPU()
+	}
+
+	return info
+}
+
+// ─── Memory ──────────────────────────────────────────────────────
+
+func getTotalMemoryGB() float64 {
+	switch runtime.GOOS {
+	case "windows":
+		if w := getWindowsSystem(); w.totalMemBytes > 0 {
+			return float64(w.totalMemBytes) / (1024 * 1024 * 1024)
+		}
+	case "linux":
+		out := runCmd("cat", "/proc/meminfo")
+		kb := parseMemInfo(out, "MemTotal")
+		if kb > 0 {
+			return float64(kb) / (1024 * 1024)
+		}
+	case "darwin":
+		out := runCmd("sysctl", "-n", "hw.memsize")
+		if b, err := strconv.ParseUint(strings.TrimSpace(out), 10, 64); err == nil {
+			return float64(b) / (1024 * 1024 * 1024)
+		}
+	}
+	return 0
+}
+
+func getFreeMemoryGB() float64 {
+	switch runtime.GOOS {
+	case "windows":
+		if w := getWindowsSystem(); w.freeMemKB > 0 {
+			return float64(w.freeMemKB) / (1024 * 1024)
+		}
+	case "linux":
+		out := runCmd("cat", "/proc/meminfo")
+		kb := parseMemInfo(out, "MemAvailable")
+		if kb == 0 {
+			kb = parseMemInfo(out, "MemFree")
+		}
+		if kb > 0 {
+			return float64(kb) / (1024 * 1024)
+		}
+	case "darwin":
+		// macOS memory pressure — approximate free
+		out := runCmd("vm_stat")
+		freePages := parseVMStat(out, "free")
+		if freePages > 0 {
+			pageSizeStr := strings.TrimSpace(runCmd("sysctl", "-n", "hw.pagesize"))
+			pageSize, err := strconv.ParseUint(pageSizeStr, 10, 64)
+			if err != nil || pageSize == 0 {
+				pageSize = 16384 // fallback for arm64
+			}
+			return float64(freePages*pageSize) / (1024 * 1024 * 1024)
+		}
+	}
+	return 0
+}
+
+// windowsSystemSnapshot holds the Windows-only facts that used to require four
+// separate PowerShell processes (CPU model, core count, total/free memory).
+// They are collected together in a single invocation and memoized per process.
+type windowsSystemSnapshot struct {
+	cpuModel      string
+	cpuCores      int
+	totalMemBytes uint64
+	freeMemKB     uint64
+}
+
+// getWindowsSystem runs one PowerShell query returning CPU model, core count,
+// total physical memory (bytes) and free physical memory (KB) as JSON, then
+// caches the result. Every Windows getter (CPU / total memory / free memory)
+// shares this, collapsing four powershell.exe launches into one.
+func getWindowsSystem() windowsSystemSnapshot {
+	windowsSysOnce.Do(func() {
+		out := runCmd("powershell", "-NoProfile", "-Command", `
+$cs = Get-CimInstance Win32_ComputerSystem
+$cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
+$os = Get-CimInstance Win32_OperatingSystem
+[PSCustomObject]@{
+  cpuModel = $cpu.Name
+  cpuCores = $cpu.NumberOfCores
+  totalMem = $cs.TotalPhysicalMemory
+  freeMem  = $os.FreePhysicalMemory
+} | ConvertTo-Json -Compress`)
+		windowsSys = parseWindowsSystemJSON(out)
+	})
+	return windowsSys
+}
+
+// parseWindowsSystemJSON parses the batched PowerShell JSON into a snapshot.
+// Invalid/empty output yields a zero snapshot so callers fall back to their
+// own defaults.
+func parseWindowsSystemJSON(out string) windowsSystemSnapshot {
+	var v struct {
+		CpuModel string `json:"cpuModel"`
+		CpuCores int    `json:"cpuCores"`
+		TotalMem uint64 `json:"totalMem"`
+		FreeMem  uint64 `json:"freeMem"`
+	}
+	if err := json.Unmarshal([]byte(out), &v); err != nil {
+		return windowsSystemSnapshot{}
+	}
+	return windowsSystemSnapshot{
+		cpuModel:      strings.TrimSpace(v.CpuModel),
+		cpuCores:      v.CpuCores,
+		totalMemBytes: v.TotalMem,
+		freeMemKB:     v.FreeMem,
+	}
+}
+
+// ─── GPU ─────────────────────────────────────────────────────────
+
+func getGPUInfo() []GPUInfo {
+	out := runCmd("nvidia-smi",
+		"--query-gpu=name,memory.used,memory.total,driver_version,compute_cap",
+		"--format=csv,noheader,nounits",
+	)
+	if out == "" {
+		return nil
+	}
+
+	var gpus []GPUInfo
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		parts := strings.Split(line, ",")
+		if len(parts) < 3 {
+			continue
+		}
+		name := strings.TrimSpace(parts[0])
+		memUsedStr := strings.TrimSpace(parts[1])
+		memStr := strings.TrimSpace(parts[2])
+		driver := strings.TrimSpace(parts[3])
+
+		memUsedMB := 0
+		if memUsedStr != "" {
+			if v, err := strconv.Atoi(memUsedStr); err == nil {
+				memUsedMB = v
+			}
+		}
+		memMB := 0
+		if memStr != "" {
+			if v, err := strconv.Atoi(memStr); err == nil {
+				memMB = v
+			}
+		}
+
+		gpu := GPUInfo{
+			Name:          name,
+			MemoryMB:      memMB,
+			MemoryUsedMB:  memUsedMB,
+			DriverVersion: driver,
+		}
+
+		// Compute capability (5th column, index 4): nvidia-smi returns the
+		// decimal form directly (e.g. "9.0", "8.9", "12.0"), NOT an integer ×10.
+		if len(parts) >= 5 {
+			gpu.ComputeCapability = parseGPUComputeCapability(parts[4])
+		}
+
+		gpus = append(gpus, gpu)
+	}
+	return gpus
+}
+
+// probeGPUComputeCap is the injection point for the GPU compute-capability
+// probe (a package-level var in the same style as probeLlamaVersion): the
+// default implementation runs `nvidia-smi --query-gpu=compute_cap` and returns
+// raw stdout. Tests replace this variable instead of shelling out.
+var probeGPUComputeCap = func() string {
+	return runCmd("nvidia-smi", "--query-gpu=compute_cap", "--format=csv,noheader")
+}
+
+// gpuComputeCap parses the first value of the compute-capability probe output
+// (e.g. "12.0" for RTX 50 series); ok=false on empty output or parse failure.
+// Only the first value is used: on multi-GPU hosts the first enumerated GPU
+// decides the CUDA floor.
+func gpuComputeCap() (float64, bool) {
+	out := strings.TrimSpace(probeGPUComputeCap())
+	if out == "" {
+		return 0, false
+	}
+	first := out
+	if idx := strings.IndexAny(first, "\r\n"); idx >= 0 {
+		first = first[:idx]
+	}
+	cc, err := strconv.ParseFloat(strings.TrimSpace(first), 64)
+	if err != nil {
+		return 0, false
+	}
+	return cc, true
+}
+
+// parseGPUComputeCapability parses the compute-capability field returned by
+// `nvidia-smi --query-gpu=compute_cap` (the decimal form, e.g. "9.0", "8.9",
+// "12.0"). Returns 0 on empty/garbage input so callers can treat 0 as unknown.
+func parseGPUComputeCapability(s string) float64 {
+	v, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
+	if err != nil {
+		return 0
+	}
+	return v
+}
+
+// cudaFloorForComputeCap returns the minimum CUDA runtime version the GPU can
+// actually run: Blackwell GPUs (compute capability >= 12.0, e.g. RTX 50 series)
+// need CUDA >= 12.8 or binaries fail with "no kernel image"; earlier (or
+// unknown) GPUs have no floor.
+func cudaFloorForComputeCap(cc float64) float64 {
+	if cc >= 12.0 {
+		return 12.8
+	}
+	return 0
+}
+
+// ─── CUDA ────────────────────────────────────────────────────────
+
+// getCUDAInfo returns CUDA availability: the driver version is taken from the
+// GPU probe when driverHint is non-empty, otherwise queried via nvidia-smi.
+// The collection path passes the GPU driver so it avoids a redundant nvidia-smi
+// process.
+func getCUDAInfo() CUDAInfo {
+	return getCUDAInfoWithDriver("")
+}
+
+func getCUDAInfoWithDriver(driverHint string) CUDAInfo {
+	info := CUDAInfo{}
+
+	// Driver version: prefer the one already collected from the GPU probe.
+	if driverHint != "" {
+		info.Available = true
+		info.DriverVersion = driverHint
+	} else {
+		out := runCmd("nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader")
+		if out != "" {
+			info.Available = true
+			info.DriverVersion = strings.TrimSpace(out)
+		}
+	}
+
+	// Toolkit version from nvcc
+	nvccOut := runCmd("nvcc", "--version")
+	if nvccOut != "" {
+		// Typical output: "Cuda compilation tools, release X.Y, VX.Y.Z"
+		for _, line := range strings.Split(nvccOut, "\n") {
+			if strings.Contains(line, "release") {
+				// Extract version after "release "
+				idx := strings.Index(line, "release")
+				if idx >= 0 {
+					rest := line[idx+len("release"):]
+					rest = strings.TrimSpace(rest)
+					// Take until comma or space
+					if commaIdx := strings.IndexAny(rest, ", "); commaIdx > 0 {
+						rest = rest[:commaIdx]
+					}
+					info.ToolkitVersion = rest
+				}
+				break
+			}
+		}
+	}
+
+	return info
+}
+
+func parseLinuxCPUModel(out string) string {
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, "model name") {
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) == 2 {
+				return strings.TrimSpace(parts[1])
+			}
+		}
+	}
+	return ""
+}
+
+func parseCoresDarwin(out string) int {
+	n, _ := strconv.Atoi(strings.TrimSpace(out))
+	return n
+}
+
+func parseMemInfo(out, key string) uint64 {
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, key+":") {
+			parts := strings.Fields(line)
+			if len(parts) >= 2 {
+				val, err := strconv.ParseUint(parts[len(parts)-2], 10, 64)
+				if err != nil {
+					val, err = strconv.ParseUint(parts[1], 10, 64)
+					if err != nil {
+						return 0
+					}
+				}
+				return val
+			}
+		}
+	}
+	return 0
+}
+
+func parseVMStat(out, key string) uint64 {
+	for _, line := range strings.Split(out, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		// Match fields of the form "<key>:" (macOS output is "Pages free:
+		// 123456." — the value follows the key field and ends with a period),
+		// avoiding parse failures that would leave free memory stuck at 0.
+		for i, f := range fields {
+			if strings.TrimRight(f, ":") != key {
+				continue
+			}
+			if i+1 >= len(fields) {
+				break
+			}
+			val, err := strconv.ParseUint(strings.TrimSuffix(fields[i+1], "."), 10, 64)
+			if err == nil {
+				return val
+			}
+		}
+	}
+	return 0
+}

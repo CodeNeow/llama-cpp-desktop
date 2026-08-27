@@ -25,8 +25,8 @@ body:
     id: component
     attributes:
       label: Affected Scope
-      description: Component / file path or module, e.g. `frontend/src/views/Models.vue` or `engine.go`.
-      placeholder: "engine.go"
+      description: Component / file path or module, e.g. `frontend/src/views/Models.vue` or `core/llamacpp.go`.
+      placeholder: "core/llamacpp.go"
     validations:
       required: true
 
