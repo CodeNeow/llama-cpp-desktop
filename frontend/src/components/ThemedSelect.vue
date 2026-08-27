@@ -1,30 +1,39 @@
 <template>
   <div class="themed-select" :class="`themed-select--${variant}`">
     <button
+      ref="triggerRef"
       type="button"
       class="themed-select__trigger"
       :disabled="disabled"
       :aria-expanded="open"
       aria-haspopup="listbox"
       :aria-label="label"
-      @click.stop="open = !open"
-      @keydown.esc="open = false"
+      :aria-activedescendant="open && highlightIndex >= 0 ? `${idPrefix}-opt-${highlightIndex}` : undefined"
+      @click.stop="open ? closeMenu() : openMenu()"
+      @keydown="onTriggerKeydown"
     >
       <span class="themed-select__value">{{ displayValue }}</span>
       <svg class="themed-select__chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <polyline points="6 9 12 15 18 9"/>
       </svg>
     </button>
-    <div v-if="open" class="themed-select__menu" role="listbox" @keydown.esc="open = false">
+    <div v-if="open" class="themed-select__menu" role="listbox">
       <button
-        v-for="opt in options"
+        v-for="(opt, i) in options"
         :key="opt.value"
+        :id="`${idPrefix}-opt-${i}`"
+        :ref="(el) => setOptionRef(el, i)"
         type="button"
         class="themed-select__option"
-        :class="{ 'themed-select__option--selected': opt.value === modelValue }"
+        :class="{
+          'themed-select__option--selected': opt.value === modelValue,
+          'themed-select__option--highlighted': open && i === highlightIndex,
+        }"
         role="option"
         :aria-selected="opt.value === modelValue"
+        tabindex="-1"
         @click="select(opt.value)"
+        @mouseenter="highlightIndex = i"
       >
         <span class="themed-select__option-label">{{ opt.label }}</span>
         <svg v-if="opt.value === modelValue" class="themed-select__option-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -36,8 +45,14 @@
   </div>
 </template>
 
+<script lang="ts">
+// Module-level counter: gives each ThemedSelect instance a unique DOM id
+// prefix for the aria-activedescendant wiring (option ids are `<prefix>-opt-<i>`).
+let themedSelectCount = 0
+</script>
+
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { selectDisplayLabel } from '../lib/selectOptions'
 
 export interface SelectOption {
@@ -68,17 +83,106 @@ const emit = defineEmits<{
 }>()
 
 const open = ref(false)
+/** Keyboard-highlighted option index while the menu is open; -1 = none. */
+const highlightIndex = ref(-1)
+/** Per-instance DOM id prefix so option ids never collide across selects. */
+const idPrefix = `themed-select-${++themedSelectCount}`
+/** Trigger button element: refocused after selecting so focus never falls to <body>. */
+const triggerRef = ref<HTMLButtonElement | null>(null)
+/** Rendered option elements by index, used to scroll the highlight into view. */
+const optionEls: (HTMLElement | null)[] = []
 
 const displayValue = computed(() => selectDisplayLabel(props.options, props.modelValue, props.placeholder))
 
+/** Opening the menu always starts on the option matching modelValue, else the first option. */
+function initialHighlightIndex(): number {
+  const i = props.options.findIndex((o) => o.value === props.modelValue)
+  return i >= 0 ? i : 0
+}
+
+function openMenu(): void {
+  open.value = true
+  highlightIndex.value = props.options.length > 0 ? initialHighlightIndex() : -1
+}
+
+function closeMenu(): void {
+  open.value = false
+  highlightIndex.value = -1
+}
+
 function select(value: string) {
   emit('update:modelValue', value)
-  open.value = false
+  closeMenu()
+  triggerRef.value?.focus()
 }
+
+/**
+ * Select-only combobox keyboard behavior (WAI-ARIA): DOM focus stays on the
+ * trigger the whole time. ArrowUp/ArrowDown move the highlight (wrapping),
+ * Enter/Space open the menu or pick the highlighted option, Home/End jump to
+ * the first/last option, Escape closes. Enter/Space MUST preventDefault or
+ * the browser also fires a click on the button and re-toggles the menu. Tab
+ * closes without preventDefault so the browser still moves focus away.
+ */
+function onTriggerKeydown(e: KeyboardEvent): void {
+  if (props.disabled) return
+  const len = props.options.length
+  switch (e.key) {
+    case 'Escape':
+      if (open.value) closeMenu()
+      e.preventDefault()
+      break
+    case 'ArrowDown':
+      if (!open.value) openMenu()
+      else if (len > 0) highlightIndex.value = (highlightIndex.value + 1) % len
+      e.preventDefault()
+      break
+    case 'ArrowUp':
+      if (!open.value) openMenu()
+      else if (len > 0) highlightIndex.value = (highlightIndex.value - 1 + len) % len
+      e.preventDefault()
+      break
+    case 'Enter':
+    case ' ':
+      if (!open.value) openMenu()
+      else if (highlightIndex.value >= 0) select(props.options[highlightIndex.value].value)
+      e.preventDefault()
+      break
+    case 'Home':
+      if (!open.value) openMenu()
+      if (len > 0) highlightIndex.value = 0
+      e.preventDefault()
+      break
+    case 'End':
+      if (!open.value) openMenu()
+      if (len > 0) highlightIndex.value = len - 1
+      e.preventDefault()
+      break
+    case 'Tab':
+      if (open.value) closeMenu()
+      break
+    default:
+      break
+  }
+}
+
+/** Track the rendered option elements (:ref callback) for scroll-into-view. */
+function setOptionRef(el: unknown, index: number): void {
+  optionEls[index] = el instanceof HTMLElement ? el : null
+}
+
+// Keep the highlighted option visible inside the 300px scrollable menu.
+// Guarded because some test environments do not implement scrollIntoView.
+watch(highlightIndex, async (index) => {
+  if (index < 0) return
+  await nextTick()
+  const el = optionEls[index]
+  if (typeof el?.scrollIntoView === 'function') el.scrollIntoView({ block: 'nearest' })
+})
 
 /** Close the menu when clicking anywhere outside the component */
 function onDocClick() {
-  open.value = false
+  closeMenu()
 }
 
 onMounted(() => document.addEventListener('click', onDocClick))
@@ -211,6 +315,12 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
 }
 
 .themed-select__option:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+/* Keyboard highlight mirrors the mouse hover look */
+.themed-select__option--highlighted {
   background: var(--hover-bg);
   color: var(--text-primary);
 }

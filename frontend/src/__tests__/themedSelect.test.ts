@@ -113,4 +113,82 @@ describe('ThemedSelect', () => {
     await wrapper.findAll('.themed-select__option')[2].trigger('click')
     expect(wrapper.vm.$data.value).toBe('0')
   })
+
+  it('opens the menu when Enter is pressed on the trigger', async () => {
+    const wrapper = mountSelect()
+    const trigger = wrapper.find('.themed-select__trigger')
+    await trigger.trigger('keydown', { key: 'Enter' })
+    expect(trigger.attributes('aria-expanded')).toBe('true')
+    expect(wrapper.findAll('.themed-select__option')).toHaveLength(3)
+  })
+
+  it('moves the highlight down from the selected option and wires aria-activedescendant', async () => {
+    const wrapper = mountSelect({ modelValue: 'all' })
+    const trigger = wrapper.find('.themed-select__trigger')
+    await trigger.trigger('click')
+    await trigger.trigger('keydown', { key: 'ArrowDown' })
+    const items = wrapper.findAll('.themed-select__option')
+    const highlighted = wrapper.findAll('.themed-select__option--highlighted')
+    expect(highlighted).toHaveLength(1)
+    expect(highlighted[0].element).toBe(items[2].element)
+    expect(trigger.attributes('aria-activedescendant')).toBe(items[2].attributes('id'))
+  })
+
+  it('wraps ArrowUp from the first option to the last and ArrowDown from the last to the first', async () => {
+    const wrapper = mountSelect({ modelValue: 'auto' })
+    const trigger = wrapper.find('.themed-select__trigger')
+    await trigger.trigger('click')
+    const items = wrapper.findAll('.themed-select__option')
+    await trigger.trigger('keydown', { key: 'ArrowUp' })
+    expect(wrapper.findAll('.themed-select__option--highlighted')[0].element).toBe(items[2].element)
+    await trigger.trigger('keydown', { key: 'ArrowDown' })
+    expect(wrapper.findAll('.themed-select__option--highlighted')[0].element).toBe(items[0].element)
+  })
+
+  it('selects the highlighted option via the full keyboard path and closes the menu', async () => {
+    const wrapper = mountSelect({ modelValue: 'auto' })
+    const trigger = wrapper.find('.themed-select__trigger')
+    await trigger.trigger('keydown', { key: 'Enter' })
+    await trigger.trigger('keydown', { key: 'ArrowDown' })
+    await trigger.trigger('keydown', { key: 'ArrowDown' })
+    await trigger.trigger('keydown', { key: 'Enter' })
+    expect(wrapper.emitted('update:modelValue')).toEqual([['0']])
+    expect(wrapper.find('.themed-select__menu').exists()).toBe(false)
+  })
+
+  it('closes the open menu with Escape', async () => {
+    const wrapper = mountSelect()
+    const trigger = wrapper.find('.themed-select__trigger')
+    await trigger.trigger('click')
+    expect(wrapper.find('.themed-select__menu').exists()).toBe(true)
+    await trigger.trigger('keydown', { key: 'Escape' })
+    expect(wrapper.find('.themed-select__menu').exists()).toBe(false)
+  })
+
+  it('moves the highlight to the first option with Home and the last with End', async () => {
+    const wrapper = mountSelect({ modelValue: 'all' })
+    const trigger = wrapper.find('.themed-select__trigger')
+    await trigger.trigger('click')
+    const items = wrapper.findAll('.themed-select__option')
+    await trigger.trigger('keydown', { key: 'End' })
+    expect(wrapper.findAll('.themed-select__option--highlighted')[0].element).toBe(items[2].element)
+    await trigger.trigger('keydown', { key: 'Home' })
+    expect(wrapper.findAll('.themed-select__option--highlighted')[0].element).toBe(items[0].element)
+  })
+
+  it('does not open with the keyboard when disabled', async () => {
+    const wrapper = mountSelect({ disabled: true })
+    await wrapper.find('.themed-select__trigger').trigger('keydown', { key: 'Enter' })
+    expect(wrapper.find('.themed-select__menu').exists()).toBe(false)
+  })
+
+  it('highlights the hovered option', async () => {
+    const wrapper = mountSelect()
+    await wrapper.find('.themed-select__trigger').trigger('click')
+    const items = wrapper.findAll('.themed-select__option')
+    await items[1].trigger('mouseenter')
+    const highlighted = wrapper.findAll('.themed-select__option--highlighted')
+    expect(highlighted).toHaveLength(1)
+    expect(highlighted[0].element).toBe(items[1].element)
+  })
 })
