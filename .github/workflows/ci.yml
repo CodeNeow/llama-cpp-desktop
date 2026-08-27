@@ -268,6 +268,9 @@ jobs:
       contents: write
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     steps:
+      # Checkout brings in CHANGELOG.md, the authoritative release-notes source read by the
+      # extraction step below (this job originally ran without a repo checkout).
+      - uses: actions/checkout@v4
       - name: Download all build artifacts
         # Exclude frontend-dist by pattern, only pull release artifacts and merge into one directory:
         # windows 1 exe (linux 3 deb disabled with build-linux)
@@ -276,6 +279,32 @@ jobs:
           pattern: llama-desktop-*
           path: artifacts
           merge-multiple: true
+      - name: Extract release notes from CHANGELOG.md
+        # This repo commits directly to main with no PRs, so --generate-notes only aggregates a
+        # bare "Full Changelog" compare link. The authoritative notes live in CHANGELOG.md:
+        # extract the tagged version's section (from its '## [vX.Y.Z]' heading, exclusive, up to
+        # the next '## [v' heading, exclusive) keeping the bilingual '## 中文' / '## English'
+        # subsections that the in-app update modal parses.
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Literal heading match via index() (no regex on the tag name): avoid surprises from
+          # characters a tag name could theoretically contain.
+          awk -v target="## [$GITHUB_REF_NAME]" '
+            /^## \[v/ {
+              if (target_found) { exit }
+              if ($0 == target || index($0, target" ") == 1) { target_found = 1 }
+              next
+            }
+            target_found { print }
+          ' CHANGELOG.md \
+            | sed '/./,$!d' > release-notes.md
+          # A tag without a CHANGELOG entry would publish an empty Release body — abort instead.
+          if [[ ! -s release-notes.md ]]; then
+            echo "::error::No CHANGELOG.md entry found for $GITHUB_REF_NAME (expected a '## [$GITHUB_REF_NAME]' heading); add the entry before tagging."
+            exit 1
+          fi
       - name: Publish GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -291,9 +320,10 @@ jobs:
             [[ -f "$f" ]] || { echo "Missing artifact: $f"; exit 1; }
           done
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            # Push v* tag: publish formal Release
+            # Push v* tag: publish formal Release. Notes come from CHANGELOG.md (extracted above),
+            # not --generate-notes: PR-less direct-to-main repo makes auto-generated notes useless.
             gh release create "$GITHUB_REF_NAME" "${files[@]}" \
-              --generate-notes --repo "$GITHUB_REPOSITORY"
+              --notes-file release-notes.md --repo "$GITHUB_REPOSITORY"
           else
             # Manual trigger: create draft Release (draft does not affect formal version)
             gh release create "preview-$GITHUB_RUN_ID" "${files[@]}" \
