@@ -187,7 +187,7 @@ import { ref, computed, onMounted, nextTick, watch, onUnmounted, type ComponentP
 import { useRouter } from 'vue-router'
 import { getServerStatus, getServerConfig } from '../wails'
 import { fetchRouterModels, streamChatCompletion, buildChatBody, tokenRates } from '../lib/chat'
-import { messages, selectedModel, streaming, chatAbortController, persistChat, chatParams, persistChatParams, type ChatMessage, type ChatParams } from '../lib/chatState'
+import { messages, selectedModel, streaming, chatAbortController, persistChat, reconcileSelectedModel, chatParams, persistChatParams, type ChatMessage, type ChatParams } from '../lib/chatState'
 import { t } from '../lib/i18n'
 import { renderMarkdown } from '../lib/markdown'
 import { isNearBottom } from '../lib/scroll'
@@ -524,6 +524,17 @@ onMounted(async () => {
     const cfg = await getServerConfig()
     try {
       routerModels.value = await fetchRouterModels(cfg.port)
+      // A persisted model ID may be stale (renamed/removed since the last run);
+      // only reconcile against a non-empty list, so an offline server never
+      // rewrites the stored choice
+      const availableIds = routerModels.value.map((m) => m.id)
+      if (availableIds.length > 0) {
+        const reconciled = reconcileSelectedModel(selectedModel.value, availableIds)
+        if (reconciled.changed) {
+          selectedModel.value = reconciled.model
+          persistChat()
+        }
+      }
     } catch {
       routerModels.value = []
     }

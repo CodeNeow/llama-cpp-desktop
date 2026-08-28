@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { capMessages, ChatMessage, loadChatHistory, persistChat, messages, selectedModel } from '../lib/chatState'
+import { capMessages, ChatMessage, loadChatHistory, persistChat, reconcileSelectedModel, messages, selectedModel } from '../lib/chatState'
 
 describe('capMessages', () => {
   it('truncate keeping most recent N entries', () => {
@@ -17,6 +17,24 @@ describe('capMessages', () => {
 
   it('empty array returns empty array', () => {
     expect(capMessages([], 200)).toEqual([])
+  })
+})
+
+describe('reconcileSelectedModel', () => {
+  it('stored model still available is kept unchanged', () => {
+    expect(reconcileSelectedModel('m1', ['m1', 'm2'])).toEqual({ model: 'm1', changed: false })
+  })
+
+  it('stale stored model falls back to the first available model', () => {
+    expect(reconcileSelectedModel('gone', ['m1', 'm2'])).toEqual({ model: 'm1', changed: true })
+  })
+
+  it('empty available list keeps the stored model unchanged', () => {
+    expect(reconcileSelectedModel('gone', [])).toEqual({ model: 'gone', changed: false })
+  })
+
+  it('empty stored model with a non-empty list picks the first model', () => {
+    expect(reconcileSelectedModel('', ['m1'])).toEqual({ model: 'm1', changed: true })
   })
 })
 

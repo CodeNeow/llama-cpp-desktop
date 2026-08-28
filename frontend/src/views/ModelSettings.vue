@@ -860,8 +860,8 @@ onMounted(async () => {
 
 .param-hint {
   margin-top: 6px;
-  font-size: 11px;
-  color: var(--text-dim);
+  font-size: 12px;
+  color: var(--text-muted);
   line-height: 1.5;
 }
 

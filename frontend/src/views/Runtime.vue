@@ -485,6 +485,9 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  /* Release the grid-item automatic minimum so the ellipsized path-value
+     can shrink to the track width instead of stretching the item */
+  min-width: 0;
 }
 
 .info-item-full {
@@ -503,13 +506,21 @@ onUnmounted(() => {
   font-size: 14px;
   color: var(--text-secondary);
   font-weight: 500;
-  word-break: break-all;
+  /* Soft wrap at word boundaries only; long unbreakable strings may overflow
+     visually instead of being cut mid-word (version strings, hex hashes) */
+  overflow-wrap: break-word;
 }
 
 .path-value {
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
   font-size: 12px;
   color: var(--text-muted);
+  /* Single-line ellipsis: install paths stay on one line and truncate at the end */
+  display: block;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ─── Status badge ─── */

@@ -54,6 +54,7 @@ import { useRoute } from 'vue-router'
 import { ref, onMounted, onUnmounted } from 'vue'
 import { t } from '../lib/i18n'
 import { isSystemReady } from '../lib/systemReady'
+import { SIDEBAR_AUTO_COLLAPSE_WIDTH } from '../lib/layout'
 import { getLlamaCpp, getModels } from '../wails'
 import { appConfig, setSidebarCollapsed } from '../store'
 
@@ -89,6 +90,16 @@ onMounted(() => {
   // Refresh every 15s: after a llama.cpp or model download finishes, auto-updates within at most 15 seconds
   const timer = setInterval(refreshReady, 15000)
   onUnmounted(() => clearInterval(timer))
+
+  // Narrow-window watcher: collapse once when the window crosses from wide to
+  // narrow. No auto-expand on the way back — a user who manually expands the
+  // sidebar in a narrow window is not fought by this watcher.
+  const narrowQuery = window.matchMedia(`(max-width: ${SIDEBAR_AUTO_COLLAPSE_WIDTH}px)`)
+  const onNarrowChange = (e: MediaQueryListEvent): void => {
+    if (e.matches) setSidebarCollapsed(true)
+  }
+  narrowQuery.addEventListener('change', onNarrowChange)
+  onUnmounted(() => narrowQuery.removeEventListener('change', onNarrowChange))
 })
 
 const navItems = [

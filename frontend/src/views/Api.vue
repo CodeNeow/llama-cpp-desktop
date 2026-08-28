@@ -546,10 +546,12 @@ function clearLog() {
   color: #fff;
 }
 
-/* Disabled state follows the cfg-input dimming convention */
+/* Disabled state follows the cfg-input dimming convention; the desaturation
+   filter keeps the colored start/stop/restart buttons recognizably disabled */
 .server-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  filter: grayscale(0.6) brightness(0.92);
 }
 
 .btn-start { background: #22c55e; }
@@ -691,25 +693,6 @@ function clearLog() {
   padding-bottom: calc(24px + var(--dock-reserve, 0px));
 }
 
-/* Thin scrollbar matching .content-area (App.vue) so the inner band does not
-   render a full-width system scrollbar */
-.page-scroll::-webkit-scrollbar {
-  width: 6px;
-}
-
-.page-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.page-scroll::-webkit-scrollbar-thumb {
-  background: var(--overlay-10);
-  border-radius: 3px;
-}
-
-.page-scroll::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover);
-}
-
 /* ─── Main area two-column: left log console + right monitor cards ─── */
 .monitor-grid {
   display: grid;
@@ -778,6 +761,8 @@ function clearLog() {
   /* Release the flex child default min-height:auto so any number of log lines shrinks and scrolls within the panel */
   min-height: 0;
   overflow-y: auto;
+  /* Long log lines scroll horizontally instead of wrapping mid-word (.console-line is pre) */
+  overflow-x: auto;
   background: #0b0b10;
   border-radius: 8px;
   padding: 10px 14px;
@@ -788,8 +773,8 @@ function clearLog() {
 .console-line {
   color: rgba(255,255,255,0.55);
   padding: 1px 0;
-  white-space: pre-wrap;
-  word-break: break-all;
+  /* Preserve the line's own layout exactly; horizontal scroll lives on .console-log */
+  white-space: pre;
 }
 
 .console-empty {
@@ -799,7 +784,7 @@ function clearLog() {
   justify-content: center;
   background: #0b0b10;
   border-radius: 8px;
-  color: rgba(255,255,255,0.35);
+  color: rgba(255,255,255,0.6);
   font-size: 12px;
 }
 

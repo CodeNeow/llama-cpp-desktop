@@ -53,6 +53,25 @@ export function capMessages(msgs: ChatMessage[], cap = DEFAULT_CAP): ChatMessage
   return msgs.slice(msgs.length - cap)
 }
 
+/**
+ * Reconcile the persisted selected model against the server's available models.
+ *
+ * A stored ID still present is kept as-is; a stale ID (model renamed/removed
+ * while the app was closed) falls back to the first available model so send()
+ * cannot hit "model not found". An empty available list (server not running or
+ * no models loaded) keeps the stored choice untouched. Pure: persistence is
+ * the caller's job.
+ */
+export function reconcileSelectedModel(stored: string, available: string[]): { model: string; changed: boolean } {
+  if (available.includes(stored)) {
+    return { model: stored, changed: false }
+  }
+  if (available.length > 0) {
+    return { model: available[0], changed: true }
+  }
+  return { model: stored, changed: false }
+}
+
 // ─── Module-level state (survives component unmount) ──────────────────────
 
 /** Current conversation messages. */

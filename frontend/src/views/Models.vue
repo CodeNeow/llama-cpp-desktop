@@ -461,7 +461,9 @@ onUnmounted(clearTuneTimers)
   color: var(--text-dim);
   cursor: pointer;
   border-radius: 6px;
-  opacity: 0;
+  /* Faintly visible at rest so the actions are discoverable without hover;
+     the tooltip titles label them. Full opacity on card hover. */
+  opacity: 0.55;
   transition: opacity 0.2s, background 0.15s, color 0.15s;
   flex-shrink: 0;
 }
@@ -579,7 +581,10 @@ onUnmounted(clearTuneTimers)
   font-size: 11px;
   color: var(--overlay-20);
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
-  word-break: break-all;
+  /* Single-line ellipsis: long model paths truncate at the end instead of wrapping */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   line-height: 1.4;
 }
 

@@ -162,3 +162,31 @@ code, pre {
   background: var(--bg-primary);
   display: flow-root;
 }
+
+/* ─── Global scrollbar styling ───
+   One thin-scrollbar rule set for every scrollable region (content area,
+   console, monitor cards, select dropdowns, chat messages) instead of
+   per-component duplicates. Colors ride the theme tokens so light/dark both
+   work. Firefox uses the standard shorthand; the WebKit rules cover WebView2. */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}

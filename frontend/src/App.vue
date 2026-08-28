@@ -250,23 +250,6 @@ async function closeWindow() {
   transition: padding-bottom 0.2s ease;
 }
 
-.content-area::-webkit-scrollbar {
-  width: 6px;
-}
-
-.content-area::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.content-area::-webkit-scrollbar-thumb {
-  background: var(--overlay-10);
-  border-radius: 3px;
-}
-
-.content-area::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover);
-}
-
 /* Fixed-viewport pages (route meta fixed: true): these pages own the full
    window height below the titlebar and manage their own internal scroll
    bands, which reserve TaskDock space themselves — scroll bands use

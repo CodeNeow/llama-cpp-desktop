@@ -464,7 +464,8 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
   font-weight: 600;
   color: var(--text-primary);
   margin: 0 0 4px;
-  word-break: break-all;
+  /* Wrap at word boundaries; model names like "...uncensored-GGUF" must not be cut mid-word */
+  overflow-wrap: break-word;
   line-height: 1.35;
 }
 
