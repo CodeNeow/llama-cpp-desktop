@@ -52,6 +52,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check.ps1  # Combi
 | `core/update.go` | App self-update: release check (embedded `core/VERSION`), resumable update download, install-kind detection and installer launch flow |
 | `core/fsutil.go` | Cross-domain small helpers: `runCmd`, `copyFile`, `moveFile`, `formatBytes`, `countString` |
 | `core/autotune.go` | One-click auto-tuning of per-model inference params: reads real GGUF metrics (layer count, attention head counts, KV geometry, trained context) plus the local hardware snapshot (GPU vendor / VRAM, RAM, CPU cores) and computes optimal llama-server parameters (full offload / MoE `--cpu-moe` split / partial offload / CPU-only); sizing core is the pure function `tuneModelConfig` (exposed via the `TuneModelConfig` binding in app.go) |
+| `core/benchbw.go` | Measured RAM bandwidth calibration for the auto-tuner: all-core streaming-read benchmark (median decimal GB/s, plausibility-window guarded), sha256 hardware-fingerprint-keyed cache (`llama-desktop-benchcache.json`, atomic write, single-flight) filling `tuneHardware.RAMBandwidthGBs`, which gates the cramped-full-offload → cpu-moe preference flip in `tuneModelConfig` |
 | `core/monitor.go` | Real-time monitoring: service log TPS parsing and CPU / memory / GPU / disk sampling |
 | `core/modelscope.go` | ModelScope source: search, file listing, description and download URL construction |
 | `core/bridge.go` | Service start/stop and download trigger bridge implementation |
@@ -216,7 +217,7 @@ Remaining gaps:
 ## Repository Hygiene
 
 - Before committing, `git status --short` must contain only intentionally modified files for the current task; `git diff --check` must produce no errors.
-- Do not commit: `node_modules/`, `frontend/dist/`, `build/` (including compiled exe artifacts), model files under `LLM-Models/`, `llama-cpp/`, `llama-desktop-config.json` (local config, may contain machine-specific paths), `*.log`, `.zcode/plans/`.
+- Do not commit: `node_modules/`, `frontend/dist/`, `build/` (including compiled exe artifacts), model files under `LLM-Models/`, `llama-cpp/`, `llama-desktop-config.json` (local config, may contain machine-specific paths), `llama-desktop-benchcache.json` (local RAM-bandwidth benchmark cache), `*.log`, `.zcode/plans/`.
 - Screenshot and other documentation assets are committed under `docs/` (e.g., `docs/screenshots/`).
 - When adding new ignore patterns, update `.gitignore` in sync.
 

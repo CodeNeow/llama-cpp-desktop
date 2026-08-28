@@ -567,6 +567,27 @@ func TestTuneModelConfig(t *testing.T) {
 		WeightsBytes: 5000 << 20, Layers: 47, KVBytesPerTokPerLayerF16: 1152,
 		TrainCtx: 131072, ExpertBytes: 3000 << 20, DenseBytes: 2000 << 20,
 	}
+	// Cramped-full-offload MoE fixture for the measured-bandwidth flip:
+	// on the 11776 MiB nvidia-12GB budget the full offload only fits at
+	// ctx 4096 (f16@8192 = 11328+128+384 = 11840 and q8_0@8192 =
+	// 11328+68+384 = 11780 both exceed 11776; f16@4096 = 11748 fits), so the
+	// plan is cramped (4096 < tuneFullOffloadCrampedCtx). The MoE split
+	// (9000 MiB experts fit the 15.3 GiB usable RAM, frac 0.25 → 2250 MiB
+	// active bytes/token) lets the flip compare the plans via
+	// estimateCPUMoeTPS.
+	tmCrampedMoE := tuneModel{
+		WeightsBytes: 11328 << 20, Layers: 32, KVBytesPerTokPerLayerF16: 512,
+		TrainCtx: 131072, ExpertBytes: 9000 << 20, DenseBytes: 2328 << 20,
+		ExpertUsedFrac: 0.25,
+	}
+	// Boundary fixture: weights 11264 MiB fit the same budget exactly at
+	// ctx 8192 (f16@8192 = 11264+128+384 = 11776), so fullCtx is NOT cramped
+	// and the flip must never engage.
+	tmBoundaryMoE := tuneModel{
+		WeightsBytes: 11264 << 20, Layers: 32, KVBytesPerTokPerLayerF16: 512,
+		TrainCtx: 131072, ExpertBytes: 9000 << 20, DenseBytes: 2264 << 20,
+		ExpertUsedFrac: 0.25,
+	}
 
 	cases := []struct {
 		name        string
@@ -681,6 +702,57 @@ func TestTuneModelConfig(t *testing.T) {
 			hw:   tuneHardware{GPUVendor: vendorNvidia, VRAMMB: 24576, RAMTotalGB: 31, RAMFreeGB: 18, PhysicalCores: 8, LogicalCPUs: 16}, tm: tmSmallMoE,
 			wantGPU: "all", wantCtx: 131072, wantFlash: true, wantCacheK: "", wantCacheV: "", wantThreads: 8,
 		},
+		{
+			// Measured-bandwidth flip (a): the full offload only fits at the
+			// cramped ctx 4096, experts fit usable RAM, and 40 GB/s over
+			// 2250 MiB active bytes/token estimates ~17 t/s >= 3.0, so the
+			// cpu-moe plan wins instead: dense 2328 + KV 2048 + compute 1152
+			// = 5528 <= 11776x0.92 at ctx 131072 (f16/q8_0 tie keeps f16).
+			name: "cramped full offload + fast measured RAM flips to cpu-moe ctx 131072",
+			hw:   tuneHardware{GPUVendor: vendorNvidia, VRAMMB: 12288, RAMTotalGB: 31, RAMFreeGB: 18, PhysicalCores: 8, LogicalCPUs: 16, RAMBandwidthGBs: 40}, tm: tmCrampedMoE,
+			wantGPU: "all", wantCtx: 131072, wantFlash: true, wantCacheK: "", wantCacheV: "", wantThreads: 0, wantCPUMoe: true,
+		},
+		{
+			// Measured-bandwidth flip (b): 5 GB/s over 2250 MiB active
+			// bytes/token estimates ~2.1 t/s < 3.0 floor, so the cramped
+			// full offload is retained exactly as without calibration.
+			name: "cramped full offload + slow measured RAM keeps full offload",
+			hw:   tuneHardware{GPUVendor: vendorNvidia, VRAMMB: 12288, RAMTotalGB: 31, RAMFreeGB: 18, PhysicalCores: 8, LogicalCPUs: 16, RAMBandwidthGBs: 5}, tm: tmCrampedMoE,
+			wantGPU: "all", wantCtx: 4096, wantFlash: true, wantCacheK: "", wantCacheV: "", wantThreads: 8,
+		},
+		{
+			// Measured-bandwidth flip (c): bandwidth 0 (no measurement) must
+			// reproduce today's behavior byte-for-byte — same plan as the
+			// slow-RAM case above; every pre-existing fixture also runs with
+			// the zero value and keeps its original assertions.
+			name: "RAMBandwidthGBs 0 keeps today's behavior (cramped full offload retained)",
+			hw:   tuneHardware{GPUVendor: vendorNvidia, VRAMMB: 12288, RAMTotalGB: 31, RAMFreeGB: 18, PhysicalCores: 8, LogicalCPUs: 16, RAMBandwidthGBs: 0}, tm: tmCrampedMoE,
+			wantGPU: "all", wantCtx: 4096, wantFlash: true, wantCacheK: "", wantCacheV: "", wantThreads: 8,
+		},
+		{
+			// Measured-bandwidth flip (d): experts (9000 MiB) exceed the
+			// usable RAM of an 8 GB machine (min(5, 7.2)x0.85 = 4.25 GiB),
+			// so the flip never engages regardless of the fast measurement.
+			name: "experts do not fit usable RAM: no flip despite fast RAM",
+			hw:   tuneHardware{GPUVendor: vendorNvidia, VRAMMB: 12288, RAMTotalGB: 8, RAMFreeGB: 5, PhysicalCores: 8, LogicalCPUs: 16, RAMBandwidthGBs: 40}, tm: tmCrampedMoE,
+			wantGPU: "all", wantCtx: 4096, wantFlash: true, wantCacheK: "", wantCacheV: "", wantThreads: 8,
+		},
+		{
+			// Flip boundary: weights 11264 MiB fit the budget exactly at
+			// ctx 8192, which is NOT cramped (< 8192 is the cramped rule),
+			// so even a fast measurement keeps the full offload.
+			name: "fullCtx exactly 8192 is not cramped: no flip with fast RAM",
+			hw:   tuneHardware{GPUVendor: vendorNvidia, VRAMMB: 12288, RAMTotalGB: 31, RAMFreeGB: 18, PhysicalCores: 8, LogicalCPUs: 16, RAMBandwidthGBs: 40}, tm: tmBoundaryMoE,
+			wantGPU: "all", wantCtx: 8192, wantFlash: true, wantCacheK: "", wantCacheV: "", wantThreads: 8,
+		},
+		{
+			// Dense model with a fast measurement: ExpertBytes 0 yields no
+			// t/s estimate, so the plan is identical to the pre-existing
+			// first fixture (all/65536/q8_0/threads 8).
+			name: "dense model never flips even with fast measured RAM",
+			hw:   tuneHardware{GPUVendor: vendorNvidia, VRAMMB: 12288, RAMTotalGB: 31, RAMFreeGB: 18, PhysicalCores: 8, LogicalCPUs: 16, RAMBandwidthGBs: 40}, tm: tm4B,
+			wantGPU: "all", wantCtx: 65536, wantFlash: true, wantCacheK: "q8_0", wantCacheV: "q8_0", wantThreads: 8,
+		},
 	}
 
 	for _, c := range cases {
@@ -735,6 +807,35 @@ func TestTuneModelConfig(t *testing.T) {
 	}
 	if n >= tm23B.Layers {
 		t.Errorf("partial offload layers = %d, must stay below block count %d", n, tm23B.Layers)
+	}
+}
+
+// TestEstimateCPUMoeTPS verifies the pure bandwidth-to-speed estimate. Unit
+// semantics: ramBandwidthGBs is decimal GB/s (1e9 bytes/s, the benchbw
+// calibration unit) and expertBytesPerToken is plain bytes, so
+// t/s = bandwidth x 1e9 / bytesPerToken — bytes per second over bytes per
+// token. Unusable inputs (non-positive on either side) return 0 = "no
+// estimate" rather than an infinity.
+func TestEstimateCPUMoeTPS(t *testing.T) {
+	cases := []struct {
+		name         string
+		bandwidthGBs float64
+		bytesPerTok  float64
+		want         float64
+	}{
+		{"normal", 40, 2e9, 20}, // 40 GB/s over 2 GB of active experts per token
+		{"fast RAM small experts", 60, 1.5e9, 40},
+		{"slow RAM below the flip floor", 5, 2e9, 2.5},
+		{"zero bandwidth", 0, 2e9, 0},
+		{"negative bandwidth", -3, 2e9, 0},
+		{"zero bytes per token", 40, 0, 0},
+		{"negative bytes per token", 40, -1, 0},
+	}
+	for _, c := range cases {
+		if got := estimateCPUMoeTPS(c.bandwidthGBs, c.bytesPerTok); math.Abs(got-c.want) > 1e-9 {
+			t.Errorf("%s: estimateCPUMoeTPS(%g, %g) = %g, want %g",
+				c.name, c.bandwidthGBs, c.bytesPerTok, got, c.want)
+		}
 	}
 }
 

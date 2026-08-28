@@ -508,6 +508,16 @@ type tuneHardware struct {
 	RAMFreeGB     float64
 	PhysicalCores int // CPUInfo.Cores
 	LogicalCPUs   int
+	// CPUModel is CPUInfo.Model, feeding the RAM-bandwidth cache
+	// fingerprint: the CPU package is the most identifying component of the
+	// memory subsystem (see hardwareFingerprint).
+	CPUModel string
+	// RAMBandwidthGBs is the measured all-core memory read bandwidth in
+	// decimal GB/s from the benchbw calibration; 0 = unknown (no measurement
+	// yet or the benchmark failed), which keeps every tuner rule on its
+	// static behavior. Gates the cramped-full-offload → cpu-moe flip in
+	// tuneModelConfig.
+	RAMBandwidthGBs float64
 }
 
 // tuneModel is the model-side input derived from the GGUF metrics and the
@@ -648,6 +658,16 @@ const (
 	// Context ladder (descending) and the partial-offload context candidates.
 	tuneCtxMax = 131072
 	tuneCtxMin = 2048
+	// Measured-bandwidth flip: a full-offload plan whose best context is
+	// below tuneFullOffloadCrampedCtx counts as cramped (8192 is the
+	// smallest context that still feels roomy for chat); when the cpu-moe
+	// plan is available and the measured RAM bandwidth predicts at least
+	// tuneCPUMoeMinTPS (interactive-speed floor) of expert-in-RAM decode via
+	// estimateCPUMoeTPS, the cpu-moe plan's much larger context wins over
+	// the cramped full offload. Bandwidth 0 (no measurement) or an estimate
+	// below the floor keeps full offload winning outright.
+	tuneFullOffloadCrampedCtx = 8192
+	tuneCPUMoeMinTPS          = 3.0
 )
 
 // ctxLadderFor filters ladder (descending) to entries not exceeding trainCtx
@@ -719,6 +739,27 @@ func mergeCachePlans(ladder []int, budget float64, nvidia bool, footprint func(c
 	return false, 0
 }
 
+// estimateCPUMoeTPS approximates the decode speed of the cpu-moe plan: with
+// the expert weights in system RAM, decode is bound by streaming the active
+// expert bytes per token from DRAM, so t/s ≈ RAM read bandwidth / active
+// expert bytes per token. Units are consistent: ramBandwidthGBs is decimal
+// GB/s (1e9 bytes/s, the unit the benchbw calibration reports) and
+// expertBytesPerToken is plain bytes, so the 1e9 factors cancel in the unit
+// story (bytes per second over bytes per token). Either input unusable
+// (bandwidth <= 0 or bytes-per-token <= 0) returns 0 = "no estimate". The
+// caller derives expertBytesPerToken as ExpertBytes × ExpertUsedFrac (the
+// router activates that fraction of the expert pool per token); always-
+// active shared experts are read on every token but not accounted, so the
+// bytes-per-token input can be an underestimate and the t/s result
+// correspondingly optimistic — the fixed tuneCPUMoeMinTPS floor absorbs
+// that slack.
+func estimateCPUMoeTPS(ramBandwidthGBs, expertBytesPerToken float64) float64 {
+	if ramBandwidthGBs <= 0 || expertBytesPerToken <= 0 {
+		return 0
+	}
+	return ramBandwidthGBs * 1e9 / expertBytesPerToken
+}
+
 // tuneModelConfig computes hardware-aware llama-server parameters for one
 // model. Pure and deterministic: same inputs, same ModelConfig.
 //
@@ -730,15 +771,21 @@ func mergeCachePlans(ladder []int, budget float64, nvidia bool, footprint func(c
 //     A) f16 KV everywhere, or B) q8_0 KV (NVIDIA only, 0.53125 the size).
 //     Prefer A unless B enables a strictly larger context, or A leaves less
 //     than 15% VRAM headroom while B buys more context. Full offload wins
-//     outright: with every weight already on the GPU, --cpu-moe has nothing
-//     left to move.
-//  3. Full offload impossible but the model is MoE (ExpertBytes > 0) and the
-//     experts fit usable RAM → cpu-moe plan: experts stay on CPU
-//     (--cpu-moe), the GPU carries dense weights + KV + compute buffers with
-//     GPULayers="all". The same A=f16 / B=q8_0 merge picks the context.
-//     Threads=0 omits the threads line: llama-server's automatic thread
-//     sizing measured >= manual physical-core threads when expert GEMMs run
-//     on the CPU.
+//     outright — with one measured-calibration exception: when the winning
+//     context is cramped (below tuneFullOffloadCrampedCtx), the model is MoE
+//     with experts fitting usable RAM, and a measured RAM bandwidth
+//     (hw.RAMBandwidthGBs > 0, see core/benchbw.go) predicts cpu-moe decode
+//     at estimateCPUMoeTPS >= tuneCPUMoeMinTPS t/s, the cpu-moe plan of step
+//     3 is preferred instead: a huge-context expert-in-RAM plan beats a
+//     cramped-context full offload. Without a measurement (bandwidth 0) or
+//     below the t/s floor the flip never engages.
+//  3. Full offload impossible (or flipped away from in step 2) but the model
+//     is MoE (ExpertBytes > 0) and the experts fit usable RAM → cpu-moe
+//     plan: experts stay on CPU (--cpu-moe), the GPU carries dense weights +
+//     KV + compute buffers with GPULayers="all". The same A=f16 / B=q8_0
+//     merge picks the context. Threads=0 omits the threads line:
+//     llama-server's automatic thread sizing measured >= manual physical-
+//     core threads when expert GEMMs run on the CPU.
 //  4. Partial offload fallback (dense models, or experts that do not fit
 //     RAM): for each candidate context (8192/4096/2048) offload n =
 //     floor((vramUsable - computeBuf) / (perLayerWeights + perLayerKV))
@@ -822,11 +869,69 @@ func tuneModelConfig(hw tuneHardware, m tuneModel) ModelConfig {
 
 	nvidia := hw.GPUVendor == vendorNvidia
 
-	// Step 1: full offload — every weight on the GPU beats any expert split,
-	// so success returns immediately without considering cpu-moe.
+	// cpuMoePlan builds the --cpu-moe plan (experts stay in system RAM, the
+	// GPU carries dense weights + KV + compute buffers) when the model is
+	// MoE with experts fitting usable RAM; ok=false leaves the caller's plan
+	// untouched. Shared verbatim by the measured-bandwidth flip inside step 1
+	// and by the fallback step 2, so both emit identical plans.
+	cpuMoePlan := func() (ModelConfig, bool) {
+		if m.ExpertBytes <= 0 || float64(m.ExpertBytes) > usableRAM {
+			return ModelConfig{}, false
+		}
+		dense := float64(m.DenseBytes)
+		if dense <= 0 {
+			// Defensive default for hand-built inputs without a split.
+			dense = math.Max(0, w-float64(m.ExpertBytes))
+		}
+		if useB, moeCtx := mergeCachePlans(ladder, vramUsable, nvidia, func(ctx int, kvFactor float64) float64 {
+			return dense + kvPerTok*float64(ctx)*kvFactor + computeBuf(ctx)
+		}); moeCtx > 0 {
+			out := defaultModelConfig()
+			out.GPULayers = "all"
+			out.CtxSize = moeCtx
+			out.FlashAttn = nvidia
+			out.CPUMoe = true
+			// Threads 0 omits the threads line so llama-server sizes threads
+			// automatically: with expert GEMMs running on the CPU the auto
+			// sizing measured >= pinning threads to the physical core count.
+			out.Threads = 0
+			if useB {
+				out.CacheTypeK, out.CacheTypeV = "q8_0", "q8_0"
+			}
+			return out, true
+		}
+		return ModelConfig{}, false
+	}
+
+	// Step 1: full offload — every weight on the GPU beats any expert split.
+	// One measured exception (the bandwidth flip): when the winning context
+	// is cramped (fullCtx < tuneFullOffloadCrampedCtx), a cpu-moe plan is
+	// available, and the calibrated RAM bandwidth predicts at least
+	// tuneCPUMoeMinTPS t/s of expert-in-RAM decode, prefer cpu-moe instead —
+	// a huge-context plan on fast RAM beats a cramped-context full offload.
+	// Without a measurement (hw.RAMBandwidthGBs == 0) or below the t/s floor
+	// the flip never engages and full offload wins outright exactly as
+	// before.
 	if useB, fullCtx := mergeCachePlans(ladder, vramUsable, nvidia, func(ctx int, kvFactor float64) float64 {
 		return w + kvPerTok*float64(ctx)*kvFactor + computeBuf(ctx)
 	}); fullCtx > 0 {
+		if fullCtx < tuneFullOffloadCrampedCtx && hw.RAMBandwidthGBs > 0 {
+			// Active expert bytes per token: the router activates
+			// ExpertUsedFrac of the expert pool each token; when the
+			// fraction is absent, assume the whole pool streams (the slow,
+			// safe direction). Always-active shared experts are read on
+			// every token but not accounted here, so this can understate
+			// the true bytes per token — see estimateCPUMoeTPS.
+			activeBytes := float64(m.ExpertBytes) * m.ExpertUsedFrac
+			if activeBytes <= 0 {
+				activeBytes = float64(m.ExpertBytes)
+			}
+			if estimateCPUMoeTPS(hw.RAMBandwidthGBs, activeBytes) >= tuneCPUMoeMinTPS {
+				if moeCfg, ok := cpuMoePlan(); ok {
+					return moeCfg
+				}
+			}
+		}
 		cfg.GPULayers = "all"
 		cfg.CtxSize = fullCtx
 		cfg.FlashAttn = nvidia
@@ -836,32 +941,12 @@ func tuneModelConfig(hw tuneHardware, m tuneModel) ModelConfig {
 		return cfg
 	}
 
-	// Step 2: cpu-moe plan — keep the expert weights in system RAM and size
-	// the GPU side around dense weights + KV + compute buffers. Only when the
-	// experts fit usable RAM; otherwise the expert layers straddle both sides
-	// and partial offload (step 3) is the better fallback.
-	if m.ExpertBytes > 0 && float64(m.ExpertBytes) <= usableRAM {
-		dense := float64(m.DenseBytes)
-		if dense <= 0 {
-			// Defensive default for hand-built inputs without a split.
-			dense = math.Max(0, w-float64(m.ExpertBytes))
-		}
-		if useB, moeCtx := mergeCachePlans(ladder, vramUsable, nvidia, func(ctx int, kvFactor float64) float64 {
-			return dense + kvPerTok*float64(ctx)*kvFactor + computeBuf(ctx)
-		}); moeCtx > 0 {
-			cfg.GPULayers = "all"
-			cfg.CtxSize = moeCtx
-			cfg.FlashAttn = nvidia
-			cfg.CPUMoe = true
-			// Threads 0 omits the threads line so llama-server sizes threads
-			// automatically: with expert GEMMs running on the CPU the auto
-			// sizing measured >= pinning threads to the physical core count.
-			cfg.Threads = 0
-			if useB {
-				cfg.CacheTypeK, cfg.CacheTypeV = "q8_0", "q8_0"
-			}
-			return cfg
-		}
+	// Step 2: cpu-moe fallback — keep the expert weights in system RAM when
+	// full offload is impossible. Only when the experts fit usable RAM;
+	// otherwise the expert layers straddle both sides and partial offload
+	// (step 3) is the better fallback.
+	if moeCfg, ok := cpuMoePlan(); ok {
+		return moeCfg
 	}
 
 	// Step 3: partial offload — offload as many whole layers as fit in VRAM
@@ -902,7 +987,10 @@ func tuneModelConfig(hw tuneHardware, m tuneModel) ModelConfig {
 // separate probing) and derives the vendor classification for the tuner:
 // any GPU named nvidia (case-insensitive) or an available CUDA driver →
 // nvidia; else any GPU named amd/radeon → amd; else none. VRAMMB is the
-// largest MemoryMB across the GPU list.
+// largest MemoryMB across the GPU list. RAMBandwidthGBs comes from the
+// measured-bandwidth calibration (getCalibratedRAMBandwidth in benchbw.go:
+// cached per hardware fingerprint in llama-desktop-benchcache.json,
+// single-flight); 0 on failure keeps every tuner rule on its static behavior.
 func (a *App) tuneHardware() tuneHardware {
 	cpu := a.GetCPU()
 	mem := a.GetMemory()
@@ -914,6 +1002,7 @@ func (a *App) tuneHardware() tuneHardware {
 		RAMFreeGB:     mem.FreeGB,
 		PhysicalCores: cpu.Cores,
 		LogicalCPUs:   cpu.LogicalCPUs,
+		CPUModel:      cpu.Model,
 	}
 	hasNVIDIA, hasAMD := false, false
 	for _, g := range gpus {
@@ -936,6 +1025,10 @@ func (a *App) tuneHardware() tuneHardware {
 	default:
 		hw.GPUVendor = vendorNone
 	}
+	// Measured RAM bandwidth calibration: cached per hardware fingerprint,
+	// single-flight across concurrent tune clicks; 0 on failure, which keeps
+	// the tuner on its static rules.
+	hw.RAMBandwidthGBs, _ = getCalibratedRAMBandwidth(hw)
 	return hw
 }
 
