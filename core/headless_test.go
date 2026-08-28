@@ -3,6 +3,7 @@ package core
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -165,15 +166,17 @@ func TestEvaluateHandover(t *testing.T) {
 }
 
 // TestAdoptHandoverSetsState verifies adoption flips the server globals:
-// running=true, port set, adoptedPid recorded, serverCmd nil.
+// running=true, port set, adoptedPid recorded, serverCmd nil. A legacy record
+// without a log path must not start a log tailer.
 func TestAdoptHandoverSetsState(t *testing.T) {
 	saveAdoptedState(t)
 
-	adoptHandover(31337, 9090)
+	adoptHandover(31337, 9090, "")
 
 	serverMu.Lock()
 	running, port, adopted, cmd := serverRunning, serverPort, adoptedPid, serverCmd
 	startTime := serverStartTime
+	tail := serverLogTail
 	serverMu.Unlock()
 	if !running || port != 9090 || adopted != 31337 {
 		t.Errorf("adopt state wrong: running=%v port=%d adopted=%d", running, port, adopted)
@@ -183,6 +186,144 @@ func TestAdoptHandoverSetsState(t *testing.T) {
 	}
 	if startTime.IsZero() {
 		t.Error("adopt should stamp serverStartTime (uptime)")
+	}
+	if tail != nil {
+		t.Error("adopting a legacy record without logPath must not start a log tailer")
+	}
+}
+
+// ─── Handover record log path ─────────────────────────────────────
+
+// TestHandoverRecordLogPathRoundTrip verifies the handover record carries the
+// resolved absolute server log path: writeHandover fills logPath from
+// serverLogFile, the JSON contains the key, and readHandover returns it.
+func TestHandoverRecordLogPathRoundTrip(t *testing.T) {
+	withTempCwd(t)
+	orig := serverLogFile
+	serverLogFile = filepath.Join(t.TempDir(), "server.log")
+	t.Cleanup(func() { serverLogFile = orig })
+
+	if err := writeHandover(4242, 8080); err != nil {
+		t.Fatalf("writeHandover failed: %v", err)
+	}
+	data, err := os.ReadFile(handoverFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"logPath"`) {
+		t.Errorf("handover record JSON should contain logPath: %s", data)
+	}
+	rec, err := readHandover()
+	if err != nil {
+		t.Fatalf("readHandover failed: %v", err)
+	}
+	if rec.LogPath != serverLogFile {
+		t.Errorf("round-trip logPath = %q, want %q", rec.LogPath, serverLogFile)
+	}
+	if !filepath.IsAbs(rec.LogPath) {
+		t.Errorf("handover logPath must be absolute (successor must not depend on cwd), got %q", rec.LogPath)
+	}
+}
+
+// TestHandoverRecordLegacyNoLogPath verifies backward compatibility: a record
+// JSON written by an older version (no logPath key) parses with an empty
+// LogPath, and the decision core adopts it with an empty log path (no
+// tailing) instead of rejecting it.
+func TestHandoverRecordLegacyNoLogPath(t *testing.T) {
+	withTempCwd(t)
+
+	legacy := `{"pid":7,"port":8080,"startedAt":"2024-01-01T00:00:00Z"}`
+	if err := os.WriteFile(handoverFile, []byte(legacy), 0644); err != nil {
+		t.Fatal(err)
+	}
+	rec, err := readHandover()
+	if err != nil {
+		t.Fatalf("legacy record should parse: %v", err)
+	}
+	if rec.Pid != 7 || rec.Port != 8080 {
+		t.Errorf("legacy pid/port wrong: %+v", rec)
+	}
+	if rec.LogPath != "" {
+		t.Errorf("legacy record without logPath should yield empty LogPath, got %q", rec.LogPath)
+	}
+	plan := decideHandoverAction(true, rec, true)
+	if !plan.Adopt || plan.PID != 7 || plan.Port != 8080 || plan.LogPath != "" {
+		t.Errorf("legacy record should adopt without log path, got %+v", plan)
+	}
+}
+
+// TestAdoptHandoverTailsLogFile verifies the adopted-server log capture end
+// to end against a temp log file: adoptHandover with a log path points the
+// log source at the file and starts a tailer from EOF (pre-existing stale
+// content is never replayed), lines the adopted child appends afterwards
+// reach the ring, and the adopted-server stop path stops the tailer and its
+// goroutine exits.
+func TestAdoptHandoverTailsLogFile(t *testing.T) {
+	withTempCwd(t)
+	saveAdoptedState(t)
+	// Shrink the poll interval so appended lines reach the ring quickly.
+	origIdle := serverLogIdle
+	serverLogIdle = 5 * time.Millisecond
+	t.Cleanup(func() { serverLogIdle = origIdle })
+
+	logPath := filepath.Join(t.TempDir(), "adopted-server.log")
+	// Pre-existing content from the previous process must NOT be replayed.
+	if err := os.WriteFile(logPath, []byte("stale pre-handover line\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	adoptHandover(2718, 8080, logPath)
+
+	serverMu.Lock()
+	tail := serverLogTail
+	logFile := serverLogFile
+	serverMu.Unlock()
+	if tail == nil {
+		t.Fatal("adopting a record with a log path must start a log tailer")
+	}
+	if logFile != logPath {
+		t.Errorf("serverLogFile = %q, want the adopted log path %q", logFile, logPath)
+	}
+	for _, line := range serverLogsCopy() {
+		if strings.Contains(line, "stale") {
+			t.Fatalf("stale content was replayed into the ring: %v", serverLogsCopy())
+		}
+	}
+
+	// Append a line as the adopted child would, then wait for it in the ring.
+	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString("fresh adopted line\n"); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	waitForServerLogLine(t, "fresh adopted line", 3*time.Second)
+
+	// The adopted-server stop path must also stop the tailer.
+	kills := injectKillByPid(t)
+	if !stopAdoptedServerIfAny() {
+		t.Fatal("stopAdoptedServerIfAny should stop the adopted server")
+	}
+	if len(*kills) != 1 || (*kills)[0] != 2718 {
+		t.Errorf("adopted server should be killed by pid 2718, kills = %v", *kills)
+	}
+	serverMu.Lock()
+	cleared := serverLogTail
+	serverMu.Unlock()
+	if cleared != nil {
+		t.Error("serverLogTail must be cleared after the adopted server stops")
+	}
+	select {
+	case <-tail.done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("tailer goroutine did not exit after the adopted server stopped")
+	}
+	for _, line := range serverLogsCopy() {
+		if strings.Contains(line, "stale") {
+			t.Fatalf("stale content appeared in the ring: %v", serverLogsCopy())
+		}
 	}
 }
 
@@ -203,7 +344,9 @@ func injectKillByPid(t *testing.T) (calls *[]int) {
 }
 
 // saveAdoptedState snapshots and restores the adopted-server globals plus the
-// switch-restart marker.
+// switch-restart marker, the log tailer handle and the log-file path var. A
+// tailer a test left running is stopped on cleanup so its goroutine cannot
+// pollute later tests.
 func saveAdoptedState(t *testing.T) {
 	t.Helper()
 	serverMu.Lock()
@@ -212,16 +355,25 @@ func saveAdoptedState(t *testing.T) {
 	origAdopted := adoptedPid
 	origPort := serverPort
 	origStart := serverStartTime
+	origTail := serverLogTail
+	origLogFile := serverLogFile
 	serverMu.Unlock()
 	origSwitch := switchRestartPending.Load()
 	t.Cleanup(func() {
 		serverMu.Lock()
+		curTail := serverLogTail
 		serverRunning = origRunning
 		serverCmd = origCmd
 		adoptedPid = origAdopted
 		serverPort = origPort
 		serverStartTime = origStart
+		serverLogTail = origTail
 		serverMu.Unlock()
+		serverLogFile = origLogFile
+		if curTail != nil && curTail != origTail {
+			curTail.Stop()
+			curTail.WaitDone(2 * time.Second)
+		}
 		switchRestartPending.Store(origSwitch)
 	})
 }

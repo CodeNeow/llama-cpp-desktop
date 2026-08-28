@@ -103,13 +103,14 @@ func writeServerHandover() error {
 
 // adoptOrCleanHandover applies the handover plan to a GUI startup: a healthy
 // record is adopted (serverRunning=true, serverCmd=nil, adoptedPid set — the
-// frontend immediately reports the service as running), a stale record is
-// deleted; unlike headless startup, GUI never auto-starts the service.
+// frontend immediately reports the service as running, and its server log is
+// tailed when the record carries a log path), a stale record is deleted;
+// unlike headless startup, GUI never auto-starts the service.
 func adoptOrCleanHandover() {
 	plan := evaluateHandover()
 	switch {
 	case plan.Adopt:
-		adoptHandover(plan.PID, plan.Port)
+		adoptHandover(plan.PID, plan.Port, plan.LogPath)
 	case plan.RemoveFile:
 		if err := removeHandover(); err != nil {
 			log.Printf("[WARN] %v", err)
@@ -131,7 +132,7 @@ var notifyHeadlessServerStartFailed = defaultHeadlessServerAlert
 func startOrAdoptServer() {
 	plan := evaluateHandover()
 	if plan.Adopt {
-		adoptHandover(plan.PID, plan.Port)
+		adoptHandover(plan.PID, plan.Port, plan.LogPath)
 		return
 	}
 	if plan.RemoveFile {

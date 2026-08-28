@@ -22,19 +22,25 @@ import (
 var handoverFile = "llama-desktop-server-handover.json"
 
 // handoverRecord is the JSON payload of the handover file: the llama-server
-// child pid, the port it listens on, and when the record was written.
+// child pid, the port it listens on, when the record was written, and the
+// absolute path of the server log file. LogPath is omitempty and may be
+// missing entirely in records written by older versions; readHandover must
+// accept such records (an empty LogPath adopts without log tailing).
 type handoverRecord struct {
 	Pid       int    `json:"pid"`
 	Port      int    `json:"port"`
 	StartedAt string `json:"startedAt"`
+	LogPath   string `json:"logPath,omitempty"`
 }
 
-// writeHandover persists the handover record (pid/port, RFC3339 timestamp).
+// writeHandover persists the handover record (pid/port, RFC3339 timestamp,
+// absolute server log path — the successor must not depend on our cwd).
 func writeHandover(pid, port int) error {
 	rec := handoverRecord{
 		Pid:       pid,
 		Port:      port,
 		StartedAt: time.Now().Format(time.RFC3339),
+		LogPath:   absServerLogPath(),
 	}
 	data, err := json.MarshalIndent(rec, "", "  ")
 	if err != nil {
@@ -98,6 +104,9 @@ type handoverPlan struct {
 	Adopt bool
 	PID   int
 	Port  int
+	// LogPath carries the record's server log file path ("" in legacy records
+	// without logPath → adopt without log tailing).
+	LogPath string
 	// RemoveFile reports the handover record is stale (server dead or file
 	// corrupt) and must be deleted before a fresh server is started.
 	RemoveFile bool
@@ -105,7 +114,7 @@ type handoverPlan struct {
 
 // decideHandoverAction is the pure decision core of the handover takeover:
 //   - no record file            → start fresh (nothing to delete);
-//   - record present + healthy  → adopt (pid/port);
+//   - record present + healthy  → adopt (pid/port/logPath);
 //   - record present + unhealthy
 //     (or unparsable, rec == nil) → delete the record and start fresh.
 func decideHandoverAction(fileExists bool, rec *handoverRecord, healthy bool) handoverPlan {
@@ -115,7 +124,7 @@ func decideHandoverAction(fileExists bool, rec *handoverRecord, healthy bool) ha
 	case rec == nil || !healthy:
 		return handoverPlan{RemoveFile: true}
 	default:
-		return handoverPlan{Adopt: true, PID: rec.Pid, Port: rec.Port}
+		return handoverPlan{Adopt: true, PID: rec.Pid, Port: rec.Port, LogPath: rec.LogPath}
 	}
 }
 
@@ -137,8 +146,13 @@ func evaluateHandover() handoverPlan {
 // adoptHandover marks a handed-over llama-server as the running server:
 // serverRunning=true / serverPort set / adoptedPid recorded / serverCmd nil
 // (the child belongs to the previous, exited process — there is no handle to
-// Signal/Wait, stopServerInternal kills it by pid instead).
-func adoptHandover(pid, port int) {
+// Signal/Wait, stopServerInternal kills it by pid instead). logPath is the
+// server log file from the handover record: when non-empty and present, it
+// becomes the log source and a tailer reading from EOF feeds the ring — the
+// adopted child keeps writing to the same file, restoring log capture that
+// pipes could not provide. An empty logPath (legacy record) adopts without
+// tailing.
+func adoptHandover(pid, port int, logPath string) {
 	serverMu.Lock()
 	serverRunning = true
 	serverPort = port
@@ -147,4 +161,35 @@ func adoptHandover(pid, port int) {
 	serverStartTime = time.Now()
 	serverMu.Unlock()
 	log.Printf("[OK] Adopted llama-server pid=%d port=%d", pid, port)
+	adoptServerLogTail(logPath)
+}
+
+// adoptServerLogTail points the log capture at an adopted server's log file
+// and starts a tailer reading from EOF (never replaying stale content). A
+// missing or empty path is tolerated (legacy records, already-deleted files)
+// — adoption itself must not fail over log capture.
+func adoptServerLogTail(logPath string) {
+	if logPath == "" {
+		return
+	}
+	if _, err := os.Stat(logPath); err != nil {
+		log.Printf("[WARN] adopted server log file %s not readable, log tailing skipped: %v", logPath, err)
+		return
+	}
+	t, err := startServerLogTailer(logPath, false)
+	if err != nil {
+		log.Printf("[WARN] adopted server log tailer failed to start: %v", err)
+		return
+	}
+	serverMu.Lock()
+	serverLogFile = logPath
+	// Defensive: a previous tailer (if any) must not double-append into the
+	// ring alongside the new one.
+	old := serverLogTail
+	serverLogTail = t
+	serverMu.Unlock()
+	if old != nil {
+		old.Stop()
+	}
+	log.Printf("[OK] Tailing adopted server log: %s", logPath)
 }

@@ -1,15 +1,19 @@
 package core
 
 import (
-	"sync"
+	"io"
+	"path/filepath"
+	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
-// ─── serverLogWriter line-buffered ─────────────────────────────────────
+// ─── Ring helpers ─────────────────────────────────────────────────
 
 // resetServerLogs clears the service-log ring buffer (protected by serverLogsMu) and
-// restores it to empty after the test, preventing log pollution in writer-related test
-// cases from affecting subsequent cases (isolation matches TestAddServerLogRingBuffer).
+// restores it to empty after the test, preventing log pollution in one test case
+// from affecting subsequent cases.
 func resetServerLogs(t *testing.T) {
 	t.Helper()
 	serverLogsMu.Lock()
@@ -32,131 +36,161 @@ func serverLogsCopy() []string {
 	return out
 }
 
-// TestServerLogWriterSingleWriteMultiLine verifies that a single Write containing
-// multiple lines is split into independent log entries (each line TrimSpace'd to remove
-// leading/trailing whitespace), and Write returns len(p), nil satisfying the io.Writer
-// contract (accepts the entire input block).
-func TestServerLogWriterSingleWriteMultiLine(t *testing.T) {
-	resetServerLogs(t)
-	w := &serverLogWriter{}
-	p := []byte("line one\nline two\nline three\n")
-	n, err := w.Write(p)
-	if n != len(p) || err != nil {
-		t.Fatalf("Write returned (%d, %v), want (%d, nil)", n, err, len(p))
-	}
-	got := serverLogsCopy()
-	want := []string{"line one", "line two", "line three"}
-	if len(got) != len(want) {
-		t.Fatalf("log entry count = %d, want %d: %v", len(got), len(want), got)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("entry[%d] = %q, want %q", i, got[i], want[i])
-		}
-	}
-}
-
-// TestServerLogWriterSplitWriteReassembles verifies that when a print_timing line is
-// split across multiple Writes (llama-server outputs in small chunks, a single line can
-// be bisected), the buffer reassembles it into one complete entry.
-// This is the core scenario fixed this round: the fragment "( 0.63 ms per token, 2362.80 tokens per second)"
-// appearing as a standalone entry no longer carries the "prompt eval time" marker, and
-// parseTPS would misinterpret the prefill number as decode speed; line buffering must
-// guarantee addServerLog receives a complete line in this scenario.
-func TestServerLogWriterSplitWriteReassembles(t *testing.T) {
-	resetServerLogs(t)
-	w := &serverLogWriter{}
-
-	// first half has no newline terminator: must not produce any log entry, fragment stays in buffer
-	first := []byte("I slot print_timing:             eval time =     712.56 ms /    64 tokens (   11.13 ms")
-	if n, err := w.Write(first); n != len(first) || err != nil {
-		t.Fatalf("first-half Write returned (%d, %v), want (%d, nil)", n, err, len(first))
-	}
-	if got := serverLogsCopy(); len(got) != 0 {
-		t.Fatalf("newline-less fragment must not produce entries, got %v", got)
-	}
-
-	// second half completes the newline: fragment + second half reassemble into one complete line
-	w.Write([]byte(" per token,    89.82 tokens per second)\n"))
-	got := serverLogsCopy()
-	if len(got) != 1 {
-		t.Fatalf("log entry count = %d, want 1: %v", len(got), got)
-	}
-	want := "I slot print_timing:             eval time =     712.56 ms /    64 tokens (   11.13 ms per token,    89.82 tokens per second)"
-	if got[0] != want {
-		t.Errorf("reassembled line = %q, want %q", got[0], want)
-	}
-}
-
-// TestServerLogWriterSkipsBlankLines verifies empty lines and whitespace-only lines
-// (including \t) are skipped and do not produce log entries, preventing the ring buffer
-// from being polluted by blank lines.
-func TestServerLogWriterSkipsBlankLines(t *testing.T) {
-	resetServerLogs(t)
-	w := &serverLogWriter{}
-	w.Write([]byte("a\n\n   \n\t\nb\n"))
-	got := serverLogsCopy()
-	want := []string{"a", "b"}
-	if len(got) != len(want) {
-		t.Fatalf("log entry count = %d, want %d: %v", len(got), len(want), got)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("entry[%d] = %q, want %q", i, got[i], want[i])
-		}
-	}
-}
-
-// TestServerLogWriterTrailingFragmentRetained verifies a trailing fragment without a
-// newline terminator is kept in the buffer without producing an entry; after the next
-// Write completes it, the two halves reassemble into one complete line (not discarded, not prematurely
-// persisted).
-func TestServerLogWriterTrailingFragmentRetained(t *testing.T) {
-	resetServerLogs(t)
-	w := &serverLogWriter{}
-	frag := []byte("tail fragment")
-	if n, err := w.Write(frag); n != len(frag) || err != nil {
-		t.Fatalf("fragment Write returned (%d, %v), want (%d, nil)", n, err, len(frag))
-	}
-	if got := serverLogsCopy(); len(got) != 0 {
-		t.Fatalf("fragment must not produce entries, got %v", got)
-	}
-	w.Write([]byte(" completed\n"))
-	got := serverLogsCopy()
-	if len(got) != 1 || got[0] != "tail fragment completed" {
-		t.Errorf("after completion there should be one full line, got %v", got)
-	}
-}
-
-// TestServerLogWriterConcurrentWrite verifies concurrent Write does not panic and does
-// not drop lines: 50 goroutines each write one 3-line block (each block is atomically
-// processed under the lock, lines do not interleave across blocks), ring buffer capacity
-// 200 (150 < 200, no truncation), total log count should be 150 and every entry is one
-// of the three expected lines.
-func TestServerLogWriterConcurrentWrite(t *testing.T) {
-	resetServerLogs(t)
-	w := &serverLogWriter{}
-	const goroutines = 50
-	var wg sync.WaitGroup
-	for i := 0; i < goroutines; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if _, err := w.Write([]byte("c1 line\nc2 line\nc3 line\n")); err != nil {
-				t.Errorf("concurrent Write returned error: %v", err)
+// waitForServerLogLine polls the ring until a line containing substr appears
+// (the tailer runs asynchronously; appends need a poll or two).
+func waitForServerLogLine(t *testing.T, substr string, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		for _, line := range serverLogsCopy() {
+			if strings.Contains(line, substr) {
+				return
 			}
-		}()
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
-	wg.Wait()
+	t.Fatalf("log line containing %q did not reach the ring within %v; ring = %v", substr, timeout, serverLogsCopy())
+}
+
+// ─── Log-file tailer over a pipe (no real processes) ─────────────
+
+// TestServerLogTailerFollowsPipeThrottlesPartials drives the tailer path from
+// an io.Pipe with an injected clock: complete lines reach the ring
+// immediately, "partial" redraw pieces are throttled to the 400 ms window
+// (the injected clock steps 100 ms per call, so the 1st and 5th partial are
+// admitted and the 2nd–4th dropped), and after Stop the drain at EOF flushes
+// the trailing newline-less fragment into the ring. The goroutine must exit.
+func TestServerLogTailerFollowsPipeThrottlesPartials(t *testing.T) {
+	resetServerLogs(t)
+
+	base := time.Unix(1700000000, 0)
+	var tick atomic.Int64
+	origNow := serverLogNow
+	serverLogNow = func() time.Time {
+		return base.Add(time.Duration(tick.Add(1)) * 100 * time.Millisecond)
+	}
+	t.Cleanup(func() { serverLogNow = origNow })
+
+	pr, pw := io.Pipe()
+	tail := startServerLogTailerFromReader(pr)
+
+	writes := []string{
+		"line one\n",
+		"p1\rp2\rp3\rp4\rp5\r", // five redraw frames → pieces p1..p5
+		"final line\n",
+		"tail without newline", // completed only by the drain-at-EOF flush
+	}
+	for _, w := range writes {
+		if _, err := pw.Write([]byte(w)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Child exited: stop the tailer, then close the stream so the drain
+	// (reading to EOF) can flush the trailing fragment. Stop is idempotent.
+	tail.Stop()
+	tail.Stop()
+	pw.Close()
+	tail.WaitDone(5 * time.Second)
 
 	got := serverLogsCopy()
-	if len(got) != goroutines*3 {
-		t.Fatalf("log entry count = %d, want %d (no dropped lines)", len(got), goroutines*3)
+	want := []string{"line one", "p1", "p5", "final line", "tail without newline"}
+	if len(got) != len(want) {
+		t.Fatalf("ring = %v, want %v", got, want)
 	}
-	valid := map[string]bool{"c1 line": true, "c2 line": true, "c3 line": true}
-	for _, line := range got {
-		if !valid[line] {
-			t.Errorf("unexpected line appeared: %q", line)
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("ring[%d] = %q, want %q", i, got[i], want[i])
 		}
+	}
+}
+
+// TestServerLogTailerStripsANSIAndDropsEmptyPieces verifies ring-level
+// policies: ANSI sequences are stripped from pieces before they enter the
+// ring, empty lines / empty redraw frames / whitespace-only lines are dropped
+// (preserving the previous ring-buffer behavior), and finalized redraw frames
+// do reach the ring.
+func TestServerLogTailerStripsANSIAndDropsEmptyPieces(t *testing.T) {
+	resetServerLogs(t)
+
+	pr, pw := io.Pipe()
+	tail := startServerLogTailerFromReader(pr)
+
+	writes := []string{
+		"\x1b[31mcoloured line\x1b[0m\n", // SGR codes stripped at append time
+		"\r\n",                           // CRLF empty line dropped
+		"\x1b[2K\rprogress frame\r\n",    // empty redraw partial dropped, frame finalized
+		"   \n",                          // whitespace-only line dropped
+	}
+	for _, w := range writes {
+		if _, err := pw.Write([]byte(w)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tail.Stop()
+	pw.Close()
+	tail.WaitDone(5 * time.Second)
+
+	got := serverLogsCopy()
+	want := []string{"coloured line", "progress frame"}
+	if len(got) != len(want) {
+		t.Fatalf("ring = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("ring[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+// TestServerLogTailerCarriesSplitUTF8AcrossReads verifies the incremental
+// decode behavior end to end: 2-byte and 3-byte runes cut by read boundaries
+// are stitched back together, so the ring sees "héi 中" with no replacement
+// characters.
+func TestServerLogTailerCarriesSplitUTF8AcrossReads(t *testing.T) {
+	resetServerLogs(t)
+
+	pr, pw := io.Pipe()
+	tail := startServerLogTailerFromReader(pr)
+
+	// "héi 中" split so both the 2-byte é and the 3-byte 中 are cut by the
+	// read boundary.
+	chunks := []string{"h\xc3", "\xa9i \xe4\xb8", "\xad\n"}
+	for _, w := range chunks {
+		if _, err := pw.Write([]byte(w)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tail.Stop()
+	pw.Close()
+	tail.WaitDone(5 * time.Second)
+
+	got := serverLogsCopy()
+	if len(got) != 1 || got[0] != "héi 中" {
+		t.Fatalf("ring = %q, want [\"héi 中\"] (no replacement-char garbage)", got)
+	}
+}
+
+// ─── Log-file path resolution ─────────────────────────────────────
+
+// TestAbsServerLogPath verifies the handover log-path resolution: a
+// cwd-relative serverLogFile resolves to an absolute path under the current
+// directory, and an already-absolute path passes through unchanged.
+func TestAbsServerLogPath(t *testing.T) {
+	tmp := withTempCwd(t)
+	orig := serverLogFile
+	t.Cleanup(func() { serverLogFile = orig })
+
+	serverLogFile = "relative-server.log"
+	got := absServerLogPath()
+	want := filepath.Join(tmp, "relative-server.log")
+	if got != want {
+		t.Errorf("absServerLogPath() = %q, want %q", got, want)
+	}
+
+	abs := filepath.Join(t.TempDir(), "abs-server.log")
+	serverLogFile = abs
+	if got := absServerLogPath(); got != abs {
+		t.Errorf("absServerLogPath() = %q, want the unchanged absolute path %q", got, abs)
 	}
 }

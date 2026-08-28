@@ -49,14 +49,39 @@ func startServerInternal() error {
 	// Build command
 	llamaServer, args := buildServerCommand(cfg, presetPath)
 
+	// Stop a leftover tailer from a previous server (e.g. an adopted one not
+	// stopped through the normal path) so it cannot double-append the new
+	// child's lines into the ring alongside the tailer started below.
+	serverMu.Lock()
+	oldTail := serverLogTail
+	serverLogTail = nil
+	serverMu.Unlock()
+	if oldTail != nil {
+		oldTail.Stop()
+		oldTail.WaitDone(2 * time.Second)
+	}
+
 	// Create the command and bind log output inside serverMu (#3). Do not set
 	// serverRunning=true yet: it must only be set after Start() succeeds,
 	// preserving the invariant "serverRunning==true ⟹ serverCmd.Process != nil".
 	serverMu.Lock()
+
+	// Capture the child's stdout+stderr in one log file: both fds get the
+	// SAME *os.File (one open file description → one shared write offset), so
+	// concurrent writes never interleave mid-line. File capture (instead of
+	// pipes) makes the log stream identical for a spawned child and a
+	// re-adopted one: an adopted llama-server belongs to the previous, exited
+	// process and has no pipe to us — but it keeps writing to this file,
+	// which any process can tail (see serverLogTailer).
+	logFile, err := os.OpenFile(serverLogFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		serverMu.Unlock()
+		return fmt.Errorf(tr("打开服务日志文件失败: %w", "failed to open server log file: %w"), err)
+	}
 	cmd := exec.Command(llamaServer, args...)
 	hideWindow(cmd)
-	cmd.Stdout = &serverLogWriter{}
-	cmd.Stderr = &serverLogWriter{}
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
 	serverLogsMu.Lock()
 	serverLogs = []string{}
 	serverLogsMu.Unlock()
@@ -65,6 +90,7 @@ func startServerInternal() error {
 	addServerLog(fmt.Sprintf("[INFO] Starting llama-server: %s %s", llamaServer, strings.Join(args, " ")))
 
 	if err := cmd.Start(); err != nil {
+		logFile.Close() // the child never inherited the handle; do not leak the fd
 		serverMu.Lock()
 		serverCmd = nil
 		serverRunning = false
@@ -73,32 +99,57 @@ func startServerInternal() error {
 		addServerLog("[ERROR] Failed to start: " + err.Error())
 		return err
 	}
+	// The child owns its inherited copy of the handle now; drop ours so each
+	// start/stop cycle does not leak an fd.
+	logFile.Close()
+
+	// Tail the freshly truncated log file from offset 0 into the ring,
+	// replacing the old pipe-based serverLogWriter (the ring keeps receiving
+	// complete lines either way, so parseTPS is unaffected).
+	tailer, err := startServerLogTailer(serverLogFile, true)
+	if err != nil {
+		// Log capture is best-effort: the file itself still receives the
+		// child output, so only the in-app view degrades.
+		log.Printf("[WARN] server log tailer failed to start: %v", err)
+		tailer = nil
+	}
 
 	serverMu.Lock()
 	serverCmd = cmd
 	serverRunning = true
 	serverStartTime = time.Now()
 	serverPort = cfg.Port
+	serverLogTail = tailer
 	serverMu.Unlock()
 
-	go func(cmd *exec.Cmd) {
+	go func(cmd *exec.Cmd, tailer *serverLogTailer) {
 		err := cmd.Wait()
 		serverMu.Lock()
 		serverRunning = false
 		serverStartTime = time.Time{}
 		serverPort = 0
-		// Only clear the global cmd reference when it still points to this
+		// Only clear the global references when they still point to this
 		// instance, to avoid clobbering a newly started server.
 		if serverCmd == cmd {
 			serverCmd = nil
 		}
+		if serverLogTail == tailer {
+			serverLogTail = nil
+		}
 		serverMu.Unlock()
+		// The child has exited: stop the tailer (it drains the file's final
+		// bytes and flushes its assembler first, so the ring keeps the last
+		// lines) — bounded wait, the tailer goroutine always terminates.
+		if tailer != nil {
+			tailer.Stop()
+			tailer.WaitDone(2 * time.Second)
+		}
 		if err != nil {
 			addServerLog("[WARN] llama-server exited: " + err.Error())
 		} else {
 			addServerLog("[INFO] llama-server stopped")
 		}
-	}(cmd)
+	}(cmd, tailer)
 
 	return nil
 }
@@ -185,7 +236,15 @@ func stopAdoptedServerIfAny() bool {
 	serverPort = 0
 	serverStartTime = time.Time{}
 	adoptedPid = 0
+	tail := serverLogTail
+	serverLogTail = nil
 	serverMu.Unlock()
+	if tail != nil {
+		// The adopted child has no Wait handle; stopping the tailer here is
+		// what ends log capture (it drains the file's remaining bytes first).
+		tail.Stop()
+		tail.WaitDone(2 * time.Second)
+	}
 	if err := removeHandover(); err != nil {
 		log.Printf("[WARN] %v", err)
 	}

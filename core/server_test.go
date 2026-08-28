@@ -1,6 +1,7 @@
 package core
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -203,8 +204,9 @@ func TestBuildServerCommandAPIKey(t *testing.T) {
 	}
 }
 
-// TestAddServerLogRingBuffer verifies the service-log ring buffer: after exceeding 200
-// entries it is trimmed to the most recent 100, and the latest log is always at the end.
+// TestAddServerLogRingBuffer verifies the service-log ring buffer: after exceeding
+// serverLogsCap (2000) entries the oldest entries are evicted, and the latest log
+// is always at the end.
 func TestAddServerLogRingBuffer(t *testing.T) {
 	serverLogsMu.Lock()
 	serverLogs = nil
@@ -215,17 +217,24 @@ func TestAddServerLogRingBuffer(t *testing.T) {
 		serverLogsMu.Unlock()
 	}()
 
-	for i := 0; i < 250; i++ {
-		addServerLog("line")
+	const total = serverLogsCap + 500
+	for i := 0; i < total; i++ {
+		addServerLog(fmt.Sprintf("line-%d", i))
 	}
 
 	serverLogsMu.Lock()
 	defer serverLogsMu.Unlock()
-	if len(serverLogs) > 200 {
-		t.Errorf("log count %d exceeds limit 200", len(serverLogs))
+	if len(serverLogs) > serverLogsCap {
+		t.Errorf("log count %d exceeds limit %d", len(serverLogs), serverLogsCap)
 	}
-	if serverLogs[len(serverLogs)-1] != "line" {
+	if len(serverLogs) >= total {
+		t.Errorf("oldest entries were not evicted: %d entries after %d appends", len(serverLogs), total)
+	}
+	if serverLogs[len(serverLogs)-1] != fmt.Sprintf("line-%d", total-1) {
 		t.Errorf("latest log should be at the end: %v", serverLogs[len(serverLogs)-1])
+	}
+	if serverLogs[0] == "line-0" {
+		t.Error("oldest entry should have been evicted")
 	}
 }
 
