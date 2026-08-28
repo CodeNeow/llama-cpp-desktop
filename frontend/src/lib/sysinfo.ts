@@ -47,15 +47,50 @@ export function aggregateVram(items: Pick<GpuDisplay, 'totalMb' | 'usedMb'>[]): 
   return { totalMb, usedMb }
 }
 
-export type CudaCompatLevel = 'ok' | 'blackwell'
+export type CudaCompatLevel = 'ok' | 'need' | 'satisfied'
 
 /**
- * CUDA compatibility class from the GPU compute capability: Blackwell cards
- * (compute capability >= 12.0) require CUDA >= 12.8 runtime builds of llama.cpp;
- * anything older runs on the standard builds.
+ * The Blackwell CUDA floor (12.8) for compute capability >= 12.0, duplicated
+ * from the backend's cudaFloorForComputeCap (core/sysinfo.go) — the backend is
+ * authoritative; keep this literal in sync when changing one side.
  */
-export function cudaCompatLevel(computeCapability: number): CudaCompatLevel {
-  return computeCapability >= 12.0 ? 'blackwell' : 'ok'
+const BLACKWELL_CUDA_FLOOR = 12.8
+
+/**
+ * Whether an installed cudart version satisfies the given CUDA floor.
+ * Parses "13" / "12.8" / "12.4" (major[.minor]); empty or unparsable input
+ * never satisfies the floor. Deliberately conservative: the cudart DLL file
+ * name only reveals the CUDA major family (cudart64_13.dll = CUDA 13), so a
+ * bare major that merely equals the floor's major cannot prove the minor
+ * requirement is met — "12" must NOT satisfy a 12.8 floor, only "12.8" or
+ * higher with an explicit minor part does. A higher major ("13") always
+ * satisfies the floor.
+ */
+export function cudartVersionSatisfiesFloor(version: string, floor: number): boolean {
+  const m = /^(\d+)(?:\.(\d+))?$/.exec(version.trim())
+  if (!m) return false
+  const major = Number(m[1])
+  const minor = m[2] === undefined ? null : Number(m[2])
+  const floorMajor = Math.floor(floor)
+  // Scale the fractional part (0.8 → 8); rounding absorbs float noise (12.8 − 12)
+  const floorMinor = Math.round((floor - floorMajor) * 10)
+  if (major > floorMajor) return true
+  if (major < floorMajor) return false
+  // Equal majors: an absent minor cannot prove the floor's minor is met
+  if (minor === null) return false
+  return minor >= floorMinor
+}
+
+/**
+ * CUDA compatibility class from the GPU compute capability plus the installed
+ * cudart runtime: pre-Blackwell cards (compute capability < 12.0) run on the
+ * standard builds ('ok'); Blackwell cards (>= 12.0) with a cudart runtime
+ * family that provably satisfies the 12.8 floor are 'satisfied'; Blackwell
+ * cards without one (or with an unverifiable 12.x runtime) stay at 'need'.
+ */
+export function cudaCompatLevel(computeCapability: number, cudartVersion?: string): CudaCompatLevel {
+  if (computeCapability < 12.0) return 'ok'
+  return cudartVersionSatisfiesFloor(cudartVersion ?? '', BLACKWELL_CUDA_FLOOR) ? 'satisfied' : 'need'
 }
 
 /**

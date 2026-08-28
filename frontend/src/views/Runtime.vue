@@ -77,7 +77,7 @@
                 <span class="comp-desc">{{ t('runtime.compCudartDesc') }}</span>
               </span>
               <span class="status-badge" :class="info.cudartInstalled ? 'available' : 'unavailable'">
-                {{ info.cudartInstalled ? t('runtime.llamacpp.installed') : t('runtime.compNotDetected') }}
+                {{ cudartBadge }}
               </span>
             </div>
           </div>
@@ -188,13 +188,24 @@ interface LlamaCppInfo {
   path: string
   version: string
   cudartInstalled: boolean
+  /** CUDA major family of the installed cudart runtime ("13", "12"), "" when unknown */
+  cudartVersion: string
 }
 
-const info = ref<LlamaCppInfo>({ installed: false, path: '', version: '', cudartInstalled: false })
+const info = ref<LlamaCppInfo>({ installed: false, path: '', version: '', cudartInstalled: false, cudartVersion: '' })
 const loading = ref(true)
 const error = ref('')
 // The cudart component row applies to Windows only (the runtime asset is Windows-exclusive)
 const isWindows = ref(false)
+
+// Cudart component badge: append the detected CUDA major family (parsed from
+// the cudart64_*.dll file name) to the installed label when known
+const cudartBadge = computed(() => {
+  if (!info.value.cudartInstalled) return t('runtime.compNotDetected')
+  return info.value.cudartVersion
+    ? `${t('runtime.llamacpp.installed')} · CUDA ${info.value.cudartVersion}`
+    : t('runtime.llamacpp.installed')
+})
 
 // Download state
 interface DlStatus {

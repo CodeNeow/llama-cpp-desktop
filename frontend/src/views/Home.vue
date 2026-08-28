@@ -207,8 +207,9 @@
               </div>
               <div class="info-item" v-if="info.cuda.available && firstGpuComputeCap > 0">
                 <span class="info-label">{{ t('home.cuda.compat') }}</span>
-                <span class="info-value" :class="{ 'warning-text': cudaLevel === 'blackwell' }">
-                  {{ cudaLevel === 'blackwell' ? t('home.cuda.compatBlackwell') : t('home.cuda.compatOk') }}
+                <!-- warning-text only for 'need': a satisfied floor is good news, not a warning -->
+                <span class="info-value" :class="{ 'warning-text': cudaLevel === 'need' }">
+                  {{ cudaCompatText }}
                 </span>
               </div>
             </div>
@@ -357,6 +358,9 @@ interface LiveSnapshot {
 // Quick-start checklist facts probed alongside the system info
 const runtimeInstalled = ref(false)
 const hasModels = ref(false)
+// CUDA major family of the installed cudart runtime ("" when unknown); also
+// feeds the three-state CUDA compat row below
+const cudartVersion = ref('')
 
 const router = useRouter()
 
@@ -433,7 +437,21 @@ const osLabel = computed(() => {
 })
 
 const firstGpuComputeCap = computed(() => info.value.gpu[0]?.computeCapability ?? 0)
-const cudaLevel = computed(() => cudaCompatLevel(firstGpuComputeCap.value))
+const cudaLevel = computed(() => cudaCompatLevel(firstGpuComputeCap.value, cudartVersion.value))
+
+// Three-state CUDA compat row text: 'satisfied' composes the detected CUDA
+// major family; the version itself stays untranslated so only the label goes
+// through i18n
+const cudaCompatText = computed(() => {
+  switch (cudaLevel.value) {
+    case 'satisfied':
+      return `${t('home.cuda.compatSatisfied')} · CUDA ${cudartVersion.value}`
+    case 'need':
+      return t('home.cuda.compatBlackwell')
+    default:
+      return t('home.cuda.compatOk')
+  }
+})
 
 // Quick-start checklist: derives visibility/steps from probed facts + persisted dismissal
 const onboardingView = computed(() => buildOnboardingView({
@@ -483,8 +501,14 @@ async function fetchSystemInfo(manual = false) {
     .then(v => { info.value.appVersion = v })
     .catch(() => {})
   // Quick-start checklist facts: best-effort probes (cosmetic as well)
+  // The getLlamaCpp probe also feeds the CUDA compat row via cudartVersion —
+  // it must stay unconditional (not gated behind onboarding visibility) so the
+  // compat row has data even when the checklist is dismissed
   getLlamaCpp()
-    .then(d => { runtimeInstalled.value = d?.installed === true })
+    .then(d => {
+      runtimeInstalled.value = d?.installed === true
+      cudartVersion.value = typeof d?.cudartVersion === 'string' ? d.cudartVersion : ''
+    })
     .catch(() => {})
   getModels()
     .then(list => { hasModels.value = Array.isArray(list) && list.length > 0 })

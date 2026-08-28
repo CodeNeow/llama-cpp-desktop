@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { aggregateVram, buildGpuDisplays, cudaCompatLevel } from '../lib/sysinfo'
+import { aggregateVram, buildGpuDisplays, cudaCompatLevel, cudartVersionSatisfiesFloor } from '../lib/sysinfo'
 import type { GpuStaticInfo } from '../lib/sysinfo'
 import type { MonitorStatus } from '../lib/monitor'
 
@@ -38,16 +38,47 @@ describe('aggregateVram', () => {
   })
 })
 
-describe('cudaCompatLevel', () => {
-  it('compute capability >= 12.0 classifies as blackwell', () => {
-    expect(cudaCompatLevel(12.0)).toBe('blackwell')
-    expect(cudaCompatLevel(12.9)).toBe('blackwell')
+describe('cudartVersionSatisfiesFloor', () => {
+  it('parses major-only and major.minor versions against a 12.8 floor', () => {
+    const table: Array<[string, boolean]> = [
+      ['13', true],      // higher major always satisfies
+      ['14', true],
+      ['12.8', true],    // exact floor with explicit minor
+      ['12.9', true],
+      ['12.4', false],   // equal major, minor below the floor
+      ['12', false],     // conservative: bare major equal to the floor's major cannot prove >= 12.8
+      ['', false],       // no runtime detected
+      ['abc', false],    // unparsable
+      [' 13 ', true]     // surrounding whitespace tolerated
+    ]
+    for (const [version, want] of table) {
+      expect(cudartVersionSatisfiesFloor(version, 12.8)).toBe(want)
+    }
   })
+})
 
-  it('older cards classify as ok', () => {
+describe('cudaCompatLevel', () => {
+  it('pre-Blackwell cards classify as ok regardless of any detected cudart version', () => {
     expect(cudaCompatLevel(11.9)).toBe('ok')
     expect(cudaCompatLevel(8.9)).toBe('ok')
     expect(cudaCompatLevel(0)).toBe('ok')
+    expect(cudaCompatLevel(8.9, '13')).toBe('ok')
+    expect(cudaCompatLevel(11.9, undefined)).toBe('ok')
+  })
+
+  it('Blackwell cards with a cudart family satisfying the 12.8 floor classify as satisfied', () => {
+    expect(cudaCompatLevel(12.0, '13')).toBe('satisfied')
+    expect(cudaCompatLevel(12.9, '13')).toBe('satisfied')
+  })
+
+  it('Blackwell cards without a provable runtime classify as need (warning unchanged)', () => {
+    // bare "12" cannot prove >= 12.8 (conservative)
+    expect(cudaCompatLevel(12.0, '12')).toBe('need')
+    expect(cudaCompatLevel(12.9, '12.4')).toBe('need')
+    // no version / unknown
+    expect(cudaCompatLevel(12.0)).toBe('need')
+    expect(cudaCompatLevel(12.9, undefined)).toBe('need')
+    expect(cudaCompatLevel(12.0, '')).toBe('need')
   })
 })
 

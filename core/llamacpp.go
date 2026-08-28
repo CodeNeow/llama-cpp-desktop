@@ -47,6 +47,13 @@ type LlamaCppInfo struct {
 	// co-downloaded with CUDA builds since llama.cpp b10342) sit next to the
 	// resolved binary; always false on non-Windows and for CPU/Vulkan builds.
 	CudartInstalled bool `json:"cudartInstalled"`
+	// CudartVersion is the CUDA major family of the installed cudart runtime
+	// ("13", "12"), derived from the cudart64_*.dll file name. The DLL's
+	// embedded FileVersion does not encode the CUDA release version, so the
+	// file name is the only reliable source; a bare "12" cannot prove the
+	// 12.8 Blackwell floor. Empty when not installed, unparsable, or
+	// non-Windows.
+	CudartVersion string `json:"cudartVersion"`
 }
 
 var cachedLlamaCpp LlamaCppInfo
@@ -252,7 +259,7 @@ func getLlamaCppInfo() LlamaCppInfo {
 		info.Installed = true
 		info.Path = p
 		fillLlamaCppVersion(&info, p)
-		info.CudartInstalled = detectCudartRuntime(filepath.Dir(p))
+		setCudartInfo(&info, filepath.Dir(p))
 		return info
 	}
 
@@ -274,7 +281,7 @@ func getLlamaCppInfo() LlamaCppInfo {
 				info.Installed = true
 				info.Path = p
 				fillLlamaCppVersion(&info, p)
-				info.CudartInstalled = detectCudartRuntime(filepath.Dir(p))
+				setCudartInfo(&info, filepath.Dir(p))
 				return info
 			}
 		}
@@ -299,6 +306,46 @@ func detectCudartRuntime(dir string) bool {
 		}
 	}
 	return false
+}
+
+// setCudartInfo fills the cudart detection fields (runtime presence plus the
+// CUDA major family) for the directory holding the resolved llama.cpp binary,
+// shared by both getLlamaCppInfo call sites so the two lookups cannot drift.
+func setCudartInfo(info *LlamaCppInfo, dir string) {
+	info.CudartInstalled = detectCudartRuntime(dir)
+	if info.CudartInstalled {
+		info.CudartVersion = detectCudartVersion(dir)
+	}
+}
+
+// cudartVerRe extracts the CUDA major family from a cudart runtime DLL file
+// name, e.g. "13" from cudart64_13.dll.
+var cudartVerRe = regexp.MustCompile(`cudart64_(\d+)`)
+
+// detectCudartVersion reports the CUDA major family of the installed cudart
+// runtime in dir as a string ("13", "12"), parsed from the cudart64_*.dll
+// file name (the lexicographically first match wins when several are present;
+// Glob results are sorted). Only the file name is reliable: the DLL's embedded
+// FileVersion (e.g. "6,14,11,13030") does not encode the CUDA release version.
+// The comparison against the 12.8 Blackwell floor is deliberately conservative
+// on the consumer side — a bare "12" major cannot prove >= 12.8, so 12.x never
+// satisfies the floor (see the frontend's cudartVersionSatisfiesFloor).
+// Returns "" when no cudart64_*.dll is present, on non-Windows (the cudart
+// asset is Windows-exclusive), or when the name carries no parseable major.
+// Pure filesystem + regex, no external process spawn.
+func detectCudartVersion(dir string) string {
+	if runtime.GOOS != "windows" || dir == "" {
+		return ""
+	}
+	matches, err := filepath.Glob(filepath.Join(dir, "cudart64_*.dll"))
+	if err != nil || len(matches) == 0 {
+		return ""
+	}
+	m := cudartVerRe.FindStringSubmatch(filepath.Base(matches[0]))
+	if m == nil {
+		return ""
+	}
+	return m[1]
 }
 
 // githubReleasesAPI points to the llama.cpp latest release API, declared as a

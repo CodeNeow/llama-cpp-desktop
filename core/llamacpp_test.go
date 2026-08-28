@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -126,6 +127,85 @@ func TestDetectCudartRuntime(t *testing.T) {
 		}
 	} else if detectCudartRuntime(dir) {
 		t.Error("non-Windows must never report the cudart runtime")
+	}
+}
+
+// TestDetectCudartVersion verifies the CUDA major-family detection from the
+// cudart64_*.dll file name feeding the Home page's three-state CUDA compat
+// row: the DLL's internal FileVersion does not encode the CUDA release
+// version, so the file name is the only reliable source (cudart64_13.dll =
+// CUDA 13 family). A bare "12" major cannot prove >= 12.8, so the consumer
+// treats 12.x conservatively as not satisfying the floor. Non-Windows never
+// ships the Windows-exclusive cudart asset, so detection stays empty there.
+func TestDetectCudartVersion(t *testing.T) {
+	dir := t.TempDir()
+
+	// Guard cases valid on every platform: empty dir, missing dir, empty
+	// directory, and a cublas-only directory (no cudart64_*.dll to parse).
+	if detectCudartVersion("") != "" {
+		t.Error("empty dir must never report a cudart version")
+	}
+	if detectCudartVersion(filepath.Join(dir, "does-not-exist")) != "" {
+		t.Error("missing dir must never report a cudart version")
+	}
+	if detectCudartVersion(dir) != "" {
+		t.Error("empty directory must not report a cudart version")
+	}
+	if err := os.WriteFile(filepath.Join(dir, "cublas64_12.dll"), []byte("stub"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if detectCudartVersion(dir) != "" {
+		t.Error("cublas-only directory must not report a cudart version")
+	}
+
+	if runtime.GOOS == "windows" {
+		for _, tc := range []struct{ dll, major string }{
+			{"cudart64_13.dll", "13"},
+			{"cudart64_12.dll", "12"},
+		} {
+			p := filepath.Join(dir, tc.dll)
+			if err := os.WriteFile(p, []byte("stub"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			if got := detectCudartVersion(dir); got != tc.major {
+				t.Errorf("%s present: detectCudartVersion = %q, want %q", tc.dll, got, tc.major)
+			}
+			if err := os.Remove(p); err != nil {
+				t.Fatal(err)
+			}
+		}
+		// With several runtime DLLs present, the lexicographically first
+		// match wins (Glob sorts): 12 sorts before 13.
+		for _, dll := range []string{"cudart64_13.dll", "cudart64_12.dll"} {
+			if err := os.WriteFile(filepath.Join(dir, dll), []byte("stub"), 0644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if got := detectCudartVersion(dir); got != "12" {
+			t.Errorf("multiple cudart DLLs: detectCudartVersion = %q, want first sorted match %q", got, "12")
+		}
+	} else if detectCudartVersion(dir) != "" {
+		t.Error("non-Windows must never report a cudart version")
+	}
+}
+
+// TestLlamaCppInfoCudartVersionJSON verifies the LlamaCppInfo JSON round-trip
+// carries the cudartVersion key (struct tag contract with the frontend).
+func TestLlamaCppInfoCudartVersionJSON(t *testing.T) {
+	in := LlamaCppInfo{Installed: true, Path: "p", Version: "v", CudartInstalled: true, CudartVersion: "13"}
+	data, err := json.Marshal(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"cudartVersion":"13"`) {
+		t.Errorf("marshaled JSON missing cudartVersion key: %s", data)
+	}
+	var out LlamaCppInfo
+	if err := json.Unmarshal(data, &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.CudartVersion != "13" {
+		t.Errorf("round-trip CudartVersion = %q, want %q", out.CudartVersion, "13")
 	}
 }
 
