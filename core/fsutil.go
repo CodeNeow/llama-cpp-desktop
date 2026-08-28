@@ -9,6 +9,8 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -137,4 +139,89 @@ func moveFile(src, dst string) error {
 		return renameFile(src, dst)
 	}
 	return err
+}
+
+// ─── Crash-safe atomic file write ────────────────────────────────
+// atomicWriteFile persists critical JSON files (app config, handover record)
+// without ever exposing torn content on crash or power loss.
+
+// atomicRename is the atomic-swap step of atomicWriteFile, declared as a
+// package-level var so tests can force the swap to fail and exercise the
+// cleanup path (same injection-point style as renameFile / killProcessByPid /
+// updateLauncher; deliberately a separate var from moveFile's renameFile so
+// one test's injection never leaks into the other's path).
+var atomicRename = os.Rename
+
+// atomicWriteFile writes data to path crash-safely. The config file (which
+// also carries the persisted download-task queue) and the handover record are
+// the app's critical persistence points; a crash or power loss in the middle
+// of a plain os.WriteFile can tear them (truncated/partial JSON), which
+// loadConfig only half-defends against and which silently drops persisted
+// download tasks or breaks the GUI ↔ headless handover. The temp-then-rename
+// discipline guarantees the target path only ever contains a fully written,
+// flushed file:
+//  1. write to a unique temp file in the SAME directory (unique suffix, so
+//     concurrent writers never clobber each other's temp; same directory, so
+//     the rename below is an atomic same-filesystem swap),
+//  2. chmod the temp file to the exact requested perm (os.CreateTemp always
+//     creates 0600; the explicit chmod is umask-independent, same as copyFile),
+//  3. fsync the temp file before renaming (payload durability),
+//  4. os.Rename it over the target — an atomic swap (MoveFileEx with
+//     REPLACE_EXISTING on Windows, rename(2) on POSIX),
+//  5. best-effort directory fsync where the platform supports it (skipped
+//     silently on Windows, matching FreeToken's _fsync_dir pattern).
+//
+// The temp file is removed on ANY failure — never leave temp litter.
+func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("create temp file for %s: %w", path, err)
+	}
+	tmpName := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return fmt.Errorf("write temp file for %s: %w", path, err)
+	}
+	if err := tmp.Chmod(perm); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return fmt.Errorf("set temp file permissions for %s: %w", path, err)
+	}
+	// fsync before rename: without it a crash right after the swap can leave
+	// the target with empty/partial content on some filesystems.
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return fmt.Errorf("sync temp file for %s: %w", path, err)
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return fmt.Errorf("close temp file for %s: %w", path, err)
+	}
+	if err := atomicRename(tmpName, path); err != nil {
+		os.Remove(tmpName)
+		return fmt.Errorf("replace %s with temp file: %w", path, err)
+	}
+	fsyncDir(dir)
+	return nil
+}
+
+// fsyncDir flushes a directory entry so the just-renamed file's swap itself
+// survives a crash (a payload fsync alone is not enough on Linux: without a
+// directory fsync the renamed-in file can vanish after power loss).
+// Best-effort by design: errors are swallowed — the payload is already
+// fsynced and the swap is atomic — and Windows cannot flush directory handles
+// at all, so the syscall is skipped there entirely.
+func fsyncDir(dir string) {
+	if runtime.GOOS == "windows" {
+		return
+	}
+	f, err := os.Open(dir)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	_ = f.Sync()
 }

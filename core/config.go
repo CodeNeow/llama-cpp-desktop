@@ -179,7 +179,7 @@ func migrateLegacyConfig() {
 		log.Printf("[WARN] Failed to migrate legacy config %s: %v", legacyConfigFile, err)
 		return
 	}
-	if err := os.WriteFile(configFile, data, 0644); err != nil {
+	if err := atomicWriteFile(configFile, data, 0644); err != nil {
 		log.Printf("[WARN] Failed to migrate legacy config %s: %v", legacyConfigFile, err)
 		return
 	}
@@ -555,7 +555,7 @@ func saveConfig() {
 		log.Printf("[WARN] Failed to marshal config: %v", err)
 		return
 	}
-	if err := os.WriteFile(configFile, data, 0644); err != nil {
+	if err := atomicWriteFile(configFile, data, 0644); err != nil {
 		log.Printf("[WARN] Failed to write config file: %v", err)
 	}
 }

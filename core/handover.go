@@ -46,7 +46,7 @@ func writeHandover(pid, port int) error {
 	if err != nil {
 		return fmt.Errorf("marshal handover record: %w", err)
 	}
-	if err := os.WriteFile(handoverFile, data, 0644); err != nil {
+	if err := atomicWriteFile(handoverFile, data, 0644); err != nil {
 		return fmt.Errorf("write handover file: %w", err)
 	}
 	return nil

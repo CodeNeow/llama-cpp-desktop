@@ -80,7 +80,7 @@ var tg3sLogRegex = regexp.MustCompile(`tg_3s\s*=\s*([\d.]+)\s+t/s`)
 // splitLogLines joins log entries into text then splits by line: legacy
 // multi-line entries (multiple lines in one stderr Write) are split into
 // independent lines here, complementing the write-side line buffer
-// (serverLogWriter) to guarantee print_timing lines enter classification as
+// (serverLogTailer) to guarantee print_timing lines enter classification as
 // whole lines and prompt prefill values cannot leak into decode speed.
 // Pure function: an empty list joins to "" then splits to a single empty line
 // (parsing functions naturally return 0 when no keyword matches).
@@ -145,7 +145,7 @@ func parsePromptTPS(logs []string) float64 {
 // branch strictly requires the "eval time" marker: truncated fragments that
 // only contain the "tokens per second" snippet are no longer accepted
 // (fragment reassembly is the responsibility of the write-side line buffer
-// serverLogWriter). Former "TPS always 0" root cause: the old implementation
+// serverLogTailer). Former "TPS always 0" root cause: the old implementation
 // only parsed eval time lines printed at generation end, while realtime lines
 // lack "tokens per second", leaving no value during generation.
 // Pure function: returns 0 when no candidate exists; when multiple lines
