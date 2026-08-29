@@ -33,6 +33,16 @@ var serverMu sync.Mutex
 // process exits (in the cmd.Wait goroutine).
 var serverStartTime time.Time
 
+// serverTrueStart records the llama-server process's REAL creation time for
+// the handover record's pid-reuse defense (guarded by serverMu): a fresh child
+// start stamps it with time.Now() right after Start succeeds (bridge.go, next
+// to serverStartTime), while adoptHandover chains the adopted record's stored
+// serverStartedAt so a re-handover (headless→GUI→headless) never loses the
+// original value. writeHandover formats this into the record; zero means
+// unknown and the record omits the field (the successor's start-time check
+// then fails open).
+var serverTrueStart time.Time
+
 // serverPort records the port used by the successfully started llama-server
 // (guarded by serverMu), 0 means not running. Router API queries use this
 // value instead of the current config, so editing the config mid-run cannot

@@ -22,25 +22,42 @@ import (
 var handoverFile = "llama-desktop-server-handover.json"
 
 // handoverRecord is the JSON payload of the handover file: the llama-server
-// child pid, the port it listens on, when the record was written, and the
-// absolute path of the server log file. LogPath is omitempty and may be
-// missing entirely in records written by older versions; readHandover must
-// accept such records (an empty LogPath adopts without log tailing).
+// child pid, the port it listens on, when the record was written, the server
+// process's real creation time, and the absolute path of the server log file.
+// LogPath and ServerStartedAt are omitempty and may be missing entirely in
+// records written by older versions; readHandover must accept such records
+// (an empty LogPath adopts without log tailing, an empty ServerStartedAt
+// skips the pid-reuse start-time check).
 type handoverRecord struct {
 	Pid       int    `json:"pid"`
 	Port      int    `json:"port"`
 	StartedAt string `json:"startedAt"`
-	LogPath   string `json:"logPath,omitempty"`
+	// ServerStartedAt is the llama-server process's REAL creation time
+	// (RFC3339, from serverTrueStart), recorded so the successor can detect
+	// pid reuse (Windows recycles pids quickly; a live pid plus an answering
+	// port is not proof the recorded server still owns them).
+	ServerStartedAt string `json:"serverStartedAt,omitempty"`
+	LogPath         string `json:"logPath,omitempty"`
 }
 
-// writeHandover persists the handover record (pid/port, RFC3339 timestamp,
+// writeHandover persists the handover record (pid/port, RFC3339 timestamps,
 // absolute server log path — the successor must not depend on our cwd).
+// serverStartedAt carries the running server's real creation time
+// (serverTrueStart) for the successor's pid-reuse check; when unknown (zero,
+// e.g. no server state was tracked) the field is omitted and the successor's
+// check fails open.
 func writeHandover(pid, port int) error {
+	serverMu.Lock()
+	trueStart := serverTrueStart
+	serverMu.Unlock()
 	rec := handoverRecord{
 		Pid:       pid,
 		Port:      port,
 		StartedAt: time.Now().Format(time.RFC3339),
 		LogPath:   absServerLogPath(),
+	}
+	if !trueStart.IsZero() {
+		rec.ServerStartedAt = trueStart.Format(time.RFC3339)
 	}
 	data, err := json.MarshalIndent(rec, "", "  ")
 	if err != nil {
@@ -96,6 +113,19 @@ var handoverPidAlive = func(pid int) bool {
 	return processAlive(pid)
 }
 
+// handoverProcStartTime is the injection point for the process creation-time
+// query (platform-specific processStartTime implementation; tests fake this
+// variable, same style as handoverPidAlive).
+var handoverProcStartTime = processStartTime
+
+// handoverStartTolerance is how far the queried process creation time may
+// differ from the record's serverStartedAt before the record is treated as
+// stale (pid recycled). The record is written within milliseconds of process
+// creation; 5 s absorbs clock-read and scheduling latency. Package-level var
+// (same injection-point style as cmdTimeout) so tests can exercise the
+// boundary.
+var handoverStartTolerance = 5 * time.Second
+
 // handoverPlan describes what a starting process (GUI or headless) should do
 // with a possibly handed-over llama-server.
 type handoverPlan struct {
@@ -107,40 +137,131 @@ type handoverPlan struct {
 	// LogPath carries the record's server log file path ("" in legacy records
 	// without logPath → adopt without log tailing).
 	LogPath string
-	// RemoveFile reports the handover record is stale (server dead or file
-	// corrupt) and must be deleted before a fresh server is started.
+	// Start carries the record's start-check outcome (see handoverStartCheck):
+	// Start.ServerStartedAt is chained into serverTrueStart on adoption, and
+	// Verified/SkipReason drive the truthful adoption log line.
+	Start handoverStartCheck
+	// RemoveFile reports the handover record is stale (server dead, pid
+	// recycled, or file corrupt) and must be deleted before a fresh server is
+	// started.
 	RemoveFile bool
 }
 
+// handoverStartCheck is the outcome of the pid-reuse start-time verification
+// for one handover record. Verified=true means the check ran and the queried
+// process creation time matched the record's serverStartedAt within
+// handoverStartTolerance. Verified=false with a non-empty SkipReason marks a
+// fail-open skip (legacy record, unparseable time, query unavailable — the
+// port health probe still guards). Verified=false with an empty SkipReason is
+// a genuine mismatch: the record is treated as stale and never adopted.
+// ServerStartedAt is the record's raw field, chained into serverTrueStart on
+// adoption (see adoptHandover).
+type handoverStartCheck struct {
+	ServerStartedAt string
+	Verified        bool
+	SkipReason      string
+}
+
 // decideHandoverAction is the pure decision core of the handover takeover:
-//   - no record file            → start fresh (nothing to delete);
-//   - record present + healthy  → adopt (pid/port/logPath);
-//   - record present + unhealthy
-//     (or unparsable, rec == nil) → delete the record and start fresh.
-func decideHandoverAction(fileExists bool, rec *handoverRecord, healthy bool) handoverPlan {
+//   - no record file → start fresh (nothing to delete);
+//   - record present + healthy + start time verified or skipped (fail-open)
+//     → adopt (pid/port/log paths, start-check outcome);
+//   - record present + unhealthy, start-time mismatch, or unparsable
+//     (rec == nil) → delete the record and start fresh.
+//
+// start is the pid-reuse verdict from verifyHandoverStart: a genuine mismatch
+// is Verified=false with an empty SkipReason; every skipped (fail-open) check
+// has a non-empty SkipReason and still adopts. The outcome is copied onto the
+// plan so the adoption log line can tell "verified" from "skipped".
+func decideHandoverAction(fileExists bool, rec *handoverRecord, healthy bool, start handoverStartCheck) handoverPlan {
 	switch {
 	case !fileExists:
 		return handoverPlan{}
-	case rec == nil || !healthy:
+	case rec == nil || !healthy || (!start.Verified && start.SkipReason == ""):
 		return handoverPlan{RemoveFile: true}
 	default:
-		return handoverPlan{Adopt: true, PID: rec.Pid, Port: rec.Port, LogPath: rec.LogPath}
+		return handoverPlan{
+			Adopt:   true,
+			PID:     rec.Pid,
+			Port:    rec.Port,
+			LogPath: rec.LogPath,
+			Start:   start,
+		}
 	}
 }
 
 // evaluateHandover reads the handover file, probes the recorded server and
 // returns the plan for the starting process (see decideHandoverAction).
+//
+// Besides the port health probe and pid liveness, a third probe defends
+// against pid reuse: when the record carries a parseable serverStartedAt AND
+// the OS reports the pid's creation time, the two must agree within
+// handoverStartTolerance or the record is stale (the pid was recycled by an
+// unrelated process). Every check-skip case fails open (adopt as today; the
+// port health probe still guards — see verifyHandoverStart):
+//   - legacy record without serverStartedAt (older app versions);
+//   - stored time unparseable → [WARN];
+//   - creation-time query unavailable (unsupported platform or OS failure)
+//     → [WARN].
+//
+// The start-time probe only runs when the health probe passed — a dead server
+// is stale regardless, so the extra OS query and its warnings would be noise.
 func evaluateHandover() handoverPlan {
 	rec, err := readHandover()
 	if err != nil {
 		if os.IsNotExist(err) {
-			return decideHandoverAction(false, nil, false)
+			return decideHandoverAction(false, nil, false, handoverStartCheck{})
 		}
 		// Corrupt file: exists but unreadable/unparsable → stale record.
-		return decideHandoverAction(true, nil, false)
+		return decideHandoverAction(true, nil, false, handoverStartCheck{})
 	}
 	healthy := probeHandoverHealth(rec.Port) && handoverPidAlive(rec.Pid)
-	return decideHandoverAction(true, rec, healthy)
+	if !healthy {
+		// A dead server is stale regardless; skip the start-time check —
+		// its OS query and warnings would be pure noise.
+		return decideHandoverAction(true, rec, false, handoverStartCheck{})
+	}
+	return decideHandoverAction(true, rec, true, verifyHandoverStart(rec))
+}
+
+// verifyHandoverStart runs the pid-reuse start-time check for a record (see
+// handoverStartCheck for the outcome vocabulary). Every skip case fails open —
+// the port health probe still guards adoption:
+//   - legacy record without serverStartedAt (older app versions) → skip;
+//   - stored time unparseable → [WARN] + skip;
+//   - creation-time query unavailable (unsupported platform or OS failure)
+//     → [WARN] + skip;
+//   - otherwise the queried time must match the recorded one within
+//     handoverStartTolerance, or the record is stale (genuine mismatch).
+func verifyHandoverStart(rec *handoverRecord) handoverStartCheck {
+	out := handoverStartCheck{}
+	if rec != nil {
+		out.ServerStartedAt = rec.ServerStartedAt
+	}
+	if rec == nil || rec.ServerStartedAt == "" {
+		// Legacy record without the field: nothing to verify, adopt as today.
+		out.SkipReason = "legacy record without serverStartedAt"
+		return out
+	}
+	recorded, err := time.Parse(time.RFC3339, rec.ServerStartedAt)
+	if err != nil {
+		log.Printf("[WARN] handover record serverStartedAt unparseable (%q): %v — skipping start-time check", rec.ServerStartedAt, err)
+		out.SkipReason = "serverStartedAt unparseable"
+		return out
+	}
+	queried, ok := handoverProcStartTime(rec.Pid)
+	if !ok {
+		log.Printf("[WARN] process start time unavailable for pid %d — skipping start-time check", rec.Pid)
+		out.SkipReason = "process start time unavailable"
+		return out
+	}
+	if d := queried.Sub(recorded); d > handoverStartTolerance || d < -handoverStartTolerance {
+		log.Printf("[INFO] handover record pid %d start time mismatch (recorded %s, queried %s) — treating as stale",
+			rec.Pid, rec.ServerStartedAt, queried.Format(time.RFC3339))
+		return handoverStartCheck{}
+	}
+	out.Verified = true
+	return out
 }
 
 // adoptHandover marks a handed-over llama-server as the running server:
@@ -152,15 +273,39 @@ func evaluateHandover() handoverPlan {
 // adopted child keeps writing to the same file, restoring log capture that
 // pipes could not provide. An empty logPath (legacy record) adopts without
 // tailing.
-func adoptHandover(pid, port int, logPath string) {
+//
+// start is the record's start-check outcome (see handoverStartCheck): its
+// ServerStartedAt is chained into serverTrueStart so a subsequent handover
+// re-records the server's ORIGINAL creation time instead of the adoption
+// moment. A legacy record without the field (or an unparseable one) falls
+// back to adoption time — the same value serverStartTime gets. Known edge,
+// self-healing in the safe direction: the adoption time chained that way
+// will legitimately mismatch the server's real creation time at the NEXT
+// handover, so that successor discards the record and starts fresh (one
+// extra model reload, never a wrong-process kill) — a lost chain cannot
+// silently persist a wrong identity. Verified=false must carry SkipReason;
+// the single [OK] log line stays truthful: "(start time verified)" only when
+// the check actually ran and matched, otherwise the skip reason is named.
+func adoptHandover(pid, port int, logPath string, start handoverStartCheck) {
+	trueStart := time.Now()
+	if start.ServerStartedAt != "" {
+		if parsed, err := time.Parse(time.RFC3339, start.ServerStartedAt); err == nil {
+			trueStart = parsed
+		}
+	}
 	serverMu.Lock()
 	serverRunning = true
 	serverPort = port
 	adoptedPid = pid
 	serverCmd = nil
 	serverStartTime = time.Now()
+	serverTrueStart = trueStart
 	serverMu.Unlock()
-	log.Printf("[OK] Adopted llama-server pid=%d port=%d", pid, port)
+	if start.Verified {
+		log.Printf("[OK] Adopted llama-server pid=%d port=%d (start time verified)", pid, port)
+	} else {
+		log.Printf("[OK] Adopted llama-server pid=%d port=%d (start time check skipped: %s)", pid, port, start.SkipReason)
+	}
 	adoptServerLogTail(logPath)
 }
 

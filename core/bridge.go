@@ -125,6 +125,7 @@ func startServerInternal() error {
 	serverCmd = cmd
 	serverRunning = true
 	serverStartTime = time.Now()
+	serverTrueStart = serverStartTime
 	serverPort = cfg.Port
 	serverLogTail = tailer
 	serverMu.Unlock()

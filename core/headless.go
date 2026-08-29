@@ -110,7 +110,7 @@ func adoptOrCleanHandover() {
 	plan := evaluateHandover()
 	switch {
 	case plan.Adopt:
-		adoptHandover(plan.PID, plan.Port, plan.LogPath)
+		adoptHandover(plan.PID, plan.Port, plan.LogPath, plan.Start)
 	case plan.RemoveFile:
 		if err := removeHandover(); err != nil {
 			log.Printf("[WARN] %v", err)
@@ -132,7 +132,7 @@ var notifyHeadlessServerStartFailed = defaultHeadlessServerAlert
 func startOrAdoptServer() {
 	plan := evaluateHandover()
 	if plan.Adopt {
-		adoptHandover(plan.PID, plan.Port, plan.LogPath)
+		adoptHandover(plan.PID, plan.Port, plan.LogPath, plan.Start)
 		return
 	}
 	if plan.RemoveFile {
