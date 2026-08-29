@@ -16,6 +16,7 @@ import Models from '../views/Models.vue'
 import Api from '../views/Api.vue'
 import Downloads from '../views/Downloads.vue'
 import Settings from '../views/Settings.vue'
+import Docs from '../views/Docs.vue'
 import ModelSettings from '../views/ModelSettings.vue'
 import ModelDetail from '../views/ModelDetail.vue'
 
@@ -84,6 +85,14 @@ const routes = [
     name: 'Settings',
     component: Settings,
     meta: { title: '偏好设置', icon: 'settings' }
+  },
+  {
+    // In-app documentation/tutorial: bundled bilingual markdown rendered with
+    // the shared (HTML-disabled) markdown-it instance
+    path: '/docs',
+    name: 'Docs',
+    component: Docs,
+    meta: { title: '帮助文档', icon: 'book' }
   }
 ]
 

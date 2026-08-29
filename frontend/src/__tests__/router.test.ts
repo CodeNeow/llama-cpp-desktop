@@ -17,6 +17,7 @@ describe('router fixed-page meta', () => {
     '/models',
     '/models/settings/:modelName',
     '/settings',
+    '/docs',
   ]
 
   it('marks exactly the four fixed-viewport pages', () => {
@@ -33,5 +34,11 @@ describe('router fixed-page meta', () => {
       const route = router.getRoutes().find((r) => r.path === path)
       expect(route?.meta.fixed).toBeUndefined()
     }
+  })
+
+  it('registers the in-app docs route', () => {
+    const route = router.getRoutes().find((r) => r.path === '/docs')
+    expect(route).toBeDefined()
+    expect(route?.name).toBe('Docs')
   })
 })

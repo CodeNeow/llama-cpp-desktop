@@ -23,6 +23,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'nav.models': '模型管理',
     'nav.api': 'API 路由',
     'nav.settings': '偏好设置',
+    'nav.docs': '帮助',
     'nav.ready': '系统就绪',
     'nav.notReady': '系统未就绪',
     'nav.collapse': '收起侧边栏',
@@ -484,6 +485,21 @@ export const messages: Record<Locale, Record<string, string>> = {
     'dock.modelStatus.loaded': '已加载',
     'dock.modelStatus.loading': '加载中',
     'dock.modelStatus.sleeping': '休眠',
+
+    // ─── Docs page (Docs.vue + docs/manifest.ts) ───
+    'docs.title': '帮助文档',
+    'docs.subtitle': '使用教程与常见问题',
+    'docs.toc': '目录',
+    'docs.loadError': '内容加载失败：{msg}',
+    'docs.section.quickstart': '快速上手',
+    'docs.section.runtime': '运行环境',
+    'docs.section.downloads': '模型下载',
+    'docs.section.models': '模型管理',
+    'docs.section.api': 'API 服务',
+    'docs.section.chat': '本地聊天',
+    'docs.section.settings': '偏好设置',
+    'docs.section.headless': '无头模式',
+    'docs.section.faq': '常见问题',
   },
 
   en: {
@@ -495,6 +511,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'nav.models': 'Model Manager',
     'nav.api': 'API Router',
     'nav.settings': 'Preferences',
+    'nav.docs': 'Docs',
     'nav.ready': 'System Ready',
     'nav.notReady': 'Not ready',
     'nav.collapse': 'Collapse Sidebar',
@@ -956,6 +973,21 @@ export const messages: Record<Locale, Record<string, string>> = {
     'dock.modelStatus.loaded': 'Loaded',
     'dock.modelStatus.loading': 'Loading',
     'dock.modelStatus.sleeping': 'Sleeping',
+
+    // ─── Docs page (Docs.vue + docs/manifest.ts) ───
+    'docs.title': 'Documentation',
+    'docs.subtitle': 'Tutorials and FAQ',
+    'docs.toc': 'Contents',
+    'docs.loadError': 'Failed to load content: {msg}',
+    'docs.section.quickstart': 'Quick Start',
+    'docs.section.runtime': 'Runtime',
+    'docs.section.downloads': 'Downloads',
+    'docs.section.models': 'Models',
+    'docs.section.api': 'API Service',
+    'docs.section.chat': 'Local Chat',
+    'docs.section.settings': 'Preferences',
+    'docs.section.headless': 'Headless Mode',
+    'docs.section.faq': 'FAQ',
   },
 }
 
