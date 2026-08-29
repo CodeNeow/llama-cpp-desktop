@@ -2,6 +2,38 @@
 
 更新日志的**权威来源**（见 `AGENTS.md`「版本发布」）：发版时先在此新增版本条目（含日期），`git tag` 注解消息与 GitHub Release 正文均从该条目复制，保持一致。自 v0.3.3 起条目为概括式双语（中文在上）；v0.3.0 之前的逐提交条目已随对应 tag 与 Release 的清理移除（见文末「历史版本」）。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本。
 
+## [v0.3.8] - 2026-08-29
+
+## 中文
+
+v0.3.8:推理显卡选择、一键调优实测校准与实时预览、服务日志工程、无头控制面与内置帮助。核心变化:
+
+- **推理显卡选择** — 设置页可指定服务运行在哪张显卡(按 nvidia-smi UUID 经 CUDA_VISIBLE_DEVICES 钉定);多卡机器上一键调优按所选显卡规划参数,规划卡与运行卡不再脱节。
+- **调优实测校准** — 一键调优先实测本机内存带宽(按硬件指纹缓存、跨机自动作废),在「全量 offload 上下文局促」与「cpu-moe 大上下文」之间自动优选;模型设置页新增「深度实测」,用自带 llama-bench 实测当前方案的真实解码速度。
+- **一键调优移入参数设置页** — 调优结果实时填充表单,不再是列表页一闪而过的摘要。
+- **CUDA 兼容性三态显示** — 首页 CUDA 兼容性区分「兼容 / 需 CUDA ≥12.8 / 已满足」,Blackwell 显卡装好达标运行时后不再误报警告。
+- **服务日志工程** — llama-server 日志落盘文件并跟踪:GUI↔无头交接后日志不再丢失;ANSI 剥离与进度行节流(修复 Windows `\r\r\n` 幽灵空行);容量 200→2000 行;界面按游标增量拉取。
+- **无头模式控制面** — API 路由模式下新增 `127.0.0.1:1900` 控制面(健康 / 状态 / 日志 / 停止):破坏性端点仅回环可达,可选 token 鉴权,绑定失败自动降级不影响启动。
+- **优雅停止** — 停止服务先中断、宽限 5 秒后才强杀(Windows 行为不变);被交接的服务仍按原方式停止。
+- **交接收养加固** — GUI↔无头切换认领服务前校验进程创建时间,防止 PID 复用导致的误认领与误杀。
+- **崩溃安全写入** — 配置与交接文件原子写入(临时文件 + fsync + 原子换名),断电不再产生撕裂文件;版本三处一致性校验加入质量门。
+- **内置帮助文档** — 侧栏新增「帮助」页:9 章节中英双语教程(快速上手 / 运行时 / 下载 / 模型 / API / 聊天 / 设置 / 无头模式 / 常见问题)。
+
+## English
+
+v0.3.8: serving-GPU selection, measured auto-tune calibration with live preview, service-log engineering, a headless control plane and an in-app help center. Highlights:
+
+- **Serving-GPU selection** — pick the GPU the service runs on in Settings (pinned via CUDA_VISIBLE_DEVICES by stable nvidia-smi UUID); the auto-tuner plans against the selected card on multi-GPU hosts.
+- **Measured tune calibration** — one-click tuning measures the machine's RAM bandwidth first (cached per hardware fingerprint, rejected across machines) and picks between a cramped full-offload and a large-context cpu-moe plan; Model Settings gains "Deep benchmark" measuring the real decode speed of the saved plan via the bundled llama-bench.
+- **Auto-tune lives in Model Settings** — tuning fills the settings form in real time instead of flashing a summary on the list.
+- **Three-state CUDA compatibility** — the Home CUDA row distinguishes Compatible / Requires CUDA ≥12.8 / Satisfied, so Blackwell cards with a qualifying runtime stop raising false alarms.
+- **Service-log engineering** — llama-server logs go to a file and are tailed: logs survive GUI↔headless handover; ANSI is stripped and progress redraws throttled (fixing Windows `\r\r\n` phantom rows); the ring grew to 2000 lines with cursor-based incremental fetch.
+- **Headless control plane** — API-route mode gains a 127.0.0.1:1900 control plane (health / status / logs / stop): destructive endpoints are loopback-enforced with optional token auth; bind failure degrades startup-free.
+- **Graceful stop** — stopping the service interrupts first and escalates to kill after a 5 s grace (Windows unchanged); handed-over servers keep their existing stop path.
+- **Handover adoption hardening** — adoption verifies the process creation time, defending against PID reuse (no more adopting or killing an unrelated process).
+- **Crash-safe writes** — config and handover files are written atomically (temp + fsync + atomic rename); a version-triple sync check joined the quality gate.
+- **In-app documentation** — the sidebar gains a Help page: nine bilingual tutorial sections (quickstart / runtime / downloads / models / api / chat / settings / headless / faq).
+
 ## [v0.3.7] - 2026-08-27
 
 ## 中文
