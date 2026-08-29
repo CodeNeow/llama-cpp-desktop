@@ -277,6 +277,10 @@ export const messages: Record<Locale, Record<string, string>> = {
     // ─── Settings page (Settings.vue) ───
     'settings.title': '偏好设置',
     'settings.subtitle': '应用程序配置与偏好',
+    'settings.tabAppearance': '外观',
+    'settings.tabDownloads': '下载与目录',
+    'settings.tabServer': '服务',
+    'settings.tabApp': '应用与更新',
     'settings.uiStyle': 'UI 样式',
     'settings.themeMode': '主题模式',
     'settings.themeDesc': '切换深色 / 浅色外观',
@@ -769,6 +773,10 @@ export const messages: Record<Locale, Record<string, string>> = {
     // ─── Settings (Settings.vue) ───
     'settings.title': 'Preferences',
     'settings.subtitle': 'Application configuration & preferences',
+    'settings.tabAppearance': 'Appearance',
+    'settings.tabDownloads': 'Downloads & Directories',
+    'settings.tabServer': 'Server',
+    'settings.tabApp': 'App & Updates',
     'settings.uiStyle': 'UI Style',
     'settings.themeMode': 'Theme Mode',
     'settings.themeDesc': 'Toggle dark / light appearance',

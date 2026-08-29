@@ -5,359 +5,391 @@
         <h1 class="page-title">{{ t('settings.title') }}</h1>
         <p class="page-subtitle">{{ t('settings.subtitle') }}</p>
       </div>
+
+      <!-- Tabs row: same pattern as ModelSettings (icon + label buttons with an
+           underline active state); activeTab is plain view state, never persisted -->
+      <div class="settings-tabs" role="tablist" :aria-label="t('settings.title')">
+        <button
+          v-for="(tab, i) in tabs"
+          :key="tab.id"
+          :id="`${tab.id}-tab`"
+          class="tab-btn"
+          :class="{ active: activeTab === i }"
+          role="tab"
+          :aria-selected="activeTab === i"
+          :aria-controls="tab.id"
+          @click="activeTab = i"
+        >
+          <span class="tab-icon" v-html="tab.icon"></span>
+          {{ tab.label() }}
+        </button>
+      </div>
     </div>
 
-    <!-- UI Style -->
-    <section class="settings-section">
-      <h2 class="section-title">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
-        </svg>
-        {{ t('settings.uiStyle') }}
-      </h2>
-      <div class="setting-row">
-        <div class="setting-info">
-          <span class="setting-label">{{ t('settings.themeMode') }}</span>
-          <span class="setting-desc">{{ t('settings.themeDesc') }}</span>
-        </div>
-        <div class="theme-toggle" @click="currentTheme = currentTheme === 'dark' ? 'light' : 'dark'">
-          <div class="toggle-track" :class="{ light: currentTheme === 'light' }">
-            <div class="toggle-thumb">
-              <svg v-if="currentTheme === 'dark'" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-              </svg>
-              <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
-              </svg>
-            </div>
+    <!-- Tab panels (v-show keeps per-tab input state alive across switches) -->
+    <!-- Appearance: theme mode + interface language -->
+    <div id="tab-appearance" role="tabpanel" aria-labelledby="tab-appearance-tab" v-show="activeTab === 0">
+      <!-- UI Style -->
+      <section class="settings-section">
+        <h2 class="section-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+          </svg>
+          {{ t('settings.uiStyle') }}
+        </h2>
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-label">{{ t('settings.themeMode') }}</span>
+            <span class="setting-desc">{{ t('settings.themeDesc') }}</span>
           </div>
-          <span class="toggle-label">{{ currentTheme === 'dark' ? t('settings.dark') : t('settings.light') }}</span>
+          <div class="theme-toggle" @click="currentTheme = currentTheme === 'dark' ? 'light' : 'dark'">
+            <div class="toggle-track" :class="{ light: currentTheme === 'light' }">
+              <div class="toggle-thumb">
+                <svg v-if="currentTheme === 'dark'" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                </svg>
+                <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                </svg>
+              </div>
+            </div>
+            <span class="toggle-label">{{ currentTheme === 'dark' ? t('settings.dark') : t('settings.light') }}</span>
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <!-- Interface Language -->
-    <section class="settings-section">
-      <h2 class="section-title">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
-        </svg>
-        {{ t('settings.language') }}
-      </h2>
-      <div class="source-grid source-grid-col3">
-        <div
-          class="source-card"
-          :class="{ active: appConfig.language === 'auto' }"
-          role="radio"
-          :aria-checked="appConfig.language === 'auto'"
-          tabindex="0"
-          @click="setLanguagePref('auto')"
-          @keydown.enter="setLanguagePref('auto')"
-        >
-          <span class="source-name">{{ t('settings.languageAuto') }}</span>
-          <span v-if="appConfig.language === 'auto'" class="source-check">✓</span>
+      <!-- Interface Language -->
+      <section class="settings-section">
+        <h2 class="section-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+          </svg>
+          {{ t('settings.language') }}
+        </h2>
+        <div class="source-grid source-grid-col3">
+          <div
+            class="source-card"
+            :class="{ active: appConfig.language === 'auto' }"
+            role="radio"
+            :aria-checked="appConfig.language === 'auto'"
+            tabindex="0"
+            @click="setLanguagePref('auto')"
+            @keydown.enter="setLanguagePref('auto')"
+          >
+            <span class="source-name">{{ t('settings.languageAuto') }}</span>
+            <span v-if="appConfig.language === 'auto'" class="source-check">✓</span>
+          </div>
+          <div
+            class="source-card"
+            :class="{ active: appConfig.language === 'zh' }"
+            role="radio"
+            :aria-checked="appConfig.language === 'zh'"
+            tabindex="0"
+            @click="setLanguagePref('zh')"
+            @keydown.enter="setLanguagePref('zh')"
+          >
+            <span class="source-name">{{ t('settings.languageZh') }}</span>
+            <span v-if="appConfig.language === 'zh'" class="source-check">✓</span>
+          </div>
+          <div
+            class="source-card"
+            :class="{ active: appConfig.language === 'en' }"
+            role="radio"
+            :aria-checked="appConfig.language === 'en'"
+            tabindex="0"
+            @click="setLanguagePref('en')"
+            @keydown.enter="setLanguagePref('en')"
+          >
+            <span class="source-name">{{ t('settings.languageEn') }}</span>
+            <span v-if="appConfig.language === 'en'" class="source-check">✓</span>
+          </div>
         </div>
-        <div
-          class="source-card"
-          :class="{ active: appConfig.language === 'zh' }"
-          role="radio"
-          :aria-checked="appConfig.language === 'zh'"
-          tabindex="0"
-          @click="setLanguagePref('zh')"
-          @keydown.enter="setLanguagePref('zh')"
-        >
-          <span class="source-name">{{ t('settings.languageZh') }}</span>
-          <span v-if="appConfig.language === 'zh'" class="source-check">✓</span>
-        </div>
-        <div
-          class="source-card"
-          :class="{ active: appConfig.language === 'en' }"
-          role="radio"
-          :aria-checked="appConfig.language === 'en'"
-          tabindex="0"
-          @click="setLanguagePref('en')"
-          @keydown.enter="setLanguagePref('en')"
-        >
-          <span class="source-name">{{ t('settings.languageEn') }}</span>
-          <span v-if="appConfig.language === 'en'" class="source-check">✓</span>
-        </div>
-      </div>
-      <p class="source-hint">{{ t('settings.languageDesc') }}</p>
-      <p v-if="languageError" class="source-error">{{ languageError }}</p>
-    </section>
+        <p class="source-hint">{{ t('settings.languageDesc') }}</p>
+        <p v-if="languageError" class="source-error">{{ languageError }}</p>
+      </section>
+    </div>
 
-    <!-- Downloads -->
-    <section class="settings-section">
-      <h2 class="section-title">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-        </svg>
-        {{ t('settings.downloadSource') }}
-      </h2>
-      <div class="source-grid">
-        <div
-          class="source-card"
-          :class="{ active: downloadSource === 'hf' }"
-          role="radio"
-          :aria-checked="downloadSource === 'hf'"
-          tabindex="0"
-          @click="setSource('hf')"
-          @keydown.enter="setSource('hf')"
-        >
-          <span class="source-name">{{ t('settings.sourceHf') }}</span>
-          <span v-if="downloadSource === 'hf'" class="source-check">✓</span>
-        </div>
-        <div
-          class="source-card"
-          :class="{ active: downloadSource === 'modelscope' }"
-          role="radio"
-          :aria-checked="downloadSource === 'modelscope'"
-          tabindex="0"
-          @click="setSource('modelscope')"
-          @keydown.enter="setSource('modelscope')"
-        >
-          <span class="source-name">{{ t('settings.sourceModelScope') }}</span>
-          <span v-if="downloadSource === 'modelscope'" class="source-check">✓</span>
-        </div>
-        <div
-          class="source-card"
-          :class="{ active: downloadSource === 'huggingface' }"
-          role="radio"
-          :aria-checked="downloadSource === 'huggingface'"
-          tabindex="0"
-          @click="setSource('huggingface')"
-          @keydown.enter="setSource('huggingface')"
-        >
-          <span class="source-name">{{ t('settings.sourceHuggingFace') }}</span>
-          <span v-if="downloadSource === 'huggingface'" class="source-check">✓</span>
-        </div>
-      </div>
-      <p class="source-hint">{{ t('settings.sourceHint') }}</p>
-      <p v-if="sourceError" class="source-error">{{ sourceError }}</p>
-    </section>
-
-    <!-- Directories: download paths for new installs/downloads (imported dirs
+    <!-- Downloads & directories: download paths for new installs/downloads (imported dirs
          for reuse stay on the Home and Models pages) -->
-    <section class="settings-section">
-      <h2 class="section-title">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-        </svg>
-        {{ t('settings.directories') }}
-      </h2>
-      <div class="dir-row">
-        <div class="setting-info">
-          <span class="setting-label">{{ t('settings.llamaCppDownloadDir') }}</span>
-          <span class="setting-desc">{{ t('settings.llamaCppDownloadDirDesc') }}</span>
-        </div>
-        <div class="dir-path-row">
-          <div class="dir-path">{{ appConfig.llamaCppDownloadDir }}</div>
-          <button class="dir-btn" type="button" @click="chooseLlamaCppDownloadDir">{{ t('settings.choose') }}</button>
-        </div>
-      </div>
-      <div class="dir-row">
-        <div class="setting-info">
-          <span class="setting-label">{{ t('settings.modelDownloadDir') }}</span>
-          <span class="setting-desc">{{ t('settings.modelDownloadDirDesc') }}</span>
-        </div>
-        <div class="dir-path-row">
-          <div class="dir-path">{{ appConfig.modelDownloadDir }}</div>
-          <button class="dir-btn" type="button" @click="chooseModelDownloadDir">{{ t('settings.choose') }}</button>
-        </div>
-      </div>
-      <p class="source-hint">{{ t('settings.directoriesHint') }}</p>
-    </section>
-
-    <!-- Server access scope -->
-    <section class="settings-section">
-      <h2 class="section-title">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
-        </svg>
-        {{ t('settings.accessScope') }}
-      </h2>
-      <div class="source-grid">
-        <div
-          class="source-card"
-          :class="{ active: appConfig.serverAccessMode === 'local' }"
-          role="radio"
-          :aria-checked="appConfig.serverAccessMode === 'local'"
-          tabindex="0"
-          @click="setAccessScope('local')"
-          @keydown.enter="setAccessScope('local')"
-        >
-          <span class="source-name">{{ t('settings.accessLocal') }}</span>
-          <span v-if="appConfig.serverAccessMode === 'local'" class="source-check">✓</span>
-        </div>
-        <div
-          class="source-card"
-          :class="{ active: appConfig.serverAccessMode === 'lan' }"
-          role="radio"
-          :aria-checked="appConfig.serverAccessMode === 'lan'"
-          tabindex="0"
-          @click="setAccessScope('lan')"
-          @keydown.enter="setAccessScope('lan')"
-        >
-          <span class="source-name">{{ t('settings.accessLan') }}</span>
-          <span v-if="appConfig.serverAccessMode === 'lan'" class="source-check">✓</span>
-        </div>
-      </div>
-      <p class="source-hint">{{ t('settings.accessDesc') }}</p>
-      <p v-if="accessError" class="source-error">{{ accessError }}</p>
-      <!-- API key always visible: it also protects the inference API in local mode,
-           not only when the service is exposed to the LAN -->
-      <div class="setting-row api-key-row">
-        <div class="setting-info">
-          <span class="setting-label">{{ t('settings.apiKey') }}</span>
-          <span class="setting-desc">{{ t('settings.apiKeyDesc') }}</span>
-        </div>
-        <input
-          v-model="apiKeyInput"
-          type="password"
-          class="api-key-input"
-          autocomplete="off"
-          spellcheck="false"
-          :disabled="apiKeySwitching"
-          @change="saveApiKey"
-        />
-      </div>
-      <p v-if="apiKeyError" class="source-error">{{ apiKeyError }}</p>
-      <!-- Inference GPU selection: pins the llama-server child to the chosen
-           CUDA device via CUDA_VISIBLE_DEVICES (empty = auto, default device).
-           Persisted through the same whole-serverConfig round-trip as the key. -->
-      <div class="setting-row gpu-row">
-        <div class="setting-info">
-          <span class="setting-label">{{ t('settings.gpu.label') }}</span>
-          <span class="setting-desc">{{ t('settings.gpu.desc') }}</span>
-        </div>
-        <ThemedSelect
-          class="gpu-select"
-          :model-value="gpuValue"
-          :options="gpuOptions"
-          :placeholder="t('settings.gpu.auto')"
-          :disabled="!gpuDetected || gpuSwitching"
-          variant="field"
-          :label="t('settings.gpu.label')"
-          @update:model-value="onGpuSelected"
-        />
-      </div>
-      <p v-if="!gpuDetected" class="source-hint">{{ t('settings.gpu.none') }}</p>
-      <p v-else class="source-hint">{{ t('settings.gpu.hint') }}</p>
-      <p v-if="gpuError" class="source-error">{{ gpuError }}</p>
-    </section>
-
-    <!-- System tray (Windows only; other platforms exit directly on close) -->
-    <section v-if="isWindows" class="settings-section">
-      <h2 class="section-title">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
-        </svg>
-        {{ t('settings.tray') }}
-      </h2>
-      <div class="setting-row">
-        <div class="setting-info">
-          <span class="setting-label">{{ t('settings.tray') }}</span>
-          <span class="setting-desc">{{ t('settings.trayDesc') }}</span>
-        </div>
-        <div class="theme-toggle" @click="toggleTray">
-          <div class="toggle-track" :class="{ light: appConfig.trayEnabled }">
-            <div class="toggle-thumb">
-              <svg v-if="appConfig.trayEnabled" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="20 6 9 17 4 12"/>
-              </svg>
-              <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-              </svg>
-            </div>
+    <div id="tab-downloads" role="tabpanel" aria-labelledby="tab-downloads-tab" v-show="activeTab === 1">
+      <!-- Downloads -->
+      <section class="settings-section">
+        <h2 class="section-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          {{ t('settings.downloadSource') }}
+        </h2>
+        <div class="source-grid">
+          <div
+            class="source-card"
+            :class="{ active: downloadSource === 'hf' }"
+            role="radio"
+            :aria-checked="downloadSource === 'hf'"
+            tabindex="0"
+            @click="setSource('hf')"
+            @keydown.enter="setSource('hf')"
+          >
+            <span class="source-name">{{ t('settings.sourceHf') }}</span>
+            <span v-if="downloadSource === 'hf'" class="source-check">✓</span>
           </div>
-          <span class="toggle-label">{{ appConfig.trayEnabled ? t('settings.on') : t('settings.off') }}</span>
-        </div>
-      </div>
-      <!-- systray cannot restart in same process: after disabling, re-enable requires app restart -->
-      <p class="source-hint">{{ t('settings.trayHint') }}</p>
-      <p v-if="trayError" class="source-error">{{ trayError }}</p>
-    </section>
-
-    <!-- API route mode (Windows only): restart into headless tray+server mode -->
-    <section v-if="isWindows" class="settings-section">
-      <h2 class="section-title">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
-        </svg>
-        {{ t('settings.apiRouteMode') }}
-      </h2>
-      <div class="setting-row">
-        <div class="setting-info">
-          <span class="setting-label">{{ t('settings.apiRouteMode') }}</span>
-          <span class="setting-desc">{{ t('settings.apiRouteModeDesc') }}</span>
-        </div>
-        <div class="theme-toggle" :class="{ disabled: !appConfig.trayEnabled || apiRouteDevBlocked }" @click="toggleApiRouteMode">
-          <div class="toggle-track" :class="{ light: appConfig.apiRouteMode }">
-            <div class="toggle-thumb">
-              <svg v-if="appConfig.apiRouteMode" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="20 6 9 17 4 12"/>
-              </svg>
-              <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-              </svg>
-            </div>
+          <div
+            class="source-card"
+            :class="{ active: downloadSource === 'modelscope' }"
+            role="radio"
+            :aria-checked="downloadSource === 'modelscope'"
+            tabindex="0"
+            @click="setSource('modelscope')"
+            @keydown.enter="setSource('modelscope')"
+          >
+            <span class="source-name">{{ t('settings.sourceModelScope') }}</span>
+            <span v-if="downloadSource === 'modelscope'" class="source-check">✓</span>
           </div>
-          <span class="toggle-label">{{ appConfig.apiRouteMode ? t('settings.on') : t('settings.off') }}</span>
+          <div
+            class="source-card"
+            :class="{ active: downloadSource === 'huggingface' }"
+            role="radio"
+            :aria-checked="downloadSource === 'huggingface'"
+            tabindex="0"
+            @click="setSource('huggingface')"
+            @keydown.enter="setSource('huggingface')"
+          >
+            <span class="source-name">{{ t('settings.sourceHuggingFace') }}</span>
+            <span v-if="downloadSource === 'huggingface'" class="source-check">✓</span>
+          </div>
         </div>
-      </div>
-      <!-- dev builds refuse the relaunch-based switch entirely: it escapes the wails dev supervisor -->
-      <p v-if="apiRouteDevBlocked" class="source-hint">{{ t('settings.apiRouteModeDevBlocked') }}</p>
-      <!-- headless mode returns to the GUI via the tray menu only: gate the toggle on the tray setting -->
-      <p v-else-if="!appConfig.trayEnabled" class="source-hint">{{ t('settings.apiRouteModeRequiresTray') }}</p>
-      <p v-if="apiRouteError" class="source-error">{{ apiRouteError }}</p>
-    </section>
+        <p class="source-hint">{{ t('settings.sourceHint') }}</p>
+        <p v-if="sourceError" class="source-error">{{ sourceError }}</p>
+      </section>
 
-    <!-- Updates -->
-    <section class="settings-section">
-      <h2 class="section-title">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M20 6 9 17l-5-5"/>
-        </svg>
-        {{ t('settings.update') }}
-      </h2>
-      <div class="setting-row">
-        <div class="setting-info">
-          <span class="setting-label">{{ t('settings.checkUpdate') }}</span>
-          <span class="setting-desc">{{ t('settings.updateDesc', { version: appVersion }) }}</span>
+      <!-- Directories -->
+      <section class="settings-section">
+        <h2 class="section-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+          </svg>
+          {{ t('settings.directories') }}
+        </h2>
+        <div class="dir-row">
+          <div class="setting-info">
+            <span class="setting-label">{{ t('settings.llamaCppDownloadDir') }}</span>
+            <span class="setting-desc">{{ t('settings.llamaCppDownloadDirDesc') }}</span>
+          </div>
+          <div class="dir-path-row">
+            <div class="dir-path">{{ appConfig.llamaCppDownloadDir }}</div>
+            <button class="dir-btn" type="button" @click="chooseLlamaCppDownloadDir">{{ t('settings.choose') }}</button>
+          </div>
         </div>
-        <div class="update-actions">
-          <span v-if="checkError" class="update-error">{{ checkError }}</span>
-          <span v-else-if="checkResult && !checkResult.hasUpdate" class="update-latest">{{ t('settings.latest') }}</span>
-          <button class="btn-check" :disabled="checking" @click="manualCheck">
-            {{ checking ? t('settings.checking') : t('settings.checkUpdate') }}
-          </button>
+        <div class="dir-row">
+          <div class="setting-info">
+            <span class="setting-label">{{ t('settings.modelDownloadDir') }}</span>
+            <span class="setting-desc">{{ t('settings.modelDownloadDirDesc') }}</span>
+          </div>
+          <div class="dir-path-row">
+            <div class="dir-path">{{ appConfig.modelDownloadDir }}</div>
+            <button class="dir-btn" type="button" @click="chooseModelDownloadDir">{{ t('settings.choose') }}</button>
+          </div>
         </div>
-      </div>
-    </section>
+        <p class="source-hint">{{ t('settings.directoriesHint') }}</p>
+      </section>
+    </div>
 
-    <!-- About: version / license / repository. The repo URL is plain
-         selectable text, NOT an <a> link: clicking a link would navigate the
-         WebView away from the app. -->
-    <section class="settings-section">
-      <h2 class="section-title">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
-        </svg>
-        {{ t('settings.about') }}
-      </h2>
-      <div class="about-row">
-        <span class="setting-label">{{ t('settings.version') }}</span>
-        <span class="about-value">{{ appVersion || '—' }}</span>
-      </div>
-      <div class="about-row">
-        <span class="setting-label">{{ t('settings.license') }}</span>
-        <span class="about-value">GPL-3.0</span>
-      </div>
-      <div class="about-row">
-        <span class="setting-label">{{ t('settings.repo') }}</span>
-        <span class="about-value about-mono">https://github.com/CodeNeow/llama-cpp-desktop</span>
-      </div>
-    </section>
+    <!-- Server: access scope + API key + inference GPU -->
+    <div id="tab-server" role="tabpanel" aria-labelledby="tab-server-tab" v-show="activeTab === 2">
+      <!-- Server access scope -->
+      <section class="settings-section">
+        <h2 class="section-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
+          </svg>
+          {{ t('settings.accessScope') }}
+        </h2>
+        <div class="source-grid">
+          <div
+            class="source-card"
+            :class="{ active: appConfig.serverAccessMode === 'local' }"
+            role="radio"
+            :aria-checked="appConfig.serverAccessMode === 'local'"
+            tabindex="0"
+            @click="setAccessScope('local')"
+            @keydown.enter="setAccessScope('local')"
+          >
+            <span class="source-name">{{ t('settings.accessLocal') }}</span>
+            <span v-if="appConfig.serverAccessMode === 'local'" class="source-check">✓</span>
+          </div>
+          <div
+            class="source-card"
+            :class="{ active: appConfig.serverAccessMode === 'lan' }"
+            role="radio"
+            :aria-checked="appConfig.serverAccessMode === 'lan'"
+            tabindex="0"
+            @click="setAccessScope('lan')"
+            @keydown.enter="setAccessScope('lan')"
+          >
+            <span class="source-name">{{ t('settings.accessLan') }}</span>
+            <span v-if="appConfig.serverAccessMode === 'lan'" class="source-check">✓</span>
+          </div>
+        </div>
+        <p class="source-hint">{{ t('settings.accessDesc') }}</p>
+        <p v-if="accessError" class="source-error">{{ accessError }}</p>
+        <!-- API key always visible: it also protects the inference API in local mode,
+             not only when the service is exposed to the LAN -->
+        <div class="setting-row api-key-row">
+          <div class="setting-info">
+            <span class="setting-label">{{ t('settings.apiKey') }}</span>
+            <span class="setting-desc">{{ t('settings.apiKeyDesc') }}</span>
+          </div>
+          <input
+            v-model="apiKeyInput"
+            type="password"
+            class="api-key-input"
+            autocomplete="off"
+            spellcheck="false"
+            :disabled="apiKeySwitching"
+            @change="saveApiKey"
+          />
+        </div>
+        <p v-if="apiKeyError" class="source-error">{{ apiKeyError }}</p>
+        <!-- Inference GPU selection: pins the llama-server child to the chosen
+             CUDA device via CUDA_VISIBLE_DEVICES (empty = auto, default device).
+             Persisted through the same whole-serverConfig round-trip as the key. -->
+        <div class="setting-row gpu-row">
+          <div class="setting-info">
+            <span class="setting-label">{{ t('settings.gpu.label') }}</span>
+            <span class="setting-desc">{{ t('settings.gpu.desc') }}</span>
+          </div>
+          <ThemedSelect
+            class="gpu-select"
+            :model-value="gpuValue"
+            :options="gpuOptions"
+            :placeholder="t('settings.gpu.auto')"
+            :disabled="!gpuDetected || gpuSwitching"
+            variant="field"
+            :label="t('settings.gpu.label')"
+            @update:model-value="onGpuSelected"
+          />
+        </div>
+        <p v-if="!gpuDetected" class="source-hint">{{ t('settings.gpu.none') }}</p>
+        <p v-else class="source-hint">{{ t('settings.gpu.hint') }}</p>
+        <p v-if="gpuError" class="source-error">{{ gpuError }}</p>
+      </section>
+    </div>
+
+    <!-- App & updates: tray + API route mode + updates + about -->
+    <div id="tab-app" role="tabpanel" aria-labelledby="tab-app-tab" v-show="activeTab === 3">
+      <!-- System tray (Windows only; other platforms exit directly on close) -->
+      <section v-if="isWindows" class="settings-section">
+        <h2 class="section-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+          </svg>
+          {{ t('settings.tray') }}
+        </h2>
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-label">{{ t('settings.tray') }}</span>
+            <span class="setting-desc">{{ t('settings.trayDesc') }}</span>
+          </div>
+          <div class="theme-toggle" @click="toggleTray">
+            <div class="toggle-track" :class="{ light: appConfig.trayEnabled }">
+              <div class="toggle-thumb">
+                <svg v-if="appConfig.trayEnabled" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+                <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </div>
+            </div>
+            <span class="toggle-label">{{ appConfig.trayEnabled ? t('settings.on') : t('settings.off') }}</span>
+          </div>
+        </div>
+        <!-- systray cannot restart in same process: after disabling, re-enable requires app restart -->
+        <p class="source-hint">{{ t('settings.trayHint') }}</p>
+        <p v-if="trayError" class="source-error">{{ trayError }}</p>
+      </section>
+
+      <!-- API route mode (Windows only): restart into headless tray+server mode -->
+      <section v-if="isWindows" class="settings-section">
+        <h2 class="section-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+          </svg>
+          {{ t('settings.apiRouteMode') }}
+        </h2>
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-label">{{ t('settings.apiRouteMode') }}</span>
+            <span class="setting-desc">{{ t('settings.apiRouteModeDesc') }}</span>
+          </div>
+          <div class="theme-toggle" :class="{ disabled: !appConfig.trayEnabled || apiRouteDevBlocked }" @click="toggleApiRouteMode">
+            <div class="toggle-track" :class="{ light: appConfig.apiRouteMode }">
+              <div class="toggle-thumb">
+                <svg v-if="appConfig.apiRouteMode" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+                <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </div>
+            </div>
+            <span class="toggle-label">{{ appConfig.apiRouteMode ? t('settings.on') : t('settings.off') }}</span>
+          </div>
+        </div>
+        <!-- dev builds refuse the relaunch-based switch entirely: it escapes the wails dev supervisor -->
+        <p v-if="apiRouteDevBlocked" class="source-hint">{{ t('settings.apiRouteModeDevBlocked') }}</p>
+        <!-- headless mode returns to the GUI via the tray menu only: gate the toggle on the tray setting -->
+        <p v-else-if="!appConfig.trayEnabled" class="source-hint">{{ t('settings.apiRouteModeRequiresTray') }}</p>
+        <p v-if="apiRouteError" class="source-error">{{ apiRouteError }}</p>
+      </section>
+
+      <!-- Updates -->
+      <section class="settings-section">
+        <h2 class="section-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 6 9 17l-5-5"/>
+          </svg>
+          {{ t('settings.update') }}
+        </h2>
+        <div class="setting-row">
+          <div class="setting-info">
+            <span class="setting-label">{{ t('settings.checkUpdate') }}</span>
+            <span class="setting-desc">{{ t('settings.updateDesc', { version: appVersion }) }}</span>
+          </div>
+          <div class="update-actions">
+            <span v-if="checkError" class="update-error">{{ checkError }}</span>
+            <span v-else-if="checkResult && !checkResult.hasUpdate" class="update-latest">{{ t('settings.latest') }}</span>
+            <button class="btn-check" :disabled="checking" @click="manualCheck">
+              {{ checking ? t('settings.checking') : t('settings.checkUpdate') }}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- About: version / license / repository. The repo URL is plain
+           selectable text, NOT an <a> link: clicking a link would navigate the
+           WebView away from the app. -->
+      <section class="settings-section">
+        <h2 class="section-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+          </svg>
+          {{ t('settings.about') }}
+        </h2>
+        <div class="about-row">
+          <span class="setting-label">{{ t('settings.version') }}</span>
+          <span class="about-value">{{ appVersion || '—' }}</span>
+        </div>
+        <div class="about-row">
+          <span class="setting-label">{{ t('settings.license') }}</span>
+          <span class="about-value">GPL-3.0</span>
+        </div>
+        <div class="about-row">
+          <span class="setting-label">{{ t('settings.repo') }}</span>
+          <span class="about-value about-mono">https://github.com/CodeNeow/llama-cpp-desktop</span>
+        </div>
+      </section>
+    </div>
   </div>
 </template>
 
@@ -369,6 +401,35 @@ import { getAppVersion, getOS, getSystemInfo, getServerConfig, saveServerConfig,
 import ThemedSelect, { type SelectOption } from '../components/ThemedSelect.vue'
 import { formatMB } from '../lib/format'
 import { t } from '../lib/i18n'
+
+// ─── Tabs ─────────────────────────────────────────────────────────────────────
+// Index of the currently active tab. Plain view state: it resets to the first
+// tab on reload and is intentionally not persisted or encoded in the route.
+const activeTab = ref(0)
+
+// Tab definitions (4 groups; icons are inline stroke SVGs, mirroring ModelSettings)
+const tabs = [
+  {
+    id: 'tab-appearance',
+    label: () => t('settings.tabAppearance'),
+    icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`,
+  },
+  {
+    id: 'tab-downloads',
+    label: () => t('settings.tabDownloads'),
+    icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
+  },
+  {
+    id: 'tab-server',
+    label: () => t('settings.tabServer'),
+    icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>`,
+  },
+  {
+    id: 'tab-app',
+    label: () => t('settings.tabApp'),
+    icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
+  },
+]
 
 const currentTheme = computed({
   get: () => appConfig.theme,
@@ -590,8 +651,9 @@ async function manualCheck() {
 }
 
 .page-header {
-  /* Use padding instead of margin: header background covers this gap so content scrolls without leaving a seam */
-  padding-bottom: 36px;
+  /* Use padding instead of margin: header background covers this gap so content scrolls without leaving a seam.
+     Tighter than the old single-column layout: the tab row below completes the sticky block (same as ModelSettings) */
+  padding-bottom: 20px;
 }
 
 .page-title {
@@ -607,6 +669,47 @@ async function manualCheck() {
   font-size: 14px;
   color: var(--text-dim);
   margin: 0;
+}
+
+/* ─── Tabs (same pattern as ModelSettings.vue) ─── */
+.settings-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 20px;
+  flex-shrink: 0;
+}
+
+.tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.tab-btn:hover {
+  color: var(--text-secondary);
+}
+
+.tab-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+.tab-btn .tab-icon {
+  display: flex;
 }
 
 /* ─── Section ─── */
