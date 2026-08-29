@@ -110,6 +110,7 @@ export namespace core {
 	}
 	export class GPUInfo {
 	    name: string;
+	    uuid: string;
 	    memoryMb: number;
 	    memoryUsedMb: number;
 	    driverVersion: string;
@@ -123,6 +124,7 @@ export namespace core {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
+	        this.uuid = source["uuid"];
 	        this.memoryMb = source["memoryMb"];
 	        this.memoryUsedMb = source["memoryUsedMb"];
 	        this.driverVersion = source["driverVersion"];
@@ -207,6 +209,7 @@ export namespace core {
 	    path: string;
 	    version: string;
 	    cudartInstalled: boolean;
+	    cudartVersion: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new LlamaCppInfo(source);
@@ -218,6 +221,7 @@ export namespace core {
 	        this.path = source["path"];
 	        this.version = source["version"];
 	        this.cudartInstalled = source["cudartInstalled"];
+	        this.cudartVersion = source["cudartVersion"];
 	    }
 	}
 	export class LoadedModel {
@@ -248,6 +252,26 @@ export namespace core {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.totalGb = source["totalGb"];
 	        this.freeGb = source["freeGb"];
+	    }
+	}
+	export class ModelBenchResult {
+	    tgTps: number;
+	    ngl: string;
+	    threads: number;
+	    usedCpuMoe: boolean;
+	    elapsedS: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ModelBenchResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.tgTps = source["tgTps"];
+	        this.ngl = source["ngl"];
+	        this.threads = source["threads"];
+	        this.usedCpuMoe = source["usedCpuMoe"];
+	        this.elapsedS = source["elapsedS"];
 	    }
 	}
 	export class ModelConfig {
@@ -407,6 +431,7 @@ export namespace core {
 	    maxModels: number;
 	    cacheRam: number;
 	    apiKey: string;
+	    deviceId: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new ServerConfig(source);
@@ -420,7 +445,54 @@ export namespace core {
 	        this.maxModels = source["maxModels"];
 	        this.cacheRam = source["cacheRam"];
 	        this.apiKey = source["apiKey"];
+	        this.deviceId = source["deviceId"];
 	    }
+	}
+	export class ServerLogEntry {
+	    seq: number;
+	    text: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ServerLogEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.seq = source["seq"];
+	        this.text = source["text"];
+	    }
+	}
+	export class ServerLogsPage {
+	    entries: ServerLogEntry[];
+	    next: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ServerLogsPage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.entries = this.convertValues(source["entries"], ServerLogEntry);
+	        this.next = source["next"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 	export class SystemInfo {
 	    os: string;

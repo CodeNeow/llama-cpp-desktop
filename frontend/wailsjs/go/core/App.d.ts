@@ -3,6 +3,8 @@
 import {core} from '../models';
 import {context} from '../models';
 
+export function BenchmarkModel(arg1:string):Promise<core.ModelBenchResult>;
+
 export function BrowseLlamaCppDir():Promise<string>;
 
 export function BrowseLlamaCppDownloadDir():Promise<string>;
@@ -54,6 +56,8 @@ export function GetMonitorStatus():Promise<core.MonitorStatus>;
 export function GetOS():Promise<Record<string, string>>;
 
 export function GetServerConfig():Promise<core.ServerConfig>;
+
+export function GetServerLogsSince(arg1:number):Promise<core.ServerLogsPage>;
 
 export function GetServerStatus():Promise<Record<string, any>>;
 
