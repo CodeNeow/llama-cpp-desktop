@@ -55,6 +55,8 @@ export function GetMonitorStatus():Promise<core.MonitorStatus>;
 
 export function GetOS():Promise<Record<string, string>>;
 
+export function GetRemoteDoc(arg1:string,arg2:string,arg3:boolean):Promise<core.RemoteDocResult>;
+
 export function GetServerConfig():Promise<core.ServerConfig>;
 
 export function GetServerLogsSince(arg1:number):Promise<core.ServerLogsPage>;

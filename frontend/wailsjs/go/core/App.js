@@ -106,6 +106,10 @@ export function GetOS() {
   return window['go']['core']['App']['GetOS']();
 }
 
+export function GetRemoteDoc(arg1, arg2, arg3) {
+  return window['go']['core']['App']['GetRemoteDoc'](arg1, arg2, arg3);
+}
+
 export function GetServerConfig() {
   return window['go']['core']['App']['GetServerConfig']();
 }
