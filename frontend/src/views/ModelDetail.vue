@@ -35,43 +35,55 @@
       </div>
     </div>
 
-    <!-- Error state -->
-    <div v-if="loadError" class="error-card">
-      <p class="error-text">{{ t('home.errorTitle') }}：{{ loadError }}</p>
-      <button class="retry-btn" @click="retry">{{ t('home.retry') }}</button>
-    </div>
-
-    <!-- Model description area -->
-    <section class="desc-section">
-      <h2 class="section-title">{{ t('downloads.descTitle') }}</h2>
-      <div v-if="descLoading" class="desc-loading">{{ t('downloads.loadingDesc') }}</div>
-      <div v-else-if="description" class="desc-text" v-html="renderDescription(description)"></div>
-      <div v-else class="desc-empty">{{ t('downloads.noDesc') }}</div>
-    </section>
-
-    <!-- File list -->
-    <section class="files-section">
-      <h2 class="section-title">{{ t('downloads.fileCount', { n: files.length }) }}</h2>
-      <div v-if="filesLoading" class="files-loading">{{ t('downloads.loadingFiles') }}</div>
-      <div v-else-if="sortedFilesList.length === 0" class="files-empty">{{ t('downloads.noFiles') }}</div>
-      <div v-else class="files-list">
-        <label
-          v-for="f in sortedFilesList"
-          :key="f.filename"
-          class="file-item"
-          :class="{ selected: selectedFiles.includes(f.filename) }"
-        >
-          <input
-            type="checkbox"
-            :checked="selectedFiles.includes(f.filename)"
-            @change="toggleFile(f.filename)"
-          />
-          <span class="file-name">{{ f.filename }}</span>
-          <span v-if="guessQuant(f.filename)" class="file-quant">{{ guessQuant(f.filename) }}</span>
-          <span v-if="f.size" class="file-size">{{ formatBytes(f.size) }}</span>
-        </label>
+    <!-- Content band: fills the window below the sticky header; only scrolls
+         when the window is too short for the grid's internal columns -->
+    <div class="detail-scroll">
+      <!-- Error state -->
+      <div v-if="loadError" class="error-card">
+        <p class="error-text">{{ t('home.errorTitle') }}：{{ loadError }}</p>
+        <button class="retry-btn" @click="retry">{{ t('home.retry') }}</button>
       </div>
-    </section>
+
+      <!-- Two-column layout (mirrors Api.vue's .monitor-grid): description on
+           the left, file list on the right, each scrolling independently -->
+      <div class="detail-grid">
+        <!-- Left column: model description -->
+        <section class="desc-section">
+          <h2 class="section-title">{{ t('downloads.descTitle') }}</h2>
+          <div class="desc-body">
+            <div v-if="descLoading" class="desc-loading">{{ t('downloads.loadingDesc') }}</div>
+            <div v-else-if="description" class="desc-text" v-html="renderDescription(description)"></div>
+            <div v-else class="desc-empty">{{ t('downloads.noDesc') }}</div>
+          </div>
+        </section>
+
+        <!-- Right column: file list -->
+        <section class="files-section">
+          <h2 class="section-title">{{ t('downloads.fileCount', { n: files.length }) }}</h2>
+          <div class="files-body">
+            <div v-if="filesLoading" class="files-loading">{{ t('downloads.loadingFiles') }}</div>
+            <div v-else-if="sortedFilesList.length === 0" class="files-empty">{{ t('downloads.noFiles') }}</div>
+            <div v-else class="files-list">
+              <label
+                v-for="f in sortedFilesList"
+                :key="f.filename"
+                class="file-item"
+                :class="{ selected: selectedFiles.includes(f.filename) }"
+              >
+                <input
+                  type="checkbox"
+                  :checked="selectedFiles.includes(f.filename)"
+                  @change="toggleFile(f.filename)"
+                />
+                <span class="file-name" :title="f.filename">{{ f.filename }}</span>
+                <span v-if="guessQuant(f.filename)" class="file-quant">{{ guessQuant(f.filename) }}</span>
+                <span v-if="f.size" class="file-size">{{ formatBytes(f.size) }}</span>
+              </label>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -186,8 +198,27 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* Fixed-viewport layout: the router cannot mark this page fixed (route meta
+   is outside this file), so the page fills the window below the 36px titlebar
+   on its own — same height contract as .page-fixed in global.css plus the
+   .content-area dock-reserve term, so the page sits exactly inside the shared
+   content box and the content area itself never scrolls. The sticky header
+   band stays pinned above the scrolling detail columns; its variable height
+   (conditional action bar, wrappable title) is resolved by flexbox, not a
+   pixel constant. */
 .page {
-  padding: 0 48px 60px;
+  padding: 0 48px 0;
+  height: calc(100vh - 36px - var(--dock-reserve, 0px));
+  display: flex;
+  flex-direction: column;
+  /* Match .content-area's padding-bottom transition so appearing/disappearing
+     TaskDock pill never leaves the page taller than the content box */
+  transition: height 0.2s ease;
+}
+
+/* Keep the sticky header band from compressing inside the fixed-height page */
+.sticky-top {
+  flex-shrink: 0;
 }
 
 .page-header {
@@ -292,6 +323,16 @@ onMounted(() => {
   cursor: default;
 }
 
+/* ─── Content band: flexes under the sticky header, scrolls only when the
+     window is too short; the error card and the grid share it ─── */
+.detail-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
 /* ─── Error ─── */
 .error-card {
   display: flex;
@@ -328,16 +369,50 @@ onMounted(() => {
   background: rgba(99, 102, 241, 0.2);
 }
 
-/* ─── Section titles ─── */
+/* ─── Two-column grid: description (left) + files (right) ─── */
+.detail-grid {
+  display: grid;
+  /* minmax(0, Nfr): floor the tracks at 0 (not auto) so long unbreakable
+     strings (model filenames, README URLs) cannot widen a column past its
+     share; the narrow-viewport block at the end collapses the grid */
+  grid-template-columns: minmax(0, 6fr) minmax(0, 4fr);
+  /* The single row shares the grid height exactly; min-height: 0 on the
+     columns lets excess content scroll inside each column instead of
+     stretching the row */
+  grid-template-rows: minmax(0, 1fr);
+  gap: 16px;
+  /* Fill the band below the sticky header so both columns scroll internally
+     on typical window sizes (no minimum floor: both columns are plain
+     scrollable lists, so nothing gets crushed on short windows) */
+  flex: 1;
+  min-height: 0;
+  margin-bottom: 16px;
+}
+
+/* ─── Columns: pinned title + internally scrolling body (same structure as
+     Api.vue's .log-panel: header flex-shrink: 0, body flex: 1 + min-height: 0
+     + overflow-y: auto) ─── */
+.desc-section,
+.files-section {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
 .section-title {
   font-size: 14px;
   font-weight: 600;
   color: var(--text-secondary);
   margin: 0 0 12px;
+  flex-shrink: 0;
 }
 
-.desc-section {
-  margin-bottom: 28px;
+.desc-body,
+.files-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .desc-loading,
@@ -410,10 +485,6 @@ onMounted(() => {
 }
 
 /* ─── Files ─── */
-.files-section {
-  margin-bottom: 24px;
-}
-
 .files-loading,
 .files-empty {
   font-size: 13px;
@@ -430,7 +501,11 @@ onMounted(() => {
 .file-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  /* Two-axis gap: tighter row gap for the wrapped quant/size line */
+  gap: 6px 10px;
+  /* Let the quant tag and size drop onto a second line when the 4fr column
+     is too narrow to fit them beside the filename */
+  flex-wrap: wrap;
   padding: 8px 12px;
   border-radius: 8px;
   cursor: pointer;
@@ -452,9 +527,15 @@ onMounted(() => {
 }
 
 .file-name {
-  flex: 1;
+  flex: 1 1 auto;
+  /* Truncate long filenames with an ellipsis (full name exposed via the
+     title tooltip) instead of wrapping and blowing out the 4fr column; the
+     min-width floor pushes the quant tag + size to a second line first */
+  min-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--text-secondary);
-  word-break: break-all;
 }
 
 .file-size {
@@ -472,5 +553,38 @@ onMounted(() => {
   font-weight: 600;
   flex-shrink: 0;
   letter-spacing: 0.3px;
+}
+
+/* ─── Narrow viewports (< 1100px, same breakpoint as Api.vue): collapse to a
+     single column with the description first, files below. The page releases
+     its fixed height so the shared content area scrolls naturally and both
+     columns flow unbounded (the sticky header pins via the global
+     .sticky-top rule) ─── */
+@media (max-width: 1099px) {
+  .page {
+    height: auto;
+  }
+
+  .detail-scroll {
+    flex: none;
+    overflow: visible;
+  }
+
+  .detail-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    /* Content-driven height: the content area scrolls, the grid does not
+       stretch; the row gap separates the stacked sections */
+    gap: 24px;
+    flex: none;
+    min-height: 0;
+    margin-bottom: 24px;
+  }
+
+  .desc-body,
+  .files-body {
+    flex: none;
+    overflow: visible;
+  }
 }
 </style>
