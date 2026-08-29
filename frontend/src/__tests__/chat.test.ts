@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseSSEChunks, buildChatBody, buildMessageContent, tokenRates, type ChatParams } from '../lib/chat'
+import { parseSSEChunks, buildChatBody, buildMessageContent, tokenRates, chatReadiness, modelsToUnload, type ChatParams } from '../lib/chat'
 
 describe('parseSSEChunks', () => {
   // complete single-line JSON
@@ -160,6 +160,58 @@ describe('tokenRates', () => {
   // raw fractional values: rounding to 1 decimal is a display-layer concern
   it('keeps fractional rates raw without rounding', () => {
     expect(tokenRates(1, 3000, 1, 1500)).toEqual({ reasoningTps: 1 / 3, answerTps: 2 / 3 })
+  })
+})
+
+describe('chatReadiness', () => {
+  // runtime missing takes precedence over a missing model directory
+  it('runtime missing yields needRuntime regardless of model count', () => {
+    expect(chatReadiness(0, false)).toBe('needRuntime')
+    expect(chatReadiness(3, false)).toBe('needRuntime')
+  })
+
+  // runtime present but directory empty blocks the start with needModels
+  it('runtime ok but no models yields needModels', () => {
+    expect(chatReadiness(0, true)).toBe('needModels')
+  })
+
+  // both prerequisites met
+  it('runtime ok and at least one model yields ok', () => {
+    expect(chatReadiness(1, true)).toBe('ok')
+    expect(chatReadiness(5, true)).toBe('ok')
+  })
+})
+
+describe('modelsToUnload', () => {
+  // exactly the loaded entries other than the selected id
+  it('returns loaded model ids excluding the selected one', () => {
+    const loaded = [
+      { id: 'a', status: 'loaded' },
+      { id: 'b', status: 'loading' },
+      { id: 'c', status: 'loaded' },
+      { id: 'd', status: 'sleeping' },
+    ]
+    expect(modelsToUnload(loaded, 'a')).toEqual(['c'])
+  })
+
+  // the selected model itself is never unloaded even when loaded
+  it('never includes the selected model id', () => {
+    expect(modelsToUnload([{ id: 'a', status: 'loaded' }], 'a')).toEqual([])
+  })
+
+  // status must be exactly 'loaded': loading/sleeping/failed stay untouched
+  it('ignores non-loaded statuses (loading / sleeping / failed)', () => {
+    const loaded = [
+      { id: 'b', status: 'loading' },
+      { id: 'd', status: 'sleeping' },
+      { id: 'e', status: 'failed' },
+    ]
+    expect(modelsToUnload(loaded, 'a')).toEqual([])
+  })
+
+  // nothing loaded -> nothing to unload
+  it('empty loaded list yields empty result', () => {
+    expect(modelsToUnload([], 'a')).toEqual([])
   })
 })
 

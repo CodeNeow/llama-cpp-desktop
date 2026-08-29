@@ -5,14 +5,16 @@
         <h1 class="page-title">{{ t('chat.title') }}</h1>
         <p class="page-subtitle">{{ t('chat.subtitle') }}</p>
       </div>
-      <div class="chat-toolbar" v-if="serverRunning">
+      <div class="chat-toolbar">
         <!-- Model picker: themed dropdown (popup list is rendered in-app, so it
-             follows the theme — a native select's popup is OS-rendered) -->
+             follows the theme — a native select's popup is OS-rendered).
+             Options come from the local model scan, so picking works with the
+             service stopped; sending then auto-starts it. -->
         <ThemedSelect
           variant="toolbar"
           :model-value="selectedModel"
           :options="modelOptions"
-          :disabled="routerModels.length === 0 || streaming"
+          :disabled="serviceStarting || streaming"
           :placeholder="t('chat.model')"
           :label="t('chat.model')"
           :empty-text="t('chat.noModels')"
@@ -72,22 +74,11 @@
       </div>
     </div>
 
-    <!-- Server offline notice -->
-    <div v-if="!serverRunning" class="offline-card">
-      <div class="offline-icon">
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-        </svg>
-      </div>
-      <p class="offline-text">{{ t('chat.serverOff') }}</p>
-      <button class="offline-btn" @click="goToApi">{{ t('chat.goApi') }}</button>
-    </div>
-
     <!-- Messages area -->
     <!-- Delegated link handler: links in assistant markdown open in the system
          browser, the WebView never navigates (see lib/linkHandler.ts) -->
-    <div v-else ref="messagesContainer" class="messages-area" @click="handleLinkClick">
-      <div v-if="routerModels.length === 0" class="empty-hint">{{ t('chat.noModels') }}</div>
+    <div ref="messagesContainer" class="messages-area" @click="handleLinkClick">
+      <div v-if="modelOptions.length === 0" class="empty-hint">{{ t('chat.noModels') }}</div>
       <template v-else>
         <div v-if="messages.length === 0" class="empty-hint">{{ t('chat.emptyHint') }}</div>
         <div
@@ -136,7 +127,33 @@
     </div>
 
     <!-- Input area -->
-    <div v-if="serverRunning && routerModels.length > 0" class="input-area">
+    <div class="input-area">
+      <!-- Auto-start / model-switch notice: sits above the input row so status
+           feedback lands next to the send action; the error variant adds the
+           guided CTA that fixes the reported blocker -->
+      <div
+        v-if="serviceStarting || switchingModel || startError"
+        class="start-notice"
+        :class="{ 'start-notice--error': !!startError }"
+        role="status"
+      >
+        <template v-if="startError">
+          <span class="start-notice-text">{{ startError }}</span>
+          <button v-if="startErrorCause === 'needModels'" class="start-notice-btn" @click="goDownloads">
+            {{ t('action.gotoDownloads') }}
+          </button>
+          <button v-else-if="startErrorCause === 'needRuntime'" class="start-notice-btn" @click="goRuntime">
+            {{ t('chat.goRuntime') }}
+          </button>
+        </template>
+        <template v-else-if="serviceStarting">
+          <span class="start-notice-spinner" aria-hidden="true"></span>
+          <span>{{ t('chat.startingServer') }}</span>
+        </template>
+        <template v-else>
+          <span>{{ t('chat.switchingModel') }}</span>
+        </template>
+      </div>
       <!-- Pending attachment preview bar -->
       <div v-if="pendingImages.length" class="pending-bar">
         <div class="pending-item" v-for="(img, i) in pendingImages" :key="i">
@@ -163,7 +180,7 @@
           class="chat-input"
           rows="1"
           :placeholder="t('chat.inputPlaceholder')"
-          :disabled="!selectedModel || streaming"
+          :disabled="serviceStarting || streaming || !selectedModel"
           @keydown="onInputKeydown"
           @input="onInputResize"
           @paste="onInputPaste"
@@ -171,7 +188,7 @@
         <button
           v-if="!streaming"
           class="send-btn"
-          :disabled="!selectedModel"
+          :disabled="serviceStarting || !selectedModel"
           @click="send"
         >
           {{ t('chat.send') }}
@@ -187,9 +204,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick, watch, onUnmounted, type ComponentPublicInstance } from 'vue'
 import { useRouter } from 'vue-router'
-import { getServerStatus, getServerConfig } from '../wails'
-import { fetchRouterModels, streamChatCompletion, buildChatBody, tokenRates } from '../lib/chat'
+import { getServerStatus, getServerConfig, getModels, getLlamaCpp, startServer, unloadModel } from '../wails'
+import { chatReadiness, fetchRouterModels, modelsToUnload, streamChatCompletion, tokenRates, type ChatReadiness } from '../lib/chat'
 import { messages, selectedModel, streaming, chatAbortController, persistChat, reconcileSelectedModel, chatParams, persistChatParams, type ChatMessage, type ChatParams } from '../lib/chatState'
+import { nudgeDock } from '../lib/dockNudge'
 import { t } from '../lib/i18n'
 import { renderMarkdown } from '../lib/markdown'
 import { handleLinkClick } from '../lib/linkHandler'
@@ -199,13 +217,36 @@ import ThemedSelect, { type SelectOption } from '../components/ThemedSelect.vue'
 const router = useRouter()
 
 const serverRunning = ref(false)
-const routerModels = ref<{ id: string; status: string }[]>([])
+
+/**
+ * Chat-initiated server bring-up in progress: disables the input row, shows
+ * the starting notice, and blocks re-entrant send() calls.
+ */
+const serviceStarting = ref(false)
+
+/** Model-swap unload pass in progress: brief, shows the switching notice. */
+const switchingModel = ref(false)
+
+/** Inline auto-start error text ('' = none; cleared at the next start attempt). */
+const startError = ref('')
+
+/** Guided CTA cause for startError: which page fixes the reported blocker. */
+const startErrorCause = ref<'needModels' | 'needRuntime' | ''>('')
+
+/** Local (scanned) models backing the picker; independent of server state. */
+const localModels = ref<{ name: string; alias?: string }[]>([])
 
 /** Whether the chat parameters panel is expanded */
 const showParams = ref(false)
 
-/** Model options for the picker, mapped from the router's loaded models */
-const modelOptions = computed<SelectOption[]>(() => routerModels.value.map((m) => ({ value: m.id, label: m.id })))
+/**
+ * Model options for the picker: value is the llama-server model id —
+ * ModelInfo.alias is the display Name sanitized for INI/router use and
+ * differs from Name when the name has spaces/special chars or collides
+ * (core/gguf.go aliasDedup) — falling back to the name when absent. Label
+ * stays the human-readable display name.
+ */
+const modelOptions = computed<SelectOption[]>(() => localModels.value.map((m) => ({ value: m.alias || m.name, label: m.name })))
 
 const messagesContainer = ref<HTMLDivElement | null>(null)
 const inputBox = ref<HTMLTextAreaElement | null>(null)
@@ -288,8 +329,129 @@ function statsLine(msg: ChatMessage): string {
   return parts.join(' · ')
 }
 
-function goToApi() {
-  router.push('/api')
+/**
+ * Fetch the local (scanned) model list and reconcile the persisted selection
+ * against the available router ids (alias, falling back to the display name —
+ * the same strings the picker and the router expose). Runs on mount
+ * (independent of server state) and again after a successful auto-start, so a
+ * freshly stocked directory is picked up without leaving the page.
+ */
+async function refreshLocalModels(): Promise<void> {
+  try {
+    const list = await getModels()
+    localModels.value = Array.isArray(list) ? list : []
+  } catch {
+    // Backend unavailable (standalone vite) or scan failure: keep current state
+    return
+  }
+  const ids = localModels.value.map((m) => m.alias || m.name)
+  // A persisted model id may be stale (renamed/removed since the last run); only
+  // reconcile against a non-empty list so an empty directory never rewrites
+  // the stored choice
+  if (ids.length > 0) {
+    const reconciled = reconcileSelectedModel(selectedModel.value, ids)
+    if (reconciled.changed) {
+      selectedModel.value = reconciled.model
+      persistChat()
+    }
+  }
+}
+
+/**
+ * Chat-initiated server bring-up: pre-check models/runtime so blockers surface
+ * as guided errors (no pointless startServer call), then start llama-server
+ * and poll the router until it answers /models (up to ~30s). Returns true when
+ * the service ended up ready to stream.
+ */
+async function ensureServerReady(): Promise<boolean> {
+  startError.value = ''
+  startErrorCause.value = ''
+  serviceStarting.value = true
+  try {
+    let readiness: ChatReadiness = 'ok'
+    try {
+      const [models, rt] = await Promise.all([getModels(), getLlamaCpp()])
+      readiness = chatReadiness(Array.isArray(models) ? models.length : 0, rt?.installed === true)
+    } catch {
+      // Probe failure must not block the attempt: startServer reports the real error
+      readiness = 'ok'
+    }
+    if (readiness === 'needModels') {
+      startError.value = t('chat.noModels')
+      startErrorCause.value = 'needModels'
+      return false
+    }
+    if (readiness === 'needRuntime') {
+      startError.value = `${t('runtime.llamacpp')} ${t('runtime.llamacpp.notFound')}`
+      startErrorCause.value = 'needRuntime'
+      return false
+    }
+    await startServer()
+    // Poll router readiness: llama-server binds /models a moment after spawn
+    const cfg = await getServerConfig()
+    const deadline = Date.now() + 30000
+    while (Date.now() < deadline) {
+      try {
+        await fetchRouterModels(cfg.port)
+        // Router answered: the service is ready to stream
+        serverRunning.value = true
+        await refreshLocalModels()
+        nudgeDock()
+        return true
+      } catch {
+        // Not ready yet; retry after the poll interval
+        await new Promise((r) => setTimeout(r, 500))
+      }
+    }
+    startError.value = t('api.toggleFailed', { msg: 'timeout' })
+    return false
+  } catch (e: any) {
+    // startServer rejections already carry user-facing localized backend errors
+    startError.value = e?.message || String(e)
+    return false
+  } finally {
+    serviceStarting.value = false
+  }
+}
+
+/**
+ * Deterministic single-model memory: before streaming, unload every OTHER
+ * loaded model so the selected one becomes the only resident. Best-effort:
+ * individual unload failures are ignored and never block the chat request.
+ */
+async function unloadOtherModels(): Promise<void> {
+  let toUnload: string[] = []
+  try {
+    const cfg = await getServerConfig()
+    const loaded = await fetchRouterModels(cfg.port)
+    toUnload = modelsToUnload(loaded, selectedModel.value)
+  } catch {
+    // Router unreachable: let the chat request itself surface the real error
+    return
+  }
+  if (toUnload.length === 0) return
+  switchingModel.value = true
+  try {
+    for (const id of toUnload) {
+      try {
+        await unloadModel(id)
+      } catch {
+        // Best-effort: an unload failure must not block streaming
+      }
+    }
+    nudgeDock()
+  } finally {
+    switchingModel.value = false
+  }
+}
+
+/** Guided fixes for a failed auto-start: model downloads / runtime section. */
+function goDownloads() {
+  router.push('/models/download')
+}
+
+function goRuntime() {
+  router.push('/')
 }
 
 /** Close the params panel when clicking outside it */
@@ -405,16 +567,28 @@ function removePendingImage(index: number) {
 }
 
 async function send() {
+  // Re-entrancy guards: never interleave streams or start two bring-ups
+  if (streaming.value || serviceStarting.value) return
   const input = inputBox.value
-  if (!input || !selectedModel.value) return
+  if (!input) return
   const text = input.value.trim()
-  if (text || pendingImages.value.length > 0) {
-    const imgs = pendingImages.value.length ? [...pendingImages.value] : undefined
-    messages.value.push({ role: 'user', content: text, images: imgs })
-  }
   if (!text && pendingImages.value.length === 0) return
-  if (streaming.value) return
 
+  // Service offline: auto-start llama-server and wait for readiness before
+  // streaming. Guided failures return here with the input left untouched.
+  if (!serverRunning.value) {
+    const ready = await ensureServerReady()
+    if (!ready) return
+  }
+
+  // Without a model id there is nothing to address the request to
+  if (!selectedModel.value) return
+
+  // Deterministic model swap: unload every OTHER loaded model first
+  await unloadOtherModels()
+
+  const imgs = pendingImages.value.length ? [...pendingImages.value] : undefined
+  messages.value.push({ role: 'user', content: text, images: imgs })
   persistChat()
   input.value = ''
   pendingImages.value = []
@@ -493,6 +667,9 @@ async function send() {
     }
     persistChat()
     scrollToBottom()
+    // The streamed request just loaded the selected model: refresh the dock
+    // now so it appears without waiting for the 1s poll
+    nudgeDock()
   }
 }
 
@@ -521,27 +698,15 @@ watch(selectedModel, () => {
 })
 
 onMounted(async () => {
-  const status = await getServerStatus()
-  serverRunning.value = status.running
-  if (status.running) {
-    const cfg = await getServerConfig()
-    try {
-      routerModels.value = await fetchRouterModels(cfg.port)
-      // A persisted model ID may be stale (renamed/removed since the last run);
-      // only reconcile against a non-empty list, so an offline server never
-      // rewrites the stored choice
-      const availableIds = routerModels.value.map((m) => m.id)
-      if (availableIds.length > 0) {
-        const reconciled = reconcileSelectedModel(selectedModel.value, availableIds)
-        if (reconciled.changed) {
-          selectedModel.value = reconciled.model
-          persistChat()
-        }
-      }
-    } catch {
-      routerModels.value = []
-    }
+  try {
+    const status = await getServerStatus()
+    serverRunning.value = status.running
+  } catch {
+    // Backend unavailable (standalone vite): keep the offline default
   }
+  // Picker options come from the local scan, so they work with the service
+  // stopped; reconcile the persisted choice against the names that exist
+  await refreshLocalModels()
   document.addEventListener('click', onDocClick)
 })
 
@@ -746,39 +911,64 @@ onUnmounted(() => {
   color: var(--text-primary);
 }
 
-/* ─── Offline ─── */
-.offline-card {
-  flex: 1;
+/* ─── Auto-start / model-switch notice ─── */
+.start-notice {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 12px;
-  color: var(--text-dim);
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--surface);
+  border: 1px solid var(--border);
 }
 
-.offline-icon {
-  opacity: 0.5;
+/* Error variant: message + guided CTA sharing the .stop-btn color family
+   (rgba overlays stay readable on both light and dark themes) */
+.start-notice--error {
+  justify-content: space-between;
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.25);
 }
 
-.offline-text {
-  font-size: 14px;
+.start-notice-text {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
 }
 
-.offline-btn {
-  padding: 8px 18px;
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(167, 139, 250, 0.15));
-  color: #a78bfa;
-  border: 1px solid rgba(99, 102, 241, 0.3);
-  border-radius: 10px;
-  font-size: 13px;
+.start-notice-btn {
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
+  flex-shrink: 0;
+  background: rgba(239, 68, 68, 0.12);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
-.offline-btn:hover {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(167, 139, 250, 0.25));
+.start-notice-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
+}
+
+.start-notice-spinner {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  border-top-color: #a78bfa;
+  animation: notice-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes notice-spin {
+  to { transform: rotate(360deg); }
 }
 
 /* ─── Messages ─── */

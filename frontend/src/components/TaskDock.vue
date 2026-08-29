@@ -80,11 +80,16 @@
         <!-- Models in memory section -->
         <div v-if="serverRunning && loadedModels.length > 0" class="dock-section">
           <div class="dock-section-title">{{ t('dock.modelsInMemory', { n: loadedModels.length }) }}</div>
-          <div v-for="model in loadedModels" :key="model.id" class="dock-model-item">
+          <div
+            v-for="model in loadedModels"
+            :key="model.id"
+            class="dock-model-item"
+            :class="{ 'dock-model-item--unloading': unloadingId === model.id }"
+          >
             <div class="dock-model-row">
               <span class="dock-model-badge" :class="'type-' + model.type">{{ typeLabel(model.type) }}</span>
               <span class="dock-model-id" :title="model.id">{{ truncatedName(model.id) }}</span>
-              <span class="dock-model-status">{{ modelStatusLabel(model.status) }}</span>
+              <span class="dock-model-status">{{ unloadingId === model.id ? t('dock.unloading') : modelStatusLabel(model.status) }}</span>
               <button
                 class="dock-unload-btn"
                 :disabled="unloadingId === model.id"
@@ -126,7 +131,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watchEffect, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, watch, watchEffect, onMounted, onUnmounted } from 'vue'
 import {
   getLlamaCppDownloadStatus,
   getDownloadTasks,
@@ -135,6 +140,7 @@ import {
   unloadModel
 } from '../wails'
 import { activeLlamaCppDownload, activeModelTasks, activeUpdateDownload, shouldShowDock } from '../lib/dock'
+import { dockNudgeCounter, nudgeDock } from '../lib/dockNudge'
 import { useDockReserve } from '../lib/dockSpace'
 import { updateState } from '../lib/update'
 import { t } from '../lib/i18n'
@@ -299,6 +305,15 @@ function stopPolling() {
   }
 }
 
+// ─── Nudge wiring ─────────────────────────────────────────────────
+
+// Chat-driven model loads/unloads and dock-row unload actions nudge the
+// counter for immediate feedback instead of waiting up to 1s for the next
+// poll. Vue stops this watcher automatically when the component unmounts.
+watch(dockNudgeCounter, () => {
+  poll()
+})
+
 // ─── Unload ───────────────────────────────────────────────────────
 
 async function handleUnload(id: string) {
@@ -306,7 +321,10 @@ async function handleUnload(id: string) {
   delete unloadErrors[id]
   try {
     await unloadModel(id)
-    // success: next poll will refresh the list
+    // Instant feedback: drop the row now, then nudge a poll that reconciles
+    // against reality (an unload that silently failed re-appears on the poll)
+    loadedModels.value = loadedModels.value.filter(m => m.id !== id)
+    nudgeDock()
   } catch (e: any) {
     unloadErrors[id] = e?.message || 'unknown'
   } finally {
@@ -637,6 +655,13 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 6px;
   padding: 5px 0;
+  transition: opacity 0.15s;
+}
+
+/* Row-level pending state: dim the row while its unload request is in flight
+   (the row status slot shows the 卸载中 label for the same window) */
+.dock-model-item--unloading {
+  opacity: 0.5;
 }
 
 .dock-model-item + .dock-model-item {

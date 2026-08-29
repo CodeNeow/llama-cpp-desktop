@@ -24,6 +24,35 @@ export interface ChatParams {
   systemPrompt: string
 }
 
+/** Chat-send readiness verdict: ok to send, or the missing prerequisite the user must fix first. */
+export type ChatReadiness = 'ok' | 'needModels' | 'needRuntime'
+
+/**
+ * Decide what is missing before a chat send can auto-start the service.
+ *
+ * Runtime missing takes precedence: without llama-server even a stocked model
+ * directory cannot serve, so the guidance always points at the deepest blocker.
+ * Pure: the caller fetches the model count and the runtime install state.
+ */
+export function chatReadiness(modelCount: number, runtimeInstalled: boolean): ChatReadiness {
+  if (!runtimeInstalled) return 'needRuntime'
+  if (modelCount < 1) return 'needModels'
+  return 'ok'
+}
+
+/**
+ * Determine which currently loaded models must be unloaded so the selected
+ * model becomes the only resident: exactly the entries whose status is
+ * 'loaded' (llama-server's router status string) excluding the selected id.
+ * 'loading' entries are left alone (one may be the incoming load) and
+ * 'sleeping' entries are already out of memory. Pure.
+ */
+export function modelsToUnload(loaded: { id: string; status: string }[], selected: string): string[] {
+  return loaded
+    .filter((m) => m.status === 'loaded' && m.id !== selected)
+    .map((m) => m.id)
+}
+
 /**
  * Incrementally parse a chunk of SSE response text.
  *
