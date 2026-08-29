@@ -185,7 +185,7 @@ async function handleDownload() {
   if (selectedFiles.length === 0) return
   try {
     await startDownload(modelId.value, [...selectedFiles])
-    router.push('/downloads')
+    router.push('/models/download')
   } catch {
     // On failure, silently stay on this page (consistent with existing page behavior)
   }

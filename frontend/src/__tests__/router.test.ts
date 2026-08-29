@@ -10,11 +10,13 @@ describe('router fixed-page meta', () => {
   const fixedPaths = ['/', '/runtime', '/chat', '/api']
 
   // Scrollable pages keep normal document flow: .content-area scrolls and
-  // reserves the TaskDock band for them (subpages included)
+  // reserves the TaskDock band for them (subpages and the /models tab children
+  // included; /models is the tabbed shell with its own children)
   const scrollingPaths = [
-    '/downloads',
-    '/downloads/model/:modelId',
     '/models',
+    '/models/download',
+    '/models/local',
+    '/models/model/:modelId',
     '/models/settings/:modelName',
     '/settings',
     '/docs',

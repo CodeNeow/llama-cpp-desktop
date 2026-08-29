@@ -40,7 +40,11 @@
       <div class="content-area" :class="{ 'content-fixed': isFixedPage }">
         <router-view v-slot="{ Component, route }">
           <transition :name="(route.meta.transition as string) || 'fade'" mode="out-in">
-            <component :is="Component" :key="route.path" />
+            <!-- Keyed by the top-level matched record (not the full path):
+                 child-route navigation inside a shell (e.g. the /models tab
+                 bar) must keep the shell alive so its <keep-alive> cache
+                 survives, while distinct top-level pages still remount. -->
+            <component :is="Component" :key="(route.matched[0]?.path as string) || route.path" />
           </transition>
         </router-view>
       </div>

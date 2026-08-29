@@ -157,9 +157,9 @@ const busy = ref(false)
 
 const router = useRouter()
 
-/** Empty-model hint CTA: jump to the downloads page to fetch a first model */
+/** Empty-model hint CTA: jump to the merged Models page's download tab */
 function goDownloads() {
-  router.push('/downloads')
+  router.push('/models/download')
 }
 
 const cfg = reactive({

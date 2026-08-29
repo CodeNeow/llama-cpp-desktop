@@ -1,4 +1,4 @@
-import { createRouter, createWebHashHistory } from 'vue-router'
+import { createRouter, createWebHashHistory, type RouteLocationGeneric } from 'vue-router'
 
 // Route meta typing: `fixed` marks fixed-viewport pages (Home / Runtime /
 // Chat / Api) whose root element fills the window below the titlebar and
@@ -13,6 +13,7 @@ import Home from '../views/Home.vue'
 import Runtime from '../views/Runtime.vue'
 import Chat from '../views/Chat.vue'
 import Models from '../views/Models.vue'
+import ModelsLocal from '../views/ModelsLocal.vue'
 import Api from '../views/Api.vue'
 import Downloads from '../views/Downloads.vue'
 import Settings from '../views/Settings.vue'
@@ -42,24 +43,51 @@ const routes = [
     meta: { title: '本地聊天', icon: 'message-circle', fixed: true }
   },
   {
-    path: '/downloads',
-    name: 'Downloads',
-    component: Downloads,
-    meta: { title: '模型下载', icon: 'download' }
+    // Models hub: one sidebar entry with an in-page tab bar owned by the shell.
+    // The download tab is the default landing tab; children render through the
+    // shell's <router-view> wrapped in <keep-alive> so tab switches keep the
+    // search state and the local model list alive.
+    path: '/models',
+    name: 'Models',
+    component: Models,
+    meta: { title: '模型', icon: 'cube' },
+    children: [
+      // Entering /models lands on the download tab (search first). Named so
+      // vue-router does not warn about the nameless empty-path child.
+      { path: '', name: 'ModelsDefault', redirect: '/models/download' },
+      {
+        path: 'download',
+        name: 'Downloads',
+        component: Downloads,
+        meta: { title: '下载模型' }
+      },
+      {
+        path: 'local',
+        name: 'ModelsLocal',
+        component: ModelsLocal,
+        meta: { title: '我的模型' }
+      }
+    ]
   },
   {
-    // Downloads subpage: search results -> model detail (file list + description); not added to sidebar navigation.
+    // Compat: /downloads merged into the /models shell's download tab
+    path: '/downloads',
+    redirect: '/models/download'
+  },
+  {
+    // Model detail subpage: search results -> file list + description; not added to sidebar navigation.
     // modelId may contain slashes (e.g. org/name); navigate with encodeURIComponent, decoded automatically here.
-    path: '/downloads/model/:modelId',
+    path: '/models/model/:modelId',
     name: 'ModelDetail',
     component: ModelDetail,
     meta: { title: '模型详情' }
   },
   {
-    path: '/models',
-    name: 'Models',
-    component: Models,
-    meta: { title: '模型管理', icon: 'cube' }
+    // Compat: old /downloads/model/... links redirect to the new path; a named
+    // redirect keeps :modelId (string redirects drop params) so encoded
+    // org/name modelIds survive
+    path: '/downloads/model/:modelId',
+    redirect: (to: RouteLocationGeneric) => ({ name: 'ModelDetail', params: { modelId: to.params.modelId } })
   },
   {
     // Model settings subpage (standalone route page, not a modal): not added to sidebar navigation.

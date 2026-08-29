@@ -32,11 +32,12 @@ export interface OnboardingView {
   visible: boolean
 }
 
-// Target route per step: models download lives on /downloads (search first),
-// not /models which manages already-present GGUF files.
+// Target route per step: model download lives on the download tab of the
+// merged Models page (/models/download, search first); the local tab
+// (/models/local) manages already-present GGUF files.
 const STEP_ROUTES: Record<OnboardingStepId, string> = {
   runtime: '/runtime',
-  models: '/downloads',
+  models: '/models/download',
   service: '/api'
 }
 

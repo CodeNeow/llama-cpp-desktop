@@ -1,13 +1,7 @@
 <template>
-  <div class="page">
-    <div class="sticky-top">
-      <div class="page-header">
-        <h1 class="page-title">{{ t('downloads.title') }}</h1>
-        <p class="page-subtitle">{{ t('downloads.subtitle', { source: sourceLabel }) }}</p>
-      </div>
-
-      <!-- Search bar -->
-      <div class="search-bar">
+  <div class="downloads-tab">
+    <!-- Search bar (non-sticky: the merged page shell owns the sticky header) -->
+    <div class="search-bar">
       <div class="search-input-wrap">
         <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -26,7 +20,6 @@
         {{ t('downloads.download') }}
         <span v-if="activeTaskCount > 0" class="task-badge">{{ activeTaskCount }}</span>
       </button>
-    </div>
     </div>
 
     <!-- Search results -->
@@ -146,7 +139,7 @@ import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   searchDownloads, getModelMaxFileSize, getDownloadTasks,
-  cancelDownloadTask, retryDownloadTask, pauseDownloadTask, resumeDownloadTask, refreshModels, getDownloadSource
+  cancelDownloadTask, retryDownloadTask, pauseDownloadTask, resumeDownloadTask, refreshModels
 } from '../wails'
 import { formatSpeed, formatBytes } from '../lib/format'
 import { LatestOnly } from '../lib/latestOnly'
@@ -172,13 +165,6 @@ interface DlTask {
 const router = useRouter()
 
 const searching = ref(false)
-// Current download source ("hf" | "modelscope"), read from backend on mount; switching done in Settings
-const downloadSource = ref('')
-const sourceLabel = computed(() => {
-  if (downloadSource.value === 'modelscope') return t('downloads.sourceModelScope')
-  if (downloadSource.value === 'huggingface') return t('downloads.sourceHuggingFace')
-  return t('downloads.sourceHf')
-})
 // Concurrency-limited queue for search cards' batched size requests
 let sizeQueue = new LimitedQueue(4)
 
@@ -213,7 +199,7 @@ function taskBarClass(status: string): string {
 }
 
 function goToDetail(modelId: string) {
-  router.push('/downloads/model/' + encodeURIComponent(modelId))
+  router.push('/models/model/' + encodeURIComponent(modelId))
 }
 
 const searchGate = new LatestOnly()
@@ -302,42 +288,17 @@ function startTaskPolling() {
   fetchTasks()
 }
 
-async function loadDownloadSource() {
-  try {
-    const source = await getDownloadSource()
-    downloadSource.value = source || 'hf'
-  } catch {}
-}
-
 onMounted(() => {
   startTaskPolling()
-  loadDownloadSource()
 })
 onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
 </script>
 
 <style scoped>
-.page {
-  padding: 0 48px 60px;
-}
-
-.page-header {
-  padding-bottom: 28px;
-}
-
-.page-title {
-  font-size: 28px;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin: 0 0 4px;
-  letter-spacing: -0.5px;
-  line-height: 1.2;
-}
-
-.page-subtitle {
-  font-size: 14px;
-  color: var(--text-dim);
-  margin: 0;
+.downloads-tab {
+  /* No page padding: the merged shell (.page) already provides the horizontal
+     padding and the bottom reserve; this panel only fills the tab body */
+  min-width: 0;
 }
 
 /* ─── Search ─── */

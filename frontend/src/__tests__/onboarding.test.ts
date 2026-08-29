@@ -17,10 +17,10 @@ describe('buildOnboardingView', () => {
     expect(view.steps.map(s => s.done)).toEqual([false, false, false])
   })
 
-  it('steps carry their target routes in fixed order (runtime → downloads → api)', () => {
+  it('steps carry their target routes in fixed order (runtime → models download tab → api)', () => {
     const view = buildOnboardingView(facts())
     expect(view.steps.map(s => s.id)).toEqual(['runtime', 'models', 'service'])
-    expect(view.steps.map(s => s.route)).toEqual(['/runtime', '/downloads', '/api'])
+    expect(view.steps.map(s => s.route)).toEqual(['/runtime', '/models/download', '/api'])
   })
 
   it('partial completion keeps the card visible with mixed step states', () => {

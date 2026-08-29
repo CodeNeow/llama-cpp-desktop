@@ -19,8 +19,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'nav.home': '系统信息',
     'nav.runtime': '运行环境',
     'nav.chat': '本地聊天',
-    'nav.downloads': '模型下载',
-    'nav.models': '模型管理',
+    'nav.models': '模型',
     'nav.api': 'API 路由',
     'nav.settings': '偏好设置',
     'nav.docs': '帮助',
@@ -136,10 +135,9 @@ export const messages: Record<Locale, Record<string, string>> = {
     'dl.done': '下载完成',
     'dl.error': '下载失败',
 
-    // ─── Models page (Models.vue) ───
-    'models.title': '模型管理',
-    'models.count': '{n} 个模型',
-    'models.hint': '将 GGUF 模型文件放入模型目录',
+    // ─── Models page (Models.vue shell + ModelsLocal.vue tab) ───
+    'models.tabDownload': '下载模型',
+    'models.tabLocal': '我的模型',
     'models.refresh': '刷新',
     'models.refreshTitle': '重新扫描模型目录',
     'models.dir': '模型目录',
@@ -187,9 +185,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'api.settings': '参数设置',
     'api.cfgLockedHint': '服务运行中，停止后可修改',
 
-    // ─── Downloads page (Downloads.vue) ───
-    'downloads.title': '模型下载',
-    'downloads.subtitle': '从 {source} 搜索和下载模型',
+    // ─── Downloads page (Downloads.vue, the /models/download tab) ───
     'downloads.searchPlaceholder': '搜索模型...（如 Qwen3.8-27B, Qwen3.6-35B-A3B）',
     'downloads.searching': '搜索中...',
     'downloads.search': '搜索',
@@ -219,9 +215,6 @@ export const messages: Record<Locale, Record<string, string>> = {
     'downloads.statusDone': '已完成',
     'downloads.statusError': '下载失败',
     'downloads.statusCancelled': '已取消',
-    'downloads.sourceHf': 'HF 镜像',
-    'downloads.sourceHuggingFace': 'Hugging Face',
-    'downloads.sourceModelScope': 'ModelScope',
     'downloads.back': '返回',
     'downloads.deselectAll': '取消全选',
     'downloads.descTitle': '模型说明',
@@ -299,7 +292,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'settings.modelDownloadDirDesc': '新下载的模型将保存到此目录',
     'settings.choose': '选择',
     'settings.dirDefaultModels': 'LLM-Models',
-    'settings.directoriesHint': '下载路径决定新内容的落点；复用已有文件的外部路径仍在运行环境页与模型管理页设置。',
+    'settings.directoriesHint': '下载路径决定新内容的落点；复用已有文件的外部路径仍在运行环境页与模型页的「我的模型」标签设置。',
     'settings.accessScope': '服务访问范围',
     'settings.accessDesc': '本地仅本机可访问；局域网允许同网络设备访问',
     'settings.accessLocal': '本地（127.0.0.1）',
@@ -515,8 +508,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'nav.home': 'System Info',
     'nav.runtime': 'Runtime',
     'nav.chat': 'Local Chat',
-    'nav.downloads': 'Model Downloads',
-    'nav.models': 'Model Manager',
+    'nav.models': 'Models',
     'nav.api': 'API Router',
     'nav.settings': 'Preferences',
     'nav.docs': 'Docs',
@@ -632,10 +624,9 @@ export const messages: Record<Locale, Record<string, string>> = {
     'dl.done': 'Done',
     'dl.error': 'Download failed',
 
-    // ─── Models (Models.vue) ───
-    'models.title': 'Model Manager',
-    'models.count': '{n} models',
-    'models.hint': 'Put GGUF model files into the models directory',
+    // ─── Models (Models.vue shell + ModelsLocal.vue tab) ───
+    'models.tabDownload': 'Download',
+    'models.tabLocal': 'My Models',
     'models.refresh': 'Refresh',
     'models.refreshTitle': 'Rescan models directory',
     'models.dir': 'Models Directory',
@@ -683,9 +674,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'api.settings': 'Settings',
     'api.cfgLockedHint': 'Server is running. Stop it to modify.',
 
-    // ─── Downloads (Downloads.vue) ───
-    'downloads.title': 'Model Downloads',
-    'downloads.subtitle': 'Search and download models from {source}',
+    // ─── Downloads (Downloads.vue, the /models/download tab) ───
     'downloads.searchPlaceholder': 'Search models... (e.g. Qwen3.8-27B, Qwen3.6-35B-A3B)',
     'downloads.searching': 'Searching...',
     'downloads.search': 'Search',
@@ -715,9 +704,6 @@ export const messages: Record<Locale, Record<string, string>> = {
     'downloads.statusDone': 'Done',
     'downloads.statusError': 'Failed',
     'downloads.statusCancelled': 'Cancelled',
-    'downloads.sourceHf': 'HF Mirror',
-    'downloads.sourceHuggingFace': 'Hugging Face',
-    'downloads.sourceModelScope': 'ModelScope',
     'downloads.back': 'Back',
     'downloads.deselectAll': 'Deselect all',
     'downloads.descTitle': 'Description',
@@ -795,7 +781,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'settings.modelDownloadDirDesc': 'New model downloads are saved here',
     'settings.choose': 'Choose',
     'settings.dirDefaultModels': 'LLM-Models',
-    'settings.directoriesHint': 'Download paths decide where new content lands; external paths for reusing existing files stay on the Runtime and Models pages.',
+    'settings.directoriesHint': 'Download paths decide where new content lands; external paths for reusing existing files stay on the Runtime page and the My Models tab of the Models page.',
     'settings.accessScope': 'Server Access Scope',
     'settings.accessDesc': 'Local restricts to this machine; LAN allows devices on the same network',
     'settings.accessLocal': 'Local (127.0.0.1)',
