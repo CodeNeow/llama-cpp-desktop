@@ -222,20 +222,22 @@ func TestBenchSingleFlight(t *testing.T) {
 // ─── measureRAMBandwidth ─────────────────────────────────────────
 
 // TestMeasureRAMBandwidthSmoke runs the real benchmark kernel over a small
-// injected 32 MiB working set (vs the 512 MiB production default) with a
+// injected 128 MiB working set (vs the 512 MiB production default) with a
 // shortened pass count: the value must be plausible (> 0, inside the
 // window), the call fast enough for CI, and degenerate buffer sizes must
-// error instead of measuring garbage.
+// error instead of measuring garbage. 128 MiB keeps a pass comfortably
+// above the platform clock's resolution even on fast machines, so the
+// burst-until-measurable repetition rarely engages.
 func TestMeasureRAMBandwidthSmoke(t *testing.T) {
 	oldPasses := benchTimedPasses
 	benchTimedPasses = 2
 	defer func() { benchTimedPasses = oldPasses }()
 
 	start := time.Now()
-	bw, err := measureRAMBandwidth(32 << 20)
+	bw, err := measureRAMBandwidth(128 << 20)
 	elapsed := time.Since(start)
 	if err != nil {
-		t.Fatalf("measureRAMBandwidth(32MiB) failed: %v", err)
+		t.Fatalf("measureRAMBandwidth(128MiB) failed: %v", err)
 	}
 	if elapsed > 2*time.Second {
 		t.Errorf("benchmark took %v, want < 2s", elapsed)

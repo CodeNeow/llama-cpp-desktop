@@ -54,6 +54,13 @@ const (
 	// Upper bound on timed passes so an injected pass count cannot stretch
 	// the call; the default of 3 plus one warmup stays well inside ~3 s.
 	benchPassesMax = 16
+	// Upper bound on read-pass repetitions inside one timed sample
+	// (burst-until-measurable): a small working set can complete inside the
+	// platform clock's resolution, rounding a sample's elapsed to zero, so
+	// the sample repeats until the clock registers a positive interval.
+	// Real machines clear that floor within a few repetitions; the cap only
+	// stops a pathologically frozen clock from looping forever.
+	benchSampleRepsMax = 1024
 	// Smallest working set benchBufferFor will use: past every L1/L2 and
 	// most L3 slices even when free RAM is scarce (an all-cache working set
 	// would report inflated cache bandwidth, so near-OOM boxes measure at
@@ -151,14 +158,21 @@ func foldSums(sums []uint64) uint64 {
 // first-touch (pages become private, dirty memory — never-written zero pages
 // can be served through shared zero-page mappings and would not measure true
 // DRAM), one untimed warmup read pass so page-fault cost never lands in a
-// timed pass, then benchTimedPasses timed passes measured by wall clock
-// (aggregate bytes / wall time, stragglers included — that is the true
-// achieved bandwidth); the median absorbs scheduler hiccups. runtime.GC()
-// runs first so a pending collection does not steal cycles mid-pass.
+// timed pass, then benchTimedPasses timed samples measured by wall clock.
+// Each sample is burst-until-measurable: it repeats the read pass,
+// accumulating bytes and elapsed, until the clock registers a positive
+// interval — a small working set can complete inside the platform clock's
+// resolution (Windows time.Now granularity rounds a ~0.5 ms pass to zero),
+// which would otherwise yield a zero-length sample. The sample's bandwidth
+// is accumulated bytes / accumulated elapsed (stragglers included — that is
+// the true achieved bandwidth) and the median across samples absorbs
+// scheduler hiccups. runtime.GC() runs first so a pending collection does
+// not steal cycles mid-pass.
 //
 // Bounded by construction: the call allocates only bufferBytes and reads
-// (benchTimedPasses+1) x bufferBytes — ~2 GiB / ~1 s worst case at the
-// default working set and pass count. Values outside the [2, 500] GB/s
+// (benchTimedPasses+1) x bufferBytes per sample burst — at the default
+// working set one repetition per sample is already ~8 ms, so production
+// totals stay ~2 GiB / ~1 s worst case. Values outside the [2, 500] GB/s
 // plausibility window return an error; the caller falls back to the static
 // tuner rules rather than trusting a garbage number.
 func measureRAMBandwidth(bufferBytes int64) (float64, error) {
@@ -201,14 +215,26 @@ func measureRAMBandwidth(bufferBytes int64) (float64, error) {
 
 	samples := make([]float64, 0, passes)
 	for i := 0; i < passes; i++ {
-		start := time.Now()
-		benchReadPass(buf, workers, sums)
-		elapsed := time.Since(start)
-		benchSink ^= foldSums(sums)
+		// Burst-until-measurable sampling: repeat the read pass inside the
+		// same timed sample, accumulating bytes and elapsed, until the clock
+		// registers a positive interval. A small working set (e.g. the
+		// smoke-test buffer) can complete a pass inside the platform clock's
+		// resolution, rounding elapsed to zero; at the production working
+		// set one repetition is already ~8 ms, so the first pass always wins
+		// and production behavior and numbers are unchanged.
+		var sampleBytes int64
+		var elapsed time.Duration
+		for rep := 0; rep < benchSampleRepsMax && elapsed <= 0; rep++ {
+			start := time.Now()
+			benchReadPass(buf, workers, sums)
+			elapsed += time.Since(start)
+			sampleBytes += regionBytes
+			benchSink ^= foldSums(sums)
+		}
 		if elapsed <= 0 {
 			return 0, fmt.Errorf("clock advanced zero during a %d-byte read pass", regionBytes)
 		}
-		samples = append(samples, float64(regionBytes)/elapsed.Seconds()/1e9)
+		samples = append(samples, float64(sampleBytes)/elapsed.Seconds()/1e9)
 	}
 	sort.Float64s(samples)
 	median := samples[len(samples)/2] // middle sample (upper middle when even)
