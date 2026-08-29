@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -32,6 +33,22 @@ var osInterrupt = func() os.Signal {
 	}
 	return os.Interrupt
 }()
+
+// serverDone is the per-start completion channel of the running child: the
+// wait goroutine in startServerInternal closes it after cmd.Wait returns and
+// the lifecycle state is cleared under serverMu (close happens strictly after
+// that critical section, so a graceful-stop waiter never races the state
+// cleanup). Guarded by serverMu alongside serverCmd — a fresh channel is
+// registered per start and cleared together with serverCmd; nil means no
+// completion handle exists (adopted servers never reach the graceful path,
+// and forged test state may omit it).
+var serverDone chan struct{}
+
+// stopGrace is the bounded period stopServerInternal waits after a successful
+// interrupt before escalating to Kill: the child must exit within it or be
+// killed — force is never implicit. Declared as a var (same style as
+// cmdTimeout) so tests can shorten it.
+var stopGrace = 5 * time.Second
 
 // ─── Server start/stop (extracted from HTTP handlers) ────────────
 
@@ -102,6 +119,7 @@ func startServerInternal() error {
 		serverCmd = nil
 		serverRunning = false
 		serverStartTime = time.Time{}
+		serverDone = nil
 		serverMu.Unlock()
 		addServerLog("[ERROR] Failed to start: " + err.Error())
 		return err
@@ -121,6 +139,11 @@ func startServerInternal() error {
 		tailer = nil
 	}
 
+	// done is closed by the wait goroutine below (strictly after the state
+	// critical section) and is the graceful-stop completion signal that
+	// stopServerInternal selects on during its bounded grace period.
+	done := make(chan struct{})
+
 	serverMu.Lock()
 	serverCmd = cmd
 	serverRunning = true
@@ -128,9 +151,10 @@ func startServerInternal() error {
 	serverTrueStart = serverStartTime
 	serverPort = cfg.Port
 	serverLogTail = tailer
+	serverDone = done
 	serverMu.Unlock()
 
-	go func(cmd *exec.Cmd, tailer *serverLogTailer) {
+	go func(cmd *exec.Cmd, tailer *serverLogTailer, done chan struct{}) {
 		err := cmd.Wait()
 		serverMu.Lock()
 		serverRunning = false
@@ -144,7 +168,16 @@ func startServerInternal() error {
 		if serverLogTail == tailer {
 			serverLogTail = nil
 		}
+		if serverDone == done {
+			serverDone = nil
+		}
 		serverMu.Unlock()
+		// close(done) strictly AFTER the serverMu critical section (a
+		// graceful-stop waiter in stopServerInternal must resume only once
+		// the lifecycle state is fully cleared, so it can never observe or
+		// act on half-cleared state), and BEFORE the tailer drain (which only
+		// affects the in-app log view and must never delay the stop path).
+		close(done)
 		// The child has exited: stop the tailer (it drains the file's final
 		// bytes and flushes its assembler first, so the ring keeps the last
 		// lines) — bounded wait, the tailer goroutine always terminates.
@@ -157,7 +190,7 @@ func startServerInternal() error {
 		} else {
 			addServerLog("[INFO] llama-server stopped")
 		}
-	}(cmd, tailer)
+	}(cmd, tailer, done)
 
 	return nil
 }
@@ -238,8 +271,13 @@ var killProcessByPid = func(pid int) error {
 // stopAdoptedServerIfAny stops a running adopted llama-server (handed over
 // from another process: serverCmd nil, adoptedPid > 0): kills it by pid via
 // the killProcessByPid injection point, clears the adopted state and removes
-// the handover record. Returns true when an adopted server was stopped; false
-// when nothing adopted is running (callers fall back to the child-stop path).
+// the handover record. Graceful stop is intentionally out of scope here: the
+// adopted llama-server belongs to the previous, exited process — there is no
+// child handle to Signal and no wait goroutine to close a done channel, so
+// killProcessByPid (Kill by pid) is the only lever; a graceful adopted-server
+// stop would require OS-level signalling by pid (future work). Returns true
+// when an adopted server was stopped; false when nothing adopted is running
+// (callers fall back to the child-stop path).
 func stopAdoptedServerIfAny() bool {
 	serverMu.Lock()
 	running := serverRunning
@@ -276,17 +314,22 @@ func stopAdoptedServerIfAny() bool {
 
 func stopServerInternal() error {
 	// Adopted server (handed over by the previous process): no child handle
-	// exists, so stop by pid and remove the handover record.
+	// exists, so stop by pid and remove the handover record — graceful stop
+	// is unsupported on this path (see stopAdoptedServerIfAny).
 	if stopAdoptedServerIfAny() {
 		return nil
 	}
 
-	// Read running/cmd local copies inside serverMu, operate on the copies
-	// outside (#3), to avoid concurrent access to serverCmd/Process between
-	// stopServerInternal and start/goroutine.
+	// Read running/cmd/done local copies inside serverMu, operate on the
+	// copies outside (#3), to avoid concurrent access to serverCmd/Process
+	// between stopServerInternal and start/goroutine. The grace wait below
+	// must never happen while holding serverMu. Concurrent stop calls are
+	// idempotent: a caller arriving after the child exited reads
+	// running=false and returns; overlapping callers select on the same done.
 	serverMu.Lock()
 	running := serverRunning
 	cmd := serverCmd
+	done := serverDone
 	serverMu.Unlock()
 	if !running || cmd == nil {
 		return nil
@@ -295,7 +338,34 @@ func stopServerInternal() error {
 	addServerLog("[INFO] Stopping llama-server...")
 
 	if err := cmd.Process.Signal(osInterrupt); err != nil {
+		// The interrupt could not even be delivered (e.g. the process already
+		// finished): keep the historical behavior — escalate straight to Kill.
 		cmd.Process.Kill()
+		return nil
+	}
+
+	// Uniform graceful-stop sequence on every platform, no runtime.GOOS
+	// branch: give the child a bounded grace period to exit on its own after
+	// the interrupt, and only then escalate to Kill ("force never implicit").
+	// On Windows osInterrupt IS os.Kill, so the child dies from the signal
+	// itself and done always wins the select — the escalation branch stays
+	// dormant there by construction, and the wait completes immediately after
+	// the kill. done is closed only after the wait goroutine cleared the
+	// lifecycle state under serverMu, so returning via done never races the
+	// state cleanup. done == nil means no completion handle exists (a
+	// startServerInternal child always registers one; only forged test state
+	// omits it) — keep the historical fire-and-forget behavior then.
+	if done == nil {
+		return nil
+	}
+	select {
+	case <-done:
+		// The child exited within the grace period; nothing more to do.
+	case <-time.After(stopGrace):
+		log.Printf("[WARN] llama-server did not exit within %v, killed", stopGrace)
+		if err := cmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+			log.Printf("[WARN] failed to kill llama-server after grace period: %v", err)
+		}
 	}
 	return nil
 }

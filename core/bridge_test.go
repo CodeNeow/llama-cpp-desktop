@@ -1,9 +1,13 @@
 package core
 
 import (
+	"bytes"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -540,5 +544,216 @@ func TestCudaDeviceEnvOverridesInherited(t *testing.T) {
 	}
 	if !inherited {
 		t.Error("cudaDeviceEnv should keep the inherited environment entries")
+	}
+}
+
+// ─── Graceful stop: grace period and kill escalation ─────────────
+
+// TestHelperProcessIgnoreInterrupt serves as an interrupt-immune llama-server
+// surrogate child: it ignores SIGINT, announces readiness by writing the
+// GO_HELPER_READY_FILE marker (so the parent never sends its interrupt before
+// the ignore disposition is installed — no startup race) and then sleeps, so
+// only the kill escalation can end it. Used by
+// TestStopServerInternalEscalatesToKillAfterGrace; the env guard keeps it
+// inert during the suite's own run.
+func TestHelperProcessIgnoreInterrupt(t *testing.T) {
+	if os.Getenv("GO_WANT_HELPER_PROCESS_IGNORE_INT") != "1" {
+		return
+	}
+	signal.Ignore(os.Interrupt)
+	if path := os.Getenv("GO_HELPER_READY_FILE"); path != "" {
+		if err := os.WriteFile(path, []byte("ready"), 0644); err != nil {
+			return // the parent's bounded readiness wait fails the test instead
+		}
+	}
+	time.Sleep(30 * time.Second)
+}
+
+// startSurrogateChild spawns a real surrogate llama-server child process (the
+// test binary re-invoking the helper selected by testRun with extraEnv set) —
+// the same pattern as TestStopServerInternalKillsRunningProcess. The cleanup
+// Kill is the stray-process guarantee: a child that survives the behavior
+// under test (failure path) is still terminated before the suite moves on.
+func startSurrogateChild(t *testing.T, testRun string, extraEnv ...string) *exec.Cmd {
+	t.Helper()
+	cmd := exec.Command(os.Args[0], "-test.run="+testRun)
+	cmd.Env = append(os.Environ(), extraEnv...)
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		cmd.Process.Kill() // error (already exited) deliberately ignored
+	})
+	return cmd
+}
+
+// waitForReadyFile polls until the surrogate child's readiness marker file
+// exists (bounded), synchronizing the parent's signal with the child's
+// installed signal disposition. Bounded poll, same style as waitTasksTerminal.
+func waitForReadyFile(t *testing.T, path string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, err := os.Stat(path); err == nil {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("surrogate child readiness marker %s never appeared", path)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// forgeRunningServer registers cmd as the running llama-server
+// (serverRunning / serverCmd / serverDone under serverMu) and replays
+// startServerInternal's wait goroutine with the same ordering: cmd.Wait →
+// clear lifecycle state under serverMu → close(done) strictly after the
+// critical section, so a graceful-stop waiter resumes only once the state is
+// fully cleared.
+func forgeRunningServer(t *testing.T, cmd *exec.Cmd) (done chan struct{}) {
+	t.Helper()
+	done = make(chan struct{})
+	serverMu.Lock()
+	origDone := serverDone
+	serverRunning = true
+	serverCmd = cmd
+	serverDone = done
+	serverMu.Unlock()
+	t.Cleanup(func() {
+		serverMu.Lock()
+		serverRunning = false
+		serverCmd = nil
+		serverDone = origDone
+		serverMu.Unlock()
+	})
+	go func() {
+		cmd.Wait()
+		serverMu.Lock()
+		serverRunning = false
+		if serverCmd == cmd {
+			serverCmd = nil
+		}
+		if serverDone == done {
+			serverDone = nil
+		}
+		serverMu.Unlock()
+		close(done)
+	}()
+	return done
+}
+
+// captureLogOutput redirects the standard logger into a buffer for the
+// duration of the test and returns it, restoring the previous writer on
+// cleanup. Used to assert the escalation WARN emitted by stopServerInternal.
+func captureLogOutput(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	orig := log.Writer()
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(orig) })
+	return &buf
+}
+
+// TestStopServerInternalGracefulExitNoEscalation verifies the graceful branch
+// of stopServerInternal: a child that dies on the interrupt makes the stop
+// return via the done channel (child reaped, state cleared) WITHOUT the kill
+// escalation. On Windows osInterrupt is os.Kill, so the child dies from the
+// signal itself and escalation is vacuous — the no-escalation log assertion
+// is therefore guarded to platforms where osInterrupt is os.Interrupt.
+func TestStopServerInternalGracefulExitNoEscalation(t *testing.T) {
+	saveServerState(t)
+	serverMu.Lock()
+	serverRunning = false
+	serverCmd = nil
+	serverDone = nil
+	serverMu.Unlock()
+
+	// Long grace: the child exits in milliseconds, so reaching the escalation
+	// branch can only mean the graceful path is broken (caught by the log
+	// assertion below); the fast path itself stays millisecond-fast.
+	origGrace := stopGrace
+	stopGrace = 10 * time.Second
+	defer func() { stopGrace = origGrace }()
+
+	logs := captureLogOutput(t)
+
+	cmd := startSurrogateChild(t, "^TestHelperProcess$", "GO_WANT_HELPER_PROCESS=1")
+	done := forgeRunningServer(t, cmd)
+
+	if err := stopServerInternal(); err != nil {
+		t.Fatalf("stopServerInternal returned error: %v", err)
+	}
+
+	// The wait goroutine reaped the child and closed done: the process is
+	// gone without any escalation Kill.
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("child was not reaped after a graceful stopServerInternal")
+	}
+	serverMu.Lock()
+	running := serverRunning
+	serverMu.Unlock()
+	if running {
+		t.Error("serverRunning should be false after the child exited")
+	}
+	if runtime.GOOS != "windows" {
+		if s := logs.String(); strings.Contains(s, "did not exit within") {
+			t.Errorf("graceful exit must not escalate to Kill; log output: %s", s)
+		}
+	}
+}
+
+// TestStopServerInternalEscalatesToKillAfterGrace verifies the escalation
+// branch ("force never implicit"): a child that ignores the interrupt
+// survives the injected grace period, so stopServerInternal waits at least
+// the full grace, logs the "[WARN] llama-server did not exit within" line and
+// then Kills the child. Unix-only: on Windows osInterrupt is os.Kill, which a
+// child cannot ignore, so the ignoring-child scenario cannot exist there.
+func TestStopServerInternalEscalatesToKillAfterGrace(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("osInterrupt is os.Kill on Windows; no child can ignore it")
+	}
+	saveServerState(t)
+	serverMu.Lock()
+	serverRunning = false
+	serverCmd = nil
+	serverDone = nil
+	serverMu.Unlock()
+
+	// Shortened injected grace keeps the new-test pair well under 2s total.
+	const grace = 300 * time.Millisecond
+	origGrace := stopGrace
+	stopGrace = grace
+	defer func() { stopGrace = origGrace }()
+
+	logs := captureLogOutput(t)
+
+	ready := filepath.Join(t.TempDir(), "int-ignore-ready")
+	cmd := startSurrogateChild(t, "^TestHelperProcessIgnoreInterrupt$",
+		"GO_WANT_HELPER_PROCESS_IGNORE_INT=1", "GO_HELPER_READY_FILE="+ready)
+	waitForReadyFile(t, ready) // SIGINT must not land before the ignore is installed
+	done := forgeRunningServer(t, cmd)
+
+	start := time.Now()
+	if err := stopServerInternal(); err != nil {
+		t.Fatalf("stopServerInternal returned error: %v", err)
+	}
+	elapsed := time.Since(start)
+
+	// The grace was honored: time.After never fires early, so the stop can
+	// only return via the escalation branch after the full grace elapsed.
+	if elapsed < grace {
+		t.Errorf("stopServerInternal returned after %v, want >= %v (grace must elapse before Kill)", elapsed, grace)
+	}
+	if s := logs.String(); !strings.Contains(s, "[WARN] llama-server did not exit within") {
+		t.Errorf("escalation should log the grace-expiry WARN; log output: %s", s)
+	}
+
+	// The escalation Kill took effect: the wait goroutine reaped the child.
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("interrupt-ignoring child was not killed after the grace expired")
 	}
 }
