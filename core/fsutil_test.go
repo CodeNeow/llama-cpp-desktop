@@ -2,10 +2,12 @@ package core
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -164,5 +166,62 @@ func TestAtomicWriteFileRenameFailureKeepsOriginalAndCleansTemp(t *testing.T) {
 	}
 	if litter := tempLitter(t, dir); len(litter) > 0 {
 		t.Errorf("temp litter left after failure: %v", litter)
+	}
+}
+
+// TestAtomicWriteFileConcurrentSameTarget drives concurrent atomicWriteFile
+// calls on the SAME target, mirroring the production overlap (concurrent
+// SaveModelConfig / persistTasksNow both end in saveConfig). On Windows,
+// concurrent MoveFileEx(REPLACE_EXISTING) swaps on one destination transiently
+// fail with ERROR_ACCESS_DENIED (Errno 5) / ERROR_SHARING_VIOLATION (Errno 32)
+// while the previous winner's handle on the target is released; the bounded
+// transient-error retry inside atomicWriteFile must absorb them. Asserts every
+// call succeeds and the final content is exactly one of the written payloads
+// (never torn or mixed). Kept under ~2s: 8 writers x 20 rounds of rapid-fire
+// renames give the race room to fire without slowing the suite.
+func TestAtomicWriteFileConcurrentSameTarget(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	const writers = 8
+	const rounds = 20
+	payloads := make([][]byte, writers)
+	for w := range payloads {
+		payloads[w] = []byte(fmt.Sprintf(`{"writer":%d}`, w))
+	}
+	var wg sync.WaitGroup
+	errCh := make(chan error, writers)
+	for w := 0; w < writers; w++ {
+		wg.Add(1)
+		go func(w int) {
+			defer wg.Done()
+			for r := 0; r < rounds; r++ {
+				if err := atomicWriteFile(path, payloads[w], 0644); err != nil {
+					errCh <- fmt.Errorf("writer %d round %d: %w", w, r, err)
+					return
+				}
+			}
+		}(w)
+	}
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		t.Errorf("concurrent atomicWriteFile failed: %v", err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read final file: %v", err)
+	}
+	found := false
+	for _, p := range payloads {
+		if string(got) == string(p) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("final content is not one of the written payloads: %q", got)
+	}
+	if litter := tempLitter(t, dir); len(litter) > 0 {
+		t.Errorf("temp litter left after concurrent writes: %v", litter)
 	}
 }

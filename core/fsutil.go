@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 )
 
@@ -145,12 +147,68 @@ func moveFile(src, dst string) error {
 // atomicWriteFile persists critical JSON files (app config, handover record)
 // without ever exposing torn content on crash or power loss.
 
-// atomicRename is the atomic-swap step of atomicWriteFile, declared as a
-// package-level var so tests can force the swap to fail and exercise the
-// cleanup path (same injection-point style as renameFile / killProcessByPid /
-// updateLauncher; deliberately a separate var from moveFile's renameFile so
-// one test's injection never leaks into the other's path).
+// atomicWriteMu serializes the swap step of atomicWriteFile process-wide (see
+// atomicWriteFile's doc comment for the Windows same-destination rename-race
+// rationale). Only the swap is covered — the preceding write/fsync stays
+// concurrent on distinct temp files, so one writer's flush latency never
+// chains into another's. Lock ordering: it is always the innermost lock; it
+// is never held across the fsync, and atomicWriteFile never calls back into
+// config/task code while holding it.
+var atomicWriteMu sync.Mutex
+
+// atomicRename is the raw atomic-swap step of atomicWriteFile (os.Rename),
+// declared as a package-level var so tests can force the swap to fail and
+// exercise the cleanup path (same injection-point style as renameFile /
+// killProcessByPid / updateLauncher; deliberately a separate var from
+// moveFile's renameFile so one test's injection never leaks into the other's
+// path). atomicWriteFile routes through atomicRenameWithRetry, which calls
+// this var — injected non-transient failures return without retries.
 var atomicRename = os.Rename
+
+// atomicRenameRetryDelays bounds the transient-error retry of the atomic
+// swap: one initial attempt plus one retry per delay entry (5 attempts,
+// ~30ms worst case). It is a package-level var so tests can tune or disable
+// the backoff (same injection-point style as atomicRename / cmdTimeout).
+var atomicRenameRetryDelays = []time.Duration{
+	2 * time.Millisecond, 4 * time.Millisecond, 8 * time.Millisecond, 16 * time.Millisecond,
+}
+
+// transientRenameError reports whether err is a transient rename failure that
+// a short retry can plausibly fix: on Windows, concurrent
+// MoveFileEx(REPLACE_EXISTING) operations on the SAME destination file
+// transiently fail with ERROR_ACCESS_DENIED (Errno 5) or
+// ERROR_SHARING_VIOLATION (Errno 32) while the previous winner's handle on the
+// destination is not yet fully released for DELETE (observed as "Access is
+// denied" when concurrent saveConfig calls race the swap). Detected via
+// numeric syscall.Errno so the code stays uniform across platforms (no build
+// tags): on POSIX those Errno values mean EIO/EPIPE, which rename(2) does not
+// produce in this pattern, and a bounded retry of a genuine failure is
+// harmless. Same OS-error-number matching approach as crossdevice_windows.go's
+// cross-device detection, minus the platform-file split.
+func transientRenameError(err error) bool {
+	return err != nil &&
+		(errors.Is(err, syscall.Errno(5)) || errors.Is(err, syscall.Errno(32)))
+}
+
+// atomicRenameWithRetry performs the atomic swap with a bounded retry for the
+// transient Windows errors above: a short backoff lets the previous winner's
+// handle on the destination be released. Intra-process writers of the same
+// target are already serialized by atomicWriteMu, so the retry is a safety
+// net (cross-process overlap, future callers bypassing the lock); POSIX
+// rename(2) has no such race, so the retry never fires there. Any
+// non-transient error returns immediately, and if all attempts fail the last
+// error is returned.
+func atomicRenameWithRetry(oldPath, newPath string) error {
+	err := atomicRename(oldPath, newPath)
+	for _, delay := range atomicRenameRetryDelays {
+		if !transientRenameError(err) {
+			break
+		}
+		time.Sleep(delay)
+		err = atomicRename(oldPath, newPath)
+	}
+	return err
+}
 
 // atomicWriteFile writes data to path crash-safely. The config file (which
 // also carries the persisted download-task queue) and the handover record are
@@ -167,11 +225,24 @@ var atomicRename = os.Rename
 //     creates 0600; the explicit chmod is umask-independent, same as copyFile),
 //  3. fsync the temp file before renaming (payload durability),
 //  4. os.Rename it over the target — an atomic swap (MoveFileEx with
-//     REPLACE_EXISTING on Windows, rename(2) on POSIX),
+//     REPLACE_EXISTING on Windows, rename(2) on POSIX), wrapped in a bounded
+//     retry for the transient ERROR_ACCESS_DENIED / ERROR_SHARING_VIOLATION
+//     that concurrent swaps on the same target produce on Windows (concurrent
+//     config saves race the rename; POSIX rename(2) has no such race),
 //  5. best-effort directory fsync where the platform supports it (skipped
 //     silently on Windows, matching FreeToken's _fsync_dir pattern).
 //
-// The temp file is removed on ANY failure — never leave temp litter.
+// The temp file is removed on ANY failure — never leave temp litter. The swap
+// step is serialized process-wide (atomicWriteMu): on Windows, concurrent
+// MoveFileEx(REPLACE_EXISTING) swaps on the SAME destination transiently fail
+// with ERROR_ACCESS_DENIED / ERROR_SHARING_VIOLATION while the previous
+// winner's handle is not yet released for DELETE, and the app really does
+// swap the same config file from concurrent goroutines (SaveModelConfig and
+// persistTasksNow both end in saveConfig). The lock covers only the swap —
+// the preceding write/fsync stays concurrent, on distinct temp files, so
+// concurrent writers' latency does not compound — and the bounded retry in
+// atomicRenameWithRetry remains as a safety net for any overlap the lock
+// cannot see.
 func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 	dir := filepath.Dir(path)
 	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
@@ -200,9 +271,16 @@ func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 		os.Remove(tmpName)
 		return fmt.Errorf("close temp file for %s: %w", path, err)
 	}
-	if err := atomicRename(tmpName, path); err != nil {
+	// Serialize only the swap: concurrent MoveFileEx(REPLACE_EXISTING) swaps
+	// on the same destination transiently fail on Windows (see the
+	// atomicWriteMu doc comment). Holding the lock across the rename alone
+	// removes the intra-process race without serializing the fsyncs.
+	atomicWriteMu.Lock()
+	swapErr := atomicRenameWithRetry(tmpName, path)
+	atomicWriteMu.Unlock()
+	if swapErr != nil {
 		os.Remove(tmpName)
-		return fmt.Errorf("replace %s with temp file: %w", path, err)
+		return fmt.Errorf("replace %s with temp file: %w", path, swapErr)
 	}
 	fsyncDir(dir)
 	return nil
