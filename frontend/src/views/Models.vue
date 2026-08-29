@@ -26,10 +26,6 @@
         </div>
         <button class="dir-btn" :title="t('models.chooseDirTitle')" @click="chooseModelsDir">{{ t('models.chooseDir') }}</button>
       </div>
-
-      <!-- Auto-tune inline feedback (below the directory bar, auto-cleared) -->
-      <div v-if="tuneHint" class="tune-hint">{{ tuneHint }}</div>
-      <div v-else-if="tuneError" class="tune-hint tune-hint-error">{{ tuneError }}</div>
     </div>
 
     <!-- Loading skeleton -->
@@ -85,18 +81,6 @@
                   <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0-2.83l-.06-.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
                 </svg>
               </button>
-              <button
-                class="model-settings-btn model-tune-btn"
-                :class="{ 'tune-busy': tuningId === model.name }"
-                :disabled="tuningId !== ''"
-                :title="t('models.tune')"
-                @click.stop="tuneModel(model)"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M12 3l1.9 5.8a2 2 0 0 0 1.3 1.3L21 12l-5.8 1.9a2 2 0 0 0-1.3 1.3L12 21l-1.9-5.8a2 2 0 0 0-1.3-1.3L3 12l5.8-1.9a2 2 0 0 0 1.3-1.3L12 3z"/>
-                  <path d="M5 3v4"/><path d="M3 5h4"/><path d="M19 17v4"/><path d="M17 19h4"/>
-                </svg>
-              </button>
             </div>
           </div>
           <div class="model-author" v-if="model.author">{{ model.author }}</div>
@@ -116,10 +100,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import type { ModelConfig } from '../views/ModelSettings.vue'
-import { getModels, getModelConfig, saveModelConfig, refreshModels, getConfig, browseModelsDir, tuneModelConfig } from '../wails'
+import { getModels, refreshModels, getConfig, browseModelsDir } from '../wails'
 import { t } from '../lib/i18n'
 
 const router = useRouter()
@@ -164,57 +147,11 @@ async function chooseModelsDir() {
   } catch {}
 }
 
-// Settings: navigate to the dedicated settings page for this model
+// Settings: navigate to the dedicated settings page for this model. The
+// one-click auto-tune entry lives there too (tuning fills the settings form
+// in real time).
 function openSettings(model: ModelInfo) {
   router.push('/models/settings/' + encodeURIComponent(model.name))
-}
-
-// ─── Auto-tune ───────────────────────────────────────────────────────────────
-
-// One tune runs at a time: tuningId holds the busy model's name (empty = idle).
-const tuningId = ref('')
-// Inline feedback below the directory bar; each auto-clears after 5 seconds.
-const tuneHint = ref('')
-const tuneError = ref('')
-let tuneHintTimer: ReturnType<typeof setTimeout> | undefined
-let tuneErrorTimer: ReturnType<typeof setTimeout> | undefined
-
-function clearTuneTimers() {
-  if (tuneHintTimer) clearTimeout(tuneHintTimer)
-  if (tuneErrorTimer) clearTimeout(tuneErrorTimer)
-}
-
-function showTuneMessage(err: string, msg: string) {
-  clearTuneTimers()
-  if (err) {
-    tuneHint.value = ''
-    tuneError.value = err
-    tuneErrorTimer = setTimeout(() => { tuneError.value = '' }, 5000)
-  } else {
-    tuneError.value = ''
-    tuneHint.value = msg
-    tuneHintTimer = setTimeout(() => { tuneHint.value = '' }, 5000)
-  }
-}
-
-// Auto-tune: backend reads the GGUF metrics + hardware snapshot, computes and
-// persists the optimal params; the applied values are surfaced inline.
-async function tuneModel(model: ModelInfo) {
-  if (tuningId.value) return
-  tuningId.value = model.name
-  try {
-    const cfg = (await tuneModelConfig(model.name)) as ModelConfig
-    showTuneMessage('', t('models.tuned', {
-      gpu: cfg.gpuLayers,
-      ctx: cfg.ctxSize,
-      cache: cfg.cacheTypeK || 'f16',
-      threads: cfg.threads,
-    }))
-  } catch (e) {
-    showTuneMessage(t('models.tuneError', { msg: e instanceof Error ? e.message : String(e) }), '')
-  } finally {
-    tuningId.value = ''
-  }
 }
 
 async function fetchModels(force = false) {
@@ -234,9 +171,6 @@ onMounted(() => {
   loadModelsDir()
   fetchModels()
 })
-
-// Pending auto-clear timers must not fire after the page is left
-onUnmounted(clearTuneTimers)
 </script>
 
 <style scoped>
@@ -347,27 +281,6 @@ onUnmounted(clearTuneTimers)
   color: var(--text-primary);
 }
 
-/* ─── Auto-tune inline feedback (below the directory bar) ─── */
-.tune-hint {
-  margin: -12px 0 16px;
-  padding: 10px 16px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--success);
-  border-radius: var(--radius-sm);
-  color: var(--success);
-  font-size: 13px;
-  font-weight: 600;
-  word-break: break-all;
-}
-
-/* Error variant follows this page's existing error palette (see .error-card):
- * no --danger token exists in the theme vocabulary. */
-.tune-hint-error {
-  border-left-color: rgba(239, 68, 68, 0.6);
-  color: rgba(239, 68, 68, 0.9);
-}
-
 .page-title {
   font-size: 28px;
   font-weight: 700;
@@ -439,9 +352,8 @@ onUnmounted(clearTuneTimers)
   margin-bottom: 4px;
 }
 
-/* Both header icon buttons group at the row's end: the wrapper owns
- * margin-left:auto so two auto margins cannot split the free space between
- * them (which pushed the settings icon into the middle of the row). */
+/* Header icon button groups at the row's end: the wrapper owns margin-left:auto
+ * so the free space stays on one side instead of splitting the row. */
 .model-actions {
   margin-left: auto;
   display: flex;
@@ -475,19 +387,6 @@ onUnmounted(clearTuneTimers)
 .model-settings-btn:hover {
   background: var(--hover-bg);
   color: var(--accent-light);
-}
-
-/* Tune button: spinning sparkle while the backend computes the plan */
-.model-tune-btn.tune-busy svg {
-  animation: tune-spin 1s linear infinite;
-}
-
-.model-tune-btn:disabled {
-  cursor: wait;
-}
-
-@keyframes tune-spin {
-  to { transform: rotate(360deg); }
 }
 
 .model-name {

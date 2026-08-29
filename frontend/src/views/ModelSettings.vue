@@ -30,11 +30,25 @@
         </button>
       </div>
 
-      <!-- Action area -->
+      <!-- Action area: a single feedback line at a time (save vs tune, extended v-if chain) -->
       <div class="settings-actions">
         <span class="action-msg" v-if="saveSuccess">{{ t('modelSettings.saved') }}</span>
         <span class="action-msg action-err" v-else-if="saveError">{{ saveError }}</span>
+        <span class="action-msg" v-else-if="tuneMsg">{{ tuneMsg }}</span>
+        <span class="action-msg action-err" v-else-if="tuneError">{{ tuneError }}</span>
         <span class="action-spacer"></span>
+        <button
+          class="btn-secondary tune-btn"
+          :class="{ busy: tuning }"
+          :disabled="tuning || saving || loading"
+          @click="tune"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3l1.9 5.8a2 2 0 0 0 1.3 1.3L21 12l-5.8 1.9a2 2 0 0 0-1.3 1.3L12 21l-1.9-5.8a2 2 0 0 0-1.3-1.3L3 12l5.8-1.9a2 2 0 0 0 1.3-1.3L12 3z"/>
+            <path d="M5 3v4"/><path d="M3 5h4"/><path d="M19 17v4"/><path d="M17 19h4"/>
+          </svg>
+          {{ tuning ? t('modelSettings.tuning') : t('models.tune') }}
+        </button>
         <button class="btn-secondary" @click="reset">{{ t('modelSettings.reset') }}</button>
         <button
           class="btn-primary"
@@ -305,13 +319,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { getModelConfig, saveModelConfig, getServerStatus } from '../wails'
+import { getModelConfig, saveModelConfig, getServerStatus, tuneModelConfig } from '../wails'
 import { t } from '../lib/i18n'
+import { tunedSummaryParams } from '../lib/modelTune'
 import ThemedSelect, { type SelectOption } from '../components/ThemedSelect.vue'
 
-// ─── ModelConfig interface (imported by Models.vue etc.) ───────────────────────
+// ─── ModelConfig interface (persisted per-model inference params shape) ───────
 export interface ModelConfig {
   threads: number
   gpuLayers: string
@@ -377,6 +392,27 @@ const initialConfig = ref<ModelConfig>({ ...defaults })
 const saving = ref(false)
 const saveError = ref('')
 const saveSuccess = ref(false)
+
+// ─── Auto-tune ────────────────────────────────────────────────────────────────
+// One tune runs at a time; the busy state also drives the button label/spin.
+const tuning = ref(false)
+// Tune feedback in the action area (mutually exclusive via the v-if chain);
+// auto-clears after 5 seconds, timer cleaned up on unmount.
+const tuneMsg = ref('')
+const tuneError = ref('')
+let tuneTimer: ReturnType<typeof setTimeout> | undefined
+
+function clearTuneFeedback() {
+  tuneMsg.value = ''
+  tuneError.value = ''
+}
+
+function clearTuneTimer() {
+  if (tuneTimer) {
+    clearTimeout(tuneTimer)
+    tuneTimer = undefined
+  }
+}
 
 /** Index of the currently active tab */
 const activeTab = ref(0)
@@ -519,6 +555,9 @@ async function loadConfig() {
   loadError.value = ''
   saveError.value = ''
   saveSuccess.value = false
+  // A tune feedback from the previous model must not leak into a reloaded page
+  clearTuneTimer()
+  clearTuneFeedback()
   activeTab.value = 0
 
   const name = modelName.value
@@ -559,6 +598,9 @@ async function save() {
   saving.value = true
   saveError.value = ''
   saveSuccess.value = false
+  // Starting a save clears the tune feedback (single visible message line)
+  clearTuneTimer()
+  clearTuneFeedback()
   try {
     await saveModelConfig(modelName.value, { ...cfg })
     // Update initialConfig after a successful save; isModified becomes false and the save button disables
@@ -574,6 +616,42 @@ async function save() {
   }
 }
 
+/**
+ * Auto-tune: the backend reads the GGUF metrics + hardware snapshot, computes
+ * and persists the optimal params, and returns the applied config. The form is
+ * refreshed in place (same merge as loadConfig) and initialConfig mirrors the
+ * persisted state, so isModified stays false and the tuned values are visible
+ * immediately.
+ */
+async function tune() {
+  if (tuning.value) return
+  tuning.value = true
+  // Starting a tune clears the save feedback (single visible message line)
+  saveSuccess.value = false
+  saveError.value = ''
+  clearTuneTimer()
+  clearTuneFeedback()
+  try {
+    const tuned = (await tuneModelConfig(modelName.value)) as ModelConfig
+    // Merge exactly like loadConfig: defaults fill missing fields. Object.assign
+    // mutates the reactive cfg in place (reference kept), so the deep watcher
+    // re-runs validation.
+    const merged: ModelConfig = { ...defaults, ...(tuned || {}) }
+    Object.assign(cfg, merged)
+    // The backend already persisted this config, so the snapshot advances the
+    // same way save() does on success: isModified is false right after tuning.
+    initialConfig.value = { ...merged }
+    errors.value = new Set()
+    tuneMsg.value = t('models.tuned', tunedSummaryParams(merged))
+    tuneTimer = setTimeout(clearTuneFeedback, 5000)
+  } catch (e) {
+    tuneError.value = t('models.tuneError', { msg: e instanceof Error ? e.message : String(e) })
+    tuneTimer = setTimeout(clearTuneFeedback, 5000)
+  } finally {
+    tuning.value = false
+  }
+}
+
 // ─── Lifecycle ────────────────────────────────────────────────────────────────
 onMounted(async () => {
   loadConfig()
@@ -582,6 +660,9 @@ onMounted(async () => {
     serverRunning.value = status.running
   } catch {}
 })
+
+// Pending tune feedback timer must not fire after the page is left
+onUnmounted(clearTuneTimer)
 </script>
 
 <style scoped>
@@ -721,6 +802,26 @@ onMounted(async () => {
 
 .btn-secondary:hover {
   background: var(--hover-bg);
+}
+
+/* Tune button: sparkle icon + label; the sparkle spins while the backend
+ * computes the plan */
+.tune-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tune-btn:disabled {
+  cursor: wait;
+}
+
+.tune-btn.busy svg {
+  animation: tune-spin 1s linear infinite;
+}
+
+@keyframes tune-spin {
+  to { transform: rotate(360deg); }
 }
 
 .btn-primary {
