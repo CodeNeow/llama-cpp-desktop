@@ -163,9 +163,15 @@ func TestStartHFDownloadNoDeadlock(t *testing.T) {
 	if len(tasks) != 2 {
 		t.Fatalf("task count = %d, want 2", len(tasks))
 	}
-	if tasks[0].Status != "queued" && tasks[0].Status != "downloading" {
-		t.Errorf("snapshot status = %q, want queued or downloading", tasks[0].Status)
-	}
+	// No status assertion here, deliberately: with a 404 source each download
+	// goroutine reaches terminal "error" within microseconds of its own
+	// persist, while this snapshot necessarily follows main's persist
+	// (temp+fsync+rename ≈ milliseconds under atomicWriteFile) — whichever
+	// write lands last would decide the assertion, a write-completion-order
+	// lottery. The queued-state contract is covered deterministically by
+	// TestStartHFDownloadQueue; this test's contract is exactly:
+	// (1) startHFDownload returns within the 5s guard above, and
+	// (2) GetDownloadTasks snapshots without blocking, with both tasks present.
 
 	// Wait for goroutines to exit (404 fails fast to error state) to avoid leakage.
 	waitTasksTerminal(t, 5*time.Second)
