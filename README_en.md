@@ -1,43 +1,70 @@
+<div align="center">
+
+<img src="docs/branding/icon.png" width="88" alt="Llama Desktop" />
+
 # Llama Desktop
 
-[简体中文](README.md)
+**Local LLM inference desktop — a friendly GUI client for [llama.cpp](https://github.com/ggml-org/llama.cpp)**: visually tune GGUF models, serve many models behind one OpenAI-compatible endpoint, with built-in model downloads, local chat, and real-time monitoring.
+
+Built with Wails v2 (Go backend + Vue 3 frontend) · Windows x64 · GPL-3.0
 
 [![Platform](https://img.shields.io/badge/platform-Windows%20x64-0078D6?logo=windows&logoColor=white)](https://github.com/CodeNeow/llama-cpp-desktop/releases)
 [![License: GPL v3](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](LICENSE)
 [![GitHub release](https://img.shields.io/github/v/release/CodeNeow/llama-cpp-desktop?logo=github&color=blue)](https://github.com/CodeNeow/llama-cpp-desktop/releases)
 [![Downloads](https://img.shields.io/github/downloads/CodeNeow/llama-cpp-desktop/total?logo=github&label=downloads&color=blue)](https://github.com/CodeNeow/llama-cpp-desktop/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/CodeNeow/llama-cpp-desktop/.github/workflows/ci.yml?branch=main&logo=githubactions&logoColor=white)](https://github.com/CodeNeow/llama-cpp-desktop/actions)
+[![Go](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go&logoColor=white)](https://go.dev/dl/)
+[![Wails](https://img.shields.io/badge/Wails-v2-DF0000?logo=wails&logoColor=white)](https://wails.io/)
 
-A user-friendly desktop GUI for [llama.cpp](https://github.com/ggml-org/llama.cpp) — visually configure cutting-edge GGUF models like Qwen3.8-27B, serve them all on one OpenAI-compatible endpoint, with built-in model downloads, local chat and real-time monitoring. Built with Wails v2 (Go backend + Vue 3 frontend, no third-party UI framework).
+</div>
 
-## Highlights
+[简体中文](README.md)
+
+![Llama Desktop preview](docs/screenshots/en/chat.png)
+
+## ✨ Highlights
 
 - **One endpoint, many models** — runs llama-server in router mode (`--models-dir` / `--models-preset` / `--models-max`), serving every GGUF in your models directory over a single OpenAI-compatible API (default `http://127.0.0.1:8080/v1`).
 - **On-demand loading & one-click unload** — models load into VRAM / memory only when first requested, no manual preloading; loaded models are listed in the task dock, each with a one-click unload button, so switching models never requires restarting the service.
 - **Headless API-route mode** — one toggle restarts the app as a background-only process (Go backend + system tray + llama-server, no GUI): the WebView2 renderer that costs hundreds of MB of memory in GUI mode exits entirely, leaving only a ~20 MB background process; inference keeps running without interruption, the OpenAI API stays available, and the tray menu's "Show Main Window" brings the full UI back anytime.
 - **Copy-paste model IDs** — the API `model` field is exactly the name shown in the UI (e.g. `Qwen3.6-29B-REAP-Opus-Reasoning-Distill-MTP-Q4_K_M`); copy it from the Model Manager, API Router or Chat page and it just works.
 - **Hardware-aware auto-tune** — reads real GGUF metrics (block count, GQA/MLA KV geometry, trained context, MoE expert ratio) and snapshots GPU/CPU/RAM to plan GPU layers, context length, threads and cache types per model in one click.
+- **CUDA compatibility guidance** — the System Info page compares GPU compute capability against the installed CUDA runtime and states the verdict outright; Blackwell cards are told they need CUDA 12.8+, so you never chase a mismatched runtime.
 - **Built-in chat** — streaming conversations with markdown rendering and a live reasoning view, image attachments for multimodal models, and per-session sampling controls (temperature, top-p / top-k, repeat penalty, max tokens, system prompt).
 - **Model discovery and downloads** — search HF Mirror (hf-mirror.com) or ModelScope, expand repositories into file lists, and batch-download through a resumable queue (pause / resume / cancel) that survives restarts.
 - **Per-model inference presets** — GPU layers, KV cache types, long-context RoPE settings, speculative decoding and more, persisted per model and written into the llama-server preset on save.
-- **Live service monitor** — server log console, prompt-processing and generation token speeds, and CPU / memory / GPU (utilization + VRAM) sampling, refreshed every second — all pinned in the viewport, no page scrolling.
+- **Live service monitor** — server log console plus prompt-processing / generation token-speed metrics, refreshed every second — all pinned in the viewport, no page scrolling.
 - **Task dock** — a collapsible card floating at the bottom-right corner shows download progress at a glance (llama.cpp / model files / app updates) alongside the models currently loaded in memory, each with a one-click unload button.
 - **Desktop niceties** — Windows system tray, in-app update check, light / dark themes, and a zh / en / auto UI language.
+- **Built-in bilingual docs** — the Docs page ships a full zh / en tutorial whose content updates online — fresh documentation without upgrading the app.
 
-## Screenshots
+## 📸 Screenshots
 
 | System Info | Runtime Environment |
 | :---: | :---: |
 | ![System Info](docs/screenshots/en/home.png) | ![Runtime Environment](docs/screenshots/en/runtime.png) |
 | ![Local Chat](docs/screenshots/en/chat.png) | ![Model Manager](docs/screenshots/en/models.png) |
 | ![Model Downloads](docs/screenshots/en/downloads.png) | ![API Router](docs/screenshots/en/api.png) |
-| ![Task Dock](docs/screenshots/en/task-dock.png) | ![Model Settings](docs/screenshots/en/model-settings.png) |
+| ![Model Settings](docs/screenshots/en/model-settings.png) | ![Docs](docs/screenshots/en/docs.png) |
 
-## Getting Started
+<div align="center">
 
-### Prerequisites
+The floating task dock at the bottom-right corner: download progress plus one-click unload for in-memory models.
 
-- Windows 10+ (x64 / amd64 only — llama.cpp publishes no 32-bit Windows builds; WebView2 is installed automatically with the app)
+![Task Dock](docs/screenshots/en/task-dock.png)
+
+</div>
+
+## 🚀 Getting Started
+
+### Option 1: Download the installer (recommended)
+
+Grab `llama-desktop-setup-*.exe` from the [latest release](https://github.com/CodeNeow/llama-cpp-desktop/releases/latest) and double-click to install; the app updates itself, so later versions need no manual reinstall.
+
+Requirements: Windows 10 or later (x64 only); WebView2 is installed automatically with the app.
+
+### Option 2: Build from source
+
 - [Git](https://git-scm.com/), [Go](https://go.dev/dl/) 1.25+, [Node.js](https://nodejs.org/) 18+
 - Wails CLI v2.14+:
 
@@ -45,7 +72,7 @@ A user-friendly desktop GUI for [llama.cpp](https://github.com/ggml-org/llama.cp
   go install github.com/wailsapp/wails/v2/cmd/wails@latest
   ```
 
-### Run in dev mode
+Clone the repository and start dev mode:
 
 ```bash
 git clone https://github.com/CodeNeow/llama-cpp-desktop.git
@@ -55,33 +82,34 @@ wails dev
 
 `wails dev` starts the Go backend and the Vite dev server (`http://localhost:5173`) together, with hot reload on both sides.
 
-### First run
+**First steps (same for both options):**
 
 1. On **Runtime Environment**, click "Download llama.cpp" to fetch the latest release from GitHub (resumable), or point the app at an existing llama.cpp directory.
 2. On **Model Downloads**, search HF Mirror or ModelScope and download a GGUF file into the models directory (`LLM-Models/` by default); progress shows up in the task dock at the bottom-right corner.
-3. On **API Router**, confirm the host / port (default `127.0.0.1:8080`) and click "Start".
+3. On **API Router**, click "Start Server" (default `127.0.0.1:8080`).
 4. Open **Local Chat**, pick the model, and start talking — or point any OpenAI-compatible client at the endpoint.
 
-## Usage
+## 🧭 Usage
 
-- **System Info** — detects CPU, memory, GPU and CUDA.
+- **System Info** — detects CPU, memory, GPU and CUDA, refreshes with live samples, and flags CUDA compatibility for Blackwell GPUs.
 - **Runtime Environment** — shows the llama.cpp installation status (main program and CUDA runtime components); one-click resumable download or a custom directory.
 - **Local Chat** — streaming chat with markdown rendering and image attachments; requires the API router to be running.
 - **Model Downloads** — dual-source search (HF Mirror / ModelScope, switchable in Preferences) with file-level selection and a persistent, resumable download queue.
 - **Model Manager** — scans the models directory for GGUF files (architecture, quantization, multimodal / embedding detection) with one-click hardware-aware auto-tune; each model links to its settings page (basic / inference / memory / multi-GPU / long-context / advanced tabs).
-- **API Router** — start / stop / restart llama-server, watch logs and live metrics, edit host / port / access mode / max concurrent models / prompt cache, and see which models are currently in memory.
-- **Preferences** — theme, UI language (zh / en / auto), download source, Windows tray toggle, and check for updates.
+- **API Router** — start / stop / restart llama-server, watch the server log and dual token-speed metrics, edit the port / max concurrent models / prompt cache, and see which models are currently loaded; the access scope and inference GPU are configured under Preferences.
+- **Preferences** — theme, UI language (zh / en / auto), download source, download & import directories, server options such as access scope and the inference GPU, Windows tray toggle, API-route mode, and check for updates.
+- **Docs** — a built-in zh / en tutorial whose content updates online automatically.
 
 Once the service is running, any OpenAI-compatible client can connect:
 
 ```bash
 OPENAI_BASE_URL="http://127.0.0.1:8080/v1"
-OPENAI_API_KEY="sk-any-placeholder"   # the local service does not authenticate
+OPENAI_API_KEY="sk-any-placeholder"   # no auth by default; an optional API key can be set in Preferences
 ```
 
 Set `model` to the name shown in the UI (for example `Qwen3.6-29B-REAP-Opus-Reasoning-Distill-MTP-Q4_K_M`) — the tags on the API Router page are copy-paste ready; llama-server loads and unloads models on demand. In-memory models can also be unloaded from the task dock.
 
-## Configuration
+## ⚙️ Configuration
 
 Runtime settings are persisted to `llama-desktop-config.json` in the project root. Key fields:
 
@@ -97,7 +125,22 @@ Runtime settings are persisted to `llama-desktop-config.json` in the project roo
 
 Also stored: `llamaCppDownloadDir` / `modelDownloadDir` (download paths) and `llamaCppDir` / `modelDir` (imported external directories), `modelConfigs` (per-model inference parameters) and `downloadTasks` (the download queue, recovered on restart).
 
-## Development
+## 🏗️ Architecture
+
+```mermaid
+flowchart LR
+    A["GGUF model directory<br/>(downloads + external imports)"] --> B["Scan and parse<br/>architecture · quantization · multimodal"]
+    B --> C["Per-model inference presets (INI)"]
+    C --> D["llama-server router mode"]
+    D --> E["OpenAI-compatible endpoint<br/>127.0.0.1:8080/v1"]
+    E --> F["Built-in local chat"]
+    E --> G["Any OpenAI client"]
+    H["Hardware-aware one-click auto-tune"] -.-> C
+```
+
+The frontend is a Vue 3 single-page app that talks to the Go backend through the Wails bridge; the backend scans the model directories, parses GGUF metadata, generates per-model inference presets and launches llama-server. Running in router mode, llama-server serves every GGUF in the directory behind one OpenAI-compatible endpoint, loading and unloading models on demand — the built-in chat and any OpenAI client connect to that same endpoint.
+
+## 🛠️ Development
 
 Combined quality gate:
 
@@ -108,7 +151,7 @@ make check                                                                  # PO
 
 The gate runs `go build` / `go test` / `gofmt` / `golangci-lint` on the backend and `npm run build` (vue-tsc + vite) on the frontend; the PowerShell script also runs the vitest suite (`npm test`). Backend tests live in `core/*_test.go` (standard library `testing`), frontend tests in `frontend/src/__tests__/`. See [AGENTS.md](AGENTS.md) and [CONTRIBUTING.md](CONTRIBUTING.md) for conventions, commit format and the collaboration workflow.
 
-## Building
+## 📦 Building
 
 ```bash
 wails build
@@ -116,7 +159,7 @@ wails build
 
 The production binary is written to `build/bin/llama-desktop.exe`. The frontend is embedded into the binary via `go:embed`; `wails build` compiles it automatically.
 
-## FAQ
+## ❓ FAQ
 
 **`wails dev` reports the port is already in use.**
 The Vite dev server binds `localhost:5173` (see `frontend:dev:serverUrl` in `wails.json`). End the process occupying it and retry.
@@ -136,7 +179,7 @@ The `model` field must match the name shown in the UI exactly (the service match
 **Downloading llama.cpp is slow or fails.**
 The download comes from GitHub Releases; it supports pause / resume with resumable transfers. On a restricted network, download the Windows release manually, extract it, and select the directory via "Custom" on the Runtime Environment page.
 
-## License
+## 📄 License
 
 Copyright © 2026 [CodeNeow](https://github.com/CodeNeow/llama-cpp-desktop)
 
