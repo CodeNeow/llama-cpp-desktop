@@ -85,74 +85,9 @@
         <div v-else class="console-empty">{{ t('api.logEmpty') }}</div>
       </section>
 
-      <!-- Right column: two cards top to bottom -->
+      <!-- Right column: token speed card -->
       <div class="monitor-side">
-        <!-- a. System monitor: CPU / Memory / GPU -->
-        <section class="info-section monitor-card">
-          <h2 class="section-title">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/>
-            </svg>
-            {{ t('api.sysMonitor') }}
-          </h2>
-
-          <!-- Wrapper enabling the 2-column compact rearrangement on short windows -->
-          <div class="metric-grid">
-          <div class="metric-block">
-            <div class="metric-head">
-              <span class="metric-name">{{ t('monitor.cpu') }}</span>
-            </div>
-            <div class="usage-bar-wrapper">
-              <div class="usage-bar">
-                <div class="usage-fill" :style="{ width: cpuPercent + '%' }"></div>
-              </div>
-              <span class="usage-text">{{ cpuPercent }}%</span>
-            </div>
-          </div>
-
-          <div class="metric-block">
-            <div class="metric-head">
-              <span class="metric-name">{{ t('monitor.memory') }}</span>
-            </div>
-            <div class="usage-bar-wrapper">
-              <div class="usage-bar">
-                <div class="usage-fill" :style="{ width: memPercent + '%' }"></div>
-              </div>
-              <span class="usage-text">{{ memPercent }}%</span>
-            </div>
-            <div class="metric-sub">
-              <span>{{ t('monitor.memUsed', { n: memText(status.memUsed) }) }}</span>
-              <span class="metric-divider">/</span>
-              <span>{{ t('monitor.memTotal', { n: memText(status.memTotal) }) }}</span>
-          </div>
-        </div>
-
-        <!-- GPU (formerly separate card, now merged into system monitor) -->
-        <div class="metric-block">
-          <div class="metric-head">
-            <span class="metric-name">{{ t('monitor.gpu') }}</span>
-          </div>
-          <div v-if="status.gpus?.length">
-            <div v-for="gpu in status.gpus" :key="gpu.index" class="gpu-row">
-              <div class="gpu-head">
-                <span class="gpu-name">{{ gpu.name }}</span>
-                <span class="gpu-util">{{ gpu.utilPercent }}%</span>
-              </div>
-              <div class="usage-bar-wrapper">
-                <div class="usage-bar">
-                  <div class="usage-fill" :style="{ width: gpu.utilPercent + '%' }"></div>
-                </div>
-                <span class="usage-text">{{ gpu.utilPercent }}%</span>
-              </div>
-              <div class="gpu-mem">{{ t('monitor.gpuMem', { used: memText(gpu.memUsed), total: memText(gpu.memTotal) }) }}</div>
-            </div>
-          </div>
-          <div v-else class="info-empty">{{ t('monitor.noGpu') }}</div>
-        </div>
-          </div>
-      </section>
-
-        <!-- c. Token speed -->
+        <!-- Token speed -->
         <section class="info-section monitor-card">
           <div class="token-card-head">
             <h2 class="section-title">
@@ -208,7 +143,6 @@ import { useRouter } from 'vue-router'
 import { getMonitorStatus, getModels, getServerConfig, getServerLogsSince, getServerStatus, refreshModels, saveServerConfig, startServer, stopServer } from '../wails'
 import { applyFullLogFetch, appendLogEntries, type ServerLogEntry } from '../lib/serverLog'
 import { formatPromptTps, formatUptime, type MonitorStatus } from '../lib/monitor'
-import { formatBytes } from '../lib/format'
 import { locale, t } from '../lib/i18n'
 
 const serverRunning = ref(false)
@@ -244,7 +178,7 @@ const modelCount = ref(0)
 /** Whether the server parameters panel is expanded */
 const showCfg = ref(false)
 
-// ─── Monitoring (merged from Monitor.vue, 1s polling): inference metrics and system load; the same tick also drives the incremental log poll (pollServerLog) ───
+// ─── Monitoring (merged from Monitor.vue, 1s polling): inference metrics (TPS / uptime / running state); the same tick also drives the incremental log poll (pollServerLog) ───
 const status = ref<MonitorStatus>({
   cpuPercent: 0,
   memUsed: 0,
@@ -258,21 +192,9 @@ const status = ref<MonitorStatus>({
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
-const cpuPercent = computed(() => Math.round(status.value.cpuPercent))
-
-const memPercent = computed(() => {
-  if (status.value.memTotal <= 0) return 0
-  return Math.round((status.value.memUsed / status.value.memTotal) * 100)
-})
-
 const promptTpsText = computed(() => formatPromptTps(status.value.promptTps))
 
 const decodeTpsText = computed(() => status.value.decodeTps.toFixed(1))
-
-// VRAM/memory may be 0 (e.g. data not yet arrived); formatBytes(0) returns empty string, fallback to "0 B"
-function memText(bytes: number): string {
-  return formatBytes(bytes) || '0 B'
-}
 
 async function fetchMonitorStatus() {
   try {
@@ -749,7 +671,7 @@ function clearLog() {
   padding-bottom: calc(24px + var(--dock-reserve, 0px));
 }
 
-/* ─── Main area two-column: left log console + right monitor cards ─── */
+/* ─── Main area two-column: left log console + right inference-monitor card ─── */
 .monitor-grid {
   display: grid;
   /* minmax(0, Nfr): floor the tracks at 0 (not auto) so long unbreakable
@@ -844,7 +766,7 @@ function clearLog() {
   font-size: 12px;
 }
 
-/* ─── Right column: monitor cards ─── */
+/* ─── Right column: token speed card ─── */
 .monitor-side {
   display: flex;
   flex-direction: column;
@@ -852,8 +774,7 @@ function clearLog() {
   height: 100%;
   min-height: 0;
   min-width: 0;
-  /* Fixed, scroll-free column: the two cards share the column height and stretch
-     to fill it; metric blocks distribute the leftover space inside their card,
+  /* Fixed, scroll-free column: the card stretches to fill the column height,
      so no scrollbar appears while the window stays above the grid's floor */
 }
 
@@ -869,27 +790,6 @@ function clearLog() {
 
 .monitor-card .section-title {
   flex-shrink: 0;
-}
-
-/* Metric blocks wrapper: flex column with real gaps; scrolls internally when
-   content (e.g. several GPUs) exceeds the card height instead of clipping */
-.metric-grid {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  overflow-y: auto;
-}
-
-/* Spacing between metric blocks inside system monitor: blocks take their
-   natural height and stack with the gap above, so CPU / Memory / GPU are never
-   forced into equal-height slices that cram and clip on short windows */
-.metric-block {
-  flex: 0 0 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
 }
 
 /* ─── Models ─── */
@@ -944,88 +844,6 @@ function clearLog() {
 
 .info-section:hover {
   border-color: var(--overlay-10);
-}
-
-/* ─── Usage bar ─── */
-.usage-bar-wrapper {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.usage-bar {
-  flex: 1;
-  height: 6px;
-  background: var(--overlay-8);
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.usage-fill {
-  height: 100%;
-  border-radius: 3px;
-  background: linear-gradient(90deg, #6366f1, #a78bfa);
-  transition: width 0.6s ease;
-}
-
-.usage-text {
-  font-size: 13px;
-  font-weight: 600;
-  color: #a78bfa;
-  min-width: 36px;
-  text-align: right;
-}
-
-/* ─── Metric sub ─── */
-.metric-sub {
-  display: flex;
-  gap: 6px;
-  margin-top: 10px;
-  font-size: 12px;
-  color: var(--text-dim);
-}
-
-.metric-divider {
-  color: var(--overlay-20);
-}
-
-/* ─── GPU ─── */
-.gpu-row {
-  padding: 12px 0;
-  border-bottom: 1px solid var(--border-light);
-}
-
-.gpu-row:last-child {
-  border-bottom: none;
-  padding-bottom: 0;
-}
-
-.gpu-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10px;
-}
-
-.gpu-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: #a78bfa;
-  word-break: break-all;
-}
-
-.gpu-util {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text-secondary);
-  flex-shrink: 0;
-  margin-left: 12px;
-}
-
-.gpu-mem {
-  margin-top: 8px;
-  font-size: 12px;
-  color: var(--text-dim);
 }
 
 /* ─── Token card header (includes uptime subtext) ─── */
@@ -1160,13 +978,6 @@ function clearLog() {
   .monitor-grid { gap: 12px; }
   .monitor-side { gap: 8px; }
   .monitor-card { padding: 10px 14px; }
-  /* CPU and Memory sit side by side; GPU keeps the full width */
-  .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
-  .metric-grid .metric-block { margin-bottom: 0; }
-  .metric-grid .metric-block:last-child { grid-column: 1 / -1; }
-  /* Used/total captions are redundant next to the usage bar in narrow columns */
-  .metric-sub { display: none; }
-  .gpu-row { padding: 6px 0; }
   .token-card-head { margin-bottom: 8px; }
   .tps-card { padding: 10px 12px; }
   .tps-card-sub { display: none; }
@@ -1174,17 +985,9 @@ function clearLog() {
   .tps-footnote { display: none; }
 }
 
-/* ─── Empty ─── */
-.info-empty {
-  padding: 16px 0;
-  color: var(--text-dim);
-  font-size: 13px;
-  text-align: center;
-}
-
 /* ─── Narrow viewports (< 1100px): collapse to a single column ──────────────
    Keeping both panels side by side would cram them into unusable slivers.
-   The log console takes a bounded proportional band, the monitor cards flow
+   The log console takes a bounded proportional band, the monitor card flows
    below it, and the shared .page-scroll band owns scrolling + dock clearance. */
 @media (max-width: 1099px) {
   .monitor-grid {

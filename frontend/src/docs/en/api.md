@@ -1,4 +1,4 @@
-The "API Router" page starts, stops and monitors the llama-server service. Once running it exposes an **OpenAI-compatible** endpoint that any client speaking that protocol can use.
+The "API Router" page starts, stops and monitors the llama-server service (token speed, uptime and the service log). Once running it exposes an **OpenAI-compatible** endpoint that any client speaking that protocol can use.
 
 ## Start, stop, restart
 
@@ -25,7 +25,6 @@ The panel is locked while the server is running ("stop it to modify") so configu
 The lower half of the page refreshes every second:
 
 - **Server Log**: llama-server's raw output — the first place to look when troubleshooting;
-- **System Monitor**: CPU and memory usage plus per-GPU utilization and VRAM for every NVIDIA card;
 - **Token Speed**: prompt processing speed (prefill — how fast your input is ingested) and generation speed (decode — how fast the model writes); thinking and answering both count as decode.
 
 ## Calling the service from code

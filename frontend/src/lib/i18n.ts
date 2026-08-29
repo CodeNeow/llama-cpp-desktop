@@ -183,7 +183,6 @@ export const messages: Record<Locale, Record<string, string>> = {
     'api.logTitle': '服务日志',
     'api.logClear': '清空',
     'api.logEmpty': '暂无日志',
-    'api.sysMonitor': '系统监控',
     'api.tokenSpeed': 'Token 速度',
     'api.settings': '参数设置',
     'api.cfgLockedHint': '服务运行中，停止后可修改',
@@ -274,13 +273,6 @@ export const messages: Record<Locale, Record<string, string>> = {
     'monitor.decodeSpeed': '生成速度',
     'monitor.decodeSub': '实时解码（decode）',
     'monitor.footnote': '提示词处理速度在预填充期间实时刷新 · 思考与回答同属解码过程',
-    'monitor.cpu': '处理器',
-    'monitor.memory': '内存',
-    'monitor.memUsed': '已用 {n}',
-    'monitor.memTotal': '总计 {n}',
-    'monitor.gpu': 'GPU',
-    'monitor.gpuMem': '显存 {used} / {total}',
-    'monitor.noGpu': '未检测到 NVIDIA GPU',
 
     // ─── Settings page (Settings.vue) ───
     'settings.title': '偏好设置',
@@ -676,7 +668,6 @@ export const messages: Record<Locale, Record<string, string>> = {
     'api.logTitle': 'Server Log',
     'api.logClear': 'Clear',
     'api.logEmpty': 'No logs yet',
-    'api.sysMonitor': 'System Monitor',
     'api.tokenSpeed': 'Token Speed',
     'api.settings': 'Settings',
     'api.cfgLockedHint': 'Server is running. Stop it to modify.',
@@ -767,13 +758,6 @@ export const messages: Record<Locale, Record<string, string>> = {
     'monitor.decodeSpeed': 'Generation Speed',
     'monitor.decodeSub': 'Real-time decode',
     'monitor.footnote': 'Prompt speed refreshes live during prefill · thinking and answering are both decode',
-    'monitor.cpu': 'CPU',
-    'monitor.memory': 'Memory',
-    'monitor.memUsed': 'Used {n}',
-    'monitor.memTotal': 'Total {n}',
-    'monitor.gpu': 'GPU',
-    'monitor.gpuMem': 'VRAM {used} / {total}',
-    'monitor.noGpu': 'No NVIDIA GPU detected',
 
     // ─── Settings (Settings.vue) ───
     'settings.title': 'Preferences',
