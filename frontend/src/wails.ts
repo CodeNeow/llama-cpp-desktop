@@ -129,6 +129,27 @@ export async function tuneModelConfig(modelID: string): Promise<any> {
   return app().TuneModelConfig(modelID)
 }
 
+// ModelBenchResult mirrors the backend core.ModelBenchResult: the measured
+// token-generation throughput (tgTps) plus the effective parameters the
+// llama-bench run used (ngl as reported, threads where 0 = auto/omitted,
+// usedCpuMoe=false when the run fell back to no cpu-moe flags) and the
+// wall-clock duration of the measured run (elapsedS)
+export interface ModelBenchResult {
+  tgTps: number
+  ngl: string
+  threads: number
+  usedCpuMoe: boolean
+  elapsedS: number
+}
+
+// Deep-benchmark the model's real decode speed with the llama-bench binary
+// installed next to llama-server, using the model's currently saved config.
+// The run loads the full model and may take minutes — user-triggered only,
+// single-flight on the backend (a concurrent second call waits).
+export async function benchmarkModel(modelID: string): Promise<ModelBenchResult> {
+  return app().BenchmarkModel(modelID)
+}
+
 // ─── Server ──────────────────────────────────────────────────────
 
 // ServerConfig mirrors the backend core.ServerConfig: accessMode is the service access

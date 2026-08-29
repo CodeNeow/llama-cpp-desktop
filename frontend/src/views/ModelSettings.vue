@@ -30,17 +30,19 @@
         </button>
       </div>
 
-      <!-- Action area: a single feedback line at a time (save vs tune, extended v-if chain) -->
+      <!-- Action area: a single feedback line at a time (save vs tune vs bench, extended v-if chain) -->
       <div class="settings-actions">
         <span class="action-msg" v-if="saveSuccess">{{ t('modelSettings.saved') }}</span>
         <span class="action-msg action-err" v-else-if="saveError">{{ saveError }}</span>
         <span class="action-msg" v-else-if="tuneMsg">{{ tuneMsg }}</span>
         <span class="action-msg action-err" v-else-if="tuneError">{{ tuneError }}</span>
+        <span class="action-msg" v-else-if="benchMsg">{{ benchMsg }}</span>
+        <span class="action-msg action-err" v-else-if="benchError">{{ benchError }}</span>
         <span class="action-spacer"></span>
         <button
           class="btn-secondary tune-btn"
           :class="{ busy: tuning }"
-          :disabled="tuning || saving || loading"
+          :disabled="tuning || benching || saving || loading"
           @click="tune"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -48,6 +50,21 @@
             <path d="M5 3v4"/><path d="M3 5h4"/><path d="M19 17v4"/><path d="M17 19h4"/>
           </svg>
           {{ tuning ? t('modelSettings.tuning') : t('models.tune') }}
+        </button>
+        <!-- Deep benchmark: runs llama-bench next to llama-server with the
+             saved config; loads the full model and may take minutes -->
+        <button
+          class="btn-secondary bench-btn"
+          :class="{ busy: benching }"
+          :disabled="benching || tuning || saving || loading"
+          :title="t('modelSettings.benchHint')"
+          @click="bench"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m12 14 4-4"/>
+            <path d="M3.34 19a10 10 0 1 1 17.32 0"/>
+          </svg>
+          {{ benching ? t('modelSettings.benching') : t('modelSettings.bench') }}
         </button>
         <button class="btn-secondary" @click="reset">{{ t('modelSettings.reset') }}</button>
         <button
@@ -321,7 +338,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { getModelConfig, saveModelConfig, getServerStatus, tuneModelConfig } from '../wails'
+import { getModelConfig, saveModelConfig, getServerStatus, tuneModelConfig, benchmarkModel } from '../wails'
 import { t } from '../lib/i18n'
 import { tunedSummaryParams } from '../lib/modelTune'
 import ThemedSelect, { type SelectOption } from '../components/ThemedSelect.vue'
@@ -411,6 +428,29 @@ function clearTuneTimer() {
   if (tuneTimer) {
     clearTimeout(tuneTimer)
     tuneTimer = undefined
+  }
+}
+
+// ─── Deep benchmark ───────────────────────────────────────────────────────────
+// llama-bench loads the full model and may run for minutes: one bench at a
+// time, the busy state drives the button label/spin, and Tune is disabled
+// while a bench runs (the two would contend for the same GPU). Feedback uses
+// the same single action line, auto-clearing after 8 s (longer than tune —
+// the action itself is much longer), timer cleaned up on unmount.
+const benching = ref(false)
+const benchMsg = ref('')
+const benchError = ref('')
+let benchTimer: ReturnType<typeof setTimeout> | undefined
+
+function clearBenchFeedback() {
+  benchMsg.value = ''
+  benchError.value = ''
+}
+
+function clearBenchTimer() {
+  if (benchTimer) {
+    clearTimeout(benchTimer)
+    benchTimer = undefined
   }
 }
 
@@ -555,9 +595,11 @@ async function loadConfig() {
   loadError.value = ''
   saveError.value = ''
   saveSuccess.value = false
-  // A tune feedback from the previous model must not leak into a reloaded page
+  // Tune/bench feedback from the previous model must not leak into a reloaded page
   clearTuneTimer()
   clearTuneFeedback()
+  clearBenchTimer()
+  clearBenchFeedback()
   activeTab.value = 0
 
   const name = modelName.value
@@ -598,9 +640,11 @@ async function save() {
   saving.value = true
   saveError.value = ''
   saveSuccess.value = false
-  // Starting a save clears the tune feedback (single visible message line)
+  // Starting a save clears the tune/bench feedback (single visible message line)
   clearTuneTimer()
   clearTuneFeedback()
+  clearBenchTimer()
+  clearBenchFeedback()
   try {
     await saveModelConfig(modelName.value, { ...cfg })
     // Update initialConfig after a successful save; isModified becomes false and the save button disables
@@ -652,6 +696,40 @@ async function tune() {
   }
 }
 
+/**
+ * Deep benchmark: the backend runs llama-bench (installed next to llama-server)
+ * with the model's saved config, loading the full model — minutes-scale, so
+ * the button is busy-guarded and mutual exclusion with Tune is enforced via
+ * the disabled bindings. The result is display-only (not persisted).
+ */
+async function bench() {
+  if (benching.value) return
+  benching.value = true
+  // Starting a bench clears the save/tune feedback (single visible message line)
+  saveSuccess.value = false
+  saveError.value = ''
+  clearTuneTimer()
+  clearTuneFeedback()
+  clearBenchTimer()
+  clearBenchFeedback()
+  try {
+    const r = await benchmarkModel(modelName.value)
+    benchMsg.value = t('modelSettings.benched', {
+      tps: r.tgTps.toFixed(1),
+      ngl: r.ngl,
+      threads: r.threads,
+    })
+    benchTimer = setTimeout(clearBenchFeedback, 8000)
+  } catch (e) {
+    benchError.value = t('modelSettings.benchError', {
+      msg: e instanceof Error ? e.message : String(e),
+    })
+    benchTimer = setTimeout(clearBenchFeedback, 8000)
+  } finally {
+    benching.value = false
+  }
+}
+
 // ─── Lifecycle ────────────────────────────────────────────────────────────────
 onMounted(async () => {
   loadConfig()
@@ -661,8 +739,11 @@ onMounted(async () => {
   } catch {}
 })
 
-// Pending tune feedback timer must not fire after the page is left
-onUnmounted(clearTuneTimer)
+// Pending tune/bench feedback timers must not fire after the page is left
+onUnmounted(() => {
+  clearTuneTimer()
+  clearBenchTimer()
+})
 </script>
 
 <style scoped>
@@ -804,19 +885,22 @@ onUnmounted(clearTuneTimer)
   background: var(--hover-bg);
 }
 
-/* Tune button: sparkle icon + label; the sparkle spins while the backend
- * computes the plan */
-.tune-btn {
+/* Tune / bench buttons: icon + label; the icon spins while the backend
+ * computes the plan or runs llama-bench */
+.tune-btn,
+.bench-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
 
-.tune-btn:disabled {
+.tune-btn:disabled,
+.bench-btn:disabled {
   cursor: wait;
 }
 
-.tune-btn.busy svg {
+.tune-btn.busy svg,
+.bench-btn.busy svg {
   animation: tune-spin 1s linear infinite;
 }
 
