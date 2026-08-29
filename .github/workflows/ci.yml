@@ -323,6 +323,7 @@ jobs:
             # Push v* tag: publish formal Release. Notes come from CHANGELOG.md (extracted above),
             # not --generate-notes: PR-less direct-to-main repo makes auto-generated notes useless.
             gh release create "$GITHUB_REF_NAME" "${files[@]}" \
+              --title "$GITHUB_REF_NAME" \
               --notes-file release-notes.md --repo "$GITHUB_REPOSITORY"
           else
             # Manual trigger: create draft Release (draft does not affect formal version)
