@@ -978,6 +978,7 @@ onUnmounted(() => {
 
 .markdown-body :deep(img) {
   max-width: 100%;
+  height: auto;
 }
 
 .markdown-body :deep(hr) {

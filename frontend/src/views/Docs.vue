@@ -383,6 +383,12 @@ function selectSection(id: DocSectionId): void {
   word-break: break-all;
 }
 
+/* Guard for future docs images: never wider than the content pane */
+.docs-content :deep(img) {
+  max-width: 100%;
+  height: auto;
+}
+
 .docs-content :deep(code) {
   font-family: var(--font-mono);
   font-size: 12.5px;

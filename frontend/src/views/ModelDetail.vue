@@ -487,6 +487,17 @@ onMounted(() => {
   font-size: 12px;
 }
 
+/* README banners are often wider than the description column */
+.desc-text :deep(img) {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Fenced code blocks scroll horizontally instead of stretching the column */
+.desc-text :deep(pre) {
+  overflow-x: auto;
+}
+
 /* ─── Files ─── */
 .files-loading,
 .files-empty {
