@@ -205,13 +205,18 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { getMonitorStatus, getModels, getServerConfig, getServerStatus, refreshModels, saveServerConfig, startServer, stopServer } from '../wails'
+import { getMonitorStatus, getModels, getServerConfig, getServerLogsSince, getServerStatus, refreshModels, saveServerConfig, startServer, stopServer } from '../wails'
+import { applyFullLogFetch, appendLogEntries, type ServerLogEntry } from '../lib/serverLog'
 import { formatPromptTps, formatUptime, type MonitorStatus } from '../lib/monitor'
 import { formatBytes } from '../lib/format'
 import { locale, t } from '../lib/i18n'
 
 const serverRunning = ref(false)
 const serverLog = ref<string[]>([])
+// Incremental log fetch cursor: the backend ring seq the next poll continues
+// from (0 = everything retained). Non-reactive on purpose — polling must not
+// trigger renders by itself; only the lines array does.
+let logCursor = 0
 const logEl = ref<HTMLElement | null>(null)
 // Disable all buttons during start/stop/restart to prevent double-clicks
 const busy = ref(false)
@@ -239,7 +244,7 @@ const modelCount = ref(0)
 /** Whether the server parameters panel is expanded */
 const showCfg = ref(false)
 
-// ─── Monitoring (merged from Monitor.vue, 1s polling): inference metrics and system load, independent from the lightweight getServerStatus polling above ───
+// ─── Monitoring (merged from Monitor.vue, 1s polling): inference metrics and system load; the same tick also drives the incremental log poll (pollServerLog) ───
 const status = ref<MonitorStatus>({
   cpuPercent: 0,
   memUsed: 0,
@@ -282,7 +287,10 @@ async function fetchMonitorStatus() {
 
 function startPolling() {
   stopPolling()
-  pollTimer = setInterval(fetchMonitorStatus, 1000)
+  pollTimer = setInterval(() => {
+    fetchMonitorStatus()
+    pollServerLog()
+  }, 1000)
   fetchMonitorStatus()
 }
 
@@ -366,8 +374,52 @@ async function checkServerStatus() {
   try {
     const status = await getServerStatus()
     serverRunning.value = status.running
-    serverLog.value = status.log || []
   } catch {}
+  // One full fetch re-syncs the view and the cursor: every server start
+  // clears the backend ring, so after mount or start/stop/restart actions
+  // incremental patching from the old cursor is unreliable.
+  await resetLogView()
+}
+
+// Full (re)sync of the log view: replaces the local lines with everything the
+// backend ring retains (since 0) and adopts the returned cursor.
+async function resetLogView() {
+  try {
+    const full = await getServerLogsSince(0)
+    const r = applyFullLogFetch(full.entries, full.next)
+    serverLog.value = r.lines
+    logCursor = r.cursor
+  } catch {}
+}
+
+// Incremental log poll: fetch only the lines appended since logCursor and
+// append them, so the backend ring is not re-copied and re-rendered on every
+// tick. On a poll error, or when the cursor fell out of the backend retention
+// window (lines evicted between polls), one full fetch (since 0) replaces the
+// view instead.
+async function pollServerLog() {
+  const requested = logCursor
+  let res: { entries: ServerLogEntry[]; next: number } | null = null
+  try {
+    res = await getServerLogsSince(requested)
+  } catch {
+    res = null
+  }
+  // A concurrent resetLogView re-synced the view while the request was in
+  // flight — discard the stale result instead of appending duplicates.
+  if (logCursor !== requested) return
+  if (res && res.next > logCursor) {
+    const r = appendLogEntries(serverLog.value, logCursor, res.entries, res.next)
+    if (!r.reset) {
+      serverLog.value = r.lines
+      logCursor = r.cursor
+      return
+    }
+    // Retention-window gap: evicted lines cannot be patched in — refetch all.
+  } else if (res) {
+    return // nothing new since the last poll
+  }
+  await resetLogView()
 }
 
 // Button tri-state driven by serverRunning + busy: start (stopped enabled), stop/restart (running enabled);
@@ -415,7 +467,9 @@ async function doRestart() {
   }
 }
 
-// Clear log: only clears the frontend display array; backend ring buffer is preserved (checkServerStatus will reload backend logs)
+// Clear log: only clears the frontend display array; the backend ring buffer
+// is preserved and its cursor kept, so cleared lines do not replay while new
+// lines keep streaming in with the next polls.
 function clearLog() {
   serverLog.value = []
 }

@@ -218,12 +218,14 @@ func GetMonitorStatus() *MonitorStatus {
 	// TPS: read the last 50 log lines (serverLogsMu), compute prefill and
 	// decode speeds on the fly
 	serverLogsMu.Lock()
-	logs := serverLogs
-	if n := len(logs); n > 50 {
-		logs = logs[n-50:]
+	entries := serverLogs
+	if n := len(entries); n > 50 {
+		entries = entries[n-50:]
 	}
-	tail := make([]string, len(logs))
-	copy(tail, logs)
+	tail := make([]string, len(entries))
+	for i, e := range entries {
+		tail[i] = e.text
+	}
 	serverLogsMu.Unlock()
 	st.PromptTPS = parsePromptTPS(tail)
 	st.DecodeTPS = parseDecodeTPS(tail)

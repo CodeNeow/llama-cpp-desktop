@@ -5,6 +5,7 @@
  */
 
 import type { MonitorStatus } from './lib/monitor'
+import type { ServerLogEntry } from './lib/serverLog'
 
 // Wails injects window.go when running in the Wails runtime.
 // When running standalone (vite dev only), we fall back to a mock/error.
@@ -154,6 +155,15 @@ export async function saveServerConfig(cfg: ServerConfig): Promise<void> {
 
 export async function getServerStatus(): Promise<{ running: boolean; log: string[] }> {
   return app().GetServerStatus()
+}
+
+// Incremental server-log fetch: returns the ring entries appended since the
+// given cursor (seq >= since; 0 = everything retained) plus the next cursor
+// value to pass on the following call. Lines already evicted from the backend
+// ring cannot be recovered — when next - since exceeds the ring cap the
+// caller must refetch from 0 (see lib/serverLog.ts).
+export async function getServerLogsSince(since: number): Promise<{ entries: ServerLogEntry[]; next: number }> {
+  return app().GetServerLogsSince(since)
 }
 
 export async function startServer(): Promise<void> {

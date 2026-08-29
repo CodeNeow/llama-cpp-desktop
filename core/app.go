@@ -693,13 +693,46 @@ func (a *App) GetServerStatus() map[string]interface{} {
 	serverMu.Unlock()
 	serverLogsMu.Lock()
 	logs := make([]string, len(serverLogs))
-	copy(logs, serverLogs)
+	for i, e := range serverLogs {
+		logs[i] = e.text
+	}
 	serverLogsMu.Unlock()
 
 	return map[string]interface{}{
 		"running": running,
 		"log":     logs,
 	}
+}
+
+// ServerLogEntry is one incremental server-log line returned to the frontend:
+// Seq is the line's monotonic ring cursor value, Text the raw line content.
+type ServerLogEntry struct {
+	Seq  int64  `json:"seq"`
+	Text string `json:"text"`
+}
+
+// ServerLogsPage bundles one incremental log page: the entries appended since
+// the request cursor plus the next cursor to pass on the following call. It
+// travels as a single struct because the Wails v2 bridge only forwards a
+// bound method's first non-error return value — a second, non-error return
+// would be silently dropped.
+type ServerLogsPage struct {
+	Entries []ServerLogEntry `json:"entries"`
+	Next    int64            `json:"next"`
+}
+
+// GetServerLogsSince returns the retained log lines with Seq >= since plus
+// the next cursor value for the following call (a since of 0 returns
+// everything retained, up to the ring cap of serverLogsCap lines). Lines
+// already evicted from the ring cannot be recovered: the caller detects that
+// case (next - since > serverLogsCap) and refetches from 0.
+func (a *App) GetServerLogsSince(since int64) (ServerLogsPage, error) {
+	entries, next := serverLogsSince(since)
+	out := make([]ServerLogEntry, len(entries))
+	for i, e := range entries {
+		out[i] = ServerLogEntry{Seq: e.seq, Text: e.text}
+	}
+	return ServerLogsPage{Entries: out, Next: next}, nil
 }
 
 func (a *App) StartServer() error {

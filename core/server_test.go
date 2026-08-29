@@ -14,10 +14,11 @@ import (
 
 // saveServerState snapshots server-related globals (logs, running state, command, custom
 // llama.cpp dir, models dir) and restores them after the test.
-func saveServerState(t *testing.T) (origLogs []string, origDir string) {
+func saveServerState(t *testing.T) (origLogs []serverLogEntry, origDir string) {
 	t.Helper()
 	serverLogsMu.Lock()
 	origLogs = serverLogs
+	origLogNext := serverLogNext
 	serverLogsMu.Unlock()
 	serverMu.Lock()
 	origRunning := serverRunning
@@ -38,6 +39,7 @@ func saveServerState(t *testing.T) (origLogs []string, origDir string) {
 	t.Cleanup(func() {
 		serverLogsMu.Lock()
 		serverLogs = origLogs
+		serverLogNext = origLogNext
 		serverLogsMu.Unlock()
 		serverMu.Lock()
 		serverRunning = origRunning
@@ -205,15 +207,21 @@ func TestBuildServerCommandAPIKey(t *testing.T) {
 }
 
 // TestAddServerLogRingBuffer verifies the service-log ring buffer: after exceeding
-// serverLogsCap (2000) entries the oldest entries are evicted, and the latest log
-// is always at the end.
+// serverLogsCap (2000) entries the oldest entries are evicted, the latest log
+// is always at the end, and the per-entry sequence numbers stay contiguous
+// and monotonic across eviction (the incremental cursor fetch relies on it).
+// Extended from the original text-only assertions when the ring gained
+// sequence numbers: the cursor must never rewind and eviction must not open
+// seq gaps within the retained window.
 func TestAddServerLogRingBuffer(t *testing.T) {
 	serverLogsMu.Lock()
 	serverLogs = nil
+	serverLogNext = 0
 	serverLogsMu.Unlock()
 	defer func() {
 		serverLogsMu.Lock()
 		serverLogs = nil
+		serverLogNext = 0
 		serverLogsMu.Unlock()
 	}()
 
@@ -230,11 +238,140 @@ func TestAddServerLogRingBuffer(t *testing.T) {
 	if len(serverLogs) >= total {
 		t.Errorf("oldest entries were not evicted: %d entries after %d appends", len(serverLogs), total)
 	}
-	if serverLogs[len(serverLogs)-1] != fmt.Sprintf("line-%d", total-1) {
+	if serverLogs[len(serverLogs)-1].text != fmt.Sprintf("line-%d", total-1) {
 		t.Errorf("latest log should be at the end: %v", serverLogs[len(serverLogs)-1])
 	}
-	if serverLogs[0] == "line-0" {
+	if serverLogs[0].text == "line-0" {
 		t.Error("oldest entry should have been evicted")
+	}
+	// Sequence numbers are contiguous within the retained window and end at
+	// total-1: eviction slides the window forward without rewinding or
+	// duplicating the cursor.
+	for i := 1; i < len(serverLogs); i++ {
+		if serverLogs[i].seq != serverLogs[i-1].seq+1 {
+			t.Fatalf("seq gap at ring[%d]: %d follows %d", i, serverLogs[i].seq, serverLogs[i-1].seq)
+		}
+	}
+	if want := int64(total - serverLogsCap); serverLogs[0].seq != want {
+		t.Errorf("first retained seq = %d, want %d", serverLogs[0].seq, want)
+	}
+	if serverLogNext != total {
+		t.Errorf("serverLogNext = %d, want %d", serverLogNext, total)
+	}
+}
+
+// TestServerLogsSince verifies the cursor fetch used by GetServerLogsSince:
+// from 0 it returns everything retained; a mid cursor returns only the suffix
+// at or after it; a current or future cursor returns an empty page; and a
+// cursor older than the oldest retained entry returns what remains — the gap
+// is detectable only via next - since > serverLogsCap, since evicted lines
+// cannot be recovered.
+func TestServerLogsSince(t *testing.T) {
+	resetServerLogs(t)
+	for i := 0; i < 10; i++ {
+		addServerLog(fmt.Sprintf("l%d", i))
+	}
+
+	// since 0 → everything retained, next cursor = count
+	entries, next := serverLogsSince(0)
+	if len(entries) != 10 || next != 10 {
+		t.Fatalf("since 0: len=%d next=%d, want 10/10", len(entries), next)
+	}
+	if entries[0].seq != 0 || entries[0].text != "l0" || entries[9].text != "l9" {
+		t.Errorf("since 0: first=%+v last=%+v", entries[0], entries[9])
+	}
+
+	// mid cursor → suffix only
+	entries, next = serverLogsSince(7)
+	if len(entries) != 3 || next != 10 {
+		t.Fatalf("since 7: len=%d next=%d, want 3/10", len(entries), next)
+	}
+	for i, e := range entries {
+		if want := int64(7 + i); e.seq != want || e.text != fmt.Sprintf("l%d", want) {
+			t.Errorf("since 7: entries[%d] = %+v, want seq %d", i, e, want)
+		}
+	}
+
+	// cursor == next → empty page, cursor unchanged
+	entries, next = serverLogsSince(10)
+	if len(entries) != 0 || next != 10 {
+		t.Errorf("since next: len=%d next=%d, want 0/10", len(entries), next)
+	}
+
+	// future cursor → empty (the cursor never rewinds)
+	entries, next = serverLogsSince(100)
+	if len(entries) != 0 || next != 10 {
+		t.Errorf("future cursor: len=%d next=%d, want 0/10", len(entries), next)
+	}
+
+	// before the retention window: evict until the oldest retained seq is
+	// beyond 0, then a since-0 fetch returns the retained remainder and the
+	// caller's gap check (next - since > cap) fires.
+	for i := 10; i < serverLogsCap+50; i++ {
+		addServerLog(fmt.Sprintf("l%d", i))
+	}
+	entries, next = serverLogsSince(0)
+	if len(entries) != serverLogsCap {
+		t.Fatalf("after eviction: len=%d, want %d", len(entries), serverLogsCap)
+	}
+	if entries[0].seq == 0 {
+		t.Error("entries before the retention window must not be returned")
+	}
+	if next-0 <= serverLogsCap {
+		t.Errorf("gap check next-since = %d should exceed cap %d", next-0, serverLogsCap)
+	}
+}
+
+// TestGetServerLogsSinceBinding verifies the Wails binding shape: entries come
+// back with their cursor values, the next cursor matches the ring, and the
+// page struct carries the JSON field names the frontend contract relies on.
+func TestGetServerLogsSinceBinding(t *testing.T) {
+	resetServerLogs(t)
+	addServerLog("alpha")
+	addServerLog("beta")
+
+	app := &App{}
+	page, err := app.GetServerLogsSince(0)
+	if err != nil {
+		t.Fatalf("GetServerLogsSince(0) returned error: %v", err)
+	}
+	if len(page.Entries) != 2 || page.Next != 2 {
+		t.Fatalf("page = %+v, want 2 entries / next 2", page)
+	}
+	if page.Entries[0].Seq != 0 || page.Entries[0].Text != "alpha" || page.Entries[1].Seq != 1 || page.Entries[1].Text != "beta" {
+		t.Errorf("entries = %+v, want seq 0/alpha then seq 1/beta", page.Entries)
+	}
+
+	// mid cursor returns only the tail
+	page, err = app.GetServerLogsSince(1)
+	if err != nil {
+		t.Fatalf("GetServerLogsSince(1) returned error: %v", err)
+	}
+	if len(page.Entries) != 1 || page.Entries[0].Seq != 1 || page.Entries[0].Text != "beta" || page.Next != 2 {
+		t.Errorf("page since 1 = %+v, want seq 1/beta with next 2", page)
+	}
+}
+
+// TestGetServerStatusReturnsPlainStrings verifies GetServerStatus keeps its
+// public contract after the ring gained sequence numbers: the "log" field is
+// still a plain []string of line texts.
+func TestGetServerStatusReturnsPlainStrings(t *testing.T) {
+	resetServerLogs(t)
+	saveServerState(t)
+	addServerLog("plain line")
+	addServerLog("another line")
+
+	app := &App{}
+	st := app.GetServerStatus()
+	logs, ok := st["log"].([]string)
+	if !ok {
+		t.Fatalf("log field is %T, want []string", st["log"])
+	}
+	if len(logs) != 2 || logs[0] != "plain line" || logs[1] != "another line" {
+		t.Errorf("logs = %v, want [plain line another line]", logs)
+	}
+	if running, ok := st["running"].(bool); !ok || running {
+		t.Errorf("running = %v, want false", st["running"])
 	}
 }
 

@@ -107,7 +107,7 @@ func startServerInternal() error {
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	serverLogsMu.Lock()
-	serverLogs = []string{}
+	serverLogs = nil
 	serverLogsMu.Unlock()
 	serverMu.Unlock()
 

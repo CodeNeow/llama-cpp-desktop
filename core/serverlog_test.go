@@ -13,15 +13,18 @@ import (
 
 // resetServerLogs clears the service-log ring buffer (protected by serverLogsMu) and
 // restores it to empty after the test, preventing log pollution in one test case
-// from affecting subsequent cases.
+// from affecting subsequent cases. The cursor is rewound too so sequence
+// assertions start from a deterministic 0 (production never rewinds it).
 func resetServerLogs(t *testing.T) {
 	t.Helper()
 	serverLogsMu.Lock()
 	serverLogs = nil
+	serverLogNext = 0
 	serverLogsMu.Unlock()
 	t.Cleanup(func() {
 		serverLogsMu.Lock()
 		serverLogs = nil
+		serverLogNext = 0
 		serverLogsMu.Unlock()
 	})
 }
@@ -32,7 +35,9 @@ func serverLogsCopy() []string {
 	serverLogsMu.Lock()
 	defer serverLogsMu.Unlock()
 	out := make([]string, len(serverLogs))
-	copy(out, serverLogs)
+	for i, e := range serverLogs {
+		out[i] = e.text
+	}
 	return out
 }
 

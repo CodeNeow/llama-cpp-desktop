@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -18,7 +19,16 @@ import (
 // llama-server child process; start/stop logic lives in bridge.go.
 
 var serverCmd *exec.Cmd
-var serverLogs []string
+
+// serverLogEntry is one ring-buffer entry: the log line plus the monotonic
+// sequence number it was appended under (the cursor value the incremental
+// GetServerLogsSince fetch keys on).
+type serverLogEntry struct {
+	seq  int64
+	text string
+}
+
+var serverLogs []serverLogEntry
 var serverLogsMu sync.Mutex
 var serverRunning bool
 
@@ -79,11 +89,20 @@ var (
 // entries beyond it (2000 retained lines versus the previous 200).
 const serverLogsCap = 2000
 
+// serverLogNext is the sequence number the next appended entry receives:
+// monotonic for the process lifetime — eviction and ring clears never rewind
+// it — so incremental consumers can fetch by cursor. Guarded by
+// serverLogsMu alongside the ring it indexes.
+var serverLogNext int64
+
 // addServerLog appends one entry to the ring buffer and mirrors it to the
-// process log. Eviction keeps the newest serverLogsCap entries.
+// process log. Eviction keeps the newest serverLogsCap entries; the appended
+// entry's sequence number (taken from serverLogNext before the increment)
+// survives eviction, so GetServerLogsSince can page by cursor.
 func addServerLog(msg string) {
 	serverLogsMu.Lock()
-	serverLogs = append(serverLogs, msg)
+	serverLogs = append(serverLogs, serverLogEntry{seq: serverLogNext, text: msg})
+	serverLogNext++
 	if len(serverLogs) > serverLogsCap {
 		// Evict the oldest entries beyond the cap; the reslice slides the
 		// window forward and append refills the backing array in place.
@@ -91,6 +110,25 @@ func addServerLog(msg string) {
 	}
 	serverLogsMu.Unlock()
 	log.Println("[llama-server]", msg)
+}
+
+// serverLogsSince returns the retained entries with seq >= since plus the
+// next cursor value (the seq the next appended entry will receive, so it is
+// also the exclusive upper bound of assigned sequences). A since of 0 — or
+// any value at or below the oldest retained seq — returns everything
+// retained. Evicted lines are unrecoverable: when since is older than the
+// oldest retained entry the result covers only what remains, and the caller
+// must detect the gap (next - since > serverLogsCap) and fall back to a full
+// refetch from 0.
+func serverLogsSince(since int64) ([]serverLogEntry, int64) {
+	serverLogsMu.Lock()
+	defer serverLogsMu.Unlock()
+	// Entries are ordered by seq; binary-search the first retained entry at
+	// or after the cursor.
+	i := sort.Search(len(serverLogs), func(i int) bool { return serverLogs[i].seq >= since })
+	out := make([]serverLogEntry, len(serverLogs)-i)
+	copy(out, serverLogs[i:])
+	return out, serverLogNext
 }
 
 // absServerLogPath resolves the server log file to an absolute path for the
