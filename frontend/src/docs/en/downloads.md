@@ -1,4 +1,4 @@
-The "Downloads" page searches online model hubs and fetches `.gguf` model files. Downloaded and imported models all show up together on the "Models" page.
+The "Download" tab of the Models page searches online model hubs and fetches `.gguf` model files. Downloaded and imported models all show up together on the same page's "My Models" tab.
 
 ## Three download sources
 
@@ -31,7 +31,7 @@ Downloads are **resumable**: after pausing or failing, the transfer picks up fro
 
 If GGUF files already exist on this machine, there is no need to re-download:
 
-1. Open the "Models" page and click "Choose Folder";
+1. Open the "My Models" tab of the Models page and click "Choose Folder";
 2. Pick the directory that holds your models — the app scans it immediately and adds everything it finds to the list.
 
-The Models page merges models from the **download path** and the **imported path**, labelling each model with its source (Download Path / External Path). Imported directories are scanned including subfolders, and results show each model's architecture, quantization and size.
+The "My Models" tab merges models from the **download path** and the **imported path**, labelling each model with its source (Download Path / External Path). Imported directories are scanned including subfolders, and results show each model's architecture, quantization and size.

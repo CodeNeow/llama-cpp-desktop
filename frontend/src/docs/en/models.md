@@ -1,10 +1,10 @@
-The "Models" page gathers every usable model on this machine, and each model can have its own inference parameters. When the API service starts, the app turns these parameters into a llama-server preset per model.
+The "My Models" tab of the Models page gathers every usable model on this machine, and each model can have its own inference parameters. When the API service starts, the app turns these parameters into a llama-server preset per model.
 
 ## The model list
 
 The list merges two sources, distinguished by a label:
 
-- **Download Path**: models downloaded through the Downloads page;
+- **Download Path**: models downloaded through the Download tab;
 - **External Path**: directories imported via "Choose Folder".
 
 Each model card shows the name, architecture (e.g. `qwen2`), quantization (e.g. `Q4_K_M`), size and full path. Multimodal-capable models carry a "Multimodal" badge (an mmproj file was found next to them). Click "Refresh" to rescan after files change.

@@ -7,14 +7,14 @@ The "Preferences" page centralizes the app's global configuration, grouped at th
 
 ## Downloads & Directories
 
-**Model download source**: three sources: **HF Mirror** (hf-mirror.com), **ModelScope**, and **Hugging Face Official** (huggingface.co). The setting drives both search and download on the Downloads page; on Chinese networks prefer the mirror or ModelScope.
+**Model download source**: three sources: **HF Mirror** (hf-mirror.com), **ModelScope**, and **Hugging Face Official** (huggingface.co). The setting drives both search and download on the "Download" tab of the Models page; on Chinese networks prefer the mirror or ModelScope.
 
 **Directories**:
 
 - **llama.cpp Download Path**: where newly downloaded llama.cpp installs are extracted;
 - **Model Download Path**: where new model downloads are saved (default `LLM-Models` under the app directory).
 
-These two paths decide where **new** content lands; to reuse model files already on disk, set an external path with "Choose Folder" on the Models page instead.
+These two paths decide where **new** content lands; to reuse model files already on disk, set an external path with "Choose Folder" on the "My Models" tab of the Models page instead.
 
 ## Server
 
