@@ -1,16 +1,15 @@
 import { createRouter, createWebHashHistory, type RouteLocationGeneric } from 'vue-router'
 
-// Route meta typing: `fixed` marks fixed-viewport pages (Home / Runtime /
-// Chat / Api) whose root element fills the window below the titlebar and
-// manages its own internal scroll bands. App.vue reads it to opt the shared
-// content area out of its scroll behavior and TaskDock bottom reserve.
+// Route meta typing: `fixed` marks fixed-viewport pages (Home / Chat / Api)
+// whose root element fills the window below the titlebar and manages its own
+// internal scroll bands. App.vue reads it to opt the shared content area out
+// of its scroll behavior and TaskDock bottom reserve.
 declare module 'vue-router' {
   interface RouteMeta {
     fixed?: boolean
   }
 }
 import Home from '../views/Home.vue'
-import Runtime from '../views/Runtime.vue'
 import Chat from '../views/Chat.vue'
 import Models from '../views/Models.vue'
 import ModelsLocal from '../views/ModelsLocal.vue'
@@ -23,18 +22,20 @@ import ModelDetail from '../views/ModelDetail.vue'
 
 const routes = [
   {
+    // System Environment: hardware info + the runtime environment section
+    // (RuntimeSection.vue) merged into one fixed-viewport page
     path: '/',
     name: 'Home',
     component: Home,
-    meta: { title: '系统信息', icon: 'home', fixed: true }
+    meta: { title: '本机环境', icon: 'home', fixed: true }
   },
   {
-    // Runtime environment: inference engine + runtime components (llama.cpp
-    // main program, cudart runtime) with install/download management
+    // Compat: the runtime environment merged into the System Environment page
+    // (/) as its runtime section. A function redirect preserves the query so
+    // the /?section=runtime deep link (onboarding runtime step) survives:
+    // string redirects drop it.
     path: '/runtime',
-    name: 'Runtime',
-    component: Runtime,
-    meta: { title: '运行环境', icon: 'layers', fixed: true }
+    redirect: (to: RouteLocationGeneric) => ({ path: '/', query: to.query })
   },
   {
     path: '/chat',
@@ -50,7 +51,7 @@ const routes = [
     path: '/models',
     name: 'Models',
     component: Models,
-    meta: { title: '模型', icon: 'cube' },
+    meta: { title: '模型管理', icon: 'cube' },
     children: [
       // Entering /models lands on the download tab (search first). Named so
       // vue-router does not warn about the nameless empty-path child.

@@ -1,13 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import router from '../router'
 
-// Fixed-viewport pages (Home / Runtime / Chat / Api) manage their own internal
-// scroll bands and reserve TaskDock space themselves; App.vue relies on
-// route meta `fixed` to switch .content-area into that mode (no bottom reserve,
-// no own scrolling). These tests pin that contract: exactly the four fixed
-// pages are flagged, every scrollable page is not.
+// Fixed-viewport pages (Home / Chat / Api) manage their own internal scroll
+// bands and reserve TaskDock space themselves; App.vue relies on route meta
+// `fixed` to switch .content-area into that mode (no bottom reserve, no own
+// scrolling). These tests pin that contract: exactly the three fixed pages
+// are flagged, every scrollable page is not. The former /runtime page merged
+// into Home and survives only as a redirect record without meta.
 describe('router fixed-page meta', () => {
-  const fixedPaths = ['/', '/runtime', '/chat', '/api']
+  const fixedPaths = ['/', '/chat', '/api']
 
   // Scrollable pages keep normal document flow: .content-area scrolls and
   // reserves the TaskDock band for them (subpages and the /models tab children
@@ -22,7 +23,7 @@ describe('router fixed-page meta', () => {
     '/docs',
   ]
 
-  it('marks exactly the four fixed-viewport pages', () => {
+  it('marks exactly the three fixed-viewport pages', () => {
     const flagged = router
       .getRoutes()
       .filter((r) => r.meta.fixed === true)

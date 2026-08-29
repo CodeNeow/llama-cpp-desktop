@@ -2,7 +2,22 @@
   <div class="page">
     <div class="sticky-top">
       <div class="page-header">
-        <h1 class="page-title">{{ t('nav.models') }}</h1>
+        <!-- Header row: title left, actions right (same pattern as Home.vue).
+             The refresh action lives here — visible only while the local tab
+             (我的模型) is active — and delegates to the ModelsLocal instance
+             rendered below through its exposed API. -->
+        <div class="page-header-row">
+          <h1 class="page-title">{{ t('nav.models') }}</h1>
+          <div class="header-actions">
+            <button
+              v-if="activeTabId === 'tab-local'"
+              class="refresh-btn"
+              :disabled="localLoading"
+              :title="t('models.refreshTitle')"
+              @click="refreshLocal"
+            >{{ t('models.refresh') }}</button>
+          </div>
+        </div>
       </div>
 
       <!-- Tabs row: same pattern as Settings.vue (icon + label buttons with an
@@ -29,11 +44,14 @@
 
     <!-- Tab panel region: nested route children rendered through a keep-alive,
          so switching tabs preserves the search input/results and the local
-         model list instead of remounting them -->
+         model list instead of remounting them. The dynamic component carries
+         the shell's ref so the header refresh button can reach the local tab's
+         exposed fetchModels/loading (the download tab exposes nothing, but the
+         button only renders while the local tab is the active child). -->
     <div :id="panelId" role="tabpanel" :aria-labelledby="`${activeTabId}-tab`">
       <router-view v-slot="{ Component }">
         <keep-alive>
-          <component :is="Component" />
+          <component :is="Component" ref="localTabRef" />
         </keep-alive>
       </router-view>
     </div>
@@ -41,7 +59,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { t } from '../lib/i18n'
 
@@ -54,6 +72,21 @@ const panelId = 'models-panel'
 // Active tab follows the route: /models/local selects the local tab, anything
 // else under /models (including /models/download) shows the download tab
 const activeTabId = computed(() => (route.path.startsWith('/models/local') ? 'tab-local' : 'tab-download'))
+
+// Exposed API of the local tab (ModelsLocal.vue defineExpose): the header
+// refresh button delegates the forced rescan to the active local tab
+// instance; loading flows back so the button disables while rescanning
+interface LocalTabExposed {
+  fetchModels: (force?: boolean) => Promise<void> | void
+  loading: boolean
+}
+const localTabRef = ref<LocalTabExposed | null>(null)
+const localLoading = computed(() => localTabRef.value?.loading ?? false)
+
+/** Header refresh: forces the local tab to rescan the model directories. */
+function refreshLocal() {
+  localTabRef.value?.fetchModels(true)
+}
 
 // Tab definitions (download first: it is the default landing tab; icons are
 // inline stroke SVGs, mirroring Settings.vue)
@@ -92,6 +125,50 @@ const tabs = [
   margin: 0 0 4px;
   letter-spacing: -0.5px;
   line-height: 1.2;
+}
+
+/* ─── Header row (same pattern as Home.vue): title left, actions right ─── */
+.page-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+/* Side-by-side layout: drop the stacked title's bottom margin so the row
+   stays vertically centered against the actions */
+.page-header-row .page-title {
+  margin-bottom: 0;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.refresh-btn {
+  padding: 6px 14px;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.refresh-btn:hover:not(:disabled) {
+  background: var(--hover-bg);
+  border-color: var(--overlay-20);
+  color: var(--text-primary);
+}
+
+.refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 /* ─── Tabs (same pattern as Settings.vue) ─── */

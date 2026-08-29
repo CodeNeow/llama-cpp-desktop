@@ -1,24 +1,21 @@
 <template>
   <div class="models-local">
-    <!-- Local-model toolbar (non-sticky): directory sources plus the refresh
-         action. The merged page shell owns the only sticky header, so this
-         block scrolls with the content. -->
-    <div class="local-top">
-      <!-- Models directory sources -->
-      <div class="dir-bar">
-        <div class="dir-sources">
-          <div class="dir-info">
-            <span class="dir-label">{{ t('models.downloadDir') }}</span>
-            <span class="dir-value">{{ downloadDir || t('settings.dirDefaultModels') }}</span>
-          </div>
-          <div class="dir-info">
-            <span class="dir-label">{{ t('models.importDir') }}</span>
-            <span class="dir-value" :class="{ 'dir-empty': !modelsDir }">{{ modelsDir || t('models.dirNotSet') }}</span>
-          </div>
+    <!-- Local-model directory bar (non-sticky): the directory sources. The
+         merged page shell owns the sticky header and the refresh action
+         (delegated to this component via defineExpose), so this block scrolls
+         with the content. -->
+    <div class="dir-bar">
+      <div class="dir-sources">
+        <div class="dir-info">
+          <span class="dir-label">{{ t('models.downloadDir') }}</span>
+          <span class="dir-value">{{ downloadDir || t('settings.dirDefaultModels') }}</span>
         </div>
-        <button class="dir-btn" :title="t('models.chooseDirTitle')" @click="chooseModelsDir">{{ t('models.chooseDir') }}</button>
+        <div class="dir-info">
+          <span class="dir-label">{{ t('models.importDir') }}</span>
+          <span class="dir-value" :class="{ 'dir-empty': !modelsDir }">{{ modelsDir || t('models.dirNotSet') }}</span>
+        </div>
       </div>
-      <button class="refresh-btn" :disabled="loading" :title="t('models.refreshTitle')" @click="fetchModels(true)">{{ t('models.refresh') }}</button>
+      <button class="dir-btn" :title="t('models.chooseDirTitle')" @click="chooseModelsDir">{{ t('models.chooseDir') }}</button>
     </div>
 
     <!-- Loading skeleton -->
@@ -160,6 +157,12 @@ async function fetchModels(force = false) {
   }
 }
 
+// Expose the rescan action and loading state to the Models shell: the shell's
+// header refresh button delegates to the active local tab instance (the
+// keep-alive cache keeps this instance alive across tab switches, so the
+// shell ref stays valid; exposed refs unwrap, so loading reads as boolean)
+defineExpose({ fetchModels, loading })
+
 onMounted(() => {
   loadModelsDir()
   fetchModels()
@@ -173,47 +176,11 @@ onMounted(() => {
   min-width: 0;
 }
 
-/* ─── Local toolbar (non-sticky) ─── */
-.local-top {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 24px;
-}
-
-/* Directory bar fills the row; the refresh button sits beside it (the merged
-   shell owns the page header, so there is no dedicated header row here) */
-.local-top .dir-bar {
-  flex: 1;
-  min-width: 0;
-}
-
-.refresh-btn {
-  padding: 8px 18px;
-  background: rgba(99, 102, 241, 0.15);
-  color: #a78bfa;
-  border: 1px solid rgba(99, 102, 241, 0.25);
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-
-.refresh-btn:hover:not(:disabled) {
-  background: rgba(99, 102, 241, 0.25);
-  border-color: rgba(99, 102, 241, 0.4);
-}
-
-.refresh-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
 /* ─── Models directory bar ─── */
 .dir-bar {
+  /* Bottom spacing before the list: the shell's header refresh button took
+     over the old toolbar row, so this bar is the first content block */
+  margin-bottom: 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;

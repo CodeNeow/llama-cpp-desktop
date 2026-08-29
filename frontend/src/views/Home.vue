@@ -22,7 +22,7 @@
     </div>
 
     <!-- Scrollable content band: only this region scrolls, never the page -->
-    <div class="page-scroll">
+    <div ref="pageScrollEl" class="page-scroll">
       <!-- Loading skeleton -->
       <div v-if="loading" class="cards-grid">
         <div v-for="i in 6" :key="i" class="info-section skeleton-card">
@@ -46,6 +46,15 @@
 
       <!-- Data -->
       <template v-else>
+        <!-- Hardware section heading: the merged page stacks the hardware grid
+             and the runtime environment section below it, each with its own
+             heading (the runtime one lives inside RuntimeSection) -->
+        <h2 class="section-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/>
+          </svg>
+          {{ t('home.sectionHardware') }}
+        </h2>
         <div class="cards-grid">
           <!-- Quick-start checklist: full-width card, hides once every step
                completes or the user dismisses it -->
@@ -319,13 +328,18 @@
           </section>
         </div>
       </template>
+
+      <!-- Runtime environment section (llama.cpp status + download management):
+           rendered outside the hardware loading chain so both sections load
+           independently — the hardware skeleton/error never hides it -->
+      <RuntimeSection />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { getCPU, getMemory, getGPU, getCUDA, getOS, getDisk, getLlamaCpp, getModels, getMonitorStatus, getAppVersion } from '../wails'
 import { t } from '../lib/i18n'
 import { usagePercent, formatGB, formatMB, formatBytes } from '../lib/format'
@@ -333,6 +347,7 @@ import { aggregateVram, buildGpuDisplays, cudaCompatLevel, type GpuStaticInfo } 
 import { buildOnboardingView, type OnboardingStepId } from '../lib/onboarding'
 import type { MonitorStatus } from '../lib/monitor'
 import { appConfig, setOnboardingDismissed } from '../store'
+import RuntimeSection from '../components/RuntimeSection.vue'
 
 interface SystemInfo {
   os: string
@@ -363,6 +378,11 @@ const hasModels = ref(false)
 const cudartVersion = ref('')
 
 const router = useRouter()
+const route = useRoute()
+
+// Scrollable content band (see .page-scroll): the runtime section deep-link
+// scrolls inside this element, so the page itself never scrolls
+const pageScrollEl = ref<HTMLElement | null>(null)
 
 const ONBOARDING_LABELS: Record<OnboardingStepId, string> = {
   runtime: 'onboarding.step.runtime',
@@ -473,9 +493,36 @@ function dismissOnboarding() {
   setOnboardingDismissed(true)
 }
 
-function goStep(route: string) {
-  router.push(route)
+function goStep(path: string) {
+  router.push(path)
 }
+
+// ─── Runtime section deep-link ───────────────────────────────────
+
+/**
+ * Scroll the embedded runtime section into view inside the page scroll band
+ * (the page itself never scrolls). Honors /?section=runtime — the target of
+ * the onboarding "runtime" step and the /runtime compat redirect. The query
+ * is cleared after scrolling so clicking the step again re-triggers the
+ * navigation (and thus the scroll) instead of being a no-op.
+ */
+async function scrollToRuntimeSection() {
+  await nextTick()
+  const band = pageScrollEl.value
+  const target = document.getElementById('runtime-section')
+  if (!band || !target) return
+  const offset = target.getBoundingClientRect().top - band.getBoundingClientRect().top
+  band.scrollTo({ top: band.scrollTop + offset - 8, behavior: 'smooth' })
+  if (route.query.section === 'runtime') {
+    router.replace({ path: route.path, query: {} }).catch(() => {})
+  }
+}
+
+// Section deep-link: only ?section=runtime scrolls; other (or absent) values
+// never scroll
+watch(() => route.query.section, (section) => {
+  if (section === 'runtime') void scrollToRuntimeSection()
+})
 
 // ─── Data loading ────────────────────────────────────────────────
 
@@ -564,6 +611,10 @@ onMounted(() => {
   fetchSystemInfo()
   pollLive()
   pollTimer = setInterval(pollLive, 3000)
+  // Honor the runtime section deep-link once on mount (a /runtime redirect
+  // landing or a reload with ?section=runtime); later changes go through the
+  // watch above
+  if (route.query.section === 'runtime') void scrollToRuntimeSection()
 })
 
 onUnmounted(() => {

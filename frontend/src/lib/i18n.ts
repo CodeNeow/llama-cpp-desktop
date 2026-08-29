@@ -16,10 +16,9 @@ export type Locale = 'zh' | 'en'
 export const messages: Record<Locale, Record<string, string>> = {
   zh: {
     // ─── Sidebar navigation ───
-    'nav.home': '系统信息',
-    'nav.runtime': '运行环境',
+    'nav.home': '本机环境',
     'nav.chat': '本地聊天',
-    'nav.models': '模型',
+    'nav.models': '模型管理',
     'nav.api': 'API 路由',
     'nav.settings': '偏好设置',
     'nav.docs': '帮助',
@@ -34,9 +33,10 @@ export const messages: Record<Locale, Record<string, string>> = {
     'title.restore': '还原',
     'title.close': '关闭到托盘',
 
-    // ─── Home page (Home.vue) ───
-    'home.title': '系统信息',
-    'home.subtitle': '系统状态概览',
+    // ─── System Environment page (Home.vue: hardware + RuntimeSection) ───
+    'home.title': '本机环境',
+    'home.subtitle': '硬件配置与推理运行环境',
+    'home.sectionHardware': '硬件',
     'home.refresh': '刷新',
     'home.refreshing': '刷新中…',
     'home.updatedAt': '{time} 更新',
@@ -99,9 +99,8 @@ export const messages: Record<Locale, Record<string, string>> = {
     'action.gotoDownloads': '去下载模型',
     'home.backendError': '无法连接后端: {msg}',
 
-    // ─── Runtime environment page (Runtime.vue) ───
+    // ─── Runtime environment section (RuntimeSection.vue, embedded in Home.vue) ───
     'runtime.title': '运行环境',
-    'runtime.subtitle': '管理服务运行所需的推理引擎与运行时组件',
     'runtime.errorTitle': '无法获取运行环境信息',
     'runtime.retry': '重试',
     'runtime.backendError': '无法连接后端: {msg}',
@@ -127,7 +126,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'runtime.stop': '取消',
     'runtime.dlPausedHint': '下载已暂停，点击"继续"恢复',
 
-    // ─── Download status labels (shared: Runtime.vue / TaskDock.vue) ───
+    // ─── Download status labels (shared: RuntimeSection.vue / TaskDock.vue) ───
     'dl.fetching': '正在获取最新版本信息...',
     'dl.downloading': '正在下载',
     'dl.paused': '已暂停',
@@ -292,7 +291,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'settings.modelDownloadDirDesc': '新下载的模型将保存到此目录',
     'settings.choose': '选择',
     'settings.dirDefaultModels': 'LLM-Models',
-    'settings.directoriesHint': '下载路径决定新内容的落点；复用已有文件的外部路径仍在运行环境页与模型页的「我的模型」标签设置。',
+    'settings.directoriesHint': '下载路径决定新内容的落点；复用已有文件的外部路径仍在「本机环境」页与模型页的「我的模型」标签设置。',
     'settings.accessScope': '服务访问范围',
     'settings.accessDesc': '本地仅本机可访问；局域网允许同网络设备访问',
     'settings.accessLocal': '本地（127.0.0.1）',
@@ -505,8 +504,7 @@ export const messages: Record<Locale, Record<string, string>> = {
 
   en: {
     // ─── Sidebar navigation ───
-    'nav.home': 'System Info',
-    'nav.runtime': 'Runtime',
+    'nav.home': 'System',
     'nav.chat': 'Local Chat',
     'nav.models': 'Models',
     'nav.api': 'API Router',
@@ -523,9 +521,10 @@ export const messages: Record<Locale, Record<string, string>> = {
     'title.restore': 'Restore',
     'title.close': 'Close to tray',
 
-    // ─── Home (Home.vue) ───
-    'home.title': 'System Info',
-    'home.subtitle': 'System status overview',
+    // ─── System Environment page (Home.vue: hardware + RuntimeSection) ───
+    'home.title': 'System Environment',
+    'home.subtitle': 'Hardware and inference runtime at a glance',
+    'home.sectionHardware': 'Hardware',
     'home.refresh': 'Refresh',
     'home.refreshing': 'Refreshing…',
     'home.updatedAt': 'Updated {time}',
@@ -588,9 +587,8 @@ export const messages: Record<Locale, Record<string, string>> = {
     'action.gotoDownloads': 'Download models',
     'home.backendError': 'Unable to connect to backend: {msg}',
 
-    // ─── Runtime environment page (Runtime.vue) ───
+    // ─── Runtime environment section (RuntimeSection.vue, embedded in Home.vue) ───
     'runtime.title': 'Runtime Environment',
-    'runtime.subtitle': 'Manage the inference engine and runtime components the service needs',
     'runtime.errorTitle': 'Unable to load runtime info',
     'runtime.retry': 'Retry',
     'runtime.backendError': 'Unable to connect to backend: {msg}',
@@ -616,7 +614,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'runtime.stop': 'Cancel',
     'runtime.dlPausedHint': 'Download paused. Click "Resume" to continue',
 
-    // ─── Download status labels (shared: Runtime.vue / TaskDock.vue) ───
+    // ─── Download status labels (shared: RuntimeSection.vue / TaskDock.vue) ───
     'dl.fetching': 'Fetching latest release info...',
     'dl.downloading': 'Downloading',
     'dl.paused': 'Paused',
@@ -781,7 +779,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'settings.modelDownloadDirDesc': 'New model downloads are saved here',
     'settings.choose': 'Choose',
     'settings.dirDefaultModels': 'LLM-Models',
-    'settings.directoriesHint': 'Download paths decide where new content lands; external paths for reusing existing files stay on the Runtime page and the My Models tab of the Models page.',
+    'settings.directoriesHint': 'Download paths decide where new content lands; external paths for reusing existing files stay in the runtime section of the System Environment page and the My Models tab of the Models page.',
     'settings.accessScope': 'Server Access Scope',
     'settings.accessDesc': 'Local restricts to this machine; LAN allows devices on the same network',
     'settings.accessLocal': 'Local (127.0.0.1)',

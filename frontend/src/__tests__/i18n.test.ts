@@ -13,7 +13,7 @@ describe('lib/i18n', () => {
   })
 
   it('t gets current locale dict value (zh)', () => {
-    expect(t('nav.home')).toBe('系统信息')
+    expect(t('nav.home')).toBe('本机环境')
     expect(t('settings.themeMode')).toBe('主题模式')
   })
 
@@ -49,9 +49,8 @@ describe('lib/i18n', () => {
     expect(t('settings.repo')).toBe('Repository')
   })
 
-  it('runtime page and shared download labels render in both locales', () => {
+  it('runtime section and shared download labels render in both locales', () => {
     setLocale('zh')
-    expect(t('nav.runtime')).toBe('运行环境')
     expect(t('runtime.title')).toBe('运行环境')
     expect(t('runtime.llamacpp.path')).toBe('安装路径')
     expect(t('runtime.downloadDir')).toBe('下载路径')
@@ -61,7 +60,6 @@ describe('lib/i18n', () => {
     expect(t('dl.downloading')).toBe('正在下载')
     expect(t('dl.error')).toBe('下载失败')
     setLocale('en')
-    expect(t('nav.runtime')).toBe('Runtime')
     expect(t('runtime.title')).toBe('Runtime Environment')
     expect(t('runtime.llamacpp.path')).toBe('Install Path')
     expect(t('runtime.downloadDir')).toBe('Download Path')
@@ -96,7 +94,7 @@ describe('lib/i18n', () => {
 
   it('after setLocale, t returns corresponding language', () => {
     setLocale('en')
-    expect(t('nav.home')).toBe('System Info')
+    expect(t('nav.home')).toBe('System')
     expect(t('settings.themeMode')).toBe('Theme Mode')
     // English interpolation
     expect(t('home.cpu.coresValue', { n: 8 })).toBe('8 cores')
