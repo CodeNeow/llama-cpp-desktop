@@ -2,8 +2,21 @@
   <div class="page docs-page">
     <div class="sticky-top">
       <div class="page-header">
-        <h1 class="page-title">{{ t('docs.title') }}</h1>
-        <p class="page-subtitle">{{ t('docs.subtitle') }}</p>
+        <div class="page-header-text">
+          <h1 class="page-title">{{ t('docs.title') }}</h1>
+          <p class="page-subtitle">{{ t('docs.subtitle') }}</p>
+        </div>
+        <!-- Content source badge + escape hatches: the badge names the tier
+             that produced the pane (online fetch / disk cache / bundled),
+             refresh forces a fresh network round-trip, the GitHub button
+             opens the live docs directory in the browser. -->
+        <div class="docs-header-actions">
+          <span class="source-badge" :class="'source-' + docSource">{{ sourceLabel }}</span>
+          <button class="docs-action-btn" type="button" :disabled="refreshing" @click="refreshRemote">
+            {{ refreshing ? t('docs.refreshing') : t('docs.refresh') }}
+          </button>
+          <button class="docs-action-btn" type="button" @click="openOnGithub">{{ t('docs.openOnGithub') }}</button>
+        </div>
       </div>
     </div>
 
@@ -41,6 +54,9 @@ import { docSections, loadDocSection, type DocSectionId } from '../docs/manifest
 import { renderMarkdown } from '../lib/markdown'
 import { t, locale } from '../lib/i18n'
 import { LatestOnly } from '../lib/latestOnly'
+import { getRemoteDoc } from '../wails'
+import { DOCS_GITHUB_URLS, formatDocFetchedAt, resolveDocContent, type DocSourceState } from '../lib/remoteDocs'
+import { BrowserOpenURL } from '../../wailsjs/runtime'
 
 // Currently displayed section; defaults to the first entry of the manifest
 const activeSection = ref<DocSectionId>(docSections[0].id)
@@ -51,16 +67,41 @@ const content = ref('')
 const loading = ref(false)
 const loadError = ref('')
 
-// Race protection: a slow locale/section fetch must not overwrite a newer one
+// Source state of the displayed content (badge): which tier produced it —
+// a successful network fetch, the backend's disk cache, or the bundled copy
+const docSource = ref<DocSourceState>('bundled')
+// RFC3339 fetchedAt of the cached content; the badge shows it for 'cached'
+const fetchedAt = ref('')
+const refreshing = ref(false)
+
+// Badge label per current state; the cached state carries the fetch time, or
+// falls back to the plain label when the timestamp is unavailable (a cached
+// file whose meta entry is missing) — never a dangling "· " separator
+const sourceLabel = computed(() => {
+  if (docSource.value === 'online') return t('docs.sourceOnline')
+  if (docSource.value === 'cached') {
+    const when = formatDocFetchedAt(fetchedAt.value)
+    return when !== '' ? t('docs.sourceCached', { time: when }) : t('docs.sourceCachedPlain')
+  }
+  return t('docs.sourceBundled')
+})
+
+// Race protection: a slow locale/section fetch must not overwrite a newer one.
+// Shared by the section load and the refresh button so either path discards
+// the other's stale response.
 const latest = new LatestOnly()
 
 async function loadSection(): Promise<void> {
   const seq = latest.begin()
   loading.value = true
   loadError.value = ''
+  // Bundled text of this round; the remote result falls back to it (or to the
+  // pane's current text if the bundled asset itself failed — near-impossible)
+  let bundled = ''
   try {
     const md = await loadDocSection(activeSection.value, locale.value)
     if (!latest.isLatest(seq)) return
+    bundled = md
     content.value = md
   } catch (e) {
     if (!latest.isLatest(seq)) return
@@ -68,6 +109,53 @@ async function loadSection(): Promise<void> {
   } finally {
     if (latest.isLatest(seq)) loading.value = false
   }
+
+  // Remote-first refresh of the freshly shown section, under the SAME
+  // LatestOnly sequence: a quick section switch discards the stale response.
+  // Network trouble is an expected state — swallowed here (console.warn), the
+  // pane keeps the bundled text and the badge stays 'bundled'.
+  try {
+    const remote = await getRemoteDoc(locale.value, activeSection.value)
+    if (!latest.isLatest(seq)) return
+    const resolved = resolveDocContent(remote, bundled || content.value)
+    content.value = resolved.text
+    docSource.value = resolved.state
+    fetchedAt.value = resolved.state === 'bundled' ? '' : remote.fetchedAt
+  } catch (e) {
+    if (!latest.isLatest(seq)) return
+    console.warn('remote docs fetch failed; staying with bundled content', e)
+  }
+}
+
+// Refresh button: force a network round-trip for the current section. A usable
+// result swaps content + badge; an unusable one (or a binding rejection)
+// silently keeps the current content — network trouble never surfaces as an
+// error UI here.
+async function refreshRemote(): Promise<void> {
+  if (refreshing.value) return
+  refreshing.value = true
+  const seq = latest.begin()
+  try {
+    const remote = await getRemoteDoc(locale.value, activeSection.value, true)
+    if (!latest.isLatest(seq)) return
+    const resolved = resolveDocContent(remote, content.value)
+    if (resolved.state !== 'bundled') {
+      content.value = resolved.text
+      docSource.value = resolved.state
+      fetchedAt.value = remote.fetchedAt
+    }
+  } catch (e) {
+    console.warn('remote docs refresh failed; keeping current content', e)
+  } finally {
+    refreshing.value = false
+  }
+}
+
+// Escape hatch: open the current locale's docs directory on GitHub in the
+// system browser (Wails runtime), so the newest released tutorial is one
+// click away even when the remote fetch path is unavailable.
+function openOnGithub(): void {
+  BrowserOpenURL(DOCS_GITHUB_URLS[locale.value])
 }
 
 // Reload on section switch and on language switch (content follows app language reactively)
@@ -95,8 +183,70 @@ function selectSection(id: DocSectionId): void {
 }
 
 .page-header {
+  /* Flex row: title block left, badge + actions right (same layout as Models.vue) */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 16px;
   /* Use padding instead of margin: header background covers this gap so content scrolls without leaving a seam */
   padding-bottom: 36px;
+}
+
+.page-header-text {
+  min-width: 0;
+}
+
+/* ─── Header actions: source badge + refresh + open-on-GitHub ─── */
+.docs-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.source-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 12px;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+.source-badge.source-online {
+  color: var(--accent-light);
+  border-color: var(--accent-glow);
+  background: var(--active-bg);
+}
+
+.source-badge.source-cached {
+  color: var(--text-secondary);
+}
+
+.docs-action-btn {
+  padding: 6px 14px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.docs-action-btn:hover:not(:disabled) {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.docs-action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .page-title {

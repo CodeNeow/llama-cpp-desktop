@@ -497,6 +497,13 @@ export const messages: Record<Locale, Record<string, string>> = {
     'docs.section.settings': '偏好设置',
     'docs.section.headless': '无头模式',
     'docs.section.faq': '常见问题',
+    'docs.sourceOnline': '在线文档',
+    'docs.sourceCached': '缓存 · {time}',
+    'docs.sourceCachedPlain': '缓存',
+    'docs.sourceBundled': '内置文档',
+    'docs.refresh': '刷新',
+    'docs.refreshing': '刷新中…',
+    'docs.openOnGithub': '在浏览器查看最新文档',
   },
 
   en: {
@@ -982,6 +989,13 @@ export const messages: Record<Locale, Record<string, string>> = {
     'docs.section.settings': 'Preferences',
     'docs.section.headless': 'Headless Mode',
     'docs.section.faq': 'FAQ',
+    'docs.sourceOnline': 'Online docs',
+    'docs.sourceCached': 'Cached · {time}',
+    'docs.sourceCachedPlain': 'Cached',
+    'docs.sourceBundled': 'Bundled docs',
+    'docs.refresh': 'Refresh',
+    'docs.refreshing': 'Refreshing…',
+    'docs.openOnGithub': 'Open the latest docs in your browser',
   },
 }
 

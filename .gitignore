@@ -16,6 +16,7 @@ llama-cpp/
 llama-desktop-config.json
 llama-desktop-server-handover.json
 llama-desktop-benchcache.json
+llama-desktop-docscache/
 llama-gui-config.json
 .codegraph
 .zcode/plans/

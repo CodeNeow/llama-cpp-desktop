@@ -340,3 +340,24 @@ export async function getLoadedModels(): Promise<LoadedModel[]> {
 export async function unloadModel(id: string): Promise<void> {
   return app().UnloadModel(id)
 }
+
+// ─── Remote Docs (Docs page remote-first content) ────────────────────────────
+
+// RemoteDocResult mirrors the backend core.RemoteDocResult: text is the markdown
+// body (empty when source is "none"), source is the tier that produced it
+// ("online" | "cache" | "none") and fetchedAt is the RFC3339 timestamp of the
+// fetch that produced text ("" when none)
+export interface RemoteDocResult {
+  text: string
+  source: 'online' | 'cache' | 'none'
+  fetchedAt: string
+}
+
+// getRemoteDoc fetches one docs section's latest markdown from this repo's main
+// branch with the online → disk cache fallback decided on the backend (the
+// bundled tier stays in the frontend). Network unavailability is an expected
+// state, not an error: it resolves with source "none" or a cache hit; the call
+// rejects only for invalid arguments.
+export async function getRemoteDoc(lang: 'zh' | 'en', sectionId: string, force = false): Promise<RemoteDocResult> {
+  return app().GetRemoteDoc(lang, sectionId, force)
+}
