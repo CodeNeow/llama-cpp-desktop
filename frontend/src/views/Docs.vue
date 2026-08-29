@@ -40,7 +40,9 @@
            instance (lib/markdown.ts) runs with html:false, so raw HTML in the
            docs source is escaped, never rendered — the same injection defense
            as chat messages. -->
-      <article ref="contentEl" class="docs-content" :class="{ 'is-loading': loading }" v-html="rendered"></article>
+      <!-- Delegated link handler: external links open in the system browser,
+           the WebView never navigates (see lib/linkHandler.ts) -->
+      <article ref="contentEl" class="docs-content" :class="{ 'is-loading': loading }" v-html="rendered" @click="handleLinkClick"></article>
     </div>
 
     <!-- Load failure of a bundled asset is practically impossible; still handled without silently swallowing -->
@@ -52,6 +54,7 @@
 import { ref, computed, watch, nextTick } from 'vue'
 import { docSections, loadDocSection, type DocSectionId } from '../docs/manifest'
 import { renderMarkdown } from '../lib/markdown'
+import { handleLinkClick } from '../lib/linkHandler'
 import { t, locale } from '../lib/i18n'
 import { LatestOnly } from '../lib/latestOnly'
 import { getRemoteDoc } from '../wails'

@@ -52,7 +52,9 @@
           <h2 class="section-title">{{ t('downloads.descTitle') }}</h2>
           <div class="desc-body">
             <div v-if="descLoading" class="desc-loading">{{ t('downloads.loadingDesc') }}</div>
-            <div v-else-if="description" class="desc-text" v-html="renderDescription(description)"></div>
+            <!-- Delegated link handler: external links open in the system browser,
+                 the WebView never navigates (see lib/linkHandler.ts) -->
+            <div v-else-if="description" class="desc-text" v-html="renderDescription(description)" @click="handleLinkClick"></div>
             <div v-else class="desc-empty">{{ t('downloads.noDesc') }}</div>
           </div>
         </section>
@@ -94,6 +96,7 @@ import { getModelFiles, getModelDescription, startDownload } from '../wails'
 import { sortModelFiles, guessQuant } from '../lib/modelFiles'
 import { formatBytes } from '../lib/format'
 import { renderDescription } from '../lib/markdown'
+import { handleLinkClick } from '../lib/linkHandler'
 import { t } from '../lib/i18n'
 
 const router = useRouter()

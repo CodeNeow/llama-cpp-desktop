@@ -84,7 +84,9 @@
     </div>
 
     <!-- Messages area -->
-    <div v-else ref="messagesContainer" class="messages-area">
+    <!-- Delegated link handler: links in assistant markdown open in the system
+         browser, the WebView never navigates (see lib/linkHandler.ts) -->
+    <div v-else ref="messagesContainer" class="messages-area" @click="handleLinkClick">
       <div v-if="routerModels.length === 0" class="empty-hint">{{ t('chat.noModels') }}</div>
       <template v-else>
         <div v-if="messages.length === 0" class="empty-hint">{{ t('chat.emptyHint') }}</div>
@@ -190,6 +192,7 @@ import { fetchRouterModels, streamChatCompletion, buildChatBody, tokenRates } fr
 import { messages, selectedModel, streaming, chatAbortController, persistChat, reconcileSelectedModel, chatParams, persistChatParams, type ChatMessage, type ChatParams } from '../lib/chatState'
 import { t } from '../lib/i18n'
 import { renderMarkdown } from '../lib/markdown'
+import { handleLinkClick } from '../lib/linkHandler'
 import { isNearBottom } from '../lib/scroll'
 import ThemedSelect, { type SelectOption } from '../components/ThemedSelect.vue'
 
