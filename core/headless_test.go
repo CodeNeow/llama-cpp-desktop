@@ -1,6 +1,10 @@
 package core
 
 import (
+	"encoding/json"
+	"fmt"
+	"net"
+	"net/http"
 	"os"
 	"strings"
 	"testing"
@@ -435,4 +439,98 @@ func TestSetApiRouteModeRequiresTray(t *testing.T) {
 	if switchRestartPending.Load() {
 		t.Error("switch-restart marker must stay unset when the guard rejects the call")
 	}
+}
+
+// ─── Control plane wiring (startControlPlaneHeadless / stopControlPlane) ──
+
+// resetControlPlaneState forces the control plane to the "not running" state
+// before and after a test, so wiring tests never leak a stored server.
+func resetControlPlaneState(t *testing.T) {
+	t.Helper()
+	controlPlaneMu.Lock()
+	controlPlaneServer = nil
+	controlPlaneMu.Unlock()
+	t.Cleanup(func() {
+		controlPlaneMu.Lock()
+		controlPlaneServer = nil
+		controlPlaneMu.Unlock()
+	})
+}
+
+// TestControlPlaneHeadlessWiring verifies the RunHeadless wiring helpers on
+// an injected ephemeral listener (the fixed port is never bound): a
+// successful start stores the server and serves /health, and stopControlPlane
+// shuts it down so subsequent requests fail.
+func TestControlPlaneHeadlessWiring(t *testing.T) {
+	resetControlPlaneState(t)
+	orig := controlPlaneListen
+	var ln net.Listener
+	controlPlaneListen = func(network, addr string) (net.Listener, error) {
+		// Bind an ephemeral loopback port instead of the fixed 1900.
+		l, err := net.Listen(network, "127.0.0.1:0")
+		ln = l
+		return l, err
+	}
+	t.Cleanup(func() { controlPlaneListen = orig })
+
+	startControlPlaneHeadless()
+	controlPlaneMu.Lock()
+	stored := controlPlaneServer
+	controlPlaneMu.Unlock()
+	if stored == nil || ln == nil {
+		t.Fatal("successful start must store the control-plane server")
+	}
+
+	var body map[string]interface{}
+	resp, err := http.Get("http://" + ln.Addr().String() + "/health")
+	if err != nil {
+		t.Fatalf("GET /health after start: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("health status = %d, want 200", resp.StatusCode)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode health body: %v", err)
+	}
+	if body["status"] != "ok" || body["headless"] != true {
+		t.Errorf("health body = %v, want {status:ok, headless:true}", body)
+	}
+
+	stopControlPlane()
+	if _, err := http.Get("http://" + ln.Addr().String() + "/health"); err == nil {
+		t.Error("requests must fail after stopControlPlane (listener closed)")
+	}
+	controlPlaneMu.Lock()
+	stored = controlPlaneServer
+	controlPlaneMu.Unlock()
+	if stored != nil {
+		t.Error("stopControlPlane must clear the stored server")
+	}
+}
+
+// TestControlPlaneDegradedStart verifies the degraded branch the headless
+// startup relies on: an occupied port surfaces an error from
+// startControlPlane, the wrapper logs a warning and continues (stores
+// nothing, does not panic), and stopControlPlane stays a safe no-op.
+func TestControlPlaneDegradedStart(t *testing.T) {
+	resetControlPlaneState(t)
+	orig := controlPlaneListen
+	controlPlaneListen = func(network, addr string) (net.Listener, error) {
+		return nil, fmt.Errorf("listen %s: port busy", addr)
+	}
+	t.Cleanup(func() { controlPlaneListen = orig })
+
+	if _, err := startControlPlane(); err == nil {
+		t.Fatal("an occupied port must surface an error from startControlPlane")
+	}
+
+	startControlPlaneHeadless() // degraded: logs WARN, keeps going
+	controlPlaneMu.Lock()
+	stored := controlPlaneServer
+	controlPlaneMu.Unlock()
+	if stored != nil {
+		t.Error("degraded start must not store a control-plane server")
+	}
+	stopControlPlane() // no-op, must not panic
 }

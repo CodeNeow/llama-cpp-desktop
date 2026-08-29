@@ -184,11 +184,19 @@ func RunHeadless(icon []byte) {
 		return
 	}
 
+	// Loopback control plane (core/controlplane.go): first thing after the
+	// startup decision is final, so /health answers as early as possible. A
+	// bind failure only logs a warning — headless start continues degraded.
+	startControlPlaneHeadless()
+
 	InitHeadlessTray(icon, returnToGuiFromHeadless, requestHeadlessExit)
 	startOrAdoptServer()
 
 	<-headlessExit
 	QuitTray()
+	// Stop the control plane on both exit paths (mode switch and real quit):
+	// both end in process exit, so this is hygiene, not lifetime keeping.
+	stopControlPlane()
 
 	if switchRestartPending.Load() {
 		// Switching to the relaunched process: it adopts the service via the
