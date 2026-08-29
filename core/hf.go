@@ -217,13 +217,12 @@ func getModelDescription(modelID string) (string, error) {
 }
 
 // getModelDescriptionAt fetches the README of a model on an HF-compatible base
-// and extracts its natural-language description:
+// and returns its full body as the model description:
 //   - GET {base}/{modelID}/raw/main/README.md (User-Agent via appUserAgent(), 30s timeout)
-//   - non-200 returns an error; YAML front-matter (a block starting with ---) is skipped
-//   - split by blank lines, take the first paragraph that is non-empty and does
-//     not start with #, trim it and truncate to 200 runes
-//   - when the README exists but has no description paragraph, return an empty
-//     string and a nil error (silent)
+//   - non-200 returns an error
+//   - the body is read up to readmeMaxBytes+1 bytes (overflow detection) and
+//     passed through the shared readmeDescription helper (front-matter skip +
+//     size cap; no paragraph selection or excerpt truncation)
 func getModelDescriptionAt(baseURL, modelID string) (string, error) {
 	readmeURL := fmt.Sprintf("%s/%s/raw/main/README.md", baseURL, modelID)
 
@@ -244,26 +243,42 @@ func getModelDescriptionAt(baseURL, modelID string) (string, error) {
 		return "", fmt.Errorf(tr("README 获取失败: HTTP %d", "failed to fetch README: HTTP %d"), resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	// Read at most readmeMaxBytes+1 bytes so an over-cap README is detected
+	// without buffering an unbounded response.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, readmeMaxBytes+1))
 	if err != nil {
 		return "", err
 	}
 
-	return extractDescription(string(body)), nil
+	return readmeDescription(string(body)), nil
 }
 
-// extractDescription extracts the natural-language description from a README
-// body (shared by HF and ModelScope):
-//   - skip YAML front-matter (a block whose first line trims to ---)
-//   - split by blank lines, take the first paragraph that is non-empty and does
-//     not start with #, trim it and truncate to 200 runes
-//   - return an empty string when the body has no description paragraph
-//     (silent, not treated as a failure)
-func extractDescription(body string) string {
+// readmeMaxBytes caps the README body served as a model description: 512 KiB is
+// far above any real README while keeping the description bounded against
+// abuse. Declared as a var (same injection-point style as cmdTimeout /
+// docsMaxBytes) so tests can shrink it.
+var readmeMaxBytes int64 = 512 * 1024
+
+// readmeDescription turns a fetched README body into the model description
+// (shared by HF and ModelScope). The FULL body is the description — no
+// paragraph selection and no 200-rune excerpt truncation — so users always see
+// the complete document (HTML-first READMEs are no longer cut mid-tag):
+//   - when the body exceeds readmeMaxBytes (callers read up to
+//     readmeMaxBytes+1 bytes to detect overflow), cut it to readmeMaxBytes and
+//     append one trailing "\n\n…" marker. A 512 KiB cut landing mid-HTML-tag is
+//     accepted: the frontend strips tags and this only triggers on
+//     pathologically huge READMEs.
+//   - skip YAML front-matter: when the first line trims to ---, drop
+//     everything through the closing ---
+func readmeDescription(body string) string {
+	if int64(len(body)) > readmeMaxBytes {
+		body = body[:readmeMaxBytes] + "\n\n…"
+	}
+
 	lines := strings.Split(body, "\n")
 	start := 0
-	// Skip YAML front-matter: when the first line trims to ---, skip past the
-	// next ---
+	// Skip YAML front-matter: when the first line trims to ---, drop everything
+	// through the next ---
 	if len(lines) > 0 && strings.TrimSpace(lines[0]) == "---" {
 		for i := 1; i < len(lines); i++ {
 			if strings.TrimSpace(lines[i]) == "---" {
@@ -272,43 +287,7 @@ func extractDescription(body string) string {
 			}
 		}
 	}
-
-	// Split by blank lines, take the first paragraph that is non-empty and
-	// does not start with #
-	var paragraphs []string
-	var cur strings.Builder
-	flush := func() {
-		if cur.Len() > 0 {
-			paragraphs = append(paragraphs, cur.String())
-			cur.Reset()
-		}
-	}
-	for _, line := range lines[start:] {
-		if strings.TrimSpace(line) == "" {
-			flush()
-			continue
-		}
-		if cur.Len() > 0 {
-			cur.WriteString("\n")
-		}
-		cur.WriteString(line)
-	}
-	flush()
-
-	for _, p := range paragraphs {
-		trimmed := strings.TrimSpace(p)
-		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
-			continue
-		}
-		// Truncate to 200 runes, appending an ellipsis when exceeded
-		runes := []rune(trimmed)
-		if len(runes) > 200 {
-			return string(runes[:200]) + "..."
-		}
-		return trimmed
-	}
-
-	return ""
+	return strings.Join(lines[start:], "\n")
 }
 
 // getHFModelFiles lists downloadable GGUF files for a model via the default mirror.

@@ -219,7 +219,9 @@ func TestBuildModelScopeDownloadURL(t *testing.T) {
 }
 
 // newModelScopeDescServer starts a local server simulating ModelScope README: distinguishes
-// normal description, overlong paragraph, no-description paragraph, and non-existent path.
+// a full README (front-matter + headings + paragraphs), a long-paragraph README (210
+// runes, verifies no excerpt truncation), a front-matter-only README (empty
+// description), and non-existent path.
 // ModelScope description uses the repo endpoint
 // ({legacyBase}/{PathEscape(modelID)}/repo?FilePath=README.md), modelID is embedded
 // in the URL path and used as the routing criterion.
@@ -228,23 +230,24 @@ func newModelScopeDescServer(t *testing.T) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/author/model/repo":
-			w.Write([]byte("---\nlicense: apache-2.0\n---\n\n# 标题\n\n第一段自然语言描述，用于验证 ModelScope front-matter 跳过与段落提取。\n\n## 子标题\n\n不应被返回的第二段。\n"))
+			w.Write([]byte("---\nlicense: apache-2.0\n---\n\n# 标题\n\n第一段自然语言描述，用于验证 ModelScope front-matter 跳过。\n\n## 子标题\n\n第二段属于子标题之下，也必须完整返回。\n"))
 		case "/author/longmodel/repo":
-			// construct a paragraph exceeding 200 runes (70×3=210 runes), verify truncation and ellipsis
+			// construct a paragraph of 210 runes; the full body is the description,
+			// so it must come back complete (no 200-rune excerpt)
 			para := strings.Repeat("长描述", 70)
 			w.Write([]byte("---\ntags: test\n---\n\n# 标题\n\n" + para + "\n"))
-		case "/author/nodesc/repo":
-			// README exists but has no usable description paragraph (all headings)
-			w.Write([]byte("---\nlicense: mit\n---\n\n# 只有标题\n\n## 另一个标题\n"))
+		case "/author/empty/repo":
+			// README that is empty after front-matter skipping: silent empty description
+			w.Write([]byte("---\nlicense: mit\n---"))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 }
 
-// TestGetModelScopeDescriptionAt verifies ModelScope README description extraction: skips
-// YAML front-matter and heading lines, returns the first natural-language paragraph
-// (shares extractDescription with HF).
+// TestGetModelScopeDescriptionAt verifies the FULL README body is served as the
+// description: YAML front-matter is dropped, everything after it (headings and
+// all paragraphs) is returned unchanged (shares readmeDescription with HF).
 func TestGetModelScopeDescriptionAt(t *testing.T) {
 	srv := newModelScopeDescServer(t)
 	defer srv.Close()
@@ -254,17 +257,18 @@ func TestGetModelScopeDescriptionAt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if desc != "第一段自然语言描述，用于验证 ModelScope front-matter 跳过与段落提取。" {
-		t.Errorf("desc = %q, must not contain front-matter or heading lines", desc)
+	want := "\n# 标题\n\n第一段自然语言描述，用于验证 ModelScope front-matter 跳过。\n\n## 子标题\n\n第二段属于子标题之下，也必须完整返回。\n"
+	if desc != want {
+		t.Errorf("desc = %q, want full body after front-matter %q", desc, want)
 	}
-	if strings.Contains(desc, "---") || strings.Contains(desc, "license") || strings.Contains(desc, "#") {
-		t.Errorf("desc must not contain front-matter or heading content: %q", desc)
+	if strings.Contains(desc, "---") || strings.Contains(desc, "license") {
+		t.Errorf("desc must not contain front-matter content: %q", desc)
 	}
 }
 
-// TestGetModelScopeDescriptionAtTruncate verifies overlong paragraphs are truncated at 200
-// runes with an ellipsis appended.
-func TestGetModelScopeDescriptionAtTruncate(t *testing.T) {
+// TestGetModelScopeDescriptionAtLongBodyFull verifies the long 210-rune paragraph
+// comes back complete: no 200-rune excerpt truncation on the HTTP path.
+func TestGetModelScopeDescriptionAtLongBodyFull(t *testing.T) {
 	srv := newModelScopeDescServer(t)
 	defer srv.Close()
 	withModelScopeBases(t, srv.URL, srv.URL)
@@ -273,29 +277,29 @@ func TestGetModelScopeDescriptionAtTruncate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runes := []rune(desc)
-	if len(runes) != 203 { // 200 runes + "..."
-		t.Fatalf("truncated length = %d runes, want 203", len(runes))
+	want := "\n# 标题\n\n" + strings.Repeat("长描述", 70) + "\n"
+	if desc != want {
+		t.Errorf("desc = %q (len %d), want full untruncated body (len %d)", desc, len(desc), len(want))
 	}
-	if !strings.HasSuffix(desc, "...") {
-		t.Errorf("truncated description should end with ...: %q", desc)
+	if strings.HasSuffix(desc, "...") || strings.HasSuffix(desc, "…") {
+		t.Errorf("long description must not be truncated: %q", desc)
 	}
 }
 
-// TestGetModelScopeDescriptionAtNoDescription verifies that when a README exists but has no
-// description paragraph, an empty string and nil error are returned (silent handling,
+// TestGetModelScopeDescriptionAtEmptyBody verifies that a README which is empty after
+// front-matter skipping returns an empty string and nil error (silent handling,
 // consistent with HF).
-func TestGetModelScopeDescriptionAtNoDescription(t *testing.T) {
+func TestGetModelScopeDescriptionAtEmptyBody(t *testing.T) {
 	srv := newModelScopeDescServer(t)
 	defer srv.Close()
 	withModelScopeBases(t, srv.URL, srv.URL)
 
-	desc, err := getModelScopeDescriptionAt(srv.URL, "author/nodesc")
+	desc, err := getModelScopeDescriptionAt(srv.URL, "author/empty")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if desc != "" {
-		t.Errorf("no description paragraph should return empty string, got %q", desc)
+		t.Errorf("empty README body should return empty string, got %q", desc)
 	}
 }
 

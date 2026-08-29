@@ -282,11 +282,11 @@ func getModelScopeDescription(modelID string) (string, error) {
 }
 
 // getModelScopeDescriptionAt fetches the README of a model via the repo
-// endpoint (FilePath=README.md), then passes it to the shared
-// extractDescription to extract natural-language description (skips YAML
-// front-matter + takes first non-empty non-# paragraph + 200 rune truncation,
-// matching HF behavior). Non-200 returns error; README present but without a
-// description paragraph returns empty string and nil (silent).
+// endpoint (FilePath=README.md), then passes it to the shared readmeDescription
+// helper (skips YAML front-matter + enforces the readmeMaxBytes size cap; the
+// full body is otherwise returned, matching HF behavior). Non-200 returns
+// error; a README that is empty after front-matter skipping returns an empty
+// string and nil (silent).
 func getModelScopeDescriptionAt(legacyBase, modelID string) (string, error) {
 	apiURL := buildModelScopeDownloadURL(legacyBase, modelID, "README.md")
 
@@ -307,9 +307,11 @@ func getModelScopeDescriptionAt(legacyBase, modelID string) (string, error) {
 		return "", fmt.Errorf(tr("README 获取失败: HTTP %d", "failed to fetch README: HTTP %d"), resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	// Read at most readmeMaxBytes+1 bytes so an over-cap README is detected
+	// without buffering an unbounded response (same as the HF path).
+	body, err := io.ReadAll(io.LimitReader(resp.Body, readmeMaxBytes+1))
 	if err != nil {
 		return "", err
 	}
-	return extractDescription(string(body)), nil
+	return readmeDescription(string(body)), nil
 }

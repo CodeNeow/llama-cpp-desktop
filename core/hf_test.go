@@ -201,29 +201,36 @@ func TestSearchHFMirrorAtPartialSortFailure(t *testing.T) {
 }
 
 // newReadmeServer starts a local server simulating README, used by getModelDescriptionAt
-// tests to inject baseURL. Return values are distinguished by path: normal README,
-// overlong paragraph README, no-description-paragraph README, and non-existent path (404).
+// tests to inject baseURL. Return values are distinguished by path: a full README
+// (front-matter + headings + paragraphs), a long-paragraph README (210 runes, verifies
+// no excerpt truncation), a huge README (verifies the readmeMaxBytes download cap),
+// a front-matter-only README (empty description), and non-existent path (404).
 func newReadmeServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/author/model/raw/main/README.md":
-			w.Write([]byte("---\nlicense: apache-2.0\n---\n\n# 标题\n\n第一段自然语言描述，用于验证 front-matter 跳过与段落提取。\n\n## 子标题\n\n第二段属于子标题之下，不应被返回。\n"))
+			w.Write([]byte("---\nlicense: apache-2.0\n---\n\n# 标题\n\n第一段自然语言描述，用于验证 front-matter 跳过。\n\n## 子标题\n\n第二段属于子标题之下，也必须完整返回。\n"))
 		case "/author/longmodel/raw/main/README.md":
-			// construct a paragraph exceeding 200 runes (70×3=210 runes), verify truncation and ellipsis
+			// construct a paragraph of 210 runes; the full body is the description,
+			// so it must come back complete (no 200-rune excerpt)
 			para := strings.Repeat("长描述", 70) // 210 runes
 			w.Write([]byte("---\ntags: test\n---\n\n# 标题\n\n" + para + "\n"))
-		case "/author/nodesc/raw/main/README.md":
-			// README exists but has no usable description paragraph (all headings)
-			w.Write([]byte("---\nlicense: mit\n---\n\n# 只有标题\n\n## 另一个标题\n"))
+		case "/author/huge/raw/main/README.md":
+			// body far beyond the (test-shrunk) cap, no front-matter
+			w.Write([]byte(strings.Repeat("x", 200)))
+		case "/author/empty/raw/main/README.md":
+			// README that is empty after front-matter skipping: silent empty description
+			w.Write([]byte("---\nlicense: mit\n---"))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 }
 
-// TestGetModelDescriptionAt verifies README description extraction: skips YAML
-// front-matter and heading lines, returns the first natural-language paragraph.
+// TestGetModelDescriptionAt verifies the FULL README body is served as the
+// description: YAML front-matter is dropped, everything after it (headings and
+// all paragraphs) is returned unchanged.
 func TestGetModelDescriptionAt(t *testing.T) {
 	srv := newReadmeServer(t)
 	defer srv.Close()
@@ -232,20 +239,18 @@ func TestGetModelDescriptionAt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if desc != "第一段自然语言描述，用于验证 front-matter 跳过与段落提取。" {
-		t.Errorf("desc = %q, must not contain front-matter or heading lines", desc)
+	want := "\n# 标题\n\n第一段自然语言描述，用于验证 front-matter 跳过。\n\n## 子标题\n\n第二段属于子标题之下，也必须完整返回。\n"
+	if desc != want {
+		t.Errorf("desc = %q, want full body after front-matter %q", desc, want)
 	}
 	if strings.Contains(desc, "---") || strings.Contains(desc, "license") {
 		t.Errorf("desc must not contain front-matter content: %q", desc)
 	}
-	if strings.Contains(desc, "#") {
-		t.Errorf("desc must not contain heading lines: %q", desc)
-	}
 }
 
-// TestGetModelDescriptionAtTruncate verifies overlong paragraphs are truncated at 200
-// runes with an ellipsis appended.
-func TestGetModelDescriptionAtTruncate(t *testing.T) {
+// TestGetModelDescriptionAtLongBodyFull verifies the long 210-rune paragraph
+// comes back complete: no 200-rune excerpt truncation on the HTTP path.
+func TestGetModelDescriptionAtLongBodyFull(t *testing.T) {
 	srv := newReadmeServer(t)
 	defer srv.Close()
 
@@ -253,12 +258,33 @@ func TestGetModelDescriptionAtTruncate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runes := []rune(desc)
-	if len(runes) != 203 { // 200 runes + "..."
-		t.Fatalf("truncated length = %d runes, want 203", len(runes))
+	want := "\n# 标题\n\n" + strings.Repeat("长描述", 70) + "\n"
+	if desc != want {
+		t.Errorf("desc = %q (len %d), want full untruncated body (len %d)", desc, len(desc), len(want))
 	}
-	if !strings.HasSuffix(desc, "...") {
-		t.Errorf("truncated description should end with ...: %q", desc)
+	if strings.HasSuffix(desc, "...") || strings.HasSuffix(desc, "…") {
+		t.Errorf("long description must not be truncated: %q", desc)
+	}
+}
+
+// TestGetModelDescriptionAtOverCap verifies the download-time readmeMaxBytes cap:
+// with the var shrunk, a README beyond the cap is cut to the cap with one
+// trailing "\n\n…" marker (LimitReader wiring exercised end to end).
+func TestGetModelDescriptionAtOverCap(t *testing.T) {
+	srv := newReadmeServer(t)
+	defer srv.Close()
+
+	orig := readmeMaxBytes
+	readmeMaxBytes = 64
+	defer func() { readmeMaxBytes = orig }()
+
+	desc, err := getModelDescriptionAt(srv.URL, "author/huge")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := strings.Repeat("x", 64) + "\n\n…"
+	if desc != want {
+		t.Errorf("desc = %q (len %d), want capped %q (len %d)", desc, len(desc), want, len(want))
 	}
 }
 
@@ -274,20 +300,87 @@ func TestGetModelDescriptionAtNotFound(t *testing.T) {
 	}
 }
 
-// TestGetModelDescriptionAtNoDescription verifies that when a README exists but has no
-// description paragraph, an empty string and nil error are returned (silent handling,
+// TestGetModelDescriptionAtEmptyBody verifies that a README which is empty after
+// front-matter skipping returns an empty string and nil error (silent handling,
 // not treated as failure).
-func TestGetModelDescriptionAtNoDescription(t *testing.T) {
+func TestGetModelDescriptionAtEmptyBody(t *testing.T) {
 	srv := newReadmeServer(t)
 	defer srv.Close()
 
-	desc, err := getModelDescriptionAt(srv.URL, "author/nodesc")
+	desc, err := getModelDescriptionAt(srv.URL, "author/empty")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if desc != "" {
-		t.Errorf("no description paragraph should return empty string, got %q", desc)
+		t.Errorf("empty README body should return empty string, got %q", desc)
 	}
+}
+
+// TestReadmeDescription is a table-driven offline test for the shared
+// readmeDescription helper (pure function, no network):
+//   - plain markdown passes through unchanged (no paragraph selection, no
+//     excerpt truncation);
+//   - YAML front-matter is dropped through the closing ---;
+//   - HTML-heavy content passes through WITHOUT any mid-tag cutting in the
+//     normal path.
+//
+// The readmeMaxBytes cap cases live in their own subtests because they shrink
+// the package var (restored afterward).
+func TestReadmeDescription(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "plain markdown passes through unchanged",
+			body: "# Title\n\nFirst paragraph.\n\n- list item\n\nSecond paragraph.\n",
+			want: "# Title\n\nFirst paragraph.\n\n- list item\n\nSecond paragraph.\n",
+		},
+		{
+			name: "YAML front-matter is skipped",
+			body: "---\nlicense: apache-2.0\ntags: test\n---\n\n# Title\n\nBody after front-matter.\n",
+			want: "\n# Title\n\nBody after front-matter.\n",
+		},
+		{
+			name: "HTML-heavy body passes through without mid-tag cutting",
+			body: "<p style=\"color:red\">Styled intro</p>\n\n<a href=\"https://example.com\">link</a>\n\n## Usage\n\nNormal text.\n",
+			want: "<p style=\"color:red\">Styled intro</p>\n\n<a href=\"https://example.com\">link</a>\n\n## Usage\n\nNormal text.\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := readmeDescription(tt.body); got != tt.want {
+				t.Errorf("readmeDescription() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+
+	// Cap case: shrink readmeMaxBytes (restored after) and verify a body beyond
+	// the cap is cut to the cap with one trailing "\n\n…" marker.
+	t.Run("content beyond readmeMaxBytes is cut with trailing marker", func(t *testing.T) {
+		orig := readmeMaxBytes
+		readmeMaxBytes = 64
+		defer func() { readmeMaxBytes = orig }()
+
+		got := readmeDescription(strings.Repeat("x", 100))
+		want := strings.Repeat("x", 64) + "\n\n…"
+		if got != want {
+			t.Errorf("readmeDescription() = %q (len %d), want %q (len %d)", got, len(got), want, len(want))
+		}
+	})
+
+	// Boundary: a body of exactly readmeMaxBytes bytes is not cut.
+	t.Run("body exactly at readmeMaxBytes is not cut", func(t *testing.T) {
+		orig := readmeMaxBytes
+		readmeMaxBytes = 64
+		defer func() { readmeMaxBytes = orig }()
+
+		body := strings.Repeat("y", 64)
+		if got := readmeDescription(body); got != body {
+			t.Errorf("readmeDescription() = %q, want unchanged %q", got, body)
+		}
+	})
 }
 
 // TestGetHFModelFilesAt verifies the model file list: only top-level .gguf files are
