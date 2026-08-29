@@ -4,7 +4,7 @@ Three steps to run a local LLM: **install the runtime → download a model → s
 
 llama.cpp is the inference engine that actually runs the model; the app launches the local service through it.
 
-1. Open the "Runtime" page in the sidebar.
+1. Open the System Environment page in the sidebar and find the "Runtime Environment" section.
 2. If it shows "Not found", click "Download llama.cpp" — the app fetches the latest release and extracts it into the download path.
 3. When the download finishes, the status flips to "Installed" with the version and install path shown.
 
@@ -24,14 +24,12 @@ Finished models appear automatically on the "My Models" tab of the Models page. 
 ## Step 3: Start the service
 
 1. Open the "API Router" page and click "Start Server".
-2. Once the status shows "Running", the service address appears on the page (default `http://127.0.0.1:8080`).
-3. Now you can:
-   - chat with the model right on the "Local Chat" page;
-   - connect any OpenAI-compatible client to the service (see the curl example in the "API Service" section).
+2. Once the status shows "Running", the service address appears on the page (default `http://127.0.0.1:8080`) and any OpenAI-compatible client can connect to the endpoint (see the curl example in the "API Service" section).
+3. Only here to chat? This step is skippable: open the "Local Chat" page and send a message — the app starts the service automatically and loads the selected model on demand.
 
 ## The quick-start checklist on Home
 
-On first use, the "System Info" page shows a "Quick Start" checklist card at the top:
+On first use, the System Environment page shows a "Quick Start" checklist card at the top:
 
 - The card lists the three steps above; unfinished steps carry a "Set up" button that jumps straight to the relevant page;
 - Each step gets ticked automatically as you complete it; once all are done the card hides itself;

@@ -2,10 +2,14 @@ The "Local Chat" page is a ready-to-use chat interface talking straight to your 
 
 ## Starting a chat
 
-1. **Start the service** on the "API Router" page first — the chat page relies on it for inference. While the service is off, the page shows a notice card with a shortcut to the API page;
-2. Back on the chat page, pick a model in the dropdown at the top (the list comes from the models the service recognized);
-3. Type a message in the input box — **Enter sends, Shift+Enter makes a new line**;
+1. Pick a model in the dropdown at the top (the list comes from the models recognized on this machine — the service does not need to be running yet);
+2. Type a message in the input box — **Enter sends, Shift+Enter makes a new line**;
+3. If the service is not running yet, sending **starts it automatically** and loads the selected model on demand before streaming begins — no trip to the "API Router" page needed (that page still offers manual start/stop and monitoring);
 4. Replies stream in token by token; when a reply finishes, its generation speed (tok/s) is shown under the message.
+
+Before the auto-start, a guided check runs: with no usable models you are pointed to the Models page to download or import one; if the llama.cpp runtime is missing you are pointed to the "Runtime Environment" section of the System Environment page. Fill the gap and you are ready to chat.
+
+Sending a message first unloads every OTHER loaded model so the selected one is the only one in memory; load / unload changes show up in the task dock in real time, and models can be unloaded from there at any moment.
 
 Multimodal models (with an mmproj file) can also take images: use the paperclip button next to the input box to attach one and let the model describe it.
 
