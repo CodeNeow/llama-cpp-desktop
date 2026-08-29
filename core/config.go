@@ -128,6 +128,13 @@ type ServerConfig struct {
 	// APIKey is the optional llama-server --api-key bearer token; empty means
 	// no authentication (default, current behavior).
 	APIKey string `json:"apiKey"`
+	// DeviceID is the serving-GPU selection: the stable nvidia-smi UUID of the
+	// GPU llama-server is pinned to via CUDA_VISIBLE_DEVICES (see
+	// bridge.cudaDeviceEnv). Empty means auto (CUDA default device order, the
+	// historical behavior). Non-empty values are validated against the current
+	// GPU probe list in SaveServerConfig; old configs missing the field load
+	// as "" (auto) naturally.
+	DeviceID string `json:"deviceId"`
 }
 
 type ModelConfig struct {
@@ -285,6 +292,9 @@ func loadConfig() {
 	// APIKey: Go zero value "" (no authentication) already covers old configs
 	// missing the field, no fallback needed.
 	scfg.APIKey = cfg.ServerConfig.APIKey
+	// DeviceID (serving-GPU UUID): Go zero value "" (auto / default device)
+	// already covers old configs missing the field, no fallback needed.
+	scfg.DeviceID = cfg.ServerConfig.DeviceID
 	if cfg.ServerConfig.Port != 0 {
 		scfg.Port = cfg.ServerConfig.Port
 	}

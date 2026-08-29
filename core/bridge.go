@@ -80,6 +80,13 @@ func startServerInternal() error {
 	}
 	cmd := exec.Command(llamaServer, args...)
 	hideWindow(cmd)
+	// Serving-GPU pinning: when the server config selects a device by stable
+	// UUID, CUDA_VISIBLE_DEVICES remaps CUDA device 0 to that card, so
+	// llama-server needs no extra flag — its default device 0 IS the chosen
+	// GPU. The env entry is appended after os.Environ() so it overrides any
+	// inherited CUDA_VISIBLE_DEVICES (last entry wins). Empty DeviceID (auto)
+	// yields nil: the child then inherits the parent environment unchanged.
+	cmd.Env = cudaDeviceEnv(cfg.DeviceID)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	serverLogsMu.Lock()
@@ -189,6 +196,21 @@ func buildServerCommand(cfg ServerConfig, presetPath string) (string, []string) 
 		args = append(args, "--api-key", cfg.APIKey)
 	}
 	return llamaServer, args
+}
+
+// cudaDeviceEnv builds the child-process environment for llama-server from the
+// configured serving GPU (ServerConfig.DeviceID, a stable nvidia-smi UUID).
+// A non-empty deviceID pins the child to that card by appending
+// CUDA_VISIBLE_DEVICES=<uuid> after os.Environ() — the later duplicate entry
+// wins, overriding any inherited value. CUDA_VISIBLE_DEVICES remaps CUDA
+// device 0 to the chosen card, so llama-server needs no extra flag. An empty
+// deviceID (auto / default device) returns nil so exec.Command inherits the
+// parent environment unchanged (historical behavior).
+func cudaDeviceEnv(deviceID string) []string {
+	if deviceID == "" {
+		return nil
+	}
+	return append(os.Environ(), "CUDA_VISIBLE_DEVICES="+deviceID)
 }
 
 // switchRestartPending marks an in-flight mode-switch restart (GUI → headless

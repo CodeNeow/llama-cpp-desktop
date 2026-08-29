@@ -36,7 +36,12 @@ type MemoryInfo struct {
 }
 
 type GPUInfo struct {
-	Name              string  `json:"name"`
+	Name string `json:"name"`
+	// UUID is the stable nvidia-smi device identifier ("GPU-xxxx-..."),
+	// invariant across reboots and driver index changes; it is the value the
+	// serving-GPU selection (ServerConfig.DeviceID / CUDA_VISIBLE_DEVICES) is
+	// keyed on. Empty when the probe could not read it.
+	UUID              string  `json:"uuid"`
 	MemoryMB          int     `json:"memoryMb"`
 	MemoryUsedMB      int     `json:"memoryUsedMb"`
 	DriverVersion     string  `json:"driverVersion"`
@@ -247,9 +252,20 @@ func parseWindowsSystemJSON(out string) windowsSystemSnapshot {
 
 func getGPUInfo() []GPUInfo {
 	out := runCmd("nvidia-smi",
-		"--query-gpu=name,memory.used,memory.total,driver_version,compute_cap",
+		"--query-gpu=name,uuid,memory.used,memory.total,driver_version,compute_cap",
 		"--format=csv,noheader,nounits",
 	)
+	return parseGPUInfoCSV(out)
+}
+
+// parseGPUInfoCSV parses the nvidia-smi CSV query output into GPUInfo entries.
+// The column order must match the --query-gpu field list in getGPUInfo:
+// name,uuid,memory.used,memory.total,driver_version,compute_cap. UUID sits in
+// column 2 (index 1) — the stable identifier the serving-GPU selection is
+// keyed on. Lines with fewer than three fields are skipped defensively; later
+// columns are read only when present so a short line never panics. Empty
+// output yields nil.
+func parseGPUInfoCSV(out string) []GPUInfo {
 	if out == "" {
 		return nil
 	}
@@ -261,9 +277,16 @@ func getGPUInfo() []GPUInfo {
 			continue
 		}
 		name := strings.TrimSpace(parts[0])
-		memUsedStr := strings.TrimSpace(parts[1])
-		memStr := strings.TrimSpace(parts[2])
-		driver := strings.TrimSpace(parts[3])
+		uuid := strings.TrimSpace(parts[1])
+		memUsedStr := strings.TrimSpace(parts[2])
+		memStr := ""
+		if len(parts) >= 4 {
+			memStr = strings.TrimSpace(parts[3])
+		}
+		var driver string
+		if len(parts) >= 5 {
+			driver = strings.TrimSpace(parts[4])
+		}
 
 		memUsedMB := 0
 		if memUsedStr != "" {
@@ -280,20 +303,31 @@ func getGPUInfo() []GPUInfo {
 
 		gpu := GPUInfo{
 			Name:          name,
+			UUID:          uuid,
 			MemoryMB:      memMB,
 			MemoryUsedMB:  memUsedMB,
 			DriverVersion: driver,
 		}
 
-		// Compute capability (5th column, index 4): nvidia-smi returns the
+		// Compute capability (6th column, index 5): nvidia-smi returns the
 		// decimal form directly (e.g. "9.0", "8.9", "12.0"), NOT an integer ×10.
-		if len(parts) >= 5 {
-			gpu.ComputeCapability = parseGPUComputeCapability(parts[4])
+		if len(parts) >= 6 {
+			gpu.ComputeCapability = parseGPUComputeCapability(parts[5])
 		}
 
 		gpus = append(gpus, gpu)
 	}
 	return gpus
+}
+
+// gpuListSource is the injection point for the detected GPU list (same style
+// as probeGPUComputeCap): the default implementation returns the cached
+// system-info GPU snapshot so every consumer (SaveServerConfig device
+// validation, auto-tuner planning) shares one detection chain per process.
+// Tests replace this variable to feed synthetic GPU lists without shelling out
+// to nvidia-smi.
+var gpuListSource = func() []GPUInfo {
+	return systemInfo().GPU
 }
 
 // probeGPUComputeCap is the injection point for the GPU compute-capability

@@ -104,3 +104,47 @@ func TestParseWindowsSystemJSON(t *testing.T) {
 		t.Errorf("parseWindowsSystemJSON empty = %+v, want zero snapshot", s)
 	}
 }
+
+// TestParseGPUInfoCSV verifies the nvidia-smi CSV parsing with the UUID column:
+// full 6-column lines parse name/uuid/memory/driver/compute-cap in column order,
+// the UUID is kept verbatim (stable serving-GPU identifier), CRLF-terminated
+// lines (real Windows nvidia-smi output) parse cleanly, short lines are skipped
+// without panicking, and empty output yields nil.
+func TestParseGPUInfoCSV(t *testing.T) {
+	out := "NVIDIA GeForce RTX 5070 Ti, GPU-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee, 1024, 16302, 576.52, 12.0\r\n" +
+		"NVIDIA GeForce RTX 3070, GPU-11111111-2222-3333-4444-555555555555, 512, 8192, 576.52, 8.6"
+	gpus := parseGPUInfoCSV(out)
+	if len(gpus) != 2 {
+		t.Fatalf("parsed GPU count = %d, want 2", len(gpus))
+	}
+	first := gpus[0]
+	if first.Name != "NVIDIA GeForce RTX 5070 Ti" {
+		t.Errorf("Name = %q", first.Name)
+	}
+	if first.UUID != "GPU-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" {
+		t.Errorf("UUID = %q", first.UUID)
+	}
+	if first.MemoryUsedMB != 1024 || first.MemoryMB != 16302 {
+		t.Errorf("memory parse failed: used=%d total=%d", first.MemoryUsedMB, first.MemoryMB)
+	}
+	if first.DriverVersion != "576.52" || first.ComputeCapability != 12.0 {
+		t.Errorf("driver/compute-cap parse failed: %q %v", first.DriverVersion, first.ComputeCapability)
+	}
+	if gpus[1].UUID != "GPU-11111111-2222-3333-4444-555555555555" || gpus[1].MemoryMB != 8192 || gpus[1].ComputeCapability != 8.6 {
+		t.Errorf("second GPU parse failed: %+v", gpus[1])
+	}
+
+	// short line (below the 6-column format) parses with zeroed later columns
+	// instead of panicking
+	got := parseGPUInfoCSV("NVIDIA GeForce RTX 5070 Ti, GPU-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee, 1024")
+	if len(got) != 1 || got[0].MemoryMB != 0 || got[0].DriverVersion != "" || got[0].UUID != "GPU-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" {
+		t.Errorf("short line should parse with zeroed later columns, got %+v", got)
+	}
+
+	if got := parseGPUInfoCSV(""); got != nil {
+		t.Errorf("empty output should yield nil, got %+v", got)
+	}
+	if got := parseGPUInfoCSV("garbage"); len(got) != 0 {
+		t.Errorf("garbage without commas should yield no GPUs, got %+v", got)
+	}
+}

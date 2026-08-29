@@ -648,6 +648,23 @@ func (a *App) SaveServerConfig(cfg ServerConfig) error {
 		return fmt.Errorf(tr("非法访问范围 %q：仅允许 local/lan", "invalid access mode %q: only local/lan"), cfg.AccessMode)
 	}
 	cfg.Host = effectiveHost(cfg.AccessMode)
+	// DeviceID (serving-GPU selection) allowlist: empty means auto (CUDA
+	// default device order); non-empty must exactly match (case-sensitive) the
+	// UUID of a GPU from the current probe list (gpuListSource, the nvidia-smi
+	// detection chain), preventing arbitrary CUDA_VISIBLE_DEVICES values from
+	// reaching the llama-server child environment.
+	if cfg.DeviceID != "" {
+		known := false
+		for _, g := range gpuListSource() {
+			if g.UUID == cfg.DeviceID {
+				known = true
+				break
+			}
+		}
+		if !known {
+			return fmt.Errorf(tr("非法推理显卡 %q：必须是显卡检测列表（nvidia-smi）中的 UUID", "invalid inference GPU %q: must be a UUID from the detected GPU list (nvidia-smi probe)"), cfg.DeviceID)
+		}
+	}
 	// APIKey normalization only (no charset restriction): trimmed whitespace in,
 	// empty means authentication disabled.
 	cfg.APIKey = strings.TrimSpace(cfg.APIKey)

@@ -132,7 +132,8 @@ export async function tuneModelConfig(modelID: string): Promise<any> {
 
 // ServerConfig mirrors the backend core.ServerConfig: accessMode is the service access
 // scope ("local" | "lan"), host is the actual listen address derived from accessMode,
-// apiKey is the optional llama-server bearer token (empty = no authentication).
+// apiKey is the optional llama-server bearer token (empty = no authentication),
+// deviceId is the serving-GPU selection (stable nvidia-smi UUID; empty = auto, default CUDA device).
 export interface ServerConfig {
   accessMode: string
   host: string
@@ -140,6 +141,7 @@ export interface ServerConfig {
   maxModels: number
   cacheRam: number
   apiKey: string
+  deviceId: string
 }
 
 export async function getServerConfig(): Promise<ServerConfig> {

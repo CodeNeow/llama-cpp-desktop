@@ -933,3 +933,43 @@ func TestTuneModelConfigPresetCPUMoe(t *testing.T) {
 		t.Errorf("preset missing ctx-size = %d", cfg.CtxSize)
 	}
 }
+
+// TestTunePlanTarget verifies the tuner's GPU planning target: without a
+// matching DeviceID the plan uses the largest-VRAM GPU (auto fallback); with a
+// DeviceID matching one probed GPU by stable UUID (case-sensitive exact
+// match), THAT card decides VRAMMB and vendor, keeping the plan consistent
+// with the GPU the llama-server child is pinned to via CUDA_VISIBLE_DEVICES.
+func TestTunePlanTarget(t *testing.T) {
+	gpus := []GPUInfo{
+		{Name: "NVIDIA GeForce RTX 5070 Ti", UUID: "GPU-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", MemoryMB: 16302},
+		{Name: "NVIDIA GeForce RTX 3070", UUID: "GPU-11111111-2222-3333-4444-555555555555", MemoryMB: 8192},
+	}
+
+	// auto fallback (empty DeviceID): largest VRAM wins, machine-wide vendor
+	got := tunePlanTarget(gpus, false, "")
+	if got.VRAMMB != 16302 || got.Vendor != vendorNvidia || got.Name != "" || got.UUID != "" {
+		t.Errorf("auto fallback = %+v, want largest VRAM 16302 / nvidia / no pinned card", got)
+	}
+
+	// selected: the smaller card is pinned by UUID → plan against it
+	got = tunePlanTarget(gpus, false, "GPU-11111111-2222-3333-4444-555555555555")
+	if got.VRAMMB != 8192 || got.Vendor != vendorNvidia || got.Name != "NVIDIA GeForce RTX 3070" {
+		t.Errorf("selected card = %+v, want 8192 MB / nvidia / RTX 3070", got)
+	}
+	if got.UUID != "GPU-11111111-2222-3333-4444-555555555555" {
+		t.Errorf("selected UUID = %q", got.UUID)
+	}
+
+	// unknown or case-mismatched DeviceID falls back to the largest-VRAM plan
+	for _, id := range []string{"GPU-ffffffff-0000-0000-0000-000000000000", "gpu-11111111-2222-3333-4444-555555555555"} {
+		if got := tunePlanTarget(gpus, false, id); got.Name != "" || got.VRAMMB != 16302 {
+			t.Errorf("unmatched DeviceID %q must fall back to auto, got %+v", id, got)
+		}
+	}
+
+	// empty GPU list: an available CUDA driver still promotes the vendor
+	got = tunePlanTarget(nil, true, "")
+	if got.VRAMMB != 0 || got.Vendor != vendorNvidia {
+		t.Errorf("empty GPU list with CUDA = %+v, want 0 MB / nvidia", got)
+	}
+}

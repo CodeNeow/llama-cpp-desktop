@@ -222,6 +222,28 @@
         />
       </div>
       <p v-if="apiKeyError" class="source-error">{{ apiKeyError }}</p>
+      <!-- Inference GPU selection: pins the llama-server child to the chosen
+           CUDA device via CUDA_VISIBLE_DEVICES (empty = auto, default device).
+           Persisted through the same whole-serverConfig round-trip as the key. -->
+      <div class="setting-row gpu-row">
+        <div class="setting-info">
+          <span class="setting-label">{{ t('settings.gpu.label') }}</span>
+          <span class="setting-desc">{{ t('settings.gpu.desc') }}</span>
+        </div>
+        <ThemedSelect
+          class="gpu-select"
+          :model-value="gpuValue"
+          :options="gpuOptions"
+          :placeholder="t('settings.gpu.auto')"
+          :disabled="!gpuDetected || gpuSwitching"
+          variant="field"
+          :label="t('settings.gpu.label')"
+          @update:model-value="onGpuSelected"
+        />
+      </div>
+      <p v-if="!gpuDetected" class="source-hint">{{ t('settings.gpu.none') }}</p>
+      <p v-else class="source-hint">{{ t('settings.gpu.hint') }}</p>
+      <p v-if="gpuError" class="source-error">{{ gpuError }}</p>
     </section>
 
     <!-- System tray (Windows only; other platforms exit directly on close) -->
@@ -343,7 +365,9 @@
 import { computed, onMounted, ref } from 'vue'
 import { appConfig, setTheme, loadConfig, setDownloadSource as applyDownloadSource, setLanguage as applyLanguage, setServerAccessMode as applyServerAccessMode, setApiKey as applyApiKey, setTrayEnabled as applyTrayEnabled } from '../store'
 import { updateState, checkForUpdate } from '../lib/update'
-import { getAppVersion, getOS, getServerConfig, browseLlamaCppDownloadDir, browseModelDownloadDir, setApiRouteMode } from '../wails'
+import { getAppVersion, getOS, getSystemInfo, getServerConfig, saveServerConfig, browseLlamaCppDownloadDir, browseModelDownloadDir, setApiRouteMode } from '../wails'
+import ThemedSelect, { type SelectOption } from '../components/ThemedSelect.vue'
+import { formatMB } from '../lib/format'
 import { t } from '../lib/i18n'
 
 const currentTheme = computed({
@@ -437,6 +461,52 @@ async function saveApiKey() {
   }
 }
 
+// Inference GPU selection: pins the serving GPU by stable nvidia-smi UUID
+// (backend pins the llama-server child via CUDA_VISIBLE_DEVICES). Options are
+// Auto plus one entry per detected GPU (label: name · VRAM · uuid prefix,
+// value: full UUID). Saved through the same whole-serverConfig round-trip as
+// the access scope / API key; the selection only sticks after a successful
+// save so a backend rejection keeps the previous choice visible.
+interface GpuEntry {
+  name: string
+  memoryMb: number
+  uuid: string
+}
+const gpuSnapshot = ref<GpuEntry[] | null>(null)
+const gpuValue = ref('')
+const gpuError = ref('')
+const gpuSwitching = ref(false)
+
+const gpuOptions = computed<SelectOption[]>(() => [
+  { value: '', label: t('settings.gpu.auto') },
+  ...(gpuSnapshot.value ?? [])
+    .filter((g) => g.uuid)
+    .map((g) => ({
+      value: g.uuid,
+      label: `${g.name} · ${formatMB(g.memoryMb)} · ${g.uuid.slice(0, 8)}`,
+    })),
+])
+
+// A selectable GPU exists only when the probe returned at least one UUID;
+// otherwise the selector stays disabled and the no-GPU hint is shown.
+const gpuDetected = computed(() => !!gpuSnapshot.value?.some((g) => g.uuid))
+
+async function onGpuSelected(value: string) {
+  if (value === gpuValue.value || gpuSwitching.value) return
+  gpuSwitching.value = true
+  gpuError.value = ''
+  try {
+    const scfg = await getServerConfig()
+    scfg.deviceId = value
+    await saveServerConfig(scfg)
+    gpuValue.value = value
+  } catch {
+    gpuError.value = t('settings.gpu.error')
+  } finally {
+    gpuSwitching.value = false
+  }
+}
+
 // System tray toggle: rendered on Windows only. Disabling takes effect immediately (backend removes icon and
 // persists); systray cannot restart in same process, so re-enabling requires app restart (hint shown below toggle).
 const isWindows = ref(false)
@@ -497,7 +567,14 @@ onMounted(async () => {
     }
     // seed the API key input from the persisted server config (empty = no authentication)
     apiKeyInput.value = scfg.apiKey || ''
+    // seed the serving-GPU selection from the persisted server config (empty = auto)
+    gpuValue.value = scfg.deviceId || ''
   }).catch(() => {})
+  // GPU option list comes from the (cached) system info snapshot; failures
+  // leave the selector disabled with the no-GPU hint.
+  getSystemInfo()
+    .then((info: { gpu?: GpuEntry[] }) => { gpuSnapshot.value = info.gpu ?? [] })
+    .catch(() => { gpuSnapshot.value = [] })
   getAppVersion().then((v) => { appVersion.value = v }).catch(() => {})
 })
 
@@ -705,6 +782,17 @@ async function manualCheck() {
 .api-key-row {
   margin-top: 16px;
   align-items: flex-start;
+}
+
+/* Inference GPU selector: fixed-width trigger so the row label keeps its width */
+.gpu-row {
+  margin-top: 16px;
+  align-items: flex-start;
+}
+
+.gpu-select {
+  width: 340px;
+  flex-shrink: 0;
 }
 
 .api-key-input {

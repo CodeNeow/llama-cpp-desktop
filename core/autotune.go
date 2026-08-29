@@ -11,6 +11,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"os"
 	"path/filepath"
@@ -982,19 +983,91 @@ func tuneModelConfig(hw tuneHardware, m tuneModel) ModelConfig {
 
 // ─── Hardware snapshot & weight budget ────────────────────────────
 
+// tuneVendorForName classifies a GPU display name for the tuner: "nvidia" or
+// "amd" when the name matches (case-insensitive), "" when unclassifiable
+// (callers keep their machine-wide classification as fallback).
+func tuneVendorForName(name string) string {
+	lower := strings.ToLower(name)
+	switch {
+	case strings.Contains(lower, vendorNvidia):
+		return vendorNvidia
+	case strings.Contains(lower, "amd") || strings.Contains(lower, "radeon"):
+		return vendorAMD
+	}
+	return ""
+}
+
+// tuneTarget is the GPU-planning decision for the tuner: the VRAM budget and
+// vendor classification the sizing rules run against, plus the identity of the
+// pinned GPU for the planning log (empty when the plan fell back to auto).
+type tuneTarget struct {
+	VRAMMB int
+	Vendor string
+	Name   string
+	UUID   string
+}
+
+// tunePlanTarget resolves the GPU the tuner plans against. deviceID is the
+// persisted serving-GPU selection (ServerConfig.DeviceID, a stable nvidia-smi
+// UUID — the same value pinned into the llama-server child via
+// CUDA_VISIBLE_DEVICES): when it exactly matches (case-sensitive) one of the
+// probed GPUs, THAT card decides VRAMMB and vendor, keeping the plan
+// consistent with the GPU llama-server actually uses on multi-GPU hosts.
+// An empty or unmatched deviceID falls back to the historical behavior: the
+// largest-VRAM GPU across the list decides VRAMMB, and the vendor is voted
+// machine-wide (any GPU named nvidia (case-insensitive) or an available CUDA
+// driver → nvidia; else any GPU named amd/radeon → amd; else none).
+func tunePlanTarget(gpus []GPUInfo, cudaAvailable bool, deviceID string) tuneTarget {
+	vramMB := 0
+	hasNVIDIA, hasAMD := false, false
+	for _, g := range gpus {
+		if g.MemoryMB > vramMB {
+			vramMB = g.MemoryMB
+		}
+		switch tuneVendorForName(g.Name) {
+		case vendorNvidia:
+			hasNVIDIA = true
+		case vendorAMD:
+			hasAMD = true
+		}
+	}
+	target := tuneTarget{VRAMMB: vramMB, Vendor: vendorNone}
+	switch {
+	case hasNVIDIA || cudaAvailable:
+		target.Vendor = vendorNvidia
+	case hasAMD:
+		target.Vendor = vendorAMD
+	}
+	if deviceID != "" {
+		for _, g := range gpus {
+			if g.UUID == deviceID {
+				target.VRAMMB = g.MemoryMB
+				target.Name = g.Name
+				target.UUID = g.UUID
+				// The pinned card's own name decides its vendor; an
+				// unclassifiable name keeps the machine-wide vote above.
+				if v := tuneVendorForName(g.Name); v != "" {
+					target.Vendor = v
+				}
+				break
+			}
+		}
+	}
+	return target
+}
+
 // tuneHardware snapshots the hardware through the same caches the Home page
-// uses (GetCPU/GetMemory/GetGPU/GetCUDA — one detection chain per process, no
-// separate probing) and derives the vendor classification for the tuner:
-// any GPU named nvidia (case-insensitive) or an available CUDA driver →
-// nvidia; else any GPU named amd/radeon → amd; else none. VRAMMB is the
-// largest MemoryMB across the GPU list. RAMBandwidthGBs comes from the
-// measured-bandwidth calibration (getCalibratedRAMBandwidth in benchbw.go:
-// cached per hardware fingerprint in llama-desktop-benchcache.json,
+// uses (GetCPU/GetMemory/gpuListSource/GetCUDA — one detection chain per
+// process, no separate probing) and resolves the tuner's GPU planning target
+// (see tunePlanTarget): the serving GPU selected in the server config by UUID
+// when present and matching, else the largest-VRAM GPU. RAMBandwidthGBs comes
+// from the measured-bandwidth calibration (getCalibratedRAMBandwidth in
+// benchbw.go: cached per hardware fingerprint in llama-desktop-benchcache.json,
 // single-flight); 0 on failure keeps every tuner rule on its static behavior.
 func (a *App) tuneHardware() tuneHardware {
 	cpu := a.GetCPU()
 	mem := a.GetMemory()
-	gpus := a.GetGPU()
+	gpus := gpuListSource()
 	cuda := a.GetCUDA()
 
 	hw := tuneHardware{
@@ -1004,27 +1077,23 @@ func (a *App) tuneHardware() tuneHardware {
 		LogicalCPUs:   cpu.LogicalCPUs,
 		CPUModel:      cpu.Model,
 	}
-	hasNVIDIA, hasAMD := false, false
-	for _, g := range gpus {
-		if g.MemoryMB > hw.VRAMMB {
-			hw.VRAMMB = g.MemoryMB
-		}
-		name := strings.ToLower(g.Name)
-		if strings.Contains(name, vendorNvidia) {
-			hasNVIDIA = true
-		}
-		if strings.Contains(name, "amd") || strings.Contains(name, "radeon") {
-			hasAMD = true
-		}
+
+	// Serving-GPU selection: read the persisted DeviceID under serverConfigMu
+	// (the same cache startServerInternal pins the child env from) so the plan
+	// targets the GPU llama-server actually runs on.
+	serverConfigMu.Lock()
+	deviceID := cachedServerConfig.DeviceID
+	serverConfigMu.Unlock()
+
+	target := tunePlanTarget(gpus, cuda.Available, deviceID)
+	hw.VRAMMB = target.VRAMMB
+	hw.GPUVendor = target.Vendor
+	if target.Name != "" {
+		log.Printf("[INFO] tune: planning against GPU %s (uuid %.8s)", target.Name, target.UUID)
+	} else if len(gpus) > 0 {
+		log.Printf("[INFO] tune: planning against largest-VRAM GPU (auto)")
 	}
-	switch {
-	case hasNVIDIA || cuda.Available:
-		hw.GPUVendor = vendorNvidia
-	case hasAMD:
-		hw.GPUVendor = vendorAMD
-	default:
-		hw.GPUVendor = vendorNone
-	}
+
 	// Measured RAM bandwidth calibration: cached per hardware fingerprint,
 	// single-flight across concurrent tune clicks; 0 on failure, which keeps
 	// the tuner on its static rules.

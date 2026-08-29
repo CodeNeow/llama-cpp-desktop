@@ -3,6 +3,7 @@ package core
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -507,4 +508,37 @@ func TestStartHFDownloadUsesDownloadDirOverride(t *testing.T) {
 		t.Errorf("DestDir = %q, want %q (model download path must be used)", destDir, want)
 	}
 	cancelAllTasks(t)
+}
+
+// TestCudaDeviceEnvEmpty verifies an empty serving-GPU selection (auto) yields
+// nil so exec.Command inherits the parent environment unchanged (historical
+// behavior).
+func TestCudaDeviceEnvEmpty(t *testing.T) {
+	if got := cudaDeviceEnv(""); got != nil {
+		t.Errorf("cudaDeviceEnv(\"\") = %v, want nil", got)
+	}
+}
+
+// TestCudaDeviceEnvOverridesInherited verifies a non-empty device UUID pins the
+// child environment: the inherited variables are kept and CUDA_VISIBLE_DEVICES
+// is appended LAST so it overrides any inherited value (last-wins semantics).
+func TestCudaDeviceEnvOverridesInherited(t *testing.T) {
+	env := cudaDeviceEnv("GPU-12345678-9abc-def0-1234-56789abcdef0")
+	if len(env) < len(os.Environ()) {
+		t.Fatalf("cudaDeviceEnv kept %d entries, want >= %d (inherited environment)", len(env), len(os.Environ()))
+	}
+	want := "CUDA_VISIBLE_DEVICES=GPU-12345678-9abc-def0-1234-56789abcdef0"
+	if env[len(env)-1] != want {
+		t.Errorf("last env entry = %q, want %q (override must be appended last)", env[len(env)-1], want)
+	}
+	inherited := false
+	for _, kv := range env[:len(env)-1] {
+		if strings.HasPrefix(kv, "PATH=") {
+			inherited = true
+			break
+		}
+	}
+	if !inherited {
+		t.Error("cudaDeviceEnv should keep the inherited environment entries")
+	}
 }

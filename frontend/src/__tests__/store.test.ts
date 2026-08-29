@@ -239,14 +239,14 @@ describe('store', () => {
   })
 
   it('setServerAccessMode success fetches full config, saves with accessMode, updates local state', async () => {
-    mockGetServerConfig.mockResolvedValue({ accessMode: 'local', host: '127.0.0.1', apiKey: 'sk-existing', port: 8080, maxModels: 1, cacheRam: 8192 })
+    mockGetServerConfig.mockResolvedValue({ accessMode: 'local', host: '127.0.0.1', apiKey: 'sk-existing', deviceId: 'GPU-test', port: 8080, maxModels: 1, cacheRam: 8192 })
     mockSaveServerConfig.mockResolvedValue(undefined)
 
     await setServerAccessMode('lan')
 
     expect(appConfig.serverAccessMode).toBe('lan')
     // saved config is backend latest full config (includes fields user may set elsewhere); only accessMode is overwritten
-    expect(mockSaveServerConfig).toHaveBeenCalledWith({ accessMode: 'lan', host: '127.0.0.1', apiKey: 'sk-existing', port: 8080, maxModels: 1, cacheRam: 8192 })
+    expect(mockSaveServerConfig).toHaveBeenCalledWith({ accessMode: 'lan', host: '127.0.0.1', apiKey: 'sk-existing', deviceId: 'GPU-test', port: 8080, maxModels: 1, cacheRam: 8192 })
   })
 
   it('setServerAccessMode config fetch failure rolls back local state and throws to caller', async () => {
@@ -258,7 +258,7 @@ describe('store', () => {
   })
 
   it('setServerAccessMode save failure rolls back local state and throws to caller', async () => {
-    mockGetServerConfig.mockResolvedValue({ accessMode: 'local', host: '127.0.0.1', apiKey: 'sk-existing', port: 8080, maxModels: 1, cacheRam: 8192 })
+    mockGetServerConfig.mockResolvedValue({ accessMode: 'local', host: '127.0.0.1', apiKey: 'sk-existing', deviceId: '', port: 8080, maxModels: 1, cacheRam: 8192 })
     mockSaveServerConfig.mockRejectedValue(new Error('backend unavailable'))
 
     await expect(setServerAccessMode('lan')).rejects.toThrow('backend unavailable')
@@ -266,14 +266,14 @@ describe('store', () => {
   })
 
   it('setApiKey success fetches full config, saves with apiKey, updates local state', async () => {
-    mockGetServerConfig.mockResolvedValue({ accessMode: 'lan', host: '0.0.0.0', apiKey: 'sk-old', port: 8080, maxModels: 1, cacheRam: 8192 })
+    mockGetServerConfig.mockResolvedValue({ accessMode: 'lan', host: '0.0.0.0', apiKey: 'sk-old', deviceId: 'GPU-old', port: 8080, maxModels: 1, cacheRam: 8192 })
     mockSaveServerConfig.mockResolvedValue(undefined)
 
     await setApiKey('sk-new')
 
     expect(appConfig.serverApiKey).toBe('sk-new')
-    // saved config is backend latest full config with only apiKey overwritten; other fields (e.g. lan access scope) stay intact
-    expect(mockSaveServerConfig).toHaveBeenCalledWith({ accessMode: 'lan', host: '0.0.0.0', apiKey: 'sk-new', port: 8080, maxModels: 1, cacheRam: 8192 })
+    // saved config is backend latest full config with only apiKey overwritten; other fields (e.g. lan access scope, deviceId) stay intact
+    expect(mockSaveServerConfig).toHaveBeenCalledWith({ accessMode: 'lan', host: '0.0.0.0', apiKey: 'sk-new', deviceId: 'GPU-old', port: 8080, maxModels: 1, cacheRam: 8192 })
   })
 
   it('setApiKey config fetch failure rolls back local state and throws to caller', async () => {
@@ -286,7 +286,7 @@ describe('store', () => {
 
   it('setApiKey save failure rolls back local state and throws to caller', async () => {
     appConfig.serverApiKey = 'sk-kept'
-    mockGetServerConfig.mockResolvedValue({ accessMode: 'local', host: '127.0.0.1', apiKey: 'sk-kept', port: 8080, maxModels: 1, cacheRam: 8192 })
+    mockGetServerConfig.mockResolvedValue({ accessMode: 'local', host: '127.0.0.1', apiKey: 'sk-kept', deviceId: '', port: 8080, maxModels: 1, cacheRam: 8192 })
     mockSaveServerConfig.mockRejectedValue(new Error('backend unavailable'))
 
     await expect(setApiKey('sk-new')).rejects.toThrow('backend unavailable')
@@ -294,13 +294,13 @@ describe('store', () => {
   })
 
   it('setApiKey accepts an empty value (clearing authentication) and persists it', async () => {
-    mockGetServerConfig.mockResolvedValue({ accessMode: 'local', host: '127.0.0.1', apiKey: 'sk-old', port: 8080, maxModels: 1, cacheRam: 8192 })
+    mockGetServerConfig.mockResolvedValue({ accessMode: 'local', host: '127.0.0.1', apiKey: 'sk-old', deviceId: '', port: 8080, maxModels: 1, cacheRam: 8192 })
     mockSaveServerConfig.mockResolvedValue(undefined)
 
     await setApiKey('')
 
     expect(appConfig.serverApiKey).toBe('')
-    expect(mockSaveServerConfig).toHaveBeenCalledWith({ accessMode: 'local', host: '127.0.0.1', apiKey: '', port: 8080, maxModels: 1, cacheRam: 8192 })
+    expect(mockSaveServerConfig).toHaveBeenCalledWith({ accessMode: 'local', host: '127.0.0.1', apiKey: '', deviceId: '', port: 8080, maxModels: 1, cacheRam: 8192 })
   })
 
   it('loadConfig backend returns sidebarCollapsed: true, state collapses and writes localStorage', async () => {

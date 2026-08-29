@@ -1209,3 +1209,89 @@ func TestBuildModelDownloadURLHuggingFace(t *testing.T) {
 		t.Errorf("activeHFBase() with hf source = %q, want %q", got, hfMirrorBase)
 	}
 }
+
+// TestServerConfigDeviceIDRoundTrip verifies the serving-GPU selection
+// (ServerConfig.DeviceID, a stable GPU UUID) persists through saveConfig /
+// loadConfig, and that old configs missing the field load as "" (auto = CUDA
+// default device), keeping backward compatibility without migration.
+func TestServerConfigDeviceIDRoundTrip(t *testing.T) {
+	withTempCwd(t)
+	saveConfigState(t)
+
+	const deviceID = "GPU-12345678-9abc-def0-1234-56789abcdef0"
+	serverConfigMu.Lock()
+	cachedServerConfig = ServerConfig{AccessMode: accessLocal, Host: "127.0.0.1", Port: 8080, MaxModels: 1, CacheRAM: 8192, DeviceID: deviceID}
+	serverConfigMu.Unlock()
+	saveConfig()
+
+	// clear to the zero value, simulate fresh start
+	serverConfigMu.Lock()
+	cachedServerConfig = ServerConfig{}
+	serverConfigMu.Unlock()
+	loadConfig()
+
+	serverConfigMu.Lock()
+	scfg := cachedServerConfig
+	serverConfigMu.Unlock()
+	if scfg.DeviceID != deviceID {
+		t.Errorf("deviceID round-trip failed: %q, want %q", scfg.DeviceID, deviceID)
+	}
+
+	// old config without the deviceId field: loads as "" (auto)
+	if err := os.WriteFile(configFile, []byte(`{"serverConfig":{"port":8080}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	loadConfig()
+	serverConfigMu.Lock()
+	scfg = cachedServerConfig
+	serverConfigMu.Unlock()
+	if scfg.DeviceID != "" {
+		t.Errorf("old config missing deviceId should load as empty (auto), got %q", scfg.DeviceID)
+	}
+}
+
+// TestSaveServerConfigDeviceIDValidation verifies the serving-GPU selection
+// allowlist: empty (auto) and a UUID from the current GPU probe list are
+// accepted; unknown or case-mismatched values are rejected with an error and
+// do not overwrite the stored config (preventing arbitrary
+// CUDA_VISIBLE_DEVICES values from reaching the llama-server child env).
+func TestSaveServerConfigDeviceIDValidation(t *testing.T) {
+	withTempCwd(t)
+	saveConfigState(t)
+
+	origSource := gpuListSource
+	gpuListSource = func() []GPUInfo {
+		return []GPUInfo{
+			{Name: "NVIDIA GeForce RTX 5070 Ti", UUID: "GPU-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", MemoryMB: 16302},
+			{Name: "NVIDIA GeForce RTX 3070", UUID: "GPU-11111111-2222-3333-4444-555555555555", MemoryMB: 8192},
+		}
+	}
+	t.Cleanup(func() { gpuListSource = origSource })
+
+	app := &App{}
+	// empty DeviceID (auto) is always accepted
+	if err := app.SaveServerConfig(ServerConfig{AccessMode: accessLocal, Port: 8080, MaxModels: 1, CacheRAM: 0}); err != nil {
+		t.Errorf("empty DeviceID should be accepted: %v", err)
+	}
+	// a known UUID (from the injected GPU list) is accepted
+	known := ServerConfig{AccessMode: accessLocal, Port: 8080, MaxModels: 1, CacheRAM: 0, DeviceID: "GPU-11111111-2222-3333-4444-555555555555"}
+	if err := app.SaveServerConfig(known); err != nil {
+		t.Errorf("known GPU UUID should be accepted: %v", err)
+	}
+
+	// unknown UUID is rejected
+	if err := app.SaveServerConfig(ServerConfig{AccessMode: accessLocal, Port: 8080, MaxModels: 1, CacheRAM: 0, DeviceID: "GPU-ffffffff-0000-0000-0000-000000000000"}); err == nil {
+		t.Error("unknown GPU UUID should return error")
+	}
+	// case-sensitive exact match: lowercase variant of a known UUID is rejected
+	if err := app.SaveServerConfig(ServerConfig{AccessMode: accessLocal, Port: 8080, MaxModels: 1, CacheRAM: 0, DeviceID: "gpu-11111111-2222-3333-4444-555555555555"}); err == nil {
+		t.Error("case-mismatched GPU UUID should return error")
+	}
+	// rejections must not overwrite the stored config
+	serverConfigMu.Lock()
+	got := cachedServerConfig
+	serverConfigMu.Unlock()
+	if got.DeviceID != known.DeviceID {
+		t.Errorf("rejected save must not overwrite stored DeviceID, got %q, want %q", got.DeviceID, known.DeviceID)
+	}
+}
