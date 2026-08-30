@@ -56,11 +56,24 @@ tasks:
     cmds:
       - npm run build
 
+  generate:syso:
+    summary: Generate the Windows resource object (exe icon + app manifest) that `go build` links into the exe automatically
+    dir: build
+    cmds:
+      - wails3 generate syso -arch amd64 -icon windows/icon.ico -manifest windows/wails.exe.manifest -out ../wails_windows_amd64.syso
+
   build:
-    summary: Production build (embedded frontend, production tag, windowsgui)
+    summary: Production build (embedded frontend, production tag, windowsgui, branded exe icon)
     cmds:
       - task: build:frontend
+      - task: generate:syso
       - go build -tags production -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui" -o "{{.BIN_DIR}}/{{.APP_NAME}}.exe" .
+      # The .syso is a transient link input (mirrors the v3 template): remove it
+      # after the build so it never lingers in the working tree.
+      - cmd: powershell Remove-Item wails_windows_amd64.syso
+        platforms: [windows]
+      - cmd: rm -f wails_windows_amd64.syso
+        platforms: [linux, darwin]
 
   build:go:dev:
     summary: Compile the Go binary for the dev loop (no production tag so the FRONTEND_DEVSERVER_URL proxy is compiled in; `dev` build tag keeps core/devbuild_dev.go active, mirroring v2's `wails dev`)
