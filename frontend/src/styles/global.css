@@ -3,6 +3,18 @@
    Dark theme with purple/violet accent
    ========================================== */
 
+/* ==========================================
+   Responsive breakpoints (three-tier model)
+   ------------------------------------------
+   mobile:  width <= 767px   (@media (max-width: 767px))
+   tablet:  768px..1099px    (@media (max-width: 1099px))
+   desktop: width >= 1100px
+   CSS custom properties do not work inside @media conditions, so the
+   literals above must be repeated in every media query. The source of
+   truth is frontend/src/lib/layout.ts (MOBILE_MAX / TABLET_MAX);
+   keep the literals here in sync when changing a breakpoint there.
+   ========================================== */
+
 *, *::before, *::after {
   margin: 0;
   padding: 0;
