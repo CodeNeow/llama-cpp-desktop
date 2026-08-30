@@ -2,6 +2,24 @@
 
 更新日志的**权威来源**（见 `AGENTS.md`「版本发布」）：发版时先在此新增版本条目（含日期），`git tag` 注解消息与 GitHub Release 正文均从该条目复制，保持一致。自 v0.3.3 起条目为概括式双语（中文在上）；v0.3.0 之前的逐提交条目已随对应 tag 与 Release 的清理移除（见文末「历史版本」）。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循语义化版本。
 
+## [v0.3.9] - 2026-08-30
+
+## 中文
+
+v0.3.9:生成速度折线图回归与跨平台地基。核心变化:
+
+- **生成速度折线图回归** — API 路由页 Token 速度卡恢复「近 60 秒生成速度」曲线,每秒采样、滚动保留 60 个点;模型管理页标题下补回副标题行,与其他页面版式一致。
+- **应用路径按操作系统规范化** — Windows 行为完全不变;macOS/Linux 下配置、缓存与默认模型 / llama.cpp 目录归入用户配置目录(旧配置自动迁移),不再依赖进程工作目录,为 Linux/macOS 支持铺路。
+- **响应式与平台地基** — 新增移动 / 平板 / 桌面三档断点体系与平台状态分类器(本版不改变任何现有界面),为适配手机、平板等不同尺寸做准备。
+
+## English
+
+v0.3.9: the decode-speed chart returns, plus cross-platform groundwork. Highlights:
+
+- **Decode-speed chart restored** — the Token speed card on the API Router page regains the "decode speed over last 60s" line chart (1s sampling, rolling 60 points); the Models page gets its subtitle line back, matching every other page.
+- **Per-OS app path resolution** — Windows behavior is unchanged; on macOS/Linux the config, caches and default model / llama.cpp directories move under the per-user config directory (legacy config migrates automatically) instead of relying on the process working directory, paving the way for Linux/macOS support.
+- **Responsive and platform foundation** — a three-tier breakpoint system (mobile / tablet / desktop) and a platform-state classifier land without changing any existing UI, preparing for phone- and tablet-sized screens.
+
 ## [v0.3.8] - 2026-08-29
 
 ## 中文
