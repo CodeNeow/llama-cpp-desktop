@@ -414,11 +414,13 @@ onUnmounted(() => {
    `bottom: 29px` vertically centers the pill on the chat page's input row:
    input-area bottom padding 24 + (row height 42 - pill height 32) / 2 = 29,
    which puts the pill's center on the send button's center. Keep this value
-   in sync with DOCK_BOTTOM_OFFSET in lib/dockSpace.ts. */
+   in sync with DOCK_BOTTOM_OFFSET in lib/dockSpace.ts. On mobile the bottom
+   tab bar takes its own fixed band, so the pill rides above it via the global
+   --mobile-nav-height (0px on desktop — the calc is a no-op there). */
 .task-dock {
   position: fixed;
   right: 16px;
-  bottom: 29px;
+  bottom: calc(29px + var(--mobile-nav-height, 0px));
   z-index: 50;
 }
 

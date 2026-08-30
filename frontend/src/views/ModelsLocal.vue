@@ -14,7 +14,10 @@
         </div>
       </div>
       <div class="dir-actions">
-        <button class="dir-btn" :title="t('models.chooseDirTitle')" @click="chooseModelsDir">{{ t('models.chooseDir') }}</button>
+        <!-- Android has no native directory picker (the browseModelsDir binding
+             errors there): the pick button is replaced by a read-only hint -->
+        <span v-if="platformState.isAndroid" class="dir-android-hint">{{ t('models.dirAndroidHint') }}</span>
+        <button v-else class="dir-btn" :title="t('models.chooseDirTitle')" @click="chooseModelsDir">{{ t('models.chooseDir') }}</button>
         <button class="refresh-btn" :disabled="loading" :title="t('models.refreshTitle')" @click="fetchModels(true)">
           <svg :class="{ spinning: loading }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
@@ -97,12 +100,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getModels, refreshModels, getConfig, browseModelsDir } from '../wails'
 import { t } from '../lib/i18n'
+import { usePlatform } from '../lib/platform'
 
 const router = useRouter()
+
+// OS-scoped gate: Android exposes no native directory picker, so the external
+// path browse button (browseModelsDir) is hidden behind a read-only hint.
+const platformState = usePlatform()
 
 interface ModelInfo {
   author: string
@@ -241,6 +249,13 @@ onMounted(() => {
   background: var(--overlay-8);
   border-color: var(--scrollbar-thumb-hover);
   color: var(--text-primary);
+}
+
+/* Android-only replacement for the pick button: one-line read-only hint */
+.dir-android-hint {
+  font-size: 12px;
+  color: var(--text-dim);
+  text-align: right;
 }
 
 /* Right-side action group: keeps the directory picker and the rescan button

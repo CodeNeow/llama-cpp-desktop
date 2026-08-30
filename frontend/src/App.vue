@@ -1,9 +1,11 @@
 <template>
-  <div class="app-layout" :style="{ '--dock-reserve': dockReserve + 'px' }">
+  <div class="app-layout" :style="{ '--dock-reserve': dockReserve + 'px', '--titlebar-h': titlebarH }">
     <Sidebar />
     <main class="main-content">
-      <!-- Custom title bar -->
-      <div class="title-bar" v-if="isDesktop">
+      <!-- Custom title bar: desktop shells only. Mobile (android/ios or a
+           <=767px viewport) has native chrome and window controls would be
+           no-ops, so the bar — and its 36px band, via --titlebar-h — is absent. -->
+      <div class="title-bar" v-if="!platformState.isMobile && isDesktop">
         <div></div>
         <!-- macOS keeps the colorful dots (matches existing style); Windows / Linux / unknown use native flat buttons -->
         <template v-if="platform === 'darwin'">
@@ -51,6 +53,9 @@
     </main>
     <UpdateModal :visible="updateState.showModal" @close="closeUpdateModal" />
     <TaskDock />
+    <!-- Mobile shell: bottom tab bar replacing the sidebar at <=767px
+         (display:none on desktop/tablet; height published as --mobile-nav-height) -->
+    <MobileNav />
   </div>
 </template>
 
@@ -61,12 +66,13 @@ import { Application, Window as WailsWindow } from '@wailsio/runtime'
 import Sidebar from './components/Sidebar.vue'
 import UpdateModal from './components/UpdateModal.vue'
 import TaskDock from './components/TaskDock.vue'
+import MobileNav from './components/MobileNav.vue'
 import { updateState, checkForUpdate, shouldAutoCheck, closeUpdateModal } from './lib/update'
 import { dockReserve } from './lib/dockSpace'
 import { t } from './lib/i18n'
 import { appConfig } from './store'
 import { getOS } from './wails'
-import { buildPlatformState, parseOs, setPlatform, type OsId } from './lib/platform'
+import { buildPlatformState, parseOs, setPlatform, usePlatform, type OsId } from './lib/platform'
 
 const w = window as any
 // Wails v3 no longer injects window.go; the bundled @wailsio/runtime marks the
@@ -76,12 +82,25 @@ const w = window as any
 // inside the runtime, matching the old w.runtime?. optional-chaining style.
 const isDesktop = !!(w._wails || w.go || w.electronAPI)  // Wails or Electron
 
+// Shared platform state (lib/platform): isMobile gates the mobile shell (title
+// bar hidden, bottom tab bar shown by CSS). The reactive singleton starts at
+// the module's desktop-windows default and is republished by syncPlatformState
+// below on OS detection and every window resize.
+const platformState = usePlatform()
+
 // Current route: fixed-viewport pages (route meta fixed: true) fill the window
 // below the titlebar and manage their own internal scroll bands, so the shared
 // content area must neither scroll nor reserve TaskDock space for them (see
 // the .content-fixed rule in the style block).
 const route = useRoute()
 const isFixedPage = computed(() => route.meta.fixed === true)
+
+// Custom-property height of the title bar band, consumed by the fixed-viewport
+// page shells (global.css .page-fixed, Chat.vue .chat-page): 36px while the
+// bar renders, 0px on mobile where it is absent. Derived from platform.isMobile
+// (OS-scoped, so correct at any viewport width — media queries cannot see the
+// OS); fixed pages then always fill the visible viewport exactly.
+const titlebarH = computed(() => (isDesktop && !platformState.value.isMobile ? '36px' : '0px'))
 
 // Current OS: 'darwin' (macOS) / 'windows' / 'linux' / empty string (unknown or backend unavailable)
 // Drives window-control button platform adaptation: macOS keeps the colorful dots, other platforms use native flat buttons
@@ -266,11 +285,12 @@ async function closeWindow() {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  /* Reserve bottom space for the floating TaskDock card: when scrolled to the
-     end, the last content stays visible above the dock instead of behind it.
-     --dock-reserve is bound on .app-layout from lib/dockSpace (0 when hidden). */
-  padding-bottom: var(--dock-reserve, 0px);
-  /* Smooth transition when the dock reserve changes (dock appears/disappears,
+  /* Reserve bottom space for the floating TaskDock card (--dock-reserve, bound
+     above from lib/dockSpace; 0 when hidden) plus the mobile bottom tab bar
+     (--mobile-nav-height from global.css; 0px on desktop/tablet), so when
+     scrolled to the end the last content stays visible above both overlays. */
+  padding-bottom: calc(var(--dock-reserve, 0px) + var(--mobile-nav-height, 0px));
+  /* Smooth transition when the reserve changes (dock appears/disappears,
      0 <-> pill height + offset ~56px) so content doesn't jump. */
   transition: padding-bottom 0.2s ease;
 }

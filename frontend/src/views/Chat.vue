@@ -1396,4 +1396,26 @@ onUnmounted(() => {
 .stop-btn:hover {
   background: rgba(239, 68, 68, 0.2);
 }
+
+/* ─── Mobile (<=767px): shell sizing + compact composer ───
+   The custom title bar is hidden on mobile (App.vue gates it via
+   platform.isMobile) and the bottom tab bar takes its own band, so the page
+   must fill the visible viewport between the two: --titlebar-h (36px/0px,
+   OS-scoped) and --mobile-nav-height (0px on desktop) make this rule an exact
+   no-op on desktop. Right padding keeps the TaskDock pill band (16 + 48 + 8);
+   left padding shrinks 48 → 20 like every other page's mobile padding. */
+.chat-page {
+  height: calc(100vh - var(--titlebar-h, 36px) - var(--mobile-nav-height, 0px));
+}
+
+@media (max-width: 767px) {
+  .chat-page {
+    padding: 0 72px 0 20px;
+  }
+
+  /* Composer paddings shrink so the input row dominates the smaller band */
+  .input-area {
+    padding: 10px 0 16px;
+  }
+}
 </style>

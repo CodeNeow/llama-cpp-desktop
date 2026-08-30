@@ -78,6 +78,13 @@ describe('lib/i18n', () => {
     expect(t('dl.error')).toBe('Download failed')
   })
 
+  it('android directory hint key renders in both locales', () => {
+    setLocale('zh')
+    expect(t('models.dirAndroidHint')).toBe('安卓版使用应用内存储，路径由系统管理')
+    setLocale('en')
+    expect(t('models.dirAndroidHint')).toBe('Android uses app-internal storage; paths are managed by the system')
+  })
+
   it('t supports {name} placeholder interpolation', () => {
     expect(t('home.cpu.coresValue', { n: 8 })).toBe('8 核')
     expect(t('models.saveFailed', { msg: 'boom' })).toBe('保存失败: boom')

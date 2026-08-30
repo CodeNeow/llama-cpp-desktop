@@ -151,7 +151,7 @@ code, pre {
    overflow-y: auto — because each page's DOM shape differs. All other pages
    keep the normal document flow and let .content-area scroll instead. */
 .page-fixed {
-  height: calc(100vh - 36px);
+  height: calc(100vh - var(--titlebar-h, 36px) - var(--mobile-nav-height, 0px));
   display: flex;
   flex-direction: column;
 }
@@ -201,4 +201,40 @@ html {
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-hover);
+}
+
+/* ==========================================
+   Mobile shell + base adjustments (<=767px)
+   ------------------------------------------
+   The mobile form factor (see lib/platform.ts isMobile / lib/layout.ts
+   MOBILE_MAX) replaces the left sidebar with the fixed bottom tab bar
+   (MobileNav.vue in App.vue) and drops the custom title bar (App.vue gates it
+   via platform.isMobile, so the vars below — not media queries — carry the
+   OS-driven title bar state to every page shell).
+   ========================================== */
+
+:root {
+  /* Height of the mobile bottom tab bar: 0 on desktop/tablet, the bar's real
+     band (58px + safe-area inset) at the mobile breakpoint. Consumed by
+     App.vue (.content-area padding, --titlebar-h companion) and TaskDock
+     (bottom offset) so content and the floating pill stay clear of the bar.
+     Keep the 58px + env() expression in sync with MobileNav.vue's height. */
+  --mobile-nav-height: 0px;
+}
+
+/* mobile (<=767px): publish the real tab bar height (matches MobileNav.vue). */
+@media (max-width: 767px) {
+  :root {
+    --mobile-nav-height: calc(58px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* mobile (<=767px): page horizontal padding 48px → 20px. The ID prefix is
+   required to out-rank every view's scoped `.page[data-v-…]` padding rule;
+   it is a padding-only override, so each view keeps its own vertical rhythm. */
+@media (max-width: 767px) {
+  #app .page {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
 }

@@ -177,7 +177,9 @@
           </div>
           <div class="dir-path-row">
             <div class="dir-path">{{ appConfig.llamaCppDownloadDir }}</div>
-            <button class="dir-btn" type="button" @click="chooseLlamaCppDownloadDir">{{ t('settings.choose') }}</button>
+            <!-- Android has no native directory picker (the Browse* bindings error
+                 there): the browse buttons are hidden, paths stay read-only -->
+            <button v-if="!isAndroid" class="dir-btn" type="button" @click="chooseLlamaCppDownloadDir">{{ t('settings.choose') }}</button>
           </div>
         </div>
         <div class="dir-row">
@@ -187,7 +189,7 @@
           </div>
           <div class="dir-path-row">
             <div class="dir-path">{{ appConfig.modelDownloadDir }}</div>
-            <button class="dir-btn" type="button" @click="chooseModelDownloadDir">{{ t('settings.choose') }}</button>
+            <button v-if="!isAndroid" class="dir-btn" type="button" @click="chooseModelDownloadDir">{{ t('settings.choose') }}</button>
           </div>
         </div>
         <p class="source-hint">{{ t('settings.directoriesHint') }}</p>
@@ -594,6 +596,10 @@ const showTray = computed(() => showTraySetting(platform.value))
 const showApiRoute = computed(() => showApiRouteSetting(platform.value))
 const showGpu = computed(() => showServingGpuSetting(platform.value))
 const updatesNative = computed(() => updateSectionMode(platform.value) === 'native')
+// OS-scoped gate for the directory browse buttons: Android has no native
+// directory picker (the Browse* bindings error there), so on android the path
+// rows stay readable but the pick buttons are hidden.
+const isAndroid = computed(() => platform.value.isAndroid)
 
 // System tray toggle: rendered on Windows only. Disabling takes effect immediately (backend removes icon and
 // persists); systray cannot restart in same process, so re-enabling requires app restart (hint shown below toggle).
