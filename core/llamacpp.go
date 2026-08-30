@@ -146,6 +146,20 @@ func findLlamaBin(dir, bin string) string {
 	return findLlamaBinInDir(dir, bin)
 }
 
+// androidLdEnv returns the child-environment entries needed to run a llama.cpp
+// binary on Android: the release packages ship their shared libraries
+// (libllama-server-impl.so, libllama-bench-impl.so, libggml*.so, …) NEXT to
+// the executables, and the Android dynamic linker does not search the
+// executable's own directory — LD_LIBRARY_PATH must point there (the same
+// pattern Termux uses to run its programs). Returns nil on every other
+// platform so callers can append unconditionally.
+func androidLdEnv(binPath string) []string {
+	if pathsGOOS != "android" {
+		return nil
+	}
+	return []string{"LD_LIBRARY_PATH=" + filepath.Dir(binPath)}
+}
+
 // resolveLlamaServerBin resolves the llama-server executable path by priority
 // llamaCppDownloadDir() > customLlamaCppDir (imported install) > PATH, shared by
 // getLlamaCppInfo and buildServerCommand to keep the two lookups from drifting.
@@ -194,6 +208,11 @@ var probeLlamaVersion = func(path string) string {
 
 	cmd := exec.CommandContext(ctx, path, "--version")
 	hideWindow(cmd)
+	// Android only: the binary's siblings must be linker-visible (see
+	// androidLdEnv); the desktop environment inherits unchanged.
+	if ld := androidLdEnv(path); ld != nil {
+		cmd.Env = append(os.Environ(), ld...)
+	}
 	var out, errOut bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errOut

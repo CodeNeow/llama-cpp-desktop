@@ -203,6 +203,12 @@ func runLlamaBench(benchPath string, args []string) (string, string, error) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, benchPath, args...)
 	hideWindow(cmd)
+	// Android only: llama-bench links against sibling shared libraries
+	// (libllama-bench-impl.so, libggml*.so) the Android linker only finds via
+	// LD_LIBRARY_PATH (see androidLdEnv); desktop inherits unchanged.
+	if ld := androidLdEnv(benchPath); ld != nil {
+		cmd.Env = append(os.Environ(), ld...)
+	}
 	var out, errOut bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errOut

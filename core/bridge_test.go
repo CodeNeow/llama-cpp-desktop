@@ -795,3 +795,57 @@ func TestStopServerInternalEscalatesToKillAfterGrace(t *testing.T) {
 		t.Fatal("interrupt-ignoring child was not killed after the grace expired")
 	}
 }
+
+// TestAndroidLdEnv verifies the Android LD_LIBRARY_PATH anchor: the binary's
+// directory only on android, nil elsewhere.
+func TestAndroidLdEnv(t *testing.T) {
+	old := pathsGOOS
+	t.Cleanup(func() { pathsGOOS = old })
+
+	pathsGOOS = "windows"
+	if got := androidLdEnv("/data/x/llama-server"); got != nil {
+		t.Errorf("androidLdEnv on windows = %v, want nil", got)
+	}
+	pathsGOOS = "android"
+	want := "LD_LIBRARY_PATH=" + filepath.Join("/data", "x")
+	if got := androidLdEnv("/data/x/llama-server"); len(got) != 1 || got[0] != want {
+		t.Errorf("androidLdEnv on android = %v, want [%q]", got, want)
+	}
+}
+
+// TestServerChildEnv verifies the llama-server child-environment assembly:
+// nil extra keeps exec's inherit semantics (nil), the CUDA pin passes
+// through on windows, and android gets the LD_LIBRARY_PATH entry appended
+// on top of the full parent environment (setting cmd.Env replaces
+// inheritance wholesale).
+func TestServerChildEnv(t *testing.T) {
+	old := pathsGOOS
+	t.Cleanup(func() { pathsGOOS = old })
+	pathsGOOS = "windows"
+
+	if got := serverChildEnv("/x/llama-server", nil); got != nil {
+		t.Errorf("serverChildEnv(nil extra) on windows = %v, want nil (inherit)", got)
+	}
+	cuda := []string{"CUDA_VISIBLE_DEVICES=GPU-abc"}
+	if got := serverChildEnv("/x/llama-server", cuda); len(got) != 1 || got[0] != cuda[0] {
+		t.Errorf("serverChildEnv with cuda pin = %v, want %v", got, cuda)
+	}
+
+	pathsGOOS = "android"
+	got := serverChildEnv("/data/x/llama-server", nil)
+	if len(got) < 2 {
+		t.Fatalf("serverChildEnv on android = %d entries, want parent env + LD_LIBRARY_PATH", len(got))
+	}
+	if got[len(got)-1] != "LD_LIBRARY_PATH="+filepath.Join("/data", "x") {
+		t.Errorf("last env entry = %q, want the LD_LIBRARY_PATH anchor", got[len(got)-1])
+	}
+	base := false
+	for _, e := range got[:len(got)-1] {
+		if strings.HasPrefix(e, "PATH=") || strings.HasPrefix(e, "HOME=") {
+			base = true
+		}
+	}
+	if !base {
+		t.Errorf("android env must be based on the parent environment, got %d entries with neither PATH nor HOME", len(got))
+	}
+}

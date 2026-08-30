@@ -103,7 +103,8 @@ func startServerInternal() error {
 	// GPU. The env entry is appended after os.Environ() so it overrides any
 	// inherited CUDA_VISIBLE_DEVICES (last entry wins). Empty DeviceID (auto)
 	// yields nil: the child then inherits the parent environment unchanged.
-	cmd.Env = cudaDeviceEnv(cfg.DeviceID)
+	// serverChildEnv additionally carries the Android LD_LIBRARY_PATH anchor.
+	cmd.Env = serverChildEnv(llamaServer, cudaDeviceEnv(cfg.DeviceID))
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	serverLogsMu.Lock()
@@ -236,6 +237,23 @@ func buildServerCommand(cfg ServerConfig, presetPath string) (string, []string) 
 // so tests can drive the per-OS branches from a single test binary (same
 // style as pathsGOOS in paths.go).
 var platformGOOS = runtime.GOOS
+
+// serverChildEnv assembles the llama-server child environment from the CUDA
+// device pin (cudaDeviceEnv, windows-only; empty = plain inheritance) plus,
+// on Android, the LD_LIBRARY_PATH anchor pointing at the binary's directory
+// (androidLdEnv). Setting cmd.Env replaces the inherited environment
+// wholesale, so any override must start from os.Environ() — and with no
+// overrides at all the result stays nil so the child inherits unchanged.
+func serverChildEnv(llamaServer string, cudaExtra []string) []string {
+	env := cudaExtra
+	if ld := androidLdEnv(llamaServer); ld != nil {
+		if env == nil {
+			env = os.Environ()
+		}
+		env = append(env, ld...)
+	}
+	return env
+}
 
 // cudaDeviceEnv builds the child-process environment for llama-server from the
 // configured serving GPU (ServerConfig.DeviceID, a stable nvidia-smi UUID).
