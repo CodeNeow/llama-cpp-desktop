@@ -66,7 +66,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check.ps1  # Combi
 | `core/proctime_windows.go` / `proctime_proc.go` / `proctime_other.go` | Child-process start time (`processStartTime`) via x/sys GetProcessTimes / /proc stat + boot time / stub — the identity anchor behind `handoverStartCheck` |
 | `core/i18n.go` | Backend UI language: `tr(zh, en)` translations for user-facing strings |
 | `core/locale_windows.go` / `core/locale_other.go` | System locale detection (kernel32 `GetUserDefaultLocaleName` on Windows / env-based lookup on other platforms) |
-| `core/tray_windows.go` / `core/tray_other.go` | Windows system tray (fyne.io/systray: show main window / quit; `quitOnce` prevents re-`Run` in one process) / other-platform no-op stubs |
+| `core/tray.go` / `core/tray_headless_windows.go` / `core/tray_other.go` | Desktop GUI system tray on the Wails v3 built-in SystemTray (Windows/Linux/macOS; show main window / quit; PNG icon on Linux/macOS, .ico on Windows; one-shot per process) / Windows headless-mode tray on fyne.io/systray (API-route mode; headless has no Wails app instance) / non-desktop no-op stubs |
 | `core/hidewindow_windows.go` / `core/hidewindow_other.go` | Hide child-process console windows (Windows implementation / other platforms no-op) |
 | `core/crossdevice_windows.go` / `core/crossdevice_other.go` | Cross-device rename detection (Windows `ERROR_NOT_SAME_DEVICE` / other platforms `EXDEV`) for the download move-file fallback |
 | `core/singleinstance_windows.go` / `core/singleinstance_other.go` | Single-instance named mutex (blocks double launch; the retry window also covers the headless → GUI handover) / other-platform stubs |

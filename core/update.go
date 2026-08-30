@@ -90,7 +90,16 @@ type UpdateCheckResult struct {
 // CheckForUpdateAt requests the latest release of the given repository and
 // compares versions. apiURL is injectable so tests can use httptest instead
 // of the real network.
+//
+// Windows-only gate: upstream releases ship Windows artifacts only (.exe
+// assets, NSIS installer / uninstall.exe detection, ShellExecute launch), so
+// on linux/macOS there is nothing to update to — the check short-circuits to
+// a "no update" result without touching the network. Revisit when
+// non-Windows release artifacts are published.
 func CheckForUpdateAt(apiURL string) (*UpdateCheckResult, error) {
+	if platformGOOS != "windows" {
+		return &UpdateCheckResult{HasUpdate: false, Version: currentVersion}, nil
+	}
 	release, err := fetchLatestReleaseAt(context.Background(), apiURL)
 	if err != nil {
 		return nil, err

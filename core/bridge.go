@@ -232,6 +232,11 @@ func buildServerCommand(cfg ServerConfig, presetPath string) (string, []string) 
 	return llamaServer, args
 }
 
+// platformGOOS is the OS branch selector (runtime.GOOS in production); a var
+// so tests can drive the per-OS branches from a single test binary (same
+// style as pathsGOOS in paths.go).
+var platformGOOS = runtime.GOOS
+
 // cudaDeviceEnv builds the child-process environment for llama-server from the
 // configured serving GPU (ServerConfig.DeviceID, a stable nvidia-smi UUID).
 // A non-empty deviceID pins the child to that card by appending
@@ -240,7 +245,14 @@ func buildServerCommand(cfg ServerConfig, presetPath string) (string, []string) 
 // device 0 to the chosen card, so llama-server needs no extra flag. An empty
 // deviceID (auto / default device) returns nil so exec.Command inherits the
 // parent environment unchanged (historical behavior).
+//
+// The pin is Windows-only: the llama.cpp builds shipped for linux/macOS are
+// Vulkan / Metal / CPU, where CUDA_VISIBLE_DEVICES is meaningless (and a
+// stale value could silently hide devices) — non-Windows always returns nil.
 func cudaDeviceEnv(deviceID string) []string {
+	if platformGOOS != "windows" {
+		return nil
+	}
 	if deviceID == "" {
 		return nil
 	}

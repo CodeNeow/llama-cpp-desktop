@@ -520,10 +520,22 @@ func TestStartHFDownloadUsesDownloadDirOverride(t *testing.T) {
 	cancelAllTasks(t)
 }
 
+// withPlatformGOOS pins the platformGOOS seam (runtime.GOOS in production) for
+// the duration of the test, restoring the previous value afterwards; used to
+// drive the per-OS gates from a single test binary (same style as the
+// updateExePath / renameFile injection points).
+func withPlatformGOOS(t *testing.T, goos string) {
+	t.Helper()
+	orig := platformGOOS
+	platformGOOS = goos
+	t.Cleanup(func() { platformGOOS = orig })
+}
+
 // TestCudaDeviceEnvEmpty verifies an empty serving-GPU selection (auto) yields
 // nil so exec.Command inherits the parent environment unchanged (historical
-// behavior).
+// behavior). Runs on the Windows branch: CUDA device pinning is Windows-only.
 func TestCudaDeviceEnvEmpty(t *testing.T) {
+	withPlatformGOOS(t, "windows")
 	if got := cudaDeviceEnv(""); got != nil {
 		t.Errorf("cudaDeviceEnv(\"\") = %v, want nil", got)
 	}
@@ -532,7 +544,9 @@ func TestCudaDeviceEnvEmpty(t *testing.T) {
 // TestCudaDeviceEnvOverridesInherited verifies a non-empty device UUID pins the
 // child environment: the inherited variables are kept and CUDA_VISIBLE_DEVICES
 // is appended LAST so it overrides any inherited value (last-wins semantics).
+// Runs on the Windows branch: CUDA device pinning is Windows-only.
 func TestCudaDeviceEnvOverridesInherited(t *testing.T) {
+	withPlatformGOOS(t, "windows")
 	env := cudaDeviceEnv("GPU-12345678-9abc-def0-1234-56789abcdef0")
 	if len(env) < len(os.Environ()) {
 		t.Fatalf("cudaDeviceEnv kept %d entries, want >= %d (inherited environment)", len(env), len(os.Environ()))
@@ -550,6 +564,24 @@ func TestCudaDeviceEnvOverridesInherited(t *testing.T) {
 	}
 	if !inherited {
 		t.Error("cudaDeviceEnv should keep the inherited environment entries")
+	}
+}
+
+// TestCudaDeviceEnvNonWindowsGated verifies the CUDA device pin never reaches
+// the child environment off-Windows: the shipped llama.cpp builds there are
+// Vulkan / Metal / CPU, where CUDA_VISIBLE_DEVICES is meaningless — even an
+// explicit device UUID must yield nil.
+func TestCudaDeviceEnvNonWindowsGated(t *testing.T) {
+	for _, goos := range []string{"linux", "darwin"} {
+		t.Run(goos, func(t *testing.T) {
+			withPlatformGOOS(t, goos)
+			if got := cudaDeviceEnv("GPU-12345678-9abc-def0-1234-56789abcdef0"); got != nil {
+				t.Errorf("cudaDeviceEnv(deviceID) on %s = %v, want nil (CUDA pinning is Windows-only)", goos, got)
+			}
+			if got := cudaDeviceEnv(""); got != nil {
+				t.Errorf("cudaDeviceEnv(\"\") on %s = %v, want nil", goos, got)
+			}
+		})
 	}
 }
 

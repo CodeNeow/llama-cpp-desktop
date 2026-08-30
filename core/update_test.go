@@ -144,7 +144,10 @@ func TestDetectInstallKind(t *testing.T) {
 
 // TestCheckForUpdateNewer verifies hasUpdate is true when the remote version is newer
 // than the current version, carrying the version number and release notes.
+// Runs on the Windows branch: the update check is Windows-only (see the gate in
+// CheckForUpdateAt).
 func TestCheckForUpdateNewer(t *testing.T) {
+	withPlatformGOOS(t, "windows")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"tag_name":"v9.9.9","name":"Release","body":"new feature","published_at":"2026-08-10T00:00:00Z","assets":[]}`))
@@ -168,7 +171,10 @@ func TestCheckForUpdateNewer(t *testing.T) {
 // currentVersion comes from the core/VERSION embedded file (overridden by CI at tag release);
 // the assertion only checks the format (vX.Y.Z) without binding to a specific version,
 // avoiding test churn on every release.
+// Runs on the Windows branch: the update check is Windows-only (see the gate in
+// CheckForUpdateAt).
 func TestCheckForUpdateSame(t *testing.T) {
+	withPlatformGOOS(t, "windows")
 	if !regexp.MustCompile(`^v\d+\.\d+\.\d+$`).MatchString(currentVersion) {
 		t.Fatalf("currentVersion should match vX.Y.Z, got %q", currentVersion)
 	}
@@ -184,6 +190,29 @@ func TestCheckForUpdateSame(t *testing.T) {
 	}
 	if res.HasUpdate {
 		t.Error("hasUpdate should be false when versions match")
+	}
+}
+
+// TestCheckForUpdateNonWindowsGate verifies the update check short-circuits to a
+// "no update" result off-Windows without any network access: upstream releases ship
+// Windows artifacts only (.exe assets / NSIS installer), so there is nothing to
+// update to. The release URL is deliberately unreachable — if the gate were
+// missing, the fetch would fail and the test would error out.
+func TestCheckForUpdateNonWindowsGate(t *testing.T) {
+	for _, goos := range []string{"linux", "darwin"} {
+		t.Run(goos, func(t *testing.T) {
+			withPlatformGOOS(t, goos)
+			res, err := CheckForUpdateAt("http://127.0.0.1:1/unreachable")
+			if err != nil {
+				t.Fatalf("non-Windows check must not touch the network, got error: %v", err)
+			}
+			if res.HasUpdate {
+				t.Errorf("non-Windows check on %s must report no update", goos)
+			}
+			if res.Version != currentVersion {
+				t.Errorf("non-Windows check version = %q, want current %q", res.Version, currentVersion)
+			}
+		})
 	}
 }
 
