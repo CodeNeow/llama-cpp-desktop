@@ -64,6 +64,41 @@ jobs:
         run: go build ./...
       - name: Unit tests (Go)
         run: go test ./...
+      - name: Restore e2e assets (llama.cpp cpu build + tiny model)
+        # Pinned llama.cpp build (b10695) CPU binary + the ~2 MB tinyllamas
+        # stories260K GGUF feed TestServiceChainE2E: the real model-scan ->
+        # preset -> spawn -> OpenAI API -> stop pipeline on each build OS.
+        # Cached across runs; bump the key (and the pin) when refreshing.
+        uses: actions/cache@v4
+        with:
+          path: .e2e-cache
+          key: e2e-assets-llama-b10695-stories260K
+      - name: Fetch e2e assets
+        run: |
+          set -euo pipefail
+          mkdir -p .e2e-cache/llamacpp
+          if [ ! -f .e2e-cache/llamacpp/llama-server ]; then
+            # libvulkan is a runtime dependency of the ubuntu llama.cpp build
+            # (it degrades to CPU without a GPU but needs the loader present).
+            sudo apt-get install -y libvulkan1
+            curl -fL --retry 3 -o /tmp/llamacpp.tar.gz \
+              "https://github.com/ggml-org/llama.cpp/releases/download/b10695/llama-b10695-bin-ubuntu-x64.tar.gz"
+            mkdir -p /tmp/llamacpp-unpack
+            tar -xzf /tmp/llamacpp.tar.gz -C /tmp/llamacpp-unpack
+            find /tmp/llamacpp-unpack -name llama-server -type f -exec mv {} .e2e-cache/llamacpp/ \;
+          fi
+          if [ ! -f .e2e-cache/stories260K.gguf ]; then
+            curl -fL --retry 3 -o .e2e-cache/stories260K.gguf \
+              "https://huggingface.co/ggml-org/models/resolve/main/tinyllamas/stories260K.gguf"
+          fi
+          test -f .e2e-cache/llamacpp/llama-server
+          test -f .e2e-cache/stories260K.gguf
+      - name: Service-chain E2E (real llama-server + tiny model)
+        env:
+          LLAMA_DESKTOP_E2E: "1"
+          LLAMA_DESKTOP_E2E_LLAMA_SERVER: ${{ github.workspace }}/.e2e-cache/llamacpp
+          LLAMA_DESKTOP_E2E_MODEL: ${{ github.workspace }}/.e2e-cache/stories260K.gguf
+        run: go test ./core/ -run TestServiceChainE2E -count=1 -timeout 10m -v
       - name: gofmt check
         run: test -z "$(gofmt -l .)"
       - name: golangci-lint
@@ -114,6 +149,37 @@ jobs:
         # tag→core/VERSION sync above feeds the embedded version. generate:bindings
         # inside the task runs `go mod tidy` (harmless).
         run: wails3 task build
+      - name: Unit tests on the target OS (windows-specific branches)
+        # The backend job only ever exercises linux code paths; windows-latest
+        # runs the same suite against the windows branches (proctime, tray,
+        # crossdevice, hidewindow, paths fallbacks). Runs after the build task
+        # so frontend/dist (go:embed dependency) exists.
+        run: go test ./...
+      - name: Restore e2e assets (llama.cpp cpu build + tiny model)
+        uses: actions/cache@v4
+        with:
+          path: .e2e-cache
+          key: e2e-assets-llama-b10695-stories260K
+      - name: Fetch e2e assets
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path .e2e-cache/llamacpp | Out-Null
+          if (-not (Test-Path .e2e-cache/llamacpp/llama-server.exe)) {
+            Invoke-WebRequest -Uri 'https://github.com/ggml-org/llama.cpp/releases/download/b10695/llama-b10695-bin-win-cpu-x64.zip' -OutFile .e2e-cache/llamacpp.zip
+            Expand-Archive .e2e-cache/llamacpp.zip -DestinationPath .e2e-cache/unpack -Force
+            $exe = Get-ChildItem .e2e-cache/unpack -Recurse -Filter llama-server.exe | Select-Object -First 1
+            if (-not $exe) { throw 'llama-server.exe not found in the release zip' }
+            Move-Item $exe.FullName .e2e-cache/llamacpp/llama-server.exe
+          }
+          if (-not (Test-Path .e2e-cache/stories260K.gguf)) {
+            Invoke-WebRequest -Uri 'https://huggingface.co/ggml-org/models/resolve/main/tinyllamas/stories260K.gguf' -OutFile .e2e-cache/stories260K.gguf
+          }
+      - name: Service-chain E2E (real llama-server + tiny model)
+        env:
+          LLAMA_DESKTOP_E2E: "1"
+          LLAMA_DESKTOP_E2E_LLAMA_SERVER: ${{ github.workspace }}/.e2e-cache/llamacpp
+          LLAMA_DESKTOP_E2E_MODEL: ${{ github.workspace }}/.e2e-cache/stories260K.gguf
+        run: go test ./core/ -run TestServiceChainE2E -count=1 -timeout 10m -v
       - name: Download WebView2 bootstrapper
         # project.nsi's wails.webview2runtime macro embeds tmp/MicrosoftEdgeWebview2Setup.exe.
         # The v2 CLI used to unpack it from its own binary during `wails build -nsis`; with
@@ -338,6 +404,39 @@ jobs:
             build/bin/llama-desktop-arm64 build/bin/llama-desktop-amd64
           rm build/bin/llama-desktop-arm64 build/bin/llama-desktop-amd64
           lipo -info build/bin/llama-desktop
+      - name: Unit tests on the target OS (darwin-specific branches)
+        # First-ever execution of the suite against darwin branches (proctime
+        # stubs, tray complement, locale env lookup). Runs after the binary
+        # build so frontend/dist (go:embed dependency) exists.
+        run: go test ./...
+      - name: Restore e2e assets (llama.cpp cpu build + tiny model)
+        uses: actions/cache@v4
+        with:
+          path: .e2e-cache
+          key: e2e-assets-llama-b10695-stories260K
+      - name: Fetch e2e assets
+        run: |
+          set -euo pipefail
+          mkdir -p .e2e-cache/llamacpp
+          if [ ! -f .e2e-cache/llamacpp/llama-server ]; then
+            curl -fL --retry 3 -o /tmp/llamacpp.tar.gz \
+              "https://github.com/ggml-org/llama.cpp/releases/download/b10695/llama-b10695-bin-macos-arm64.tar.gz"
+            mkdir -p /tmp/llamacpp-unpack
+            tar -xzf /tmp/llamacpp.tar.gz -C /tmp/llamacpp-unpack
+            find /tmp/llamacpp-unpack -name llama-server -type f -exec mv {} .e2e-cache/llamacpp/ \;
+          fi
+          if [ ! -f .e2e-cache/stories260K.gguf ]; then
+            curl -fL --retry 3 -o .e2e-cache/stories260K.gguf \
+              "https://huggingface.co/ggml-org/models/resolve/main/tinyllamas/stories260K.gguf"
+          fi
+          test -f .e2e-cache/llamacpp/llama-server
+          test -f .e2e-cache/stories260K.gguf
+      - name: Service-chain E2E (real llama-server + tiny model)
+        env:
+          LLAMA_DESKTOP_E2E: "1"
+          LLAMA_DESKTOP_E2E_LLAMA_SERVER: ${{ github.workspace }}/.e2e-cache/llamacpp
+          LLAMA_DESKTOP_E2E_MODEL: ${{ github.workspace }}/.e2e-cache/stories260K.gguf
+        run: go test ./core/ -run TestServiceChainE2E -count=1 -timeout 10m -v
       - name: Assemble .app bundle
         # Hand-rolled bundle mirroring the v3 darwin template layout: binary in
         # Contents/MacOS, generated icns in Contents/Resources, Info.plist in Contents.
@@ -462,6 +561,25 @@ jobs:
         # c-shared build of libwails.so into jniLibs/arm64-v8a, then gradle
         # assembleDebug (SDK resolved from the runner's ANDROID_HOME).
         run: wails3 task android:package
+      - name: Build x86_64 smoke APK (CI-emulator only, not released)
+        # CI's Android emulator is x86_64 and cannot run arm64 native libs, so
+        # the smoke job needs a second debug APK carrying an x86_64 libwails.so
+        # (Taskfile android:build:go ABI=x86_64 + gradle -PtargetAbi=x86_64).
+        # Uploaded under its own artifact name (outside the llama-desktop-*
+        # release pattern) so the release job's 5-artifact count stays intact.
+        run: |
+          wails3 task android:build:go ABI=x86_64
+          cd build/android
+          chmod +x ./gradlew
+          ./gradlew -PtargetAbi=x86_64 assembleDebug
+          VER="$(cat ../../core/VERSION)"
+          cp app/build/outputs/apk/debug/app-debug.apk \
+            "../../build/bin/llama-desktop-${VER}-android-x86_64-debug-smoke.apk"
+      - name: Upload smoke APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-android-apk
+          path: build/bin/llama-desktop-*-android-x86_64-debug-smoke.apk
       - name: List build outputs
         run: ls -la build/bin/
       - name: Upload build artifacts
@@ -469,6 +587,77 @@ jobs:
         with:
           name: llama-desktop-android
           path: build/bin/llama-desktop-*-android-arm64-debug.apk
+
+  smoke-android:
+    # Emulator smoke for the APK: boots the x86_64 debug build on an API 30
+    # emulator and asserts the app reaches a running state without crashing —
+    # the Go/JNI runtime, the storage-anchor resolution and the WebView
+    # frontend boot path that no desktop CI can exercise. Full business
+    # chains (model download -> inference) stay on real-device validation:
+    # the emulator cannot exec the runtime-downloaded llama-server comfortably
+    # nor offer representative storage/performance conditions.
+    runs-on: ubuntu-latest
+    needs: build-android
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: smoke-android-apk
+          path: apk
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Enable KVM group perms
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Boot emulator and smoke-test the app
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: google_apis
+          arch: x86_64
+          script: |
+            set -e
+            adb install -r "$(ls apk/*.apk)"
+            adb logcat -c
+            adb shell am start -W -n com.wails.app/com.wails.app.MainActivity || true
+            # Poll for a live process up to ~90s (Go runtime + WebView boot).
+            PID=""
+            for i in $(seq 1 30); do
+              PID=$(adb shell pidof com.wails.app | tr -d '\r' || true)
+              [ -n "$PID" ] && break
+              sleep 3
+            done
+            if [ -z "$PID" ]; then
+              echo "::error::app process not running after launch"
+              adb logcat -d | tail -120
+              exit 1
+            fi
+            echo "app running with pid $PID"
+            if adb logcat -d | grep -q "FATAL EXCEPTION"; then
+              echo "::error::crash recorded in logcat"
+              adb logcat -d | grep -B 5 -A 25 "FATAL EXCEPTION"
+              exit 1
+            fi
+            # The storage anchor must resolve through the JNI bridge; this
+            # WARN is emitted by core/paths.go when it falls back to the
+            # read-only cwd-relative layout.
+            if adb logcat -d | grep -q "keeping cwd-relative app paths"; then
+              echo "::error::Android storage anchor unresolved (JNI bridge), app fell back to read-only cwd paths"
+              adb logcat -d | grep -i "llama-desktop" | tail -40
+              exit 1
+            fi
+            adb exec-out screencap -p > emulator-screen.png || true
+            ls -la emulator-screen.png || true
+      - name: Upload emulator screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-android-screen
+          path: emulator-screen.png
+          if-no-files-found: ignore
 
   release:
     # Centralized release to avoid build-windows / build-linux / build-macos / build-android

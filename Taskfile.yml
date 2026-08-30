@@ -119,7 +119,11 @@ tasks:
   # ---------------------------------------------------------------------------
 
   android:build:go:
-    summary: Compile the Go app to libwails.so for android/arm64 (NDK clang, c-shared)
+    summary: Compile the Go app to libwails.so for android/arm64 (NDK clang, c-shared). ABI=x86_64 builds the emulator-smoke variant.
+    vars:
+      # arm64-v8a is the release ABI for real devices; x86_64 exists solely for
+      # CI's emulator smoke (CI emulators are x86_64 and cannot run arm64 libs).
+      ABI: '{{.ABI | default "arm64-v8a"}}'
     preconditions:
       - sh: '[ -n "$ANDROID_NDK_HOME" ] || { [ -n "$ANDROID_HOME" ] && ls -d "$ANDROID_HOME"/ndk/* >/dev/null 2>&1; } || { [ -n "$ANDROID_SDK_ROOT" ] && ls -d "$ANDROID_SDK_ROOT"/ndk/* >/dev/null 2>&1; }'
         msg: "Android NDK not found (set ANDROID_NDK_HOME, or install one under $ANDROID_HOME/ndk, e.g. sdkmanager 'ndk;26.3.11579264'). Only runnable on machines with the Android toolchain (CI build-android job)."
@@ -149,14 +153,21 @@ tasks:
         esac
         TOOLCHAIN="$NDK_ROOT/toolchains/llvm/prebuilt/$HOST_TAG"
 
+        # GOARCH per target ABI (the two c-shared targets the gradle project
+        # packages) and the matching NDK clang (minSdk 21 target).
+        case "{{.ABI}}" in
+          arm64-v8a) GOARCH=arm64;  CLANG_TRIPLE=aarch64-linux-android21 ;;
+          x86_64)    GOARCH=amd64;  CLANG_TRIPLE=x86_64-linux-android21 ;;
+          *) echo "Unsupported ABI '{{.ABI}}' (arm64-v8a | x86_64)"; exit 1 ;;
+        esac
+
         # Exact env pattern from the v3 template's compile:go:shared arm64
-        # branch: NDK clang (minSdk 21 target) as the CGO compiler plus
-        # GOOS/GOARCH/CGO_ENABLED. The template sets no CFLAGS.
+        # branch: NDK clang as the CGO compiler plus GOOS/GOARCH/CGO_ENABLED.
         export CGO_ENABLED=1
         export GOOS=android
-        export GOARCH=arm64
-        export CC="$TOOLCHAIN/bin/aarch64-linux-android21-clang"
-        export CXX="$TOOLCHAIN/bin/aarch64-linux-android21-clang++"
+        export GOARCH
+        export CC="$TOOLCHAIN/bin/${CLANG_TRIPLE}-clang"
+        export CXX="$TOOLCHAIN/bin/${CLANG_TRIPLE}-clang++"
 
         # Android entry registration lives in the repo-root main_android.go
         # (//go:build android): its init() registers main() with the Wails
@@ -165,11 +176,11 @@ tasks:
 
         # Production-parity Go side (framework diagnostics compiled out);
         # flags mirror the template's PRODUCTION=true build flags.
-        mkdir -p build/android/app/src/main/jniLibs/arm64-v8a
+        mkdir -p build/android/app/src/main/jniLibs/{{.ABI}}
         go build -buildmode=c-shared \
           -tags production,android -trimpath -buildvcs=false -ldflags="-w -s" \
-          -o build/android/app/src/main/jniLibs/arm64-v8a/libwails.so .
-        echo "libwails.so built for android/arm64"
+          -o build/android/app/src/main/jniLibs/{{.ABI}}/libwails.so .
+        echo "libwails.so built for android/{{.ABI}}"
 
   android:build:
     summary: Build the debug-signed Android APK (android:build:go + gradle assembleDebug)
