@@ -10,8 +10,11 @@ import (
 )
 
 // withTempCwd switches to a temp directory and restores the original working directory
-// after the test. loadConfig/saveConfig read configFile as a relative path, so tests
-// need an isolated working directory.
+// after the test. loadConfig/saveConfig read the state-file paths relative to the
+// working directory on Windows, so tests need an isolated working directory.
+// The state-file path vars are additionally pinned to explicit paths inside the
+// temp directory so the tests are independent of the per-OS default resolution
+// (on non-Windows the defaults resolve under the app-data base, see paths.go).
 func withTempCwd(t *testing.T) string {
 	t.Helper()
 	orig, err := os.Getwd()
@@ -22,7 +25,13 @@ func withTempCwd(t *testing.T) string {
 	if err := os.Chdir(tmp); err != nil {
 		t.Fatal(err)
 	}
+	oldConfig, oldHandover, oldBench, oldDocs := configFile, handoverFile, benchCacheFile, docsCacheDir
+	configFile = filepath.Join(tmp, configFileName)
+	handoverFile = filepath.Join(tmp, handoverFileName)
+	benchCacheFile = filepath.Join(tmp, benchCacheFileName)
+	docsCacheDir = filepath.Join(tmp, docsCacheDirName)
 	t.Cleanup(func() {
+		configFile, handoverFile, benchCacheFile, docsCacheDir = oldConfig, oldHandover, oldBench, oldDocs
 		if err := os.Chdir(orig); err != nil {
 			t.Errorf("failed to restore working directory: %v", err)
 		}
@@ -767,8 +776,8 @@ func TestEffectiveModelDownloadDir(t *testing.T) {
 	modelDownloadDirMu.Lock()
 	modelDownloadDirOverride = ""
 	modelDownloadDirMu.Unlock()
-	if got := effectiveModelDownloadDir(); got != modelsDir {
-		t.Errorf("default download dir = %q, want %q", got, modelsDir)
+	if got := effectiveModelDownloadDir(); got != defaultModelsDir() {
+		t.Errorf("default download dir = %q, want %q", got, defaultModelsDir())
 	}
 
 	custom := t.TempDir()

@@ -86,9 +86,20 @@ var (
 	benchMeasureFn = measureRAMBandwidth
 )
 
-// benchCacheFile is the calibration cache path, cwd-relative (same
-// convention as handoverFile); a var so tests redirect it into a temp dir.
-var benchCacheFile = "llama-desktop-benchcache.json"
+// benchCacheFile is the calibration cache path override: the bare default
+// means "resolve via benchCacheFilePath" (cwd-relative on Windows, under the
+// app-data base on other platforms, see paths.go); tests assign an explicit
+// path to pin the location.
+var benchCacheFile = benchCacheFileName
+
+// benchCacheFilePath resolves the active calibration cache path: an explicit
+// benchCacheFile override wins, otherwise the per-OS default applies.
+func benchCacheFilePath() string {
+	if benchCacheFile != benchCacheFileName {
+		return benchCacheFile
+	}
+	return resolveStateFile(benchCacheFileName)
+}
 
 // benchSink keeps every pass checksum alive: folding it into a package-level
 // variable leaves the compiler no license to dead-code-eliminate the loads
@@ -283,7 +294,7 @@ type benchCachePayload struct {
 // cross-machine fingerprint, garbage value — is a miss. A corrupt file is
 // only ever a [WARN]: cache trouble must never fail the tune.
 func loadBenchCache(fingerprint string) (float64, bool) {
-	data, err := os.ReadFile(benchCacheFile)
+	data, err := os.ReadFile(benchCacheFilePath())
 	if err != nil {
 		if !os.IsNotExist(err) {
 			log.Printf("[WARN] tune: reading RAM bandwidth cache: %v", err)
@@ -320,7 +331,7 @@ func saveBenchCache(fingerprint string, ramGBs float64) {
 		log.Printf("[WARN] tune: encoding RAM bandwidth cache: %v", err)
 		return
 	}
-	if err := atomicWriteFile(benchCacheFile, data, 0644); err != nil {
+	if err := atomicWriteFile(benchCacheFilePath(), data, 0644); err != nil {
 		log.Printf("[WARN] tune: persisting RAM bandwidth cache: %v", err)
 	}
 }

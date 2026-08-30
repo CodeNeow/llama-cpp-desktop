@@ -31,8 +31,9 @@ package core
 //     the backoff elapses — cached content is served when it exists, otherwise
 //     "none" is reported immediately, so a no-cache offline user never burns
 //     the 2×docsHTTPTimeout attempt either.
-//   - Cache paths are cwd-relative vars (same convention as configFile /
-//     benchCacheFile) so tests redirect them into a temp directory; the clock
+//   - Cache paths are path vars with per-OS default resolution (see paths.go;
+//     same convention as configFile / benchCacheFile) so tests redirect them
+//     into a temp directory; the clock
 //     and HTTP client are package vars (same injection-point style as
 //     cmdTimeout / benchMeasureFn) so tests stay deterministic and offline.
 
@@ -127,10 +128,20 @@ var (
 	docsHTTPClient = &http.Client{}
 )
 
-// docsCacheDir is the doc cache directory, cwd-relative (same convention as
-// configFile / handoverFile / benchCacheFile); a var so tests redirect it into
-// a temp directory. Content files are {dir}/{lang}-{sectionID}.md.
-var docsCacheDir = "llama-desktop-docscache"
+// docsCacheDir is the doc cache directory override: the bare default means
+// "resolve via docsCacheDirPath" (cwd-relative on Windows, under the app-data
+// base on other platforms, see paths.go); tests assign an explicit path to
+// pin the location. Content files are {dir}/{lang}-{sectionID}.md.
+var docsCacheDir = docsCacheDirName
+
+// docsCacheDirPath resolves the active doc cache directory: an explicit
+// docsCacheDir override wins, otherwise the per-OS default applies.
+func docsCacheDirPath() string {
+	if docsCacheDir != docsCacheDirName {
+		return docsCacheDir
+	}
+	return resolveStateFile(docsCacheDirName)
+}
 
 // ─── Cache meta (meta.json) ──────────────────────────────────────
 
@@ -152,7 +163,7 @@ type docsCacheMeta struct {
 // degrades to an empty cache with a [WARN] log — never a failure.
 func readDocsMeta() docsCacheMeta {
 	empty := docsCacheMeta{Version: docsCacheMetaVersion, Entries: map[string]docsCacheEntry{}}
-	metaPath := filepath.Join(docsCacheDir, docsMetaName)
+	metaPath := filepath.Join(docsCacheDirPath(), docsMetaName)
 	data, err := os.ReadFile(metaPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -180,8 +191,8 @@ func readDocsMeta() docsCacheMeta {
 // writeDocsMeta persists meta.json crash-safely; failures are [WARN]-logged
 // and never fail the fetch (the cache is an optimization, not a requirement).
 func writeDocsMeta(meta docsCacheMeta) {
-	if err := os.MkdirAll(docsCacheDir, 0755); err != nil {
-		log.Printf("[WARN] remotedocs: cannot create doc cache dir %s: %v", docsCacheDir, err)
+	if err := os.MkdirAll(docsCacheDirPath(), 0755); err != nil {
+		log.Printf("[WARN] remotedocs: cannot create doc cache dir %s: %v", docsCacheDirPath(), err)
 		return
 	}
 	meta.Version = docsCacheMetaVersion
@@ -190,7 +201,7 @@ func writeDocsMeta(meta docsCacheMeta) {
 		log.Printf("[WARN] remotedocs: cannot encode doc cache meta: %v", err)
 		return
 	}
-	if err := atomicWriteFile(filepath.Join(docsCacheDir, docsMetaName), data, 0644); err != nil {
+	if err := atomicWriteFile(filepath.Join(docsCacheDirPath(), docsMetaName), data, 0644); err != nil {
 		log.Printf("[WARN] remotedocs: cannot persist doc cache meta: %v", err)
 	}
 }
@@ -265,7 +276,7 @@ func getRemoteDoc(lang, sectionID string, force bool) (RemoteDocResult, error) {
 	defer docsMu.Unlock()
 
 	key := lang + "-" + sectionID
-	contentPath := filepath.Join(docsCacheDir, key+".md")
+	contentPath := filepath.Join(docsCacheDirPath(), key+".md")
 	now := docsNow()
 
 	// Snapshot the current cache state: content file + meta entry.
@@ -307,8 +318,8 @@ func getRemoteDoc(lang, sectionID string, force bool) (RemoteDocResult, error) {
 	remotePath := fmt.Sprintf(docsRepoPathFmt, lang, sectionID)
 	content, ok := fetchDocFromSources(docsRawBaseURL+remotePath, docsJSDBaseURL+remotePath)
 	if ok {
-		if err := os.MkdirAll(docsCacheDir, 0755); err != nil {
-			log.Printf("[WARN] remotedocs: cannot create doc cache dir %s: %v", docsCacheDir, err)
+		if err := os.MkdirAll(docsCacheDirPath(), 0755); err != nil {
+			log.Printf("[WARN] remotedocs: cannot create doc cache dir %s: %v", docsCacheDirPath(), err)
 		} else if err := atomicWriteFile(contentPath, []byte(content), 0644); err != nil {
 			log.Printf("[WARN] remotedocs: cannot persist %s: %v", contentPath, err)
 		}

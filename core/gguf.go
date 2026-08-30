@@ -61,15 +61,20 @@ func invalidateModelCache() {
 	modelsMu.Unlock()
 }
 
-const modelsDir = "LLM-Models"
+// defaultModelsDir resolves the default model directory name (modelsDirName
+// in paths.go) to its per-OS location: bare cwd-relative on Windows, under
+// the app-data base elsewhere. Declared as a function-valued var (same
+// injection style as configFile) so tests can pin the directory.
+var defaultModelsDir = func() string { return resolveStateFile(modelsDirName) }
 
 // modelScanDirs returns the roots the model list is scanned from, in priority
 // order: the model download directory first, then the imported model directory
 // when set. Directories are resolved to absolute paths and duplicates removed,
 // so pointing both settings at the same place does not double-list models, and
 // so the SourceDir annotated on scanned models matches the absolute download
-// path GetConfig reports to the frontend (the default is cwd-relative, e.g.
-// LLM-Models).
+// path GetConfig reports to the frontend (on Windows the default is
+// cwd-relative, e.g. LLM-Models; other platforms resolve it under the
+// per-OS app-data base, see paths.go).
 func modelScanDirs() []string {
 	dirs := []string{effectiveModelDownloadDir()}
 	modelsDirMu.Lock()
@@ -107,10 +112,11 @@ func scanModels() []ModelInfo {
 	for _, dir := range modelScanDirs() {
 		// Custom paths are user-picked and expected to exist already; only
 		// the default directory needs lazy creation (compare both the
-		// relative default and its absolute form, as scan roots are
-		// resolved to absolute paths).
-		isDefault := dir == modelsDir
-		if abs, err := filepath.Abs(modelsDir); err == nil {
+		// default and its absolute form, as scan roots are resolved to
+		// absolute paths).
+		def := defaultModelsDir()
+		isDefault := dir == def
+		if abs, err := filepath.Abs(def); err == nil {
 			isDefault = isDefault || dir == abs
 		}
 		if isDefault {

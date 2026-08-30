@@ -17,9 +17,20 @@ import (
 // the config file; the new process probes the record and adopts the still
 // running llama-server instead of starting a new one.
 
-// handoverFile is the handover-record path, declared as a var (same style as
-// configFile) and resolved cwd-relative like the config file.
-var handoverFile = "llama-desktop-server-handover.json"
+// handoverFile is the handover-record path override: the bare default means
+// "resolve via handoverFilePath" (cwd-relative on Windows, under the app-data
+// base on other platforms, see paths.go); tests assign an explicit path to
+// pin the location.
+var handoverFile = handoverFileName
+
+// handoverFilePath resolves the active handover-record path: an explicit
+// handoverFile override wins, otherwise the per-OS default applies.
+func handoverFilePath() string {
+	if handoverFile != handoverFileName {
+		return handoverFile
+	}
+	return resolveStateFile(handoverFileName)
+}
 
 // handoverRecord is the JSON payload of the handover file: the llama-server
 // child pid, the port it listens on, when the record was written, the server
@@ -63,7 +74,7 @@ func writeHandover(pid, port int) error {
 	if err != nil {
 		return fmt.Errorf("marshal handover record: %w", err)
 	}
-	if err := atomicWriteFile(handoverFile, data, 0644); err != nil {
+	if err := atomicWriteFile(handoverFilePath(), data, 0644); err != nil {
 		return fmt.Errorf("write handover file: %w", err)
 	}
 	return nil
@@ -73,7 +84,7 @@ func writeHandover(pid, port int) error {
 // are both errors; callers distinguish missing via errors.Is(err, fs.ErrNotExist)
 // and treat anything else as a stale record (delete + start fresh).
 func readHandover() (*handoverRecord, error) {
-	data, err := os.ReadFile(handoverFile)
+	data, err := os.ReadFile(handoverFilePath())
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +97,7 @@ func readHandover() (*handoverRecord, error) {
 
 // removeHandover deletes the handover record; a missing file is not an error.
 func removeHandover() error {
-	if err := os.Remove(handoverFile); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(handoverFilePath()); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove handover file: %w", err)
 	}
 	return nil

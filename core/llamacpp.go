@@ -67,7 +67,7 @@ var customLlamaCppDir string
 var customLlamaCppMu sync.Mutex
 
 // llamaCppDownloadDirOverride is the user-chosen download path for new
-// llama.cpp installs (empty means unset, use the default downloadDir).
+// llama.cpp installs (empty means unset, use the defaultLlamaCppDir default).
 // Distinct from customLlamaCppDir (the imported existing install): new
 // downloads land in the download path, while detection falls back to the
 // imported directory second.
@@ -360,13 +360,18 @@ var githubReleasesAPI = "https://api.github.com/repos/ggml-org/llama.cpp/release
 // download flow falls back to this list to find the newest release with binaries.
 var githubReleasesListAPI = "https://api.github.com/repos/ggml-org/llama.cpp/releases?per_page=10"
 
-const downloadDir = "llama-cpp"
+// defaultLlamaCppDir resolves the default llama.cpp install directory name
+// (llamaCppDirName in paths.go) to its per-OS location: bare cwd-relative on
+// Windows, under the app-data base elsewhere. Declared as a function-valued
+// var (same injection style as configFile) so tests can pin the directory.
+var defaultLlamaCppDir = func() string { return resolveStateFile(llamaCppDirName) }
 
 // llamaCppDownloadDir returns the target directory for llama.cpp download
 // extraction: the user-chosen download path when configured, otherwise the
-// default llama-cpp/. Matches the detection priority of getLlamaCppInfo /
-// resolveLlamaServerBin (download path > imported customLlamaCppDir > PATH) so
-// the download landing spot and the detection location stay consistent.
+// default per-OS llama-cpp/ location. Matches the detection priority of
+// getLlamaCppInfo / resolveLlamaServerBin (download path > imported
+// customLlamaCppDir > PATH) so the download landing spot and the detection
+// location stay consistent.
 func llamaCppDownloadDir() string {
 	llamaCppDownloadDirMu.Lock()
 	dir := llamaCppDownloadDirOverride
@@ -374,7 +379,7 @@ func llamaCppDownloadDir() string {
 	if dir != "" {
 		return dir
 	}
-	return downloadDir
+	return defaultLlamaCppDir()
 }
 
 func downloadLlamaCpp() {

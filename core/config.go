@@ -67,12 +67,23 @@ func effectiveModelDownloadDir() string {
 	if dir != "" {
 		return dir
 	}
-	return modelsDir
+	return defaultModelsDir()
 }
 
-// configFile is the config persistence path, declared as a var so tests can
-// override it via chdir.
-var configFile = "llama-desktop-config.json"
+// configFile is the config persistence path override: the bare default means
+// "resolve via configFilePath" (cwd-relative on Windows, under the app-data
+// base on other platforms, see paths.go); tests assign an explicit path to
+// pin the location.
+var configFile = configFileName
+
+// configFilePath resolves the active config persistence path: an explicit
+// configFile override wins, otherwise the per-OS default applies.
+func configFilePath() string {
+	if configFile != configFileName {
+		return configFile
+	}
+	return resolveStateFile(configFileName)
+}
 
 // legacyConfigFile is the config filename from before the llama-gui →
 // llama-desktop rename. It serves only as a one-shot migration source (see
@@ -162,22 +173,48 @@ type ModelConfig struct {
 	NoMMap        bool    `json:"noMmap,omitempty"` // deprecated, kept only to migrate old configs
 }
 
-// migrateLegacyConfig copies the legacy llama-gui-era config file content to
-// the new filename: only when the new file does not exist and the old one
-// does, it reads the old content and writes it to the new file (0644, matching
-// the saveConfig write convention) — no deletion or renaming. The old file
-// stays in place, unchanged.
-// Copy instead of rename because: wails dev's file watcher watches the project
-// root, and deleting/renaming root files during startup triggers a
-// GetFileAttributesEx race in the Wails CLI that crashes the run; copying does
-// not delete the source, the new file's existence short-circuits, and a
-// leftover old file has no side effects — migration re-triggers only if the
-// user deletes the new file. Failures only log a warning and fall back to
-// loadConfig's defaults, never blocking startup.
+// migrateLegacyConfig copies older config files forward to the active config
+// path (configFilePath) before loadConfig reads it, newest source first:
+//
+//  1. Non-Windows only: a legacy cwd-relative llama-desktop-config.json (the
+//     pre-app-data layout, see paths.go) is copied into the app-data base;
+//     [INFO]-logged, the source file is kept. On Windows this stage never
+//     runs (the active path is the same cwd-relative name — zero behavior
+//     change).
+//  2. Any platform: the llama-gui-era llama-gui-config.json is copied to the
+//     active config path ([OK]-logged, unchanged behavior).
+//
+// Both stages copy instead of move (source stays in place): wails dev's file
+// watcher watches the project root, and deleting/renaming root files during
+// startup triggers a GetFileAttributesEx race in the Wails CLI that crashes
+// the run; copying never deletes the source, the new file's existence
+// short-circuits, and a leftover old file has no side effects — migration
+// re-triggers only if the user deletes the new file. Failures only log a
+// warning and fall back to loadConfig's defaults, never blocking startup.
+//
+// Migration asymmetry (by design): only the config file migrates. The other
+// state files are caches or transient state that regenerate on demand — the
+// bench cache re-benchmarks, the docs cache re-fetches, and the handover
+// record only matters within a single GUI↔headless switch — so none of them
+// are copied to the app-data base.
 func migrateLegacyConfig() {
-	if _, err := os.Stat(configFile); err == nil {
+	target := configFilePath()
+	if _, err := os.Stat(target); err == nil {
 		return
 	}
+	// Stage 1: pre-app-data cwd config (non-Windows only). The source is the
+	// bare cwd-relative name, deliberately not run through resolveStateFile.
+	if base := appDataDir(); base != "" {
+		if data, err := os.ReadFile(configFileName); err == nil {
+			if err := atomicWriteFile(target, data, 0644); err != nil {
+				log.Printf("[WARN] Failed to migrate legacy cwd config %s -> %s: %v", configFileName, target, err)
+				return
+			}
+			log.Printf("[INFO] Migrated legacy cwd config %s -> %s (source kept)", configFileName, target)
+			return
+		}
+	}
+	// Stage 2: llama-gui-era file (cwd-relative legacyConfigFile).
 	if _, err := os.Stat(legacyConfigFile); err != nil {
 		return
 	}
@@ -186,16 +223,16 @@ func migrateLegacyConfig() {
 		log.Printf("[WARN] Failed to migrate legacy config %s: %v", legacyConfigFile, err)
 		return
 	}
-	if err := atomicWriteFile(configFile, data, 0644); err != nil {
+	if err := atomicWriteFile(target, data, 0644); err != nil {
 		log.Printf("[WARN] Failed to migrate legacy config %s: %v", legacyConfigFile, err)
 		return
 	}
-	log.Printf("[OK] Migrated legacy config %s -> %s", legacyConfigFile, configFile)
+	log.Printf("[OK] Migrated legacy config %s -> %s", legacyConfigFile, target)
 }
 
 func loadConfig() {
 	migrateLegacyConfig()
-	data, err := os.ReadFile(configFile)
+	data, err := os.ReadFile(configFilePath())
 	if err != nil {
 		return // file doesn't exist yet, that's ok
 	}
@@ -565,7 +602,7 @@ func saveConfig() {
 		log.Printf("[WARN] Failed to marshal config: %v", err)
 		return
 	}
-	if err := atomicWriteFile(configFile, data, 0644); err != nil {
+	if err := atomicWriteFile(configFilePath(), data, 0644); err != nil {
 		log.Printf("[WARN] Failed to write config file: %v", err)
 	}
 }
