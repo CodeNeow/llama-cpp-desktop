@@ -241,7 +241,7 @@ func generateModelsPresetFrom(models []ModelInfo, cfgs map[string]ModelConfig) (
 		buf.WriteString("\n")
 	}
 
-	tmpFile, err := os.CreateTemp("", "llama-models-*.ini")
+	tmpFile, err := os.CreateTemp(resolveTempDir(), "llama-models-*.ini")
 	if err != nil {
 		return "", err
 	}

@@ -90,7 +90,7 @@ func startServerInternal() error {
 	// re-adopted one: an adopted llama-server belongs to the previous, exited
 	// process and has no pipe to us — but it keeps writing to this file,
 	// which any process can tail (see serverLogTailer).
-	logFile, err := os.OpenFile(serverLogFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	logFile, err := os.OpenFile(resolveServerLogPath(), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		serverMu.Unlock()
 		return fmt.Errorf(tr("打开服务日志文件失败: %w", "failed to open server log file: %w"), err)
@@ -131,7 +131,7 @@ func startServerInternal() error {
 	// Tail the freshly truncated log file from offset 0 into the ring,
 	// replacing the old pipe-based serverLogWriter (the ring keeps receiving
 	// complete lines either way, so parseTPS is unaffected).
-	tailer, err := startServerLogTailer(serverLogFile, true)
+	tailer, err := startServerLogTailer(resolveServerLogPath(), true)
 	if err != nil {
 		// Log capture is best-effort: the file itself still receives the
 		// child output, so only the in-app view degrades.

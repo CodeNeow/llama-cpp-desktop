@@ -63,9 +63,18 @@ func invalidateModelCache() {
 
 // defaultModelsDir resolves the default model directory name (modelsDirName
 // in paths.go) to its per-OS location: bare cwd-relative on Windows, under
-// the app-data base elsewhere. Declared as a function-valued var (same
+// the app-data base on non-Windows desktop, and on Android under the
+// app-specific external-storage base (multi-GB models need the shared-disk
+// headroom; see androidModelsBase). Declared as a function-valued var (same
 // injection style as configFile) so tests can pin the directory.
-var defaultModelsDir = func() string { return resolveStateFile(modelsDirName) }
+var defaultModelsDir = func() string {
+	if pathsGOOS == "android" {
+		if base := pathsAndroidModelsBase(); base != "" {
+			return filepath.Join(base, modelsDirName)
+		}
+	}
+	return resolveStateFile(modelsDirName)
+}
 
 // modelScanDirs returns the roots the model list is scanned from, in priority
 // order: the model download directory first, then the imported model directory

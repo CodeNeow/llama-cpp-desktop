@@ -13,12 +13,15 @@ package core
 // base via os.UserConfigDir() + "/llama-desktop", created on first use:
 // macOS .app bundles launch with cwd = "/" and Linux launchers may pick
 // arbitrary working directories, so bare names would scatter state across
-// the filesystem. Android (GOOS=android, the Wails v3 app target) resolves
-// the same way when the embedding host provides $HOME; when os.UserConfigDir
-// fails there (stock Android app processes set neither $HOME nor
-// $XDG_CONFIG_HOME), a $HOME/llama-desktop fallback applies, and a [WARN] +
-// legacy cwd-relative layout when $HOME is unavailable too (see
-// androidHomeBase for the v3 host details).
+// the filesystem. Android (GOOS=android, the Wails v3 app target) has a
+// read-only process cwd ("/") and provides neither $HOME nor $XDG_CONFIG_HOME,
+// so its base comes from the Wails v3 JNI bridge instead —
+// Context.getFilesDir() via application.Android.StoragePath() — with the
+// static /data/data/<host package>/files path as a fallback (see
+// androidpath_android.go). Large model storage additionally prefers the
+// app-specific external-storage dir derived by path symmetry
+// (androidExternalBase); the llama.cpp runtime stays on internal storage
+// because SELinux forbids exec on the external mount.
 //
 // The per-OS branch is a runtime.GOOS switch (not build tags) so a single
 // test binary exercises every branch via the injected seams below.
@@ -54,6 +57,11 @@ var (
 	pathsUserConfigDir = os.UserConfigDir
 	// pathsMkdirAll creates the base directory (os.MkdirAll in production).
 	pathsMkdirAll = os.MkdirAll
+	// pathsAndroidFilesDir / pathsAndroidModelsBase resolve the Android
+	// storage anchors (JNI bridge in production); injected in tests so a
+	// single desktop binary drives the android branches.
+	pathsAndroidFilesDir   = androidFilesDir
+	pathsAndroidModelsBase = androidModelsBase
 )
 
 // The app-data base resolves once per process; pathsBase stays empty whenever
@@ -74,16 +82,19 @@ func appDataDir() string {
 		if pathsGOOS == "windows" {
 			return
 		}
+		if pathsGOOS == "android" {
+			// The Android host provides neither $HOME nor $XDG_CONFIG_HOME
+			// (os.UserConfigDir always fails there) and the process cwd is
+			// the read-only filesystem root, so the base comes from the JNI
+			// bridge's files dir unconditionally (see androidpath_android.go).
+			pathsBase = pathsAndroidFilesDir()
+			if pathsBase == "" {
+				log.Println("[WARN] Android app files dir unavailable, keeping cwd-relative app paths")
+			}
+			return
+		}
 		root, err := pathsUserConfigDir()
 		if err != nil {
-			// Android: os.UserConfigDir fails whenever the embedding app
-			// process lacks $HOME / $XDG_CONFIG_HOME — fall back to
-			// $HOME/llama-desktop (created on first use) or the legacy
-			// cwd-relative layout; see androidHomeBase.
-			if pathsGOOS == "android" {
-				pathsBase = androidHomeBase()
-				return
-			}
 			log.Printf("[WARN] Cannot resolve user config dir, keeping cwd-relative app paths: %v", err)
 			return
 		}
@@ -101,39 +112,6 @@ func appDataDir() string {
 	return pathsBase
 }
 
-// androidHomeBase resolves the Android app-data base as $HOME/llama-desktop,
-// created on first use; returns "" (with a [WARN]) when $HOME is unset or the
-// directory cannot be created, keeping the legacy cwd-relative layout.
-//
-// Why the fallback exists: os.UserConfigDir always fails on stock Android —
-// the Go code runs inside the embedding app process, which provides neither
-// $HOME nor $XDG_CONFIG_HOME. The Wails v3 Android host sets no environment
-// variables of its own (v3/pkg/application/application_android.go declares no
-// os.Setenv; the registered-main flow it drives — RegisterAndroidMain at
-// application_android.go:364, started via the JNI nativeInit export at
-// application_android.go:681-695 — carries no env setup), and it exposes the
-// app-private files dir (activity.getFilesDir()) only through the JNI
-// mobile-features bridge: StoragePath in
-// v3/pkg/application/mobile_features_android.go:197-199 ←
-// getStoragePath() in
-// v3/internal/commands/build_assets/android/app/src/main/java/com/wails/app/WailsBridge.java:1100-1103.
-// Reaching that API from core/ would require importing the wails application
-// package behind an android+cgo build-tag split, so this phase falls back to
-// $HOME when the embedding host (or a future bridge wiring) provides one.
-func androidHomeBase() string {
-	home := os.Getenv("HOME")
-	if home == "" {
-		log.Println("[WARN] Android $HOME is not set, keeping cwd-relative app paths")
-		return ""
-	}
-	base := filepath.Join(home, "llama-desktop")
-	if err := pathsMkdirAll(base, 0755); err != nil {
-		log.Printf("[WARN] Cannot create app data dir %s, keeping cwd-relative app paths: %v", base, err)
-		return ""
-	}
-	return base
-}
-
 // resolveStateFile resolves a state-file (or directory) name to its active
 // location: under the app-data base on non-Windows desktop platforms, or the
 // bare cwd-relative name on Windows / fallback.
@@ -142,4 +120,30 @@ func resolveStateFile(name string) string {
 		return filepath.Join(base, name)
 	}
 	return name
+}
+
+// resolveTempDir returns the directory for large transient download files.
+// os.TempDir everywhere except Android: the app process has no TMPDIR, so
+// os.TempDir falls back to the read-only /tmp — use the app-private files
+// dir (base/tmp, created on demand) instead.
+func resolveTempDir() string {
+	if pathsGOOS == "android" {
+		if base := pathsAndroidFilesDir(); base != "" {
+			dir := filepath.Join(base, "tmp")
+			if err := pathsMkdirAll(dir, 0755); err == nil {
+				return dir
+			}
+		}
+	}
+	return os.TempDir()
+}
+
+// resolveServerLogPath resolves the server log file: explicit absolute paths
+// (tests, handover adoption) pass through unchanged, bare names resolve under
+// the app-data base like every other state file.
+func resolveServerLogPath() string {
+	if filepath.IsAbs(serverLogFile) {
+		return serverLogFile
+	}
+	return resolveStateFile(serverLogFile)
 }

@@ -67,7 +67,10 @@ var serverLogTail *serverLogTailer
 // serverLogFile is the llama-server log capture path: the child's stdout and
 // stderr both write to this file, and a tailer follows it into the ring.
 // Declared as a var (same style as configFile / handoverFile) and resolved
-// cwd-relative like the config file, so tests can redirect it to t.TempDir().
+// through resolveServerLogPath at use time — bare names land under the
+// app-data base on non-Windows (a bare cwd-relative name would be unwritable
+// on Android/macOS where the cwd is "/") — so tests can redirect it to
+// t.TempDir() by assigning an absolute path, which passes through unchanged.
 // Adopting a handed-over server overwrites it with the absolute path from the
 // handover record (written under serverMu at the same lifecycle moments that
 // touch the other server globals).
@@ -134,9 +137,9 @@ func serverLogsSince(since int64) ([]serverLogEntry, int64) {
 // absServerLogPath resolves the server log file to an absolute path for the
 // handover record: the successor process must not depend on our cwd.
 func absServerLogPath() string {
-	abs, err := filepath.Abs(serverLogFile)
+	abs, err := filepath.Abs(resolveServerLogPath())
 	if err != nil {
-		return serverLogFile
+		return resolveServerLogPath()
 	}
 	return abs
 }

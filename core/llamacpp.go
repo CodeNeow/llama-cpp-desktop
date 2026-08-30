@@ -659,7 +659,7 @@ func sleepDownloadRetry(ctx context.Context) bool {
 // instead of returning a corrupt zip for extraction.
 // Returns the path to the downloaded temp file.
 func downloadWithResume(ctx context.Context, url string, totalSize int64, baseDownloaded int64) (string, error) {
-	tmpFile, err := os.CreateTemp("", "llamacpp-download-*"+filepath.Ext(url[strings.LastIndex(url, "."):]))
+	tmpFile, err := os.CreateTemp(resolveTempDir(), "llamacpp-download-*"+filepath.Ext(url[strings.LastIndex(url, "."):]))
 	if err != nil {
 		return "", fmt.Errorf(tr("创建临时文件失败: %w", "failed to create temporary file: %w"), err)
 	}
