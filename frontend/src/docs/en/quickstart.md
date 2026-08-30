@@ -4,7 +4,7 @@ Three steps to run a local LLM: **install the runtime → download a model → s
 
 llama.cpp is the inference engine that actually runs the model; the app launches the local service through it.
 
-1. Open the System Environment page in the sidebar and find the "Runtime Environment" tab.
+1. Open **System** in the sidebar (page title "System Environment") and find the "Runtime Environment" tab.
 2. If it shows "Not found", click "Download llama.cpp" — the app fetches the latest release and extracts it into the download path.
 3. When the download finishes, the status flips to "Installed" with the version and install path shown.
 
