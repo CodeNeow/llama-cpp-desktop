@@ -5,9 +5,13 @@ release/
 build/bin/
 build/windows/installer/*
 !build/windows/installer/project.nsi
+# Committed installer macro library: CI runs makensis directly on project.nsi
+# (no wails CLI regenerates wails_tools.nsh anymore). tmp/ stays ignored.
+!build/windows/installer/wails_tools.nsh
 /llama-desktop.exe
 /llama-gui.exe
 .vite/
+.task/
 *.log
 .DS_Store
 Thumbs.db
