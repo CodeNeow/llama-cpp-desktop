@@ -58,7 +58,17 @@ func extractZip(src, dest string) error {
 			return err
 		}
 
-		outFile, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
+		// Extraction permission: entries created on Unix carry their real mode
+		// bits (including the exec bit for binaries) in the creator-unix upper
+		// external-attribute word, which f.Mode() decodes; entries with no unix
+		// mode at all (Windows-created zips decode via the DOS attributes,
+		// broken unix encodings decode to 0) fall back to 0644 so a regular
+		// data file never lands unusable.
+		mode := f.Mode()
+		if mode == 0 {
+			mode = 0644
+		}
+		outFile, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
 		if err != nil {
 			rc.Close()
 			return err
@@ -70,6 +80,11 @@ func extractZip(src, dest string) error {
 		n, copyErr := io.CopyN(outFile, rc, maxExtractFileSize+1)
 		rc.Close()
 		outFile.Close()
+		// Re-assert the entry mode after writing (best-effort): the creation
+		// mode passed to OpenFile is filtered by the process umask, which can
+		// strip the exec / group / other bits the archive intended. On Unix
+		// this is what actually preserves the exec bit end-to-end.
+		os.Chmod(path, mode)
 		if copyErr != nil && copyErr != io.EOF {
 			return copyErr
 		}
@@ -127,12 +142,23 @@ func extractTarGz(src, dest string) error {
 			if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 				return err
 			}
-			outFile, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(header.Mode))
+			// Apply the tar header's permission bits (upstream llama.cpp
+			// release tarballs mark bin/ entries 0755): header.FileInfo().Mode()
+			// decodes them so an extracted llama-server stays executable on
+			// Unix (linux / macOS / Android).
+			mode := header.FileInfo().Mode()
+			outFile, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
 			if err != nil {
 				return err
 			}
 			n, copyErr := io.CopyN(outFile, tarReader, maxExtractFileSize+1)
 			outFile.Close()
+			// Re-assert the header mode after writing (best-effort): the
+			// creation mode passed to OpenFile is filtered by the process
+			// umask, which can strip the exec / group / other bits the
+			// archive intended. On Unix this is what actually preserves the
+			// exec bit end-to-end.
+			os.Chmod(path, mode)
 			if copyErr != nil && copyErr != io.EOF {
 				return copyErr
 			}

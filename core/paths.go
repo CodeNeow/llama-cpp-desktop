@@ -13,9 +13,12 @@ package core
 // base via os.UserConfigDir() + "/llama-desktop", created on first use:
 // macOS .app bundles launch with cwd = "/" and Linux launchers may pick
 // arbitrary working directories, so bare names would scatter state across
-// the filesystem. Android (a later Wails v3 target) is explicitly out of
-// scope here: os.UserConfigDir() is unsupported on Android and a future port
-// must add its own resolution branch.
+// the filesystem. Android (GOOS=android, the Wails v3 app target) resolves
+// the same way when the embedding host provides $HOME; when os.UserConfigDir
+// fails there (stock Android app processes set neither $HOME nor
+// $XDG_CONFIG_HOME), a $HOME/llama-desktop fallback applies, and a [WARN] +
+// legacy cwd-relative layout when $HOME is unavailable too (see
+// androidHomeBase for the v3 host details).
 //
 // The per-OS branch is a runtime.GOOS switch (not build tags) so a single
 // test binary exercises every branch via the injected seams below.
@@ -73,6 +76,14 @@ func appDataDir() string {
 		}
 		root, err := pathsUserConfigDir()
 		if err != nil {
+			// Android: os.UserConfigDir fails whenever the embedding app
+			// process lacks $HOME / $XDG_CONFIG_HOME — fall back to
+			// $HOME/llama-desktop (created on first use) or the legacy
+			// cwd-relative layout; see androidHomeBase.
+			if pathsGOOS == "android" {
+				pathsBase = androidHomeBase()
+				return
+			}
 			log.Printf("[WARN] Cannot resolve user config dir, keeping cwd-relative app paths: %v", err)
 			return
 		}
@@ -88,6 +99,39 @@ func appDataDir() string {
 		pathsBase = base
 	})
 	return pathsBase
+}
+
+// androidHomeBase resolves the Android app-data base as $HOME/llama-desktop,
+// created on first use; returns "" (with a [WARN]) when $HOME is unset or the
+// directory cannot be created, keeping the legacy cwd-relative layout.
+//
+// Why the fallback exists: os.UserConfigDir always fails on stock Android —
+// the Go code runs inside the embedding app process, which provides neither
+// $HOME nor $XDG_CONFIG_HOME. The Wails v3 Android host sets no environment
+// variables of its own (v3/pkg/application/application_android.go declares no
+// os.Setenv; the registered-main flow it drives — RegisterAndroidMain at
+// application_android.go:364, started via the JNI nativeInit export at
+// application_android.go:681-695 — carries no env setup), and it exposes the
+// app-private files dir (activity.getFilesDir()) only through the JNI
+// mobile-features bridge: StoragePath in
+// v3/pkg/application/mobile_features_android.go:197-199 ←
+// getStoragePath() in
+// v3/internal/commands/build_assets/android/app/src/main/java/com/wails/app/WailsBridge.java:1100-1103.
+// Reaching that API from core/ would require importing the wails application
+// package behind an android+cgo build-tag split, so this phase falls back to
+// $HOME when the embedding host (or a future bridge wiring) provides one.
+func androidHomeBase() string {
+	home := os.Getenv("HOME")
+	if home == "" {
+		log.Println("[WARN] Android $HOME is not set, keeping cwd-relative app paths")
+		return ""
+	}
+	base := filepath.Join(home, "llama-desktop")
+	if err := pathsMkdirAll(base, 0755); err != nil {
+		log.Printf("[WARN] Cannot create app data dir %s, keeping cwd-relative app paths: %v", base, err)
+		return ""
+	}
+	return base
 }
 
 // resolveStateFile resolves a state-file (or directory) name to its active

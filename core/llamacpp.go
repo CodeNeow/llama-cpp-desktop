@@ -570,6 +570,12 @@ func downloadLlamaCpp() {
 		baseDownloaded += asset.Size
 	}
 
+	// Belt-and-braces for Unix (linux / macOS / Android): the extractors apply
+	// the archive entry modes, but a missing mode or a umask-stripped creation
+	// mode would leave llama-server 0644 and unable to exec. Re-assert 0755 on
+	// the resolved binary after all assets are extracted (best-effort).
+	ensureLlamaServerExecutable(targetDir)
+
 	// Step 5: Done (only set after all assets downloaded and extracted)
 	downloadMu.Lock()
 	downloadState.Status = "done"
@@ -584,6 +590,27 @@ func downloadLlamaCpp() {
 	llamaCacheValid.Store(false)
 
 	log.Printf("[OK] llama.cpp %s downloaded and extracted to %s/", release.TagName, targetDir)
+}
+
+// ensureLlamaServerExecutable re-asserts the 0755 exec permission on the
+// llama-server binary under dir (best-effort: a [WARN] is logged on failure
+// and the download still completes). Belt-and-braces for the exec-bit
+// handling in extractZip / extractTarGz: the upstream Android / Linux / macOS
+// builds ship as .tar.gz whose entries carry 0755, but an archive without
+// usable mode bits or a umask-stripped creation mode would leave the binary
+// 0644 and unable to exec — breaking service start right after a successful
+// download. No-op on Windows (no exec bit) and when no binary is found.
+func ensureLlamaServerExecutable(dir string) {
+	if runtime.GOOS == "windows" {
+		return
+	}
+	p := findLlamaBinInDir(dir, "llama-server")
+	if p == "" {
+		return
+	}
+	if err := os.Chmod(p, 0755); err != nil {
+		log.Printf("[WARN] could not mark %s executable: %v", p, err)
+	}
 }
 
 // ─── Download retry policy ─────────────────────────────────────────
@@ -1056,7 +1083,8 @@ func cudaVerOf(name string) (float64, bool) {
 // Matching rules:
 //   - Platform: "win" for Windows, "macos" for macOS; Linux accepts both the
 //     "ubuntu" keyword (current upstream naming, e.g. llama-b*-bin-ubuntu-x64)
-//     and the legacy "linux" keyword, so a future rename back keeps working.
+//     and the legacy "linux" keyword, so a future rename back keeps working;
+//     Android matches the "android" keyword (arm64 CPU-only tarballs).
 //   - Arch: enforced for every platform via the arch tag in the asset name
 //     ("x64" / "arm64"); assets with no tag are accepted only on x64 hosts
 //     (historical implicit-x64 naming). This drops wrong-arch builds such as
@@ -1089,6 +1117,10 @@ func pickBestAssetFor(assets []GitHubAsset, platform, arch string, hasCUDA bool,
 		platformKey = "macos"
 	case "linux":
 		platformKey = "ubuntu"
+	case "android":
+		// Upstream Android builds are arm64 CPU-only tarballs:
+		// llama-b*-bin-android-arm64.tar.gz (no cuda/rocm/vulkan variants).
+		platformKey = "android"
 	}
 	archKey := archKeyOf(arch)
 

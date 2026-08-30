@@ -82,6 +82,37 @@ func TestPickBestAssetForNoMatch(t *testing.T) {
 	if got := pickBestAssetFor(nil, "windows", "amd64", false, "", 0); got != nil {
 		t.Errorf("nil asset list should return nil, got %v", got)
 	}
+	// Android builds are arm64-only: an x64 Android host matches nothing
+	// (the arm64 arch tag is enforced even within the matching platform).
+	androidOnly := []GitHubAsset{{Name: "llama-b9999-bin-android-arm64.tar.gz"}}
+	if got := pickBestAssetFor(androidOnly, "android", "amd64", false, "", 0); got != nil {
+		t.Errorf("arm64-only android assets must not match an x64 android host, got %v", got)
+	}
+}
+
+// TestPickBestAssetForAndroid verifies the Android platform branch: the
+// "android" keyword matches the upstream arm64 CPU-only tarball
+// (llama-b*-bin-android-arm64.tar.gz), and an Android host never falls back
+// to desktop (ubuntu / macos / win) builds — without an android asset the
+// picker returns nil so the download surfaces a clear "no build found"
+// instead of installing a binary the device cannot run.
+func TestPickBestAssetForAndroid(t *testing.T) {
+	assets := []GitHubAsset{
+		{Name: "llama-b3840-bin-android-arm64.tar.gz"},
+		{Name: "llama-b3840-bin-ubuntu-x64.tar.gz"},
+		{Name: "llama-b3840-bin-macos-arm64.tar.gz"},
+		{Name: "llama-b3840-bin-win-cpu-x64.zip"},
+	}
+	got := pickBestAssetFor(assets, "android", "arm64", false, "", 0)
+	if got == nil || got.Name != "llama-b3840-bin-android-arm64.tar.gz" {
+		t.Errorf("android arm64 should pick the android-arm64 tarball, got %v", got)
+	}
+
+	// Cross-platform isolation: with the android asset removed, an android
+	// host picks none of the ubuntu/macos/win assets.
+	if got := pickBestAssetFor(assets[1:], "android", "arm64", false, "", 0); got != nil {
+		t.Errorf("android must never pick ubuntu/macos/win desktop assets, got %v", got)
+	}
 }
 
 // TestPickBestAssetForWindowsCUDAExcludesCudart verifies that when selecting the main
@@ -149,7 +180,10 @@ var b10453Assets = []GitHubAsset{
 //     needs CUDA >= 12.8) hard-skips 12.4 and prefers the highest survivor;
 //     the toolkit exact match still wins on top, subject to the floor;
 //   - linux + NVIDIA picks ubuntu-vulkan (the only GPU-accelerated linux
-//     build; no ubuntu cuda variant exists).
+//     build; no ubuntu cuda variant exists);
+//   - android matches the arm64 CPU-only android tarball and never a desktop
+//     build, even with an NVIDIA flag set (the GPU bonus only applies to
+//     platform-matching assets).
 func TestPickBestAssetForB10453(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -171,6 +205,10 @@ func TestPickBestAssetForB10453(t *testing.T) {
 		{"linux arm64 no GPU", "linux", "arm64", false, "", 0, "llama-b10453-bin-ubuntu-arm64.tar.gz"},
 		{"darwin x64", "darwin", "amd64", false, "", 0, "llama-b10453-bin-macos-x64.tar.gz"},
 		{"darwin arm64", "darwin", "arm64", false, "", 0, "llama-b10453-bin-macos-arm64.tar.gz"},
+		{"android arm64", "android", "arm64", false, "", 0, "llama-b10453-bin-android-arm64.tar.gz"},
+		// Android is CPU-only upstream: an NVIDIA flag must not drag the
+		// (non-matching) ubuntu-vulkan GPU build in over the android tarball.
+		{"android arm64 ignores nvidia", "android", "arm64", true, "", 0, "llama-b10453-bin-android-arm64.tar.gz"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -309,6 +347,51 @@ func TestPickCudartAssetFor(t *testing.T) {
 	if got := pickCudartAssetFor(nil, "", "x64"); got != nil {
 		t.Errorf("empty version with no cudart assets should return nil, got %v", got)
 	}
+}
+
+// TestEnsureLlamaServerExecutable verifies the post-extraction belt-and-braces
+// chmod: a non-executable llama-server under dir (root or one-level subdir, the
+// layouts findLlamaBinInDir supports) is re-marked 0755, and a directory
+// without llama-server is a harmless no-op. Windows has no exec bit, where the
+// helper itself is a no-op, so the assertion is skipped there.
+func TestEnsureLlamaServerExecutable(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows does not track unix exec permission bits")
+	}
+
+	// Root layout: 0644 → 0755
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "llama-server"), []byte("#!/bin/sh\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	ensureLlamaServerExecutable(root)
+	fi, err := os.Stat(filepath.Join(root, "llama-server"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fi.Mode().Perm(); got != 0755 {
+		t.Errorf("root-layout llama-server mode = %v, want 0755", got)
+	}
+
+	// One-level subdir layout (extracted with a top-level folder)
+	sub := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(sub, "llama-b9999-bin"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sub, "llama-b9999-bin", "llama-server"), []byte("#!/bin/sh\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	ensureLlamaServerExecutable(sub)
+	fi, err = os.Stat(filepath.Join(sub, "llama-b9999-bin", "llama-server"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fi.Mode().Perm(); got != 0755 {
+		t.Errorf("subdir llama-server mode = %v, want 0755", got)
+	}
+
+	// No binary present: no-op, must not panic or create anything
+	ensureLlamaServerExecutable(t.TempDir())
 }
 
 // TestAppUserAgent verifies the outbound User-Agent carries the app name, the

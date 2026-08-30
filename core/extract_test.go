@@ -7,6 +7,7 @@ import (
 	"compress/gzip"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -141,12 +142,44 @@ func writeTestZip(zipPath string, files map[string]string) error {
 	return os.WriteFile(zipPath, buf.Bytes(), 0644)
 }
 
-// tarFixture describes an entry to write into a tar.gz archive.
+// zipFixture describes a zip file entry: content plus an explicit unix mode.
+type zipFixture struct {
+	Content string
+	Mode    os.FileMode
+}
+
+// writeTestZipWithModes builds a zip archive whose entries carry explicit unix
+// mode bits (via FileHeader.SetMode, i.e. the creator-unix external attributes
+// a real Unix-created zip carries) and writes it to zipPath.
+func writeTestZipWithModes(zipPath string, files map[string]zipFixture) error {
+	var buf bytes.Buffer
+	w := zip.NewWriter(&buf)
+	for name, f := range files {
+		hdr := &zip.FileHeader{Name: name, Method: zip.Deflate}
+		hdr.SetMode(f.Mode)
+		fw, err := w.CreateHeader(hdr)
+		if err != nil {
+			return err
+		}
+		if _, err := fw.Write([]byte(f.Content)); err != nil {
+			return err
+		}
+	}
+	if err := w.Close(); err != nil {
+		return err
+	}
+	return os.WriteFile(zipPath, buf.Bytes(), 0644)
+}
+
+// tarFixture describes an entry to write into a tar.gz archive. Mode 0 means
+// the historical 0644 default; non-zero modes are written verbatim so exec-bit
+// preservation can be exercised.
 type tarFixture struct {
 	Name     string
 	Typeflag byte
 	Linkname string
 	Size     int64
+	Mode     int64
 }
 
 // writeTestTarGz builds a tar.gz archive in memory containing the given fixtures and writes it to tarPath.
@@ -155,7 +188,11 @@ func writeTestTarGz(tarPath string, fixtures []tarFixture) error {
 	gz := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gz)
 	for _, f := range fixtures {
-		hdr := &tar.Header{Name: f.Name, Typeflag: f.Typeflag, Linkname: f.Linkname, Size: f.Size, Mode: 0644}
+		mode := f.Mode
+		if mode == 0 {
+			mode = 0644
+		}
+		hdr := &tar.Header{Name: f.Name, Typeflag: f.Typeflag, Linkname: f.Linkname, Size: f.Size, Mode: mode}
 		if err := tw.WriteHeader(hdr); err != nil {
 			return err
 		}
@@ -172,4 +209,93 @@ func writeTestTarGz(tarPath string, fixtures []tarFixture) error {
 		return err
 	}
 	return os.WriteFile(tarPath, buf.Bytes(), 0644)
+}
+
+// ─── Exec-bit preservation (Unix) ────────────────────────────────
+
+// TestExtractTarGzPreservesExecMode verifies extractTarGz applies the tar
+// header's permission bits to regular files: the upstream llama.cpp Android /
+// Linux / macOS assets are .tar.gz whose bin/ entries carry 0755 — without
+// mode application the extracted llama-server is 0644 and cannot exec.
+// Windows does not track exec permission bits, so the assertion is skipped
+// there.
+func TestExtractTarGzPreservesExecMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows does not track unix exec permission bits")
+	}
+	tarPath := filepath.Join(t.TempDir(), "llama.tar.gz")
+	if err := writeTestTarGz(tarPath, []tarFixture{
+		{Name: "llama-b9999/bin/llama-server", Typeflag: tar.TypeReg, Size: 4, Mode: 0755},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	dest := t.TempDir()
+	if err := extractTarGz(tarPath, dest); err != nil {
+		t.Fatalf("extractTarGz failed: %v", err)
+	}
+	fi, err := os.Stat(filepath.Join(dest, "llama-b9999", "bin", "llama-server"))
+	if err != nil {
+		t.Fatalf("extracted binary missing: %v", err)
+	}
+	if got := fi.Mode().Perm(); got != 0755 {
+		t.Errorf("extracted tar entry mode = %v, want 0755 (exec bit must survive extraction)", got)
+	}
+}
+
+// TestExtractZipPreservesUnixExecMode verifies extractZip applies the
+// creator-unix mode bits when present: a zip entry carrying 0755 must extract
+// executable (fixes phase-2 linux/macOS downloads of zipped binaries).
+// Windows has no exec bit, so the assertion is skipped there.
+func TestExtractZipPreservesUnixExecMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows does not track unix exec permission bits")
+	}
+	zipPath := filepath.Join(t.TempDir(), "llama.zip")
+	if err := writeTestZipWithModes(zipPath, map[string]zipFixture{
+		"llama-server": {Content: "ELF...", Mode: 0755},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	dest := t.TempDir()
+	if err := extractZip(zipPath, dest); err != nil {
+		t.Fatalf("extractZip failed: %v", err)
+	}
+	fi, err := os.Stat(filepath.Join(dest, "llama-server"))
+	if err != nil {
+		t.Fatalf("extracted binary missing: %v", err)
+	}
+	if got := fi.Mode().Perm(); got != 0755 {
+		t.Errorf("extracted zip entry mode = %v, want 0755 (creator-unix exec bit must survive extraction)", got)
+	}
+}
+
+// TestExtractZipDefaultsTo0644WhenModeAbsent verifies the fallback: an entry
+// whose creator-unix attributes carry no usable mode (Mode() decodes to 0)
+// must not land as 0000 (which OpenFile would otherwise create on Unix and
+// which would make the file unreadable after close) — it defaults to 0644.
+// Windows has no usable unix mode reporting, so the assertion is skipped.
+func TestExtractZipDefaultsTo0644WhenModeAbsent(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("windows does not track unix exec permission bits")
+	}
+	zipPath := filepath.Join(t.TempDir(), "nomode.zip")
+	if err := writeTestZipWithModes(zipPath, map[string]zipFixture{
+		"data.bin": {Content: "payload", Mode: 0000},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	dest := t.TempDir()
+	if err := extractZip(zipPath, dest); err != nil {
+		t.Fatalf("extractZip failed: %v", err)
+	}
+	fi, err := os.Stat(filepath.Join(dest, "data.bin"))
+	if err != nil {
+		t.Fatalf("extracted file missing: %v", err)
+	}
+	if got := fi.Mode().Perm(); got != 0644 {
+		t.Errorf("mode-less zip entry extracted with mode %v, want 0644 default", got)
+	}
 }

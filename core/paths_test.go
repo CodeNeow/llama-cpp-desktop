@@ -127,6 +127,80 @@ func TestAppDataDirMkdirFailureFallsBack(t *testing.T) {
 	}
 }
 
+// ─── Android branch (GOOS=android) ────────────────────────────────
+
+// TestAppDataDirAndroidWithUserConfigDir verifies Android resolves the same
+// per-user app-data base as the desktop non-Windows branch when the embedding
+// host provides a working config root (a host-set $HOME makes os.UserConfigDir
+// return $HOME/.config on android).
+func TestAppDataDirAndroidWithUserConfigDir(t *testing.T) {
+	root := t.TempDir()
+	withPathsSeams(t, "android", root, nil, nil)
+	wantBase := filepath.Join(root, "llama-desktop")
+	if got := appDataDir(); got != wantBase {
+		t.Fatalf("appDataDir on android with config root = %q, want %q", got, wantBase)
+	}
+	if fi, err := os.Stat(wantBase); err != nil || !fi.IsDir() {
+		t.Fatalf("android app-data base not created on first use: stat err = %v", err)
+	}
+}
+
+// TestAppDataDirAndroidHomeFallback verifies the Android-specific fallback:
+// when os.UserConfigDir fails (stock Android app processes set neither
+// $XDG_CONFIG_HOME nor $HOME), the base falls back to $HOME/llama-desktop,
+// created on first use, and state-file names resolve beneath it.
+func TestAppDataDirAndroidHomeFallback(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	withPathsSeams(t, "android", "", errors.New("neither $XDG_CONFIG_HOME nor $HOME are defined"), nil)
+	wantBase := filepath.Join(home, "llama-desktop")
+	if got := appDataDir(); got != wantBase {
+		t.Fatalf("appDataDir on android with $HOME = %q, want %q", got, wantBase)
+	}
+	if fi, err := os.Stat(wantBase); err != nil || !fi.IsDir() {
+		t.Fatalf("android $HOME app-data base not created on first use: stat err = %v", err)
+	}
+	if got := resolveStateFile(configFileName); got != filepath.Join(wantBase, configFileName) {
+		t.Errorf("resolveStateFile on android = %q, want %q", got, filepath.Join(wantBase, configFileName))
+	}
+}
+
+// TestAppDataDirAndroidNoHomeKeepsCwdRelative verifies the end-of-chain
+// fallback: a failing UserConfigDir and an unset $HOME leave the base empty
+// (legacy cwd-relative names) with a [WARN] logged.
+func TestAppDataDirAndroidNoHomeKeepsCwdRelative(t *testing.T) {
+	buf := captureLogOutput(t)
+	t.Setenv("HOME", "")
+	withPathsSeams(t, "android", "", errors.New("neither $XDG_CONFIG_HOME nor $HOME are defined"), nil)
+	if got := appDataDir(); got != "" {
+		t.Errorf("appDataDir on android without $HOME = %q, want empty", got)
+	}
+	if got := resolveStateFile(benchCacheFileName); got != benchCacheFileName {
+		t.Errorf("resolveStateFile fallback = %q, want bare %q", got, benchCacheFileName)
+	}
+	if !strings.Contains(buf.String(), "[WARN]") {
+		t.Errorf("android $HOME-less fallback should log [WARN], got: %s", buf.String())
+	}
+}
+
+// TestAppDataDirAndroidMkdirFailureFallsBack verifies the $HOME fallback is
+// also best-effort: when $HOME/llama-desktop cannot be created, the base
+// stays empty with legacy cwd-relative names and a [WARN].
+func TestAppDataDirAndroidMkdirFailureFallsBack(t *testing.T) {
+	buf := captureLogOutput(t)
+	t.Setenv("HOME", t.TempDir())
+	withPathsSeams(t, "android", "", errors.New("neither $XDG_CONFIG_HOME nor $HOME are defined"), errors.New("read-only filesystem"))
+	if got := appDataDir(); got != "" {
+		t.Errorf("appDataDir on android with failing MkdirAll = %q, want empty", got)
+	}
+	if got := resolveStateFile(configFileName); got != configFileName {
+		t.Errorf("resolveStateFile fallback = %q, want bare %q", got, configFileName)
+	}
+	if !strings.Contains(buf.String(), "[WARN]") {
+		t.Errorf("android mkdir failure fallback should log [WARN], got: %s", buf.String())
+	}
+}
+
 // ─── Legacy cwd config migration (non-Windows only) ──────────────
 
 // withLegacyMigrationSeams combines a temp cwd, non-Windows path seams and a

@@ -124,7 +124,8 @@ func getCPUInfo() CPUInfo {
 		if w.cpuCores > 0 {
 			info.Cores = w.cpuCores
 		}
-	case "linux":
+	case "linux", "android":
+		// Android is Linux-kernel: /proc/cpuinfo exists and parses the same way
 		info.Model = parseLinuxCPUModel(runCmd("cat", "/proc/cpuinfo"))
 		info.Cores = countString(runCmd("cat", "/proc/cpuinfo"), "processor")
 	case "darwin":
@@ -150,7 +151,8 @@ func getTotalMemoryGB() float64 {
 		if w := getWindowsSystem(); w.totalMemBytes > 0 {
 			return float64(w.totalMemBytes) / (1024 * 1024 * 1024)
 		}
-	case "linux":
+	case "linux", "android":
+		// Android is Linux-kernel: /proc/meminfo exists and parses the same way
 		out := runCmd("cat", "/proc/meminfo")
 		kb := parseMemInfo(out, "MemTotal")
 		if kb > 0 {
@@ -171,7 +173,8 @@ func getFreeMemoryGB() float64 {
 		if w := getWindowsSystem(); w.freeMemKB > 0 {
 			return float64(w.freeMemKB) / (1024 * 1024)
 		}
-	case "linux":
+	case "linux", "android":
+		// Android is Linux-kernel: /proc/meminfo exists and parses the same way
 		out := runCmd("cat", "/proc/meminfo")
 		kb := parseMemInfo(out, "MemAvailable")
 		if kb == 0 {
@@ -250,7 +253,18 @@ func parseWindowsSystemJSON(out string) windowsSystemSnapshot {
 
 // ─── GPU ─────────────────────────────────────────────────────────
 
+// gpuProbesUnsupported reports whether GPU / CUDA probing must not spawn
+// external processes on this platform: the Android app sandbox (the Wails v3
+// target) has neither nvidia-smi nor nvcc and no desktop GPU stack, so every
+// probe short-circuits instead of attempting a doomed exec per call.
+func gpuProbesUnsupported() bool {
+	return runtime.GOOS == "android"
+}
+
 func getGPUInfo() []GPUInfo {
+	if gpuProbesUnsupported() {
+		return nil
+	}
 	out := runCmd("nvidia-smi",
 		"--query-gpu=name,uuid,memory.used,memory.total,driver_version,compute_cap",
 		"--format=csv,noheader,nounits",
@@ -335,6 +349,9 @@ var gpuListSource = func() []GPUInfo {
 // default implementation runs `nvidia-smi --query-gpu=compute_cap` and returns
 // raw stdout. Tests replace this variable instead of shelling out.
 var probeGPUComputeCap = func() string {
+	if gpuProbesUnsupported() {
+		return ""
+	}
 	return runCmd("nvidia-smi", "--query-gpu=compute_cap", "--format=csv,noheader")
 }
 
@@ -392,6 +409,12 @@ func getCUDAInfo() CUDAInfo {
 
 func getCUDAInfoWithDriver(driverHint string) CUDAInfo {
 	info := CUDAInfo{}
+
+	// Android: no nvidia-smi / nvcc exists in the app sandbox — skip both
+	// spawns and report CUDA unavailable.
+	if gpuProbesUnsupported() {
+		return info
+	}
 
 	// Driver version: prefer the one already collected from the GPU probe.
 	if driverHint != "" {

@@ -242,7 +242,9 @@ func sampleMonitor() {
 	case "windows":
 		st.CPUPercent = sampleCPUWindows()
 		st.MemTotal, st.MemUsed = sampleMemWindows()
-	case "linux":
+	case "linux", "android":
+		// Android is Linux-kernel: /proc/stat and /proc/meminfo exist and are
+		// parsed by the same sampleCPULinux / sampleMemLinux path
 		st.CPUPercent = sampleCPULinux()
 		st.MemTotal, st.MemUsed = sampleMemLinux()
 	case "darwin":
@@ -527,6 +529,11 @@ func parseNVLine(line string) MonitorGPU {
 // and Api.vue dereferences status.gpus.length — null would crash the page
 // render on machines without nvidia-smi / an NVIDIA GPU.
 func sampleGPUs() []MonitorGPU {
+	// Android has no nvidia-smi in the app sandbox: return the empty non-nil
+	// slice directly instead of attempting a doomed exec every sample tick.
+	if gpuProbesUnsupported() {
+		return make([]MonitorGPU, 0)
+	}
 	out := runCmd("nvidia-smi",
 		"--query-gpu=index,name,utilization.gpu,memory.used,memory.total",
 		"--format=csv,noheader,nounits")
