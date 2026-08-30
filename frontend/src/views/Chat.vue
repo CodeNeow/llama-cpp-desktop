@@ -12,6 +12,7 @@
              service stopped; sending then auto-starts it. -->
         <ThemedSelect
           variant="toolbar"
+          class="chat-model-select"
           :model-value="selectedModel"
           :options="modelOptions"
           :disabled="serviceStarting || streaming"
@@ -1398,24 +1399,100 @@ onUnmounted(() => {
 }
 
 /* ─── Mobile (<=767px): shell sizing + compact composer ───
-   The custom title bar is hidden on mobile (App.vue gates it via
-   platform.isMobile) and the bottom tab bar takes its own band, so the page
-   must fill the visible viewport between the two: --titlebar-h (36px/0px,
-   OS-scoped) and --mobile-nav-height (0px on desktop) make this rule an exact
-   no-op on desktop. Right padding keeps the TaskDock pill band (16 + 48 + 8);
-   left padding shrinks 48 → 20 like every other page's mobile padding. */
+   The custom title bar follows the OS-scoped supportsFramelessTitlebar
+   capability (absent on android/ios) and the bottom tab bar takes its own
+   band at this breakpoint, so the page must fill the visible viewport between
+   the two: --titlebar-h (36px/0px) and --mobile-nav-height (0px on desktop)
+   make this rule an exact no-op on desktop. The flex column (header /
+   messages / composer) plus the viewport-height chain keeps the composer
+   visible when the soft keyboard resizes the window (AndroidManifest
+   adjustResize) — no 100vh-independent magic needed. Right padding keeps the
+   TaskDock pill band (16 + 48 + 8); left padding shrinks to the shared 16px
+   phone gutter. */
 .chat-page {
   height: calc(100vh - var(--titlebar-h, 36px) - var(--mobile-nav-height, 0px));
 }
 
 @media (max-width: 767px) {
   .chat-page {
-    padding: 0 72px 0 20px;
+    padding: 0 72px 0 16px;
   }
 
-  /* Composer paddings shrink so the input row dominates the smaller band */
+  /* Toolbar wraps: the model picker takes the main space (long names truncate
+     inside the select), clear/settings sit beside or below it */
+  .chat-toolbar {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-bottom: 12px;
+  }
+
+  .chat-model-select {
+    flex: 1 1 160px;
+    min-width: 0;
+  }
+
+  .chat-model-select :deep(.themed-select__trigger) {
+    min-width: 0;
+    max-width: 100%;
+    min-height: 44px;
+  }
+
+  .chat-clear-btn {
+    min-height: 44px;
+    padding: 8px 14px;
+  }
+
+  .chat-settings-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  /* The params popover spans the toolbar instead of overflowing a narrow
+     viewport from its desktop 320px fixed width */
+  .params-popover {
+    left: 0;
+    right: 0;
+    width: auto;
+  }
+
+  .message-bubble {
+    max-width: 88%;
+  }
+
+  .start-notice {
+    flex-wrap: wrap;
+  }
+
+  /* Composer: 44px touch controls, trimmed band above the bottom tab bar */
   .input-area {
-    padding: 10px 0 16px;
+    padding: 10px 0 12px;
+  }
+
+  .attach-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .chat-input {
+    min-height: 44px;
+  }
+
+  .send-btn {
+    height: 44px;
+    padding: 0 18px;
+  }
+}
+
+/* ─── Tablet (768..1099px): a comfortable centered message column (composer
+       included) instead of full-bleed bubbles; the sidebar rail keeps the
+       surrounding chrome. No-op above 1099px (desktop keeps the wide layout). ─── */
+@media (min-width: 768px) and (max-width: 1099px) {
+  .messages-area,
+  .input-area {
+    width: 100%;
+    max-width: 800px;
+    margin-left: auto;
+    margin-right: auto;
   }
 }
 </style>

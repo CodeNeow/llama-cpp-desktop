@@ -746,4 +746,67 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
   color: var(--text-muted);
   margin: 0 0 8px;
 }
+
+/* ─── Phone (<=767px): single-column results, stacked toolbar, touch-sized
+       controls. The search input takes its own full-width row and the two
+       actions share the row below it; task action buttons grow to 44px.
+       Tablet (768..1099px) keeps the desktop two-column results grid but gets
+       wider cards automatically from the collapsed sidebar rail. ─── */
+@media (max-width: 767px) {
+  .search-bar {
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+
+  .search-input-wrap {
+    flex: 1 1 100%;
+  }
+
+  .search-input {
+    min-height: 44px;
+  }
+
+  .search-btn {
+    flex: 1;
+    min-height: 44px;
+    padding: 10px 16px;
+  }
+
+  /* Full-width result cards; the whole card is the tap target */
+  .results-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .result-card {
+    min-height: 52px;
+    padding: 14px 16px;
+  }
+
+  .section-heading {
+    margin-bottom: 10px;
+  }
+
+  .task-btn {
+    min-height: 44px;
+    padding: 10px 16px;
+    font-size: 12px;
+  }
+
+  .task-actions {
+    flex-wrap: wrap;
+  }
+
+  /* The tasks/history modal keeps an inner scroll; trim the outer padding so
+     the panel gets maximal room on small screens */
+  .modal-overlay {
+    padding: 12px;
+  }
+
+  .modal-panel {
+    height: auto;
+    max-height: calc(100dvh - 24px);
+  }
+}
 </style>

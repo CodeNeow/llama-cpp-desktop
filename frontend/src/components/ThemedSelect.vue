@@ -347,4 +347,24 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
   font-size: 13px;
   text-align: center;
 }
+
+/* ─── Phone (<=767px): touch-sized trigger and option rows. Desktop/tablet
+       keep the compact density above — this block only floors the hit areas
+       (44px trigger, 40px option rows) at the mobile breakpoint. ─── */
+@media (max-width: 767px) {
+  .themed-select__trigger {
+    min-height: 44px;
+  }
+
+  .themed-select--toolbar .themed-select__trigger {
+    /* The desktop min-width 240px would overflow a narrow toolbar; consumers
+       size the select with flex and long values truncate in the label */
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .themed-select__option {
+    min-height: 40px;
+  }
+}
 </style>

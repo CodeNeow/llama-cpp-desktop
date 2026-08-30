@@ -256,6 +256,43 @@ const tabs = [
   display: flex;
 }
 
+/* ─── Phone (<=767px): the tab row must never push the page wider than the
+       viewport. Tabs scroll horizontally inside their own container (page
+       overflow stays impossible); the refresh toolbar wraps onto its own row.
+       Tab buttons get 44px touch height. ─── */
+@media (max-width: 767px) {
+  .env-tabs-row {
+    flex-wrap: wrap;
+    gap: 0 12px;
+  }
+
+  .env-tabs {
+    flex: 1 1 100%;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .env-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tab-btn {
+    flex-shrink: 0;
+    padding: 12px 14px;
+  }
+
+  .header-actions {
+    flex: 1 1 100%;
+    justify-content: space-between;
+    padding-bottom: 10px;
+  }
+
+  .refresh-btn {
+    min-height: 36px;
+  }
+}
+
 /* ─── Scrollable content band (also the tab panel region) ─── */
 .page-scroll {
   flex: 1;

@@ -12,18 +12,20 @@
         <p class="page-subtitle">{{ t('modelSettings.subtitle') }}</p>
       </div>
 
-      <!-- Tabs row -->
+      <!-- Tabs row: capability-gated — the Multi-GPU tab renders only where
+           splitting across devices is possible (windows/linux); macOS Metal is
+           a single GPU and Android is CPU-only, so the tab must not exist there -->
       <div class="settings-tabs" role="tablist" :aria-label="t('modelSettings.tabsAria')">
         <button
-          v-for="(tab, i) in tabs"
+          v-for="tab in visibleTabs"
           :key="tab.id"
           :id="`${tab.id}-tab`"
           class="tab-btn"
-          :class="{ active: activeTab === i }"
+          :class="{ active: activeTab === tab.id }"
           role="tab"
-          :aria-selected="activeTab === i"
+          :aria-selected="activeTab === tab.id"
           :aria-controls="tab.id"
-          @click="activeTab = i"
+          @click="activeTab = tab.id"
         >
           <span class="tab-icon" v-html="tab.icon"></span>
           {{ tab.label() }}
@@ -93,7 +95,7 @@
     <!-- Tab panels -->
     <div v-else class="settings-body">
       <!-- Basic -->
-      <div id="tab-base" role="tabpanel" aria-labelledby="tab-base-tab" v-show="activeTab === 0">
+      <div id="tab-base" role="tabpanel" aria-labelledby="tab-base-tab" v-show="activeTab === 'tab-base'">
         <div class="param-group">
           <h3 class="group-title">{{ t('modelSettings.groupBase') }}</h3>
           <div class="param-grid">
@@ -104,7 +106,10 @@
               </label>
               <p class="param-hint">{{ t('modelSettings.threadsHint') }}</p>
             </div>
-            <div class="param">
+            <!-- GPU offload (-ngl): meaningful only where a GPU can actually
+                 take layers (Windows CUDA / Linux Vulkan / macOS Metal);
+                 android/ios are CPU-only, so the selector must not render -->
+            <div v-if="showOffload" class="param">
               <label class="param-field">
                 <span class="param-label">{{ t('modelSettings.gpuLayers') }}</span>
                 <ThemedSelect
@@ -141,7 +146,7 @@
       </div>
 
       <!-- Inference -->
-      <div id="tab-infer" role="tabpanel" aria-labelledby="tab-infer-tab" v-show="activeTab === 1">
+      <div id="tab-infer" role="tabpanel" aria-labelledby="tab-infer-tab" v-show="activeTab === 'tab-infer'">
         <div class="param-group">
           <h3 class="group-title">{{ t('modelSettings.groupInfer') }}</h3>
           <div class="param-grid col-1">
@@ -183,7 +188,7 @@
       </div>
 
       <!-- Memory / Loading -->
-      <div id="tab-memory" role="tabpanel" aria-labelledby="tab-memory-tab" v-show="activeTab === 2">
+      <div id="tab-memory" role="tabpanel" aria-labelledby="tab-memory-tab" v-show="activeTab === 'tab-memory'">
         <div class="param-group">
           <h3 class="group-title">{{ t('modelSettings.groupMemory') }}</h3>
           <div class="param-grid col-1">
@@ -225,7 +230,8 @@
       </div>
 
       <!-- Multi-GPU -->
-      <div id="tab-gpu" role="tabpanel" aria-labelledby="tab-gpu-tab" v-show="activeTab === 3">
+      <!-- Multi-GPU panel: capability-gated to windows/linux (see visibleTabs) -->
+      <div v-if="showMultiGpu" id="tab-gpu" role="tabpanel" aria-labelledby="tab-gpu-tab" v-show="activeTab === 'tab-gpu'">
         <div class="param-group">
           <h3 class="group-title">{{ t('modelSettings.groupGpu') }}</h3>
           <div class="param-grid col-1">
@@ -259,7 +265,7 @@
       </div>
 
       <!-- Long context -->
-      <div id="tab-context" role="tabpanel" aria-labelledby="tab-context-tab" v-show="activeTab === 4">
+      <div id="tab-context" role="tabpanel" aria-labelledby="tab-context-tab" v-show="activeTab === 'tab-context'">
         <div class="param-group">
           <h3 class="group-title">{{ t('modelSettings.groupContext') }}</h3>
           <div class="param-grid col-1">
@@ -286,7 +292,7 @@
       </div>
 
       <!-- Advanced -->
-      <div id="tab-advanced" role="tabpanel" aria-labelledby="tab-advanced-tab" v-show="activeTab === 5">
+      <div id="tab-advanced" role="tabpanel" aria-labelledby="tab-advanced-tab" v-show="activeTab === 'tab-advanced'">
         <div class="param-group">
           <h3 class="group-title">{{ t('modelSettings.groupAdvanced') }}</h3>
           <div class="param-grid col-1">
@@ -341,6 +347,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { getModelConfig, saveModelConfig, getServerStatus, tuneModelConfig, benchmarkModel } from '../wails'
 import { t } from '../lib/i18n'
 import { tunedSummaryParams } from '../lib/modelTune'
+import { showGpuOffloadParam, showMultiGpuPanel, usePlatform } from '../lib/platform'
 import ThemedSelect, { type SelectOption } from '../components/ThemedSelect.vue'
 
 // ─── ModelConfig interface (persisted per-model inference params shape) ───────
@@ -454,8 +461,20 @@ function clearBenchTimer() {
   }
 }
 
-/** Index of the currently active tab */
-const activeTab = ref(0)
+// Capability gates from the shared platform state (OS-scoped): the Multi-GPU
+// tab exists only where devices can be split (windows/linux), and the GPU
+// offload selector only where a GPU can take layers (adds macOS Metal).
+const platformState = usePlatform()
+const showMultiGpu = computed(() => showMultiGpuPanel(platformState.value))
+const showOffload = computed(() => showGpuOffloadParam(platformState.value))
+
+// Id of the currently active tab (stable string id, not an index: the
+// capability-gated visibleTabs list can be shorter on some platforms)
+const activeTab = ref('tab-base')
+
+/** Tabs visible on this platform: filters out the Multi-GPU tab where
+    splitting across devices is not a real capability. */
+const visibleTabs = computed(() => tabs.filter((tab) => tab.id !== 'tab-gpu' || showMultiGpu.value))
 
 /** Current config (reactive), initialized from defaults + loaded values */
 const cfg = reactive<ModelConfig>({ ...defaults })
@@ -600,7 +619,7 @@ async function loadConfig() {
   clearTuneFeedback()
   clearBenchTimer()
   clearBenchFeedback()
-  activeTab.value = 0
+  activeTab.value = 'tab-base'
 
   const name = modelName.value
   if (!name) {
@@ -1124,5 +1143,69 @@ onUnmounted(() => {
 .switch input:focus-visible + .slider {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* ─── Phone (<=767px): this standalone route (reachable outside the bottom
+       tab bar) keeps its back affordance as a 44px touch target; the six-tab
+       row scrolls horizontally inside its own container (never the page); the
+       tune/bench/reset/save action row wraps with touch-sized buttons; the
+       two-column parameter grid collapses to one column. ─── */
+@media (max-width: 767px) {
+  .back-btn {
+    min-height: 44px;
+    padding: 10px 8px;
+    margin-bottom: 8px;
+  }
+
+  .page-title {
+    font-size: 20px;
+  }
+
+  .settings-tabs {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .settings-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tab-btn {
+    flex-shrink: 0;
+    padding: 12px 14px;
+  }
+
+  .settings-actions {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .action-msg {
+    flex-basis: 100%;
+  }
+
+  .action-spacer {
+    display: none;
+  }
+
+  .btn-secondary,
+  .btn-primary {
+    flex: 1 1 auto;
+    min-height: 44px;
+    padding: 10px 16px;
+  }
+
+  .btn-primary {
+    flex-basis: 100%;
+    order: 1;
+  }
+
+  .param-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .retry-btn {
+    min-height: 44px;
+  }
 }
 </style>

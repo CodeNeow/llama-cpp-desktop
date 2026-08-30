@@ -19,7 +19,7 @@ Always use the **Stop Server** button on the "API Router" page: it terminates on
 
 ## What does the CUDA compatibility notice mean
 
-The "CUDA Compat" row on the System Environment page's CUDA card (System Info tab) has three states:
+The "CUDA Compat" row on the System Environment page's CUDA card (System Info tab; shown only on Windows when an NVIDIA GPU is detected) has three states:
 
 - **Compatible**: a regular GPU — the current CUDA runtime works as-is;
 - **Requires CUDA ≥12.8**: your GPU is Blackwell (RTX 50 series) but the app cannot prove the current CUDA runtime meets the 12.8 floor. llama-server may then fail with `no kernel image`. **Fix**: re-download the latest llama.cpp in the "Runtime Environment" tab (its bundled CUDA runtime satisfies the floor);

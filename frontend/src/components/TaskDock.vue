@@ -762,4 +762,32 @@ onUnmounted(() => {
   font-size: 10px;
   color: #ef4444;
 }
+
+/* ─── Phone (<=767px): the pill grows to a 44px touch target (it is the only
+       dock control visible without expanding) while keeping its band above the
+       bottom tab bar — the bottom offset already includes
+       var(--mobile-nav-height), so the calc below stays untouched. The
+       popover caps at the viewport width, and in-card controls get
+       touch-sized hit areas. The measured --dock-reserve tracks the pill's new
+       height automatically (ResizeObserver on offsetHeight). ─── */
+@media (max-width: 767px) {
+  .dock-pill {
+    height: 44px;
+    padding: 0 14px;
+  }
+
+  .dock-popover {
+    width: min(300px, calc(100vw - 32px));
+  }
+
+  .dock-toggle {
+    width: 32px;
+    height: 32px;
+  }
+
+  .dock-unload-btn {
+    min-height: 44px;
+    padding: 8px 14px;
+  }
+}
 </style>

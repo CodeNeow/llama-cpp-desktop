@@ -461,4 +461,41 @@ function selectSection(id: DocSectionId): void {
     width: 100%;
   }
 }
+
+/* ─── Phone (<=767px): single-column content with phone-density paddings; TOC
+       chips and header actions grow to touch size. Code blocks already scroll
+       horizontally inside themselves (.docs-content :deep(pre)), tables wrap
+       in the block's own padding — the page itself never overflows. ─── */
+@media (max-width: 767px) {
+  .docs-page {
+    padding-bottom: 40px;
+  }
+
+  .page-header {
+    padding-bottom: 20px;
+  }
+
+  .docs-header-actions {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .docs-action-btn {
+    min-height: 40px;
+    padding: 8px 14px;
+  }
+
+  .docs-toc {
+    gap: 6px;
+  }
+
+  .toc-item {
+    min-height: 40px;
+    padding: 8px 14px;
+  }
+
+  .docs-content {
+    padding: 16px 16px 24px;
+  }
+}
 </style>

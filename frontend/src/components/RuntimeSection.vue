@@ -64,10 +64,19 @@
         <div v-if="info.installed" class="components-area">
           <div class="components-title">{{ t('runtime.components') }}</div>
           <div class="comp-row">
-            <span class="comp-name">{{ t('runtime.compMain') }}</span>
+            <span class="comp-name">
+              {{ t('runtime.compMain') }}
+              <!-- Acceleration build of the installed main program, named per
+                   platform capability: Windows CPU/CUDA, Linux Vulkan,
+                   macOS Metal, Android/other CPU (see lib/platform.ts) -->
+              <span class="comp-desc">{{ t('runtime.accel.' + accelKey) }}</span>
+            </span>
             <span class="status-badge available">{{ t('runtime.llamacpp.installed') }}</span>
           </div>
-          <div v-if="isWindows" class="comp-row">
+          <!-- CUDA runtime component: only the Windows release ships a
+               separate cudart asset (Linux = Vulkan, macOS = Metal,
+               Android = CPU) — the row must not render elsewhere -->
+          <div v-if="showCudartRow" class="comp-row">
             <span class="comp-name">
               {{ t('runtime.compCudart') }}
               <span class="comp-desc">{{ t('runtime.compCudartDesc') }}</span>
@@ -173,9 +182,10 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import {
   getLlamaCpp, getLlamaCppDownloadStatus, startLlamaCppDownload, pauseLlamaCppDownload,
-  resumeLlamaCppDownload, stopLlamaCppDownload, browseLlamaCppDir, getConfig, getOS
+  resumeLlamaCppDownload, stopLlamaCppDownload, browseLlamaCppDir, getConfig
 } from '../wails'
 import { downloadVisibility, initialDownloadAction, isCudartAsset, packageRows } from '../lib/llamaDownload'
+import { accelBuildKey, showCudaRuntimeComponent, usePlatform } from '../lib/platform'
 import { t } from '../lib/i18n'
 
 interface LlamaCppInfo {
@@ -190,8 +200,13 @@ interface LlamaCppInfo {
 const info = ref<LlamaCppInfo>({ installed: false, path: '', version: '', cudartInstalled: false, cudartVersion: '' })
 const loading = ref(true)
 const error = ref('')
-// The cudart component row applies to Windows only (the runtime asset is Windows-exclusive)
-const isWindows = ref(false)
+
+// Capability gates from the shared platform state (OS-scoped): the cudart
+// component row renders on Windows only, and the acceleration label names the
+// platform's llama.cpp build (CPU/CUDA vs Vulkan vs Metal vs CPU-arm64).
+const platformState = usePlatform()
+const showCudartRow = computed(() => showCudaRuntimeComponent(platformState.value))
+const accelKey = computed(() => accelBuildKey(platformState.value))
 
 // Cudart component badge: append the detected CUDA major family (parsed from
 // the cudart64_*.dll file name) to the installed label when known
@@ -373,9 +388,6 @@ async function fetchInfo() {
 }
 
 onMounted(() => {
-  getOS()
-    .then((o: any) => { isWindows.value = o.os === 'windows' })
-    .catch(() => {})
   restoreConfigPaths()
   fetchInfo().then(checkInitialDownloadStatus)
 })
@@ -873,5 +885,44 @@ onUnmounted(() => {
 
 .retry-btn-sm:hover {
   background: rgba(99, 102, 241, 0.25);
+}
+
+/* ─── Phone (<=767px): single stacked card, thumb-friendly actions. The
+       download / custom-directory buttons become full-width 44px rows and the
+       in-download pause/resume/stop row grows to touch size. Tablet (768px+)
+       keeps the shared desktop layout. ─── */
+@media (max-width: 767px) {
+  .info-section {
+    padding: 16px;
+  }
+
+  .download-btns {
+    flex-direction: column;
+  }
+
+  .download-btn,
+  .custom-btn {
+    justify-content: center;
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .dl-btn {
+    min-height: 44px;
+    padding: 8px 16px;
+  }
+
+  .retry-btn-sm {
+    min-height: 44px;
+  }
+
+  .retry-btn {
+    min-height: 44px;
+  }
+
+  /* Component rows keep label and badge on separate lines when tight */
+  .comp-row {
+    flex-wrap: wrap;
+  }
 }
 </style>

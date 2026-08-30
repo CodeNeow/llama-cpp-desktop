@@ -192,6 +192,9 @@
             <button v-if="!isAndroid" class="dir-btn" type="button" @click="chooseModelDownloadDir">{{ t('settings.choose') }}</button>
           </div>
         </div>
+        <!-- Android: no system folder picker; both paths are app-managed and
+             read-only, so the rows stay informational with an explicit hint -->
+        <p v-if="isAndroid" class="source-hint">{{ t('settings.dirsAndroidHint') }}</p>
         <p class="source-hint">{{ t('settings.directoriesHint') }}</p>
       </section>
     </div>
@@ -1083,5 +1086,82 @@ async function manualCheck() {
   font-family: var(--font-mono);
   word-break: break-all;
   user-select: text;
+}
+
+/* ─── Phone (<=767px): setting groups stay stacked full-width cards (as on
+       desktop) but every row becomes thumb-friendly: the four-tab row scrolls
+       inside its own container, label/control rows wrap so selects and inputs
+       go full-width, and long directory paths wrap instead of pushing the row
+       wide. ─── */
+@media (max-width: 767px) {
+  .settings-section {
+    padding: 16px;
+  }
+
+  .settings-tabs {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .settings-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tab-btn {
+    flex-shrink: 0;
+    padding: 12px 14px;
+  }
+
+  .setting-row {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  /* Controls drop under their labels at full width */
+  .gpu-select,
+  .api-key-input {
+    width: 100%;
+    flex-shrink: 1;
+  }
+
+  .gpu-select :deep(.themed-select__trigger) {
+    min-height: 44px;
+  }
+
+  .api-key-input {
+    min-height: 44px;
+  }
+
+  /* Choice cards: single column, 44px+ touch rows */
+  .source-grid,
+  .source-grid-col3 {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .source-card {
+    min-height: 48px;
+  }
+
+  .dir-path-row {
+    flex-wrap: wrap;
+  }
+
+  .dir-btn {
+    min-height: 44px;
+    padding: 10px 16px;
+  }
+
+  .update-actions {
+    flex-wrap: wrap;
+  }
+
+  .btn-check {
+    min-height: 44px;
+  }
+
+  .update-hint {
+    text-align: left;
+  }
 }
 </style>

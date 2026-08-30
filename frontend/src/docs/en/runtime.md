@@ -31,7 +31,7 @@ The download path itself can be changed under "Preferences → Directories" to d
 
 ## The three-state CUDA compatibility display
 
-The CUDA card on the "System Info" tab of the System Environment page has a "CUDA Compat" row with three possible states:
+The CUDA card on the "System Info" tab of the System Environment page (shown only on Windows when an NVIDIA GPU is detected) has a "CUDA Compat" row with three possible states:
 
 | State | Meaning |
 | --- | --- |

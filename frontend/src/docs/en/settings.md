@@ -24,7 +24,7 @@ These two paths decide where **new** content lands; to reuse model files already
 
 ## App & Updates
 
-**System tray (Windows)**: when enabled, clicking the close button minimizes the window to the system tray while llama-server keeps running in the background; the tray icon menu reopens the main window or quits the app. Note: re-enabling the tray after disabling it requires an app restart.
+**System tray (Windows / macOS)**: when enabled, clicking the close button minimizes the window to the system tray while llama-server keeps running in the background; the tray icon menu reopens the main window or quits the app. The row shows only where the capability is reliable (Linux desktop-environment tray support is incomplete, so it is not offered there). Note: re-enabling the tray after disabling it requires an app restart.
 
 **API route mode**: switches the app into a background-only service (no window, just tray + server) — see the "Headless Mode" section. Windows only, and the system tray must be enabled first.
 

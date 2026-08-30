@@ -8,6 +8,12 @@ import {
   showApiRouteSetting,
   showServingGpuSetting,
   updateSectionMode,
+  showGpuCards,
+  showCudaCompat,
+  showCudaRuntimeComponent,
+  accelBuildKey,
+  showMultiGpuPanel,
+  showGpuOffloadParam,
   type OsId,
   type PlatformState,
 } from '../lib/platform'
@@ -48,27 +54,51 @@ describe('buildPlatformState viewport tier boundaries', () => {
   )
 })
 
-describe('buildPlatformState mobile OS classification', () => {
-  it('android forces isMobile at any width, including desktop-tier widths', () => {
-    for (const width of [360, MOBILE_MAX, MOBILE_MAX + 1, TABLET_MAX, TABLET_MAX + 1, 1920]) {
+describe('buildPlatformState tier classification is width-driven only', () => {
+  // The OS never bends the tier: an Android tablet must get the tablet layout
+  // and an Android phone the phone layout, exactly like the same widths on a
+  // desktop OS (the old "android/ios forces isMobile at any width" rule is
+  // gone — see the companion capability tests for the OS-scoped flags).
+  it('android phone width (<= MOBILE_MAX) lands in the mobile tier', () => {
+    for (const width of [320, 390, 500, MOBILE_MAX]) {
       const state = buildPlatformState('android', width)
       expect(state.isMobile).toBe(true)
       expect(state.isTablet).toBe(false)
       expect(state.isDesktop).toBe(false)
       expect(state.isAndroid).toBe(true)
-      expect(state.isIOS).toBe(false)
     }
   })
 
-  it('ios forces isMobile at any width', () => {
-    const state = buildPlatformState('ios', 1920)
-    expect(state.isMobile).toBe(true)
-    expect(state.isTablet).toBe(false)
-    expect(state.isDesktop).toBe(false)
-    expect(state.isIOS).toBe(true)
+  it('android tablet width (MOBILE_MAX+1..TABLET_MAX) lands in the tablet tier', () => {
+    for (const width of [MOBILE_MAX + 1, 800, 900, TABLET_MAX]) {
+      const state = buildPlatformState('android', width)
+      expect(state.isMobile).toBe(false)
+      expect(state.isTablet).toBe(true)
+      expect(state.isDesktop).toBe(false)
+    }
   })
 
-  it('desktop OS at narrow width forces isMobile via the viewport rule', () => {
+  it('android desktop-tier width (> TABLET_MAX) lands in the desktop tier', () => {
+    for (const width of [TABLET_MAX + 1, 1280, 1920]) {
+      const state = buildPlatformState('android', width)
+      expect(state.isMobile).toBe(false)
+      expect(state.isTablet).toBe(false)
+      expect(state.isDesktop).toBe(true)
+    }
+  })
+
+  it('ios follows the same width-driven tiers as android', () => {
+    expect(buildPlatformState('ios', 390).isMobile).toBe(true)
+    expect(buildPlatformState('ios', 900).isTablet).toBe(true)
+    expect(buildPlatformState('ios', 1920).isDesktop).toBe(true)
+    expect(buildPlatformState('ios', 900).isIOS).toBe(true)
+  })
+
+  it('desktop OS in a small window lands in the mobile tier via the same width rule', () => {
+    // Semantics note: the tier only shapes LAYOUT. The frameless title bar is
+    // a separate OS-scoped capability — a desktop OS keeps it at every width
+    // (see the capability matrix below), so "mobile tier" here never means
+    // "no title bar" for windows/linux/darwin.
     const state = buildPlatformState('windows', 375)
     expect(state.isMobile).toBe(true)
     expect(state.isTablet).toBe(false)
@@ -81,12 +111,14 @@ describe('buildPlatformState mobile OS classification', () => {
 describe('buildPlatformState capability matrix', () => {
   it.each<[OsId, number, boolean, boolean]>([
     ['windows', 1920, true, true], // desktop windows: tray + frameless titlebar
-    ['windows', MOBILE_MAX, true, false], // tray is an OS capability: still true in the mobile viewport tier
-    ['linux', 1920, false, true], // linux desktop: no tray today, frameless ok
-    ['darwin', 1920, false, true], // macOS desktop: no tray today, frameless ok
-    ['android', 1920, false, false], // mobile OS: native chrome, no custom titlebar
-    ['ios', 390, false, false],
-    ['other', 1920, false, true],
+    ['windows', MOBILE_MAX, true, true], // both capabilities are OS-scoped: a narrow frameless window still needs its titlebar
+    ['darwin', 1920, true, true], // macOS desktop: NSStatusItem tray + frameless ok
+    ['linux', 1920, false, true], // linux desktop: tray hidden (DE-dependent DBUS), frameless ok
+    ['android', 390, false, false], // phone: native chrome, no custom titlebar
+    ['android', 900, false, false], // tablet tier: still no window chrome on the OS
+    ['android', 1920, false, false], // desktop-tier width changes nothing: the flag is OS-scoped
+    ['ios', 900, false, false],
+    ['other', 1920, false, false], // unknown OS degrades to no fake titlebar
   ])('%s @ %i -> supportsTray=%s supportsFramelessTitlebar=%s', (os, width, tray, titlebar) => {
     const state = buildPlatformState(os, width)
     expect(state.supportsTray).toBe(tray)
@@ -94,14 +126,85 @@ describe('buildPlatformState capability matrix', () => {
   })
 })
 
+describe('hardware-capability render gates', () => {
+  // Backend facts these encode (core/sysinfo.go + release asset matrix):
+  // nvidia-smi probe = windows+linux; android probes unsupported (GPUs always
+  // empty); darwin has no GPU probe; cudart asset = windows-only; llama.cpp
+  // builds: windows CPU/CUDA, linux Vulkan, macOS Metal, android CPU arm64.
+  it.each<[OsId, boolean]>([
+    ['windows', true],
+    ['linux', true],
+    ['darwin', false], // no probe: the GPU card (even empty) must not render
+    ['android', false], // probes unsupported
+    ['ios', false],
+    ['other', false],
+  ])('showGpuCards: %s -> %s', (os, expected) => {
+    expect(showGpuCards(buildPlatformState(os, 1920))).toBe(expected)
+  })
+
+  it.each<[OsId, number[], boolean]>([
+    ['windows', [86], true], // NVIDIA GPU with compute capability
+    ['windows', [0], false], // GPU present but no compute capability
+    ['windows', [], false], // no GPU at all
+    ['linux', [86], false], // Vulkan-only: CUDA compat is meaningless
+    ['darwin', [86], false],
+    ['android', [86], false],
+  ])('showCudaCompat: %s with compute caps %j -> %s', (os, caps, expected) => {
+    const gpus = caps.map((computeCapability) => ({ computeCapability }))
+    expect(showCudaCompat(buildPlatformState(os, 1920), gpus)).toBe(expected)
+  })
+
+  it.each<[OsId, boolean]>([
+    ['windows', true],
+    ['linux', false], // no cudart step in the vulkan-only release
+    ['darwin', false],
+    ['android', false],
+    ['other', false],
+  ])('showCudaRuntimeComponent: %s -> %s', (os, expected) => {
+    expect(showCudaRuntimeComponent(buildPlatformState(os, 1920))).toBe(expected)
+  })
+
+  it.each<[OsId, 'windows' | 'linux' | 'darwin' | 'cpu']>([
+    ['windows', 'windows'],
+    ['linux', 'linux'],
+    ['darwin', 'darwin'],
+    ['android', 'cpu'],
+    ['ios', 'cpu'],
+    ['other', 'cpu'],
+  ])('accelBuildKey: %s -> %j', (os, expected) => {
+    expect(accelBuildKey(buildPlatformState(os, 1920))).toBe(expected)
+  })
+
+  it.each<[OsId, boolean]>([
+    ['windows', true],
+    ['linux', true],
+    ['darwin', false], // Metal: single GPU, nothing to split
+    ['android', false], // CPU-only
+    ['ios', false],
+  ])('showMultiGpuPanel: %s -> %s', (os, expected) => {
+    expect(showMultiGpuPanel(buildPlatformState(os, 1920))).toBe(expected)
+  })
+
+  it.each<[OsId, boolean]>([
+    ['windows', true],
+    ['linux', true],
+    ['darwin', true], // Metal can still offload layers (-ngl)
+    ['android', false], // CPU-only: offload selector must not render
+    ['ios', false],
+  ])('showGpuOffloadParam: %s -> %s', (os, expected) => {
+    expect(showGpuOffloadParam(buildPlatformState(os, 1920))).toBe(expected)
+  })
+})
+
 describe('OS-scoped setting gates (Settings.vue visibility)', () => {
-  // All gates are Windows-only today and OS-scoped (never viewport-scoped):
-  // tray + headless relaunch are Windows backend features, CUDA device pinning
-  // no-ops elsewhere, and the self-update installer is Windows-only.
+  // Gates follow each feature's own capability matrix: tray is windows+darwin
+  // (NSStatusItem; linux DBUS is too desktop-environment-dependent), while
+  // headless relaunch, CUDA device pinning and the self-update installer stay
+  // Windows-only. None are viewport-scoped.
   it.each<[OsId, boolean, boolean, boolean, 'native' | 'link']>([
     ['windows', true, true, true, 'native'],
+    ['darwin', true, false, false, 'link'],
     ['linux', false, false, false, 'link'],
-    ['darwin', false, false, false, 'link'],
     ['android', false, false, false, 'link'],
     ['ios', false, false, false, 'link'],
     ['other', false, false, false, 'link'],

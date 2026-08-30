@@ -626,4 +626,58 @@ onMounted(() => {
   background: rgba(99, 102, 241, 0.25);
   border-color: rgba(99, 102, 241, 0.4);
 }
+
+/* ─── Phone (<=767px): the directory bar stacks (sources above, actions in a
+       full-width row), model cards go single-column full-width, and the
+       per-model action button becomes a 44px touch target. Tablet (768px+)
+       keeps the desktop list — the collapsed sidebar rail simply widens the
+       cards, with metadata staying side-by-side. ─── */
+@media (max-width: 767px) {
+  .dir-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .dir-actions {
+    justify-content: flex-end;
+  }
+
+  .dir-btn,
+  .refresh-btn {
+    min-height: 44px;
+    padding: 10px 16px;
+  }
+
+  .dir-android-hint {
+    text-align: left;
+  }
+
+  .model-card {
+    padding: 14px 16px;
+  }
+
+  .model-card:hover {
+    transform: none;
+  }
+
+  .model-header {
+    flex-wrap: wrap;
+  }
+
+  .model-settings-btn {
+    width: 44px;
+    height: 44px;
+    /* 44px touch target without growing the header row: negative margins
+       keep the card's visual rhythm (28px layout box around a 44px button) */
+    margin: -8px;
+    opacity: 0.7;
+  }
+
+  .empty-cta,
+  .retry-btn {
+    min-height: 44px;
+  }
+}
 </style>

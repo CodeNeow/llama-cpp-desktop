@@ -369,4 +369,56 @@ function isActive(path: string): boolean {
     display: none;
   }
 }
+
+/* tablet (768..1099px): force the COLLAPSED icon rail regardless of the
+   persisted preference, so the content area keeps its space on roomy-but-not
+   wide screens. Pure CSS — the stored sidebarCollapsed value is untouched, so
+   on desktop (>1099px, outside this range) the user's own preference still
+   wins. The rules mirror .sidebar.collapsed one-for-one; when the persisted
+   preference happens to be collapsed both sets agree. */
+@media (min-width: 768px) and (max-width: 1099px) {
+  .sidebar {
+    width: 64px;
+    min-width: 64px;
+  }
+
+  .sidebar .logo {
+    gap: 0;
+  }
+
+  .sidebar .logo-text {
+    max-width: 0;
+    opacity: 0;
+  }
+
+  .sidebar .nav-item {
+    gap: 0;
+    padding: 11px 10px;
+  }
+
+  .sidebar .nav-label {
+    max-width: 0;
+    opacity: 0;
+  }
+
+  .sidebar .sidebar-footer {
+    justify-content: center;
+    gap: 0;
+    padding: 12px 8px;
+  }
+
+  .sidebar .status-dot {
+    width: 0;
+  }
+
+  .sidebar .status-text {
+    max-width: 0;
+    opacity: 0;
+  }
+
+  .sidebar .collapse-toggle {
+    position: static;
+    transform: none;
+  }
+}
 </style>

@@ -115,6 +115,12 @@ export const messages: Record<Locale, Record<string, string>> = {
     'runtime.compMain': 'llama-server 主程序',
     'runtime.compCudart': 'CUDA 运行时 (cudart)',
     'runtime.compCudartDesc': '随 CUDA 构建自动下载',
+    // Acceleration build of the installed main program, per platform capability
+    // (suffix resolved by accelBuildKey in lib/platform.ts)
+    'runtime.accel.windows': 'CPU / CUDA 构建',
+    'runtime.accel.linux': 'Vulkan 构建',
+    'runtime.accel.darwin': 'Metal 构建',
+    'runtime.accel.cpu': 'CPU 构建（arm64）',
     'runtime.compNotDetected': '未检测到',
     'runtime.pkgMain': '主程序包',
     'runtime.pkgCudart': 'CUDA 运行时包',
@@ -297,6 +303,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'settings.choose': '选择',
     'settings.dirDefaultModels': 'LLM-Models',
     'settings.directoriesHint': '下载路径决定新内容的落点；复用已有文件的外部路径仍在「本机环境」页与模型页的「我的模型」标签设置。',
+    'settings.dirsAndroidHint': 'Android 上这些路径由应用管理，仅供查看，无法在此修改。',
     'settings.accessScope': '服务访问范围',
     'settings.accessDesc': '本地仅本机可访问；局域网允许同网络设备访问',
     'settings.accessLocal': '本地（127.0.0.1）',
@@ -610,6 +617,12 @@ export const messages: Record<Locale, Record<string, string>> = {
     'runtime.compMain': 'llama-server main program',
     'runtime.compCudart': 'CUDA runtime (cudart)',
     'runtime.compCudartDesc': 'Downloaded automatically alongside CUDA builds',
+    // Acceleration build of the installed main program, per platform capability
+    // (suffix resolved by accelBuildKey in lib/platform.ts)
+    'runtime.accel.windows': 'CPU / CUDA build',
+    'runtime.accel.linux': 'Vulkan build',
+    'runtime.accel.darwin': 'Metal build',
+    'runtime.accel.cpu': 'CPU build (arm64)',
     'runtime.compNotDetected': 'Not detected',
     'runtime.pkgMain': 'Main program package',
     'runtime.pkgCudart': 'CUDA runtime package',
@@ -792,6 +805,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'settings.choose': 'Choose',
     'settings.dirDefaultModels': 'LLM-Models',
     'settings.directoriesHint': 'Download paths decide where new content lands; external paths for reusing existing files stay in the runtime section of the System Environment page and the My Models tab of the Models page.',
+    'settings.dirsAndroidHint': 'On Android these paths are managed by the app — shown read-only and not editable here.',
     'settings.accessScope': 'Server Access Scope',
     'settings.accessDesc': 'Local restricts to this machine; LAN allows devices on the same network',
     'settings.accessLocal': 'Local (127.0.0.1)',

@@ -66,8 +66,11 @@
         </ol>
       </section>
 
-      <!-- GPU Card -->
-      <section class="info-section">
+      <!-- GPU Card: only on platforms with a real GPU probe (windows + linux).
+           Android probes are unsupported (GPUs always empty) and macOS has no
+           probe, so the card — including its empty state — would be pure
+           noise there and must not render at all. -->
+      <section v-if="showGpuCard" class="info-section">
         <h2 class="section-title">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
@@ -162,8 +165,10 @@
         </div>
       </section>
 
-      <!-- CUDA Card -->
-      <section class="info-section">
+      <!-- CUDA Card: Windows only AND only with an NVIDIA GPU reporting a
+           compute capability — Linux llama.cpp is Vulkan-only (CUDA compat is
+           meaningless there), macOS is Metal, Android is CPU-only. -->
+      <section v-if="showCudaCard" class="info-section">
         <h2 class="section-title">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"/><line x1="12" y1="22" x2="12" y2="15.5"/><polyline points="22 8.5 12 15.5 2 8.5"/>
@@ -312,6 +317,7 @@ import { usagePercent, formatGB, formatMB, formatBytes } from '../lib/format'
 import { aggregateVram, buildGpuDisplays, cudaCompatLevel, type GpuStaticInfo } from '../lib/sysinfo'
 import { buildOnboardingView, type OnboardingStepId } from '../lib/onboarding'
 import type { MonitorStatus } from '../lib/monitor'
+import { showCudaCompat, showGpuCards, usePlatform } from '../lib/platform'
 import { appConfig, setOnboardingDismissed } from '../store'
 
 interface SystemInfo {
@@ -372,6 +378,13 @@ let pollTimer: ReturnType<typeof setInterval> | null = null
 const gpuViews = computed(() => buildGpuDisplays(info.value.gpu, live.value?.gpus ?? null))
 const multiGpu = computed(() => gpuViews.value.length > 1)
 const vramTotals = computed(() => aggregateVram(gpuViews.value))
+
+// Hardware-capability gates (OS-scoped, see lib/platform.ts): the GPU card
+// renders only where a probe exists (windows/linux); the CUDA compat card only
+// on Windows with an NVIDIA GPU reporting a compute capability.
+const platformState = usePlatform()
+const showGpuCard = computed(() => showGpuCards(platformState.value))
+const showCudaCard = computed(() => showCudaCompat(platformState.value, info.value.gpu))
 
 const memoryView = computed(() => {
   const l = live.value
@@ -961,4 +974,43 @@ onUnmounted(() => {
 .retry-btn:hover {
   background: var(--accent-glow);
 }
+
+/* ─── Phone (<=767px): the elastic cards grid already collapses to a single
+       full-width column (minmax(min(100%, 400px), 1fr)); only the card
+       density is adjusted here so full-width cards don't feel oversized.
+       Desktop (>=1100px) keeps the 3-4 column grid untouched. ─── */
+@media (max-width: 767px) {
+  .cards-grid {
+    gap: 12px;
+  }
+
+  .info-section {
+    padding: 16px;
+  }
+
+  .section-title {
+    margin-bottom: 14px;
+  }
+
+  /* Checklist rows become 44px touch targets; the goto action grows to match */
+  .onboarding-step {
+    min-height: 44px;
+  }
+
+  .step-action {
+    padding: 10px 14px;
+  }
+
+  .onboarding-dismiss {
+    padding: 10px 12px;
+  }
+
+  .retry-btn {
+    min-height: 44px;
+  }
+}
+
+/* ─── Tablet (768..1099px): the sidebar collapses to a 64px rail (Sidebar.vue),
+       leaving ~2 columns of 400px cards — exactly the roomy two-pane feel,
+       so no extra rule is needed here. ─── */
 </style>

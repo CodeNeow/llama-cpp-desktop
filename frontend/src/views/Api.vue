@@ -1064,4 +1064,72 @@ function clearLog() {
     height: auto;
   }
 }
+
+/* ─── Phone (<=767px): the single-column collapse above already stacks log +
+       monitor; these rules make the controls thumb-friendly and keep the page
+       overflow-free. Start/stop/restart become prominent full-width 44px
+       buttons; the log console scrolls inside its own band (12px mono). ─── */
+@media (max-width: 767px) {
+  .toolbar {
+    padding: 12px 16px;
+  }
+
+  .toolbar-row {
+    gap: 10px;
+  }
+
+  .status-indicator {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  .btn-group {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  /* Even 44px controls spanning the row; nowrap keeps the zh labels intact
+     (they would otherwise wrap mid-word in the squeezed third) */
+  .server-btn {
+    flex: 1;
+    min-height: 44px;
+    min-width: 0;
+    padding: 10px 8px;
+    white-space: nowrap;
+  }
+
+  .icon-btn {
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
+  }
+
+  /* Server params popover must never exceed the viewport */
+  .cfg-popover {
+    width: min(300px, calc(100vw - 32px));
+  }
+
+  .toolbar-models {
+    flex-wrap: wrap;
+  }
+
+  .log-panel {
+    height: clamp(180px, 36vh, 320px);
+    padding: 14px;
+  }
+
+  .console-log {
+    font-size: 12px;
+  }
+
+  .monitor-card {
+    padding: 14px 16px;
+  }
+
+  .empty-cta {
+    min-height: 44px;
+    padding: 8px 14px;
+  }
+}
 </style>

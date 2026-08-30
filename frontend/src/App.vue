@@ -2,10 +2,15 @@
   <div class="app-layout" :style="{ '--dock-reserve': dockReserve + 'px', '--titlebar-h': titlebarH }">
     <Sidebar />
     <main class="main-content">
-      <!-- Custom title bar: desktop shells only. Mobile (android/ios or a
-           <=767px viewport) has native chrome and window controls would be
-           no-ops, so the bar — and its 36px band, via --titlebar-h — is absent. -->
-      <div class="title-bar" v-if="!platformState.isMobile && isDesktop">
+      <!-- Custom title bar: desktop shells only. It exists to drag / close /
+           maximize a FRAMELESS desktop window, so it follows the OS-scoped
+           supportsFramelessTitlebar capability (false on android/ios — no
+           window chrome there; true on windows/linux/darwin at every viewport
+           width, because a narrow frameless window is still a window that
+           needs its controls). The viewport tier (platformState.isMobile)
+           shapes layout only — the mobile bottom nav bar takes over at
+           <=767px while the title bar band stays via --titlebar-h. -->
+      <div class="title-bar" v-if="platformState.supportsFramelessTitlebar && isDesktop">
         <div></div>
         <!-- macOS keeps the colorful dots (matches existing style); Windows / Linux / unknown use native flat buttons -->
         <template v-if="platform === 'darwin'">
@@ -82,10 +87,11 @@ const w = window as any
 // inside the runtime, matching the old w.runtime?. optional-chaining style.
 const isDesktop = !!(w._wails || w.go || w.electronAPI)  // Wails or Electron
 
-// Shared platform state (lib/platform): isMobile gates the mobile shell (title
-// bar hidden, bottom tab bar shown by CSS). The reactive singleton starts at
-// the module's desktop-windows default and is republished by syncPlatformState
-// below on OS detection and every window resize.
+// Shared platform state (lib/platform): the viewport tier (isMobile) gates the
+// mobile shell (bottom tab bar shown by CSS at <=767px), while the OS-scoped
+// supportsFramelessTitlebar gates the custom title bar. The reactive singleton
+// starts at the module's desktop-windows default and is republished by
+// syncPlatformState below on OS detection and every window resize.
 const platformState = usePlatform()
 
 // Current route: fixed-viewport pages (route meta fixed: true) fill the window
@@ -97,10 +103,11 @@ const isFixedPage = computed(() => route.meta.fixed === true)
 
 // Custom-property height of the title bar band, consumed by the fixed-viewport
 // page shells (global.css .page-fixed, Chat.vue .chat-page): 36px while the
-// bar renders, 0px on mobile where it is absent. Derived from platform.isMobile
-// (OS-scoped, so correct at any viewport width — media queries cannot see the
-// OS); fixed pages then always fill the visible viewport exactly.
-const titlebarH = computed(() => (isDesktop && !platformState.value.isMobile ? '36px' : '0px'))
+// bar renders, 0px otherwise. Derived from the OS-scoped
+// supportsFramelessTitlebar capability (correct at any viewport width — media
+// queries cannot see the OS); fixed pages then always fill the visible
+// viewport exactly.
+const titlebarH = computed(() => (isDesktop && platformState.value.supportsFramelessTitlebar ? '36px' : '0px'))
 
 // Current OS: 'darwin' (macOS) / 'windows' / 'linux' / empty string (unknown or backend unavailable)
 // Drives window-control button platform adaptation: macOS keeps the colorful dots, other platforms use native flat buttons

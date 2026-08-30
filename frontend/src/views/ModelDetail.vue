@@ -601,4 +601,58 @@ onMounted(() => {
     overflow: visible;
   }
 }
+
+/* ─── Phone (<=767px): the back affordance (this page is reachable outside
+       the bottom tab bar) becomes a 44px touch target, the selection action
+       bar wraps to full-width controls, and file rows keep wrapping cleanly
+       inside their container. ─── */
+@media (max-width: 767px) {
+  .back-btn {
+    min-height: 44px;
+    padding: 10px 8px;
+    margin-bottom: 8px;
+  }
+
+  .page-title {
+    font-size: 20px;
+  }
+
+  .action-bar {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .action-actions {
+    flex: 1 1 100%;
+  }
+
+  .select-all-btn,
+  .download-btn {
+    min-height: 44px;
+    padding: 10px 18px;
+  }
+
+  .download-btn {
+    flex: 1;
+  }
+
+  .file-item {
+    min-height: 44px;
+    padding: 10px 12px;
+  }
+
+  /* File name may truncate; quant + size drop to the wrapped second line
+     (existing flex-wrap behavior) instead of pushing the row wide */
+  .file-name {
+    min-width: 120px;
+  }
+
+  .error-card {
+    flex-wrap: wrap;
+  }
+
+  .retry-btn {
+    min-height: 44px;
+  }
+}
 </style>
