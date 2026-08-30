@@ -51,7 +51,6 @@ describe('lib/i18n', () => {
 
   it('runtime section and shared download labels render in both locales', () => {
     setLocale('zh')
-    expect(t('runtime.title')).toBe('运行环境')
     expect(t('runtime.llamacpp.path')).toBe('安装路径')
     expect(t('runtime.downloadDir')).toBe('下载路径')
     expect(t('runtime.compMain')).toContain('llama-server')
@@ -60,7 +59,6 @@ describe('lib/i18n', () => {
     expect(t('dl.downloading')).toBe('正在下载')
     expect(t('dl.error')).toBe('下载失败')
     setLocale('en')
-    expect(t('runtime.title')).toBe('Runtime Environment')
     expect(t('runtime.llamacpp.path')).toBe('Install Path')
     expect(t('runtime.downloadDir')).toBe('Download Path')
     expect(t('runtime.compMain')).toContain('llama-server')

@@ -1,17 +1,10 @@
 <template>
-  <!-- Runtime environment section: embedded in the merged System Environment
-       page (Home.vue) below the hardware grid. Owns its own data loading
-       (skeleton / error + retry) and all llama.cpp download / custom-directory
-       actions; the page owns the sticky header, so there is no page chrome
-       here — only the section heading and its cards. -->
-  <section id="runtime-section" class="runtime-section">
-    <h2 class="section-title">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
-      </svg>
-      {{ t('runtime.title') }}
-    </h2>
-
+  <!-- Runtime Environment tab panel of the System Environment page (Home.vue
+       shell): the tab label replaces the former section heading. Owns its own
+       data loading (skeleton / error + retry) and all llama.cpp download /
+       custom-directory actions; the shell owns the page chrome, so there is
+       no page chrome here — only the dependency cards. -->
+  <section class="runtime-section">
     <!-- Loading skeleton -->
     <div v-if="loading" class="skeleton-card">
       <div class="skeleton-line skeleton-title"></div>
@@ -395,10 +388,12 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* ─── Section: heading + stacked full-width cards below the hardware grid ─── */
+/* ─── Tab panel: stacked full-width dependency cards (heading lives in the
+       shell's tab bar) ─── */
 .runtime-section {
-  /* Clearance from the hardware cards-grid above (the grid owns its own gaps) */
-  margin-top: 28px;
+  /* Release the automatic minimum so long unbreakable strings (install paths)
+     shrink inside the panel instead of stretching it */
+  min-width: 0;
 }
 
 .info-section {

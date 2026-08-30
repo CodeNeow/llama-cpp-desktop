@@ -5,20 +5,24 @@ import router from '../router'
 // bands and reserve TaskDock space themselves; App.vue relies on route meta
 // `fixed` to switch .content-area into that mode (no bottom reserve, no own
 // scrolling). These tests pin that contract: exactly the three fixed pages
-// are flagged, every scrollable page is not. The former /runtime page merged
-// into Home and survives only as a redirect record without meta.
+// are flagged, every scrollable page is not. Home is the tabbed System
+// Environment shell: its /system and /runtime tab children carry no meta of
+// their own (children do not inherit meta in getRoutes()); at runtime the
+// parent's fixed meta still applies to matched child routes.
 describe('router fixed-page meta', () => {
   const fixedPaths = ['/', '/chat', '/api']
 
   // Scrollable pages keep normal document flow: .content-area scrolls and
-  // reserves the TaskDock band for them (subpages and the /models tab children
-  // included; /models is the tabbed shell with its own children)
+  // reserves the TaskDock band for them (subpages and the tab children of the
+  // /models and / shells included)
   const scrollingPaths = [
     '/models',
     '/models/download',
     '/models/local',
     '/models/model/:modelId',
     '/models/settings/:modelName',
+    '/system',
+    '/runtime',
     '/settings',
     '/docs',
   ]

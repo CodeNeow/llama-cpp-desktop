@@ -33,10 +33,11 @@ export const messages: Record<Locale, Record<string, string>> = {
     'title.restore': '还原',
     'title.close': '关闭到托盘',
 
-    // ─── System Environment page (Home.vue: hardware + RuntimeSection) ───
+    // ─── System Environment page (Home.vue tabbed shell) ───
     'home.title': '本机环境',
     'home.subtitle': '硬件配置与推理运行环境',
-    'home.sectionHardware': '硬件',
+    'home.tabSystem': '系统信息',
+    'home.tabRuntime': '运行环境',
     'home.refresh': '刷新',
     'home.refreshing': '刷新中…',
     'home.updatedAt': '{time} 更新',
@@ -99,8 +100,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'action.gotoDownloads': '去下载模型',
     'home.backendError': '无法连接后端: {msg}',
 
-    // ─── Runtime environment section (RuntimeSection.vue, embedded in Home.vue) ───
-    'runtime.title': '运行环境',
+    // ─── Runtime environment tab (RuntimeSection.vue, the Home shell's runtime tab) ───
     'runtime.errorTitle': '无法获取运行环境信息',
     'runtime.retry': '重试',
     'runtime.backendError': '无法连接后端: {msg}',
@@ -525,7 +525,8 @@ export const messages: Record<Locale, Record<string, string>> = {
     // ─── System Environment page (Home.vue: hardware + RuntimeSection) ───
     'home.title': 'System Environment',
     'home.subtitle': 'Hardware and inference runtime at a glance',
-    'home.sectionHardware': 'Hardware',
+    'home.tabSystem': 'System Info',
+    'home.tabRuntime': 'Runtime',
     'home.refresh': 'Refresh',
     'home.refreshing': 'Refreshing…',
     'home.updatedAt': 'Updated {time}',
@@ -588,8 +589,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'action.gotoDownloads': 'Download models',
     'home.backendError': 'Unable to connect to backend: {msg}',
 
-    // ─── Runtime environment section (RuntimeSection.vue, embedded in Home.vue) ───
-    'runtime.title': 'Runtime Environment',
+    // ─── Runtime environment tab (RuntimeSection.vue, the Home shell's runtime tab) ───
     'runtime.errorTitle': 'Unable to load runtime info',
     'runtime.retry': 'Retry',
     'runtime.backendError': 'Unable to connect to backend: {msg}',

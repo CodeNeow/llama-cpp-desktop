@@ -32,13 +32,12 @@ export interface OnboardingView {
   visible: boolean
 }
 
-// Target route per step: the runtime step deep-links to the runtime section of
-// the merged System Environment page (Home honors ?section=runtime by
-// scrolling to it); model download lives on the download tab of the merged
-// Models page (/models/download, search first); the local tab (/models/local)
-// manages already-present GGUF files.
+// Target route per step: the runtime step opens the Runtime Environment tab of
+// the System Environment page (/runtime); model download lives on the download
+// tab of the merged Models page (/models/download, search first); the local
+// tab (/models/local) manages already-present GGUF files.
 const STEP_ROUTES: Record<OnboardingStepId, string> = {
-  runtime: '/?section=runtime',
+  runtime: '/runtime',
   models: '/models/download',
   service: '/api'
 }

@@ -10,6 +10,9 @@ declare module 'vue-router' {
   }
 }
 import Home from '../views/Home.vue'
+import SystemInfoTab from '../views/SystemInfoTab.vue'
+import EnvironmentDefault from '../views/EnvironmentDefault.vue'
+import RuntimeSection from '../components/RuntimeSection.vue'
 import Chat from '../views/Chat.vue'
 import Models from '../views/Models.vue'
 import ModelsLocal from '../views/ModelsLocal.vue'
@@ -22,20 +25,33 @@ import ModelDetail from '../views/ModelDetail.vue'
 
 const routes = [
   {
-    // System Environment: hardware info + the runtime environment section
-    // (RuntimeSection.vue) merged into one fixed-viewport page
+    // System Environment hub: one sidebar entry with an in-page tab bar owned
+    // by the shell (fixed-viewport page). Children render through the shell's
+    // <router-view> wrapped in <keep-alive> so tab switches keep the hardware
+    // samples and the runtime download state alive. The bare / path resolves a
+    // smart default landing tab (EnvironmentDefault): Runtime when llama.cpp
+    // is missing, System Info once installed.
     path: '/',
     name: 'Home',
     component: Home,
-    meta: { title: '本机环境', icon: 'home', fixed: true }
-  },
-  {
-    // Compat: the runtime environment merged into the System Environment page
-    // (/) as its runtime section. A function redirect preserves the query so
-    // the /?section=runtime deep link (onboarding runtime step) survives:
-    // string redirects drop it.
-    path: '/runtime',
-    redirect: (to: RouteLocationGeneric) => ({ path: '/', query: to.query })
+    meta: { title: '本机环境', icon: 'home', fixed: true },
+    children: [
+      // Entering / resolves the landing tab (see EnvironmentDefault). Named so
+      // vue-router does not warn about the nameless empty-path child.
+      { path: '', name: 'HomeDefault', component: EnvironmentDefault },
+      {
+        path: 'system',
+        name: 'SystemInfo',
+        component: SystemInfoTab,
+        meta: { title: '系统信息' }
+      },
+      {
+        path: 'runtime',
+        name: 'Runtime',
+        component: RuntimeSection,
+        meta: { title: '运行环境' }
+      }
+    ]
   },
   {
     path: '/chat',

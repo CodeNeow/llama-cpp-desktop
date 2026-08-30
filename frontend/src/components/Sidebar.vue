@@ -137,7 +137,10 @@ const navItems = [
 ]
 
 function isActive(path: string): boolean {
-  if (path === '/') return route.path === '/'
+  // The home entry also covers the System Environment tab children:
+  // '/system' is a distinct prefix from '/settings' (settings must not light
+  // up on the system info tab) and '/runtime' is the env page's runtime tab
+  if (path === '/') return route.path === '/' || route.path.startsWith('/system') || route.path.startsWith('/runtime')
   return route.path.startsWith(path)
 }
 </script>

@@ -445,13 +445,15 @@ async function unloadOtherModels(): Promise<void> {
   }
 }
 
-/** Guided fixes for a failed auto-start: model downloads / runtime section. */
+/** Guided fixes for a failed auto-start: model downloads / runtime tab. */
 function goDownloads() {
   router.push('/models/download')
 }
 
+// Open the runtime tab directly: the smart default on / would land on the
+// system info tab when llama.cpp is installed but cudart is missing
 function goRuntime() {
-  router.push('/')
+  router.push('/runtime')
 }
 
 /** Close the params panel when clicking outside it */
