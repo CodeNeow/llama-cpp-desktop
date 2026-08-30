@@ -127,11 +127,13 @@ jobs:
         # version is overridden from the tag (or core/VERSION on non-tag builds) via -D, since
         # VIProductVersion requires a 4-part numeric version (hence stripping the leading "v").
         # makensis runs from the installer dir, mirroring the template's documented standalone
-        # usage so all relative paths (OutFile ..\..\bin\..., binary ..\..\bin\...) resolve there.
+        # usage so all relative paths resolve there: the NSIS `..\..\bin\` paths climb two
+        # levels to build\bin (that is how the v2 template was written), while core/VERSION
+        # sits at the repo root — THREE levels up from build/windows/installer.
         working-directory: build/windows/installer
         shell: bash
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then VER="$GITHUB_REF_NAME"; else VER="$(cat ../../core/VERSION)"; fi
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then VER="$GITHUB_REF_NAME"; else VER="$(cat ../../../core/VERSION)"; fi
           echo "ARTIFACT_VERSION=$VER" >> "$GITHUB_ENV"
           makensis -DARG_WAILS_AMD64_BINARY='..\..\bin\llama-desktop.exe' -DINFO_PRODUCTVERSION="${VER#v}" project.nsi
       - name: Rename artifacts with version
