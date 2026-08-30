@@ -72,7 +72,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .e2e-cache
-          key: e2e-assets-llama-b10695-stories260K
+          key: e2e-assets-llama-b10695-stories260K-${{ runner.os }}
       - name: Fetch e2e assets
         run: |
           set -euo pipefail
@@ -163,7 +163,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .e2e-cache
-          key: e2e-assets-llama-b10695-stories260K
+          key: e2e-assets-llama-b10695-stories260K-${{ runner.os }}
       - name: Fetch e2e assets
         shell: pwsh
         run: |
@@ -419,7 +419,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .e2e-cache
-          key: e2e-assets-llama-b10695-stories260K
+          key: e2e-assets-llama-b10695-stories260K-${{ runner.os }}
       - name: Fetch e2e assets
         run: |
           set -euo pipefail
