@@ -447,8 +447,10 @@ jobs:
         # platforms;android-35. NDK 26.3.11579264 is the version the v3
         # beta.16 template/ANDROID.md expects (r26+/26.3.x).
         run: |
-          yes | sdkmanager --licenses >/dev/null 2>&1 || true
-          sdkmanager "ndk;26.3.11579264" "platforms;android-35" "build-tools;35.0.0"
+          # sdkmanager is not on PATH; cmdline-tools/latest ships with the runner image.
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses >/dev/null 2>&1 || true
+          "$SDKM" "ndk;26.3.11579264" "platforms;android-35" "build-tools;35.0.0"
       - name: Sync version file from tag
         # Same logic as windows/linux/macos jobs: release version uses git tag
         # as sole source; non-tag build uses repo default. android:package
