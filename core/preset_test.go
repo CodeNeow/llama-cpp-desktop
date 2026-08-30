@@ -1,6 +1,7 @@
 package core
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -522,5 +523,198 @@ func TestGenerateModelsPresetFromRejectsSpecAndMMProj(t *testing.T) {
 	okCfgs := map[string]ModelConfig{"m": {SpecType: "draft-mtp", SpecDraftNMax: 0}}
 	if _, err := generateModelsPresetFrom(models, okCfgs); err != nil {
 		t.Errorf("valid SpecType should generate successfully: %v", err)
+	}
+}
+
+// ─── modelPresetKV / modelDirectArgs (Android direct mode) ─────────
+
+// iniFromKVs serializes per-model preset entries exactly the way
+// generateModelsPresetFrom prints them (section header, `key = value` lines,
+// blank line separator) — the reference format the golden test compares
+// modelPresetKV output against.
+func iniFromKVs(alias string, kvs []presetKV) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "[%s]\n", alias)
+	for _, kv := range kvs {
+		fmt.Fprintf(&b, "%s = %s\n", kv.key, kv.value)
+	}
+	b.WriteString("\n")
+	return b.String()
+}
+
+// TestModelPresetKVGoldenINI verifies the refactor is byte-identical: for
+// models covering every emission branch (no config, full config, embedding,
+// explicit mmproj, auto-detected mmproj), serializing modelPresetKV output
+// through the INI printer reproduces the generateModelsPresetFrom file byte
+// for byte (alias dedup included).
+func TestModelPresetKVGoldenINI(t *testing.T) {
+	dir := t.TempDir()
+	autoMMProj := filepath.Join(dir, "mmproj-auto.gguf")
+	if err := os.WriteFile(autoMMProj, []byte("proj"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	models := []ModelInfo{
+		{Name: "plain", Path: "/models/plain.gguf"},
+		{Name: "full", Path: "/models/full.gguf"},
+		{Name: "bge-small-zh", Path: "/models/bge.gguf"},
+		{Name: "llava-explicit", Path: "/models/llava1.gguf", HasMMProj: true},
+		{Name: "llava-auto", Path: filepath.Join(dir, "llava2.gguf"), HasMMProj: true},
+	}
+	cfgs := map[string]ModelConfig{
+		"full": {
+			Threads: 8, GPULayers: "99", CtxSize: 8192, BatchSize: 512,
+			UBatchSize: 256, FlashAttn: true, CacheTypeK: "q8_0", CacheTypeV: "bf16",
+			LoadMode: "mlock", CPUMoe: true, NCpuMoe: 2, SplitMode: "row",
+			TensorSplit: "3,1", MainGPU: 1, RopeScaling: "yarn", RopeScale: 2.0,
+			MMProj: "/models/proj.gguf", Reasoning: true,
+			SpecType: "draft-mtp", SpecDraftNMax: 4,
+		},
+		"llava-explicit": {MMProj: filepath.Join(dir, "mmproj-explicit.gguf")},
+	}
+
+	path, err := generateModelsPresetFrom(models, cfgs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(path)
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	used := make(map[string]int)
+	var want strings.Builder
+	for _, m := range models {
+		alias := aliasDedup(m.Name, used)
+		kvs, err := modelPresetKV(m, cfgs[m.Name])
+		if err != nil {
+			t.Fatal(err)
+		}
+		want.WriteString(iniFromKVs(alias, kvs))
+	}
+	if string(data) != want.String() {
+		t.Errorf("INI preset drifted from modelPresetKV serialization:\n--- file ---\n%s\n--- kv ---\n%s", string(data), want.String())
+	}
+}
+
+// TestModelDirectArgs verifies the direct-mode CLI mapping of every
+// modelPresetKV row against upstream b10698 long options: same-name options
+// with values verbatim, -m for the model path, --alias from the sanitized
+// display name, bare --embeddings/--cpu-moe flags, --flash-attn on as a
+// valued flag, and no --reasoning (upstream has no such option).
+func TestModelDirectArgs(t *testing.T) {
+	cfg := ModelConfig{
+		Threads: 8, GPULayers: "99", CtxSize: 8192, BatchSize: 512,
+		UBatchSize: 256, FlashAttn: true, CacheTypeK: "q8_0", CacheTypeV: "bf16",
+		LoadMode: "mmap+mlock", CPUMoe: true, NCpuMoe: 2, SplitMode: "row",
+		TensorSplit: "3,1", MainGPU: 1, RopeScaling: "yarn", RopeScale: 2.0,
+		MMProj: "/models/proj.gguf", Reasoning: true,
+		SpecType: "draft-mtp", SpecDraftNMax: 4,
+	}
+	m := ModelInfo{Name: "Qwen2.5 7B", Path: "/models/q.gguf"}
+
+	args, err := modelDirectArgs(sanitizeAlias(m.Name), m, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := []string{
+		"--alias", "Qwen2.5-7B",
+		"-m", "/models/q.gguf",
+		"--ctx-size", "8192",
+		"--batch-size", "512",
+		"--ubatch-size", "256",
+		"--threads", "8",
+		"--gpu-layers", "99",
+		"--flash-attn", "on",
+		"--cache-type-k", "q8_0",
+		"--cache-type-v", "bf16",
+		"--load-mode", "mmap+mlock",
+		"--cpu-moe",
+		"--n-cpu-moe", "2",
+		"--split-mode", "row",
+		"--tensor-split", "3,1",
+		"--main-gpu", "1",
+		"--rope-scaling", "yarn",
+		"--rope-scale", "2",
+		"--mmproj", "/models/proj.gguf",
+		"--spec-type", "draft-mtp",
+		"--spec-draft-n-max", "4",
+	}
+	if len(args) != len(want) {
+		t.Fatalf("args = %v, want %v", args, want)
+	}
+	for i := range want {
+		if args[i] != want[i] {
+			t.Errorf("args[%d] = %q, want %q", i, args[i], want[i])
+		}
+	}
+}
+
+// TestModelDirectArgsBareEmbeddings verifies an embedding model gets the bare
+// --embeddings flag (upstream takes no value there) while everything else in
+// a zero-config model stays just alias + model path.
+func TestModelDirectArgsBareEmbeddings(t *testing.T) {
+	m := ModelInfo{Name: "bge-small-zh", Path: "/models/bge.gguf"}
+	args, err := modelDirectArgs(sanitizeAlias(m.Name), m, ModelConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"--alias", "bge-small-zh", "-m", "/models/bge.gguf", "--embeddings"}
+	if len(args) != len(want) {
+		t.Fatalf("args = %v, want %v", args, want)
+	}
+	for i := range want {
+		if args[i] != want[i] {
+			t.Errorf("args[%d] = %q, want %q", i, args[i], want[i])
+		}
+	}
+}
+
+// TestModelDirectArgsGPULayersAll verifies gpu-layers values pass through
+// verbatim (upstream accepts auto/all/int); "auto" never reaches the entry
+// list (the INI writer omits it), so "all" is the passthrough representative.
+func TestModelDirectArgsGPULayersAll(t *testing.T) {
+	args, err := modelDirectArgs("m", ModelInfo{Name: "m", Path: "/m.gguf"}, ModelConfig{GPULayers: "all"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "--gpu-layers all") {
+		t.Errorf("args missing --gpu-layers all: %v", args)
+	}
+}
+
+// TestModelDirectArgsMMProjAutoDetect verifies the same-directory mmproj
+// auto-detection survives into direct mode: HasMMProj with an empty MMProj
+// config emits --mmproj with the detected file path.
+func TestModelDirectArgsMMProjAutoDetect(t *testing.T) {
+	dir := t.TempDir()
+	mmprojPath := filepath.Join(dir, "mmproj-f16.gguf")
+	if err := os.WriteFile(mmprojPath, []byte("proj"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	m := ModelInfo{Name: "llava", Path: filepath.Join(dir, "llava.gguf"), HasMMProj: true}
+	args, err := modelDirectArgs("llava", m, ModelConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "--mmproj "+filepath.ToSlash(mmprojPath)) {
+		t.Errorf("args missing auto-detected --mmproj: %v", args)
+	}
+}
+
+// TestModelDirectArgsRejectsInjection verifies modelDirectArgs propagates the
+// modelPresetKV validation errors (same messages as the INI writer) instead
+// of emitting an unsafe value into a command line.
+func TestModelDirectArgsRejectsInjection(t *testing.T) {
+	if _, err := modelDirectArgs("m", ModelInfo{Name: "m", Path: "/m.gguf"}, ModelConfig{GPULayers: "99\n[evil]"}); err == nil {
+		t.Error("injection GPULayers should return an error")
+	}
+	if _, err := modelDirectArgs("m", ModelInfo{Name: "m", Path: "/m.gguf"}, ModelConfig{SpecType: "bogus"}); err == nil {
+		t.Error("illegal SpecType should return an error")
 	}
 }

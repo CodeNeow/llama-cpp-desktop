@@ -187,9 +187,16 @@ export function buildMessageContent(text: string, images?: string[]): string | A
 
 /**
  * Fetch the router's currently available model list (excluding failed entries).
+ *
+ * A 404 from GET /models means the server was started in direct mode (Android:
+ * single resident model, no router routes) — fall back to the OpenAI-compatible
+ * /v1/models listing, where every served model is by definition loaded.
  */
 export async function fetchRouterModels(port: number): Promise<RouterModel[]> {
   const res = await fetch(`http://127.0.0.1:${port}/models`)
+  if (res.status === 404) {
+    return fetchOpenAIModels(port)
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
     throw new Error(err?.error?.message || `GET /models failed: ${res.status}`)
@@ -199,6 +206,21 @@ export async function fetchRouterModels(port: number): Promise<RouterModel[]> {
   return list
     .filter((m: any) => m?.status?.value !== 'failed')
     .map((m: any) => ({ id: m.id, status: m.status?.value ?? 'unknown' }))
+}
+
+/**
+ * Direct-mode fallback: map GET /v1/models data[].id entries to RouterModel
+ * values with status 'loaded' (direct servers always have their model in
+ * memory).
+ */
+async function fetchOpenAIModels(port: number): Promise<RouterModel[]> {
+  const res = await fetch(`http://127.0.0.1:${port}/v1/models`)
+  if (!res.ok) {
+    throw new Error(`GET /v1/models failed: ${res.status}`)
+  }
+  const json = await res.json()
+  const list = Array.isArray(json?.data) ? json.data : []
+  return list.map((m: any) => ({ id: m.id, status: 'loaded' }))
 }
 
 /**

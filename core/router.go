@@ -87,7 +87,9 @@ func classifyModelType(outputModalities []string) string {
 
 // fetchRouterModels queries the llama-server router for the model list,
 // filters to loaded / loading / sleeping entries, and maps them to a
-// LoadedModel slice.
+// LoadedModel slice. A 404 from GET /models (direct-mode llama-server has no
+// router route) falls back to the OpenAI-compatible /v1/models listing, where
+// every served model is by definition loaded.
 func fetchRouterModels(port int) ([]LoadedModel, error) {
 	base := routerBaseURL(port)
 	url := base + "/models"
@@ -98,6 +100,12 @@ func fetchRouterModels(port int) ([]LoadedModel, error) {
 		return nil, fmt.Errorf("fetch router models: %w", err)
 	}
 	defer resp.Body.Close()
+
+	// Direct-mode fallback: the router /models route is absent (404) on
+	// servers started with -m instead of a models preset.
+	if resp.StatusCode == http.StatusNotFound {
+		return fetchOpenAIModels(client, base)
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("fetch router models: HTTP %d", resp.StatusCode)
@@ -118,6 +126,36 @@ func fetchRouterModels(port int) ([]LoadedModel, error) {
 				Status: item.Status.Value,
 			})
 		}
+	}
+	return out, nil
+}
+
+// fetchOpenAIModels maps GET /v1/models data[].id entries to LoadedModel
+// values (type chat, status loaded) — the direct-mode fallback for
+// router-unaware servers.
+func fetchOpenAIModels(client *http.Client, base string) ([]LoadedModel, error) {
+	resp, err := client.Get(base + "/v1/models")
+	if err != nil {
+		return nil, fmt.Errorf("fetch router models: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fetch router models: HTTP %d", resp.StatusCode)
+	}
+
+	var raw struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return nil, fmt.Errorf("fetch router models: %w", err)
+	}
+
+	out := make([]LoadedModel, 0, len(raw.Data))
+	for _, item := range raw.Data {
+		out = append(out, LoadedModel{ID: item.ID, Type: "chat", Status: "loaded"})
 	}
 	return out, nil
 }
@@ -145,6 +183,12 @@ func unloadRouterModel(port int, id string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		// Direct-mode llama-server has no /models/unload route (404): the
+		// single resident model can only leave memory by stopping the
+		// service — surface that instead of the raw HTTP status.
+		if resp.StatusCode == http.StatusNotFound {
+			return fmt.Errorf("unload router model: %s", tr("直连模式不支持卸载，请停止服务", "direct mode: unload not supported, stop the service instead"))
+		}
 		var errResp struct {
 			Error string `json:"error"`
 		}

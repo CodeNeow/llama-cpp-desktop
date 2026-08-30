@@ -236,3 +236,70 @@ func TestConcurrentServerPort(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// ─── Direct-mode fallbacks (Android) ────────────────────────────────
+
+// TestFetchRouterModelsDirectFallback404 verifies the direct-mode fallback: a
+// server without the router /models route answers 404 and fetchRouterModels
+// degrades to the OpenAI-compatible /v1/models listing, mapping every
+// data[].id to a loaded chat model.
+func TestFetchRouterModelsDirectFallback404(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/models":
+			// Direct-mode llama-server has no router route at all.
+			http.NotFound(w, r)
+		case "/v1/models":
+			w.Write([]byte(`{"data":[{"id":"model-a"},{"id":"model-b"}]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	orig := routerBaseURL
+	routerBaseURL = func(port int) string { return srv.URL }
+	defer func() { routerBaseURL = orig }()
+
+	models, err := fetchRouterModels(8080)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(models) != 2 {
+		t.Fatalf("got %d models, want 2", len(models))
+	}
+	want := []LoadedModel{
+		{ID: "model-a", Type: "chat", Status: "loaded"},
+		{ID: "model-b", Type: "chat", Status: "loaded"},
+	}
+	for i, w := range want {
+		if models[i] != w {
+			t.Errorf("models[%d] = %+v, want %+v", i, models[i], w)
+		}
+	}
+}
+
+// TestUnloadRouterModel404 verifies the direct-mode unload behavior: a 404
+// from /models/unload surfaces the guided "stop the service instead" error
+// (asserted in English by pinning the UI language — tr() follows the machine
+// locale otherwise).
+func TestUnloadRouterModel404(t *testing.T) {
+	withLanguage(t, "en")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	orig := routerBaseURL
+	routerBaseURL = func(port int) string { return srv.URL }
+	defer func() { routerBaseURL = orig }()
+
+	err := unloadRouterModel(8080, "resident-model")
+	if err == nil {
+		t.Fatal("404 should return an error")
+	}
+	if !strings.Contains(err.Error(), "direct mode: unload not supported") {
+		t.Errorf("error = %v, want the direct-mode guidance", err)
+	}
+}

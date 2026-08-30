@@ -205,7 +205,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick, watch, onUnmounted, type ComponentPublicInstance } from 'vue'
 import { useRouter } from 'vue-router'
-import { getServerStatus, getServerConfig, getModels, getLlamaCpp, startServer, unloadModel } from '../wails'
+import { getServerStatus, getServerConfig, getModels, getLlamaCpp, startServerWithModel, unloadModel } from '../wails'
 import { chatReadiness, fetchRouterModels, modelsToUnload, streamChatCompletion, tokenRates, type ChatReadiness } from '../lib/chat'
 import { messages, selectedModel, streaming, chatAbortController, persistChat, reconcileSelectedModel, chatParams, persistChatParams, type ChatMessage, type ChatParams } from '../lib/chatState'
 import { nudgeDock } from '../lib/dockNudge'
@@ -213,9 +213,11 @@ import { t } from '../lib/i18n'
 import { renderMarkdown } from '../lib/markdown'
 import { handleLinkClick } from '../lib/linkHandler'
 import { isNearBottom } from '../lib/scroll'
+import { usePlatform } from '../lib/platform'
 import ThemedSelect, { type SelectOption } from '../components/ThemedSelect.vue'
 
 const router = useRouter()
+const platform = usePlatform()
 
 const serverRunning = ref(false)
 
@@ -360,9 +362,12 @@ async function refreshLocalModels(): Promise<void> {
 
 /**
  * Chat-initiated server bring-up: pre-check models/runtime so blockers surface
- * as guided errors (no pointless startServer call), then start llama-server
- * and poll the router until it answers /models (up to ~30s). Returns true when
- * the service ended up ready to stream.
+ * as guided errors (no pointless start call), then start llama-server for the
+ * selected model and poll the router until it answers /models (up to ~30s on
+ * desktop, ~60s on Android — loading from phone flash is slow). Desktop
+ * (router mode) ignores the model and lazy-loads; Android (direct mode) makes
+ * it the single resident, restarting the service when another model is
+ * resident. Returns true when the service ended up ready to stream.
  */
 async function ensureServerReady(): Promise<boolean> {
   startError.value = ''
@@ -374,7 +379,7 @@ async function ensureServerReady(): Promise<boolean> {
       const [models, rt] = await Promise.all([getModels(), getLlamaCpp()])
       readiness = chatReadiness(Array.isArray(models) ? models.length : 0, rt?.installed === true)
     } catch {
-      // Probe failure must not block the attempt: startServer reports the real error
+      // Probe failure must not block the attempt: the start call reports the real error
       readiness = 'ok'
     }
     if (readiness === 'needModels') {
@@ -387,10 +392,10 @@ async function ensureServerReady(): Promise<boolean> {
       startErrorCause.value = 'needRuntime'
       return false
     }
-    await startServer()
+    await startServerWithModel(selectedModel.value)
     // Poll router readiness: llama-server binds /models a moment after spawn
     const cfg = await getServerConfig()
-    const deadline = Date.now() + 30000
+    const deadline = Date.now() + (platform.value.isAndroid ? 60000 : 30000)
     while (Date.now() < deadline) {
       try {
         await fetchRouterModels(cfg.port)
@@ -407,7 +412,7 @@ async function ensureServerReady(): Promise<boolean> {
     startError.value = t('api.toggleFailed', { msg: 'timeout' })
     return false
   } catch (e: any) {
-    // startServer rejections already carry user-facing localized backend errors
+    // Start rejections already carry user-facing localized backend errors
     startError.value = e?.message || String(e)
     return false
   } finally {
@@ -419,8 +424,12 @@ async function ensureServerReady(): Promise<boolean> {
  * Deterministic single-model memory: before streaming, unload every OTHER
  * loaded model so the selected one becomes the only resident. Best-effort:
  * individual unload failures are ignored and never block the chat request.
+ * Skipped entirely on Android: direct mode always has exactly one resident
+ * (the backend start binding restarts the service when the selected model
+ * differs), so there is nothing to unload here.
  */
 async function unloadOtherModels(): Promise<void> {
+  if (platform.value.isAndroid) return
   let toUnload: string[] = []
   try {
     const cfg = await getServerConfig()

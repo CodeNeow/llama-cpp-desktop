@@ -198,6 +198,14 @@ export async function startServer(): Promise<void> {
   return app().StartServer()
 }
 
+// Start the llama-server service for one specific model. Desktop (router
+// mode) ignores the model and lazy-loads as before; Android (direct mode)
+// makes it the single resident model — a running server with the same model
+// is a no-op, a different one restarts the service.
+export async function startServerWithModel(model: string): Promise<void> {
+  return app().StartServerWithModel(model)
+}
+
 export async function stopServer(): Promise<void> {
   return app().StopServer()
 }

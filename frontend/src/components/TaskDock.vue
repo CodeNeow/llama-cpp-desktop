@@ -90,7 +90,11 @@
               <span class="dock-model-badge" :class="'type-' + model.type">{{ typeLabel(model.type) }}</span>
               <span class="dock-model-id" :title="model.id">{{ truncatedName(model.id) }}</span>
               <span class="dock-model-status">{{ unloadingId === model.id ? t('dock.unloading') : modelStatusLabel(model.status) }}</span>
+              <!-- Capability gate: direct-mode servers (Android) have no
+                   unload route — the single resident leaves memory only by
+                   stopping the service, so the affordance is hidden there. -->
               <button
+                v-if="canUnloadModels"
                 class="dock-unload-btn"
                 :disabled="unloadingId === model.id"
                 @click="handleUnload(model.id)"
@@ -143,6 +147,7 @@ import { activeLlamaCppDownload, activeModelTasks, activeUpdateDownload, shouldS
 import { dockNudgeCounter, nudgeDock } from '../lib/dockNudge'
 import { useDockReserve } from '../lib/dockSpace'
 import { updateState } from '../lib/update'
+import { usePlatform } from '../lib/platform'
 import { t } from '../lib/i18n'
 
 // ─── State ────────────────────────────────────────────────────────
@@ -177,6 +182,13 @@ const unloadingId = ref('')
 const unloadErrors = reactive<Record<string, string>>({})
 
 // ─── Computed ─────────────────────────────────────────────────────
+
+const platform = usePlatform()
+
+// In-memory unload is a router-mode (desktop) capability: direct-mode servers
+// (Android) always hold exactly one resident model that can only leave memory
+// by stopping the service — hide the row's unload button there.
+const canUnloadModels = computed(() => !platform.value.isAndroid)
 
 const activeTasks = computed(() => activeModelTasks(allTasks.value))
 

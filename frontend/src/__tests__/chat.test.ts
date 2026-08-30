@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { parseSSEChunks, buildChatBody, buildMessageContent, tokenRates, chatReadiness, modelsToUnload, type ChatParams } from '../lib/chat'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { fetchRouterModels, parseSSEChunks, buildChatBody, buildMessageContent, tokenRates, chatReadiness, modelsToUnload, type ChatParams } from '../lib/chat'
 
 describe('parseSSEChunks', () => {
   // complete single-line JSON
@@ -302,5 +302,61 @@ describe('buildMessageContent', () => {
     expect(result).toEqual([
       { type: 'image_url', image_url: { url: 'data:image/png;base64,abc' } },
     ])
+  })
+})
+
+describe('fetchRouterModels', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  function jsonResponse(status: number, body: unknown): Response {
+    return {
+      ok: status >= 200 && status < 300,
+      status,
+      json: () => Promise.resolve(body),
+    } as unknown as Response
+  }
+
+  it('maps the router /models listing and drops failed entries', async () => {
+    const fetchMock = vi.fn((url: string) => {
+      expect(url).toBe('http://127.0.0.1:8080/models')
+      return Promise.resolve(jsonResponse(200, {
+        data: [
+          { id: 'm1', status: { value: 'loaded' } },
+          { id: 'm2', status: { value: 'failed' } },
+        ],
+      }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(fetchRouterModels(8080)).resolves.toEqual([
+      { id: 'm1', status: 'loaded' },
+    ])
+  })
+
+  it('on 404 falls back to /v1/models and maps ids to loaded', async () => {
+    // Direct-mode servers (Android) have no router /models route: the single
+    // resident model is listed through the OpenAI-compatible endpoint, where
+    // every served model is by definition loaded.
+    const fetchMock = vi.fn((url: string) => {
+      if (url === 'http://127.0.0.1:8080/models') {
+        return Promise.resolve(jsonResponse(404, {}))
+      }
+      expect(url).toBe('http://127.0.0.1:8080/v1/models')
+      return Promise.resolve(jsonResponse(200, {
+        data: [{ id: 'resident-a' }, { id: 'resident-b' }],
+      }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(fetchRouterModels(8080)).resolves.toEqual([
+      { id: 'resident-a', status: 'loaded' },
+      { id: 'resident-b', status: 'loaded' },
+    ])
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('propagates an error when both /models and /v1/models fail', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(jsonResponse(404, {}))))
+    await expect(fetchRouterModels(8080)).rejects.toThrow('GET /v1/models failed: 404')
   })
 })

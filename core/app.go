@@ -818,6 +818,23 @@ func (a *App) StartServer() error {
 	return startServerInternal()
 }
 
+// StartServerWithModel starts the service for one specific model. Desktop
+// (router mode) ignores the model and keeps the StartServer already-running
+// no-op; on Android (direct mode) the model becomes the single resident: a
+// running server with the same model is a no-op, a different one restarts
+// the service. Idempotent on both platforms.
+func (a *App) StartServerWithModel(model string) error {
+	if platformGOOS != "android" {
+		serverMu.Lock()
+		running := serverRunning
+		serverMu.Unlock()
+		if running {
+			return nil
+		}
+	}
+	return startServerInternalWithModel(model)
+}
+
 func (a *App) StopServer() error {
 	return stopServerInternal()
 }

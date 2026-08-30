@@ -849,3 +849,139 @@ func TestServerChildEnv(t *testing.T) {
 		t.Errorf("android env must be based on the parent environment, got %d entries with neither PATH nor HOME", len(got))
 	}
 }
+
+// ─── Android direct mode ─────────────────────────────────────────
+
+// withLanguage pins the UI language used by tr() for the duration of the test
+// (default "auto" follows the machine locale, so message-text assertions must
+// pin it), restoring the previous value afterwards.
+func withLanguage(t *testing.T, lang string) {
+	t.Helper()
+	languageMu.Lock()
+	orig := currentLanguage
+	currentLanguage = lang
+	languageMu.Unlock()
+	t.Cleanup(func() {
+		languageMu.Lock()
+		currentLanguage = orig
+		languageMu.Unlock()
+	})
+}
+
+// argValue returns the value following flag in args (ok=false when the flag
+// is absent or valueless) — a small helper for the direct-args assertions.
+func argValue(args []string, flag string) (string, bool) {
+	for i, a := range args {
+		if a == flag && i+1 < len(args) {
+			return args[i+1], true
+		}
+	}
+	return "", false
+}
+
+// TestBuildServerCommandAndroidDirect verifies the android branch of
+// buildServerCommand: single-model direct args driven by modelDirectArgs
+// (-m / --alias present, per-model options included) with NO router flags
+// (--models-preset / --models-max must be absent), while the shared service
+// flags (host/port/cont-batching/no-webui/api-key/cache-ram) stay in place.
+func TestBuildServerCommandAndroidDirect(t *testing.T) {
+	withPlatformGOOS(t, "android")
+	cfg := ServerConfig{AccessMode: accessLocal, Host: "127.0.0.1", Port: 8080, MaxModels: 1, CacheRAM: 512, APIKey: "sk-secret"}
+	d := &directModel{
+		info: ModelInfo{Name: "Qwen2.5 7B", Path: "/models/q.gguf"},
+		cfg:  ModelConfig{CtxSize: 4096, GPULayers: "99"},
+	}
+	bin, args, err := buildServerCommand(cfg, "", d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bin != "llama-server" {
+		t.Errorf("bin = %q, want llama-server", bin)
+	}
+
+	if v, ok := argValue(args, "-m"); !ok || v != "/models/q.gguf" {
+		t.Errorf("args missing -m /models/q.gguf: %v", args)
+	}
+	if v, ok := argValue(args, "--alias"); !ok || v != "Qwen2.5-7B" {
+		t.Errorf("args missing --alias Qwen2.5-7B: %v", args)
+	}
+	if v, ok := argValue(args, "--ctx-size"); !ok || v != "4096" {
+		t.Errorf("args missing --ctx-size 4096: %v", args)
+	}
+	if v, ok := argValue(args, "--gpu-layers"); !ok || v != "99" {
+		t.Errorf("args missing --gpu-layers 99: %v", args)
+	}
+	for _, banned := range []string{"--models-preset", "--models-max", "--models-dir"} {
+		for _, a := range args {
+			if a == banned {
+				t.Errorf("direct mode must not pass %s: %v", banned, args)
+			}
+		}
+	}
+	for _, want := range []string{"--cont-batching", "--no-webui", "--api-key", "sk-secret", "--cache-ram", "512"} {
+		found := false
+		for _, a := range args {
+			if a == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("direct args missing %q: %v", want, args)
+		}
+	}
+}
+
+// TestDirectStartDecision verifies the pure android direct-mode start
+// decision: spawn when nothing runs, no-op when the requested model already
+// is the resident, restart when a different model is resident.
+func TestDirectStartDecision(t *testing.T) {
+	cases := []struct {
+		running   bool
+		resident  string
+		requested string
+		want      directStartAction
+	}{
+		{false, "", "", directStartSpawn},
+		{false, "", "model-a", directStartSpawn},
+		{true, "model-a", "model-a", directStartNoop},
+		{true, "model-a", "model-b", directStartRestart},
+		{true, "model-a", "", directStartRestart},
+		{true, "", "model-a", directStartRestart},
+	}
+	for i, c := range cases {
+		if got := directStartDecision(c.running, c.resident, c.requested); got != c.want {
+			t.Errorf("case %d: directStartDecision(%v, %q, %q) = %v, want %v", i, c.running, c.resident, c.requested, got, c.want)
+		}
+	}
+}
+
+// TestResolveDirectModel verifies the direct-mode model resolution: exact
+// Name match wins, empty requested falls back to the first scanned model in
+// deterministic scan order, an unknown name and an empty scan return errors
+// (the same "no models" message the preset path uses).
+func TestResolveDirectModel(t *testing.T) {
+	withLanguage(t, "en")
+	models := []ModelInfo{
+		{Name: "model-a", Path: "/a.gguf"},
+		{Name: "model-b", Path: "/b.gguf"},
+	}
+
+	if m, err := resolveDirectModel(models, "model-b"); err != nil || m.Name != "model-b" {
+		t.Errorf("exact match = %+v, %v; want model-b, nil", m, err)
+	}
+	// The scanned alias is the id the UI actually sends (sanitized display
+	// name): it must resolve to the same model.
+	aliased := []ModelInfo{{Name: "Model A", Alias: "Model-A", Path: "/a.gguf"}}
+	if m, err := resolveDirectModel(aliased, "Model-A"); err != nil || m.Name != "Model A" {
+		t.Errorf("alias match = %+v, %v; want Model A, nil", m, err)
+	}
+	if m, err := resolveDirectModel(models, ""); err != nil || m.Name != "model-a" {
+		t.Errorf("default pick = %+v, %v; want first model model-a, nil", m, err)
+	}
+	if _, err := resolveDirectModel(models, "model-z"); err == nil || !strings.Contains(err.Error(), "model not found: model-z") {
+		t.Errorf("unknown name error = %v, want 'model not found: model-z'", err)
+	}
+	if _, err := resolveDirectModel(nil, ""); err == nil || !strings.Contains(err.Error(), "no models found") {
+		t.Errorf("empty scan error = %v, want the no-models message", err)
+	}
+}

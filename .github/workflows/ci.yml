@@ -103,6 +103,14 @@ jobs:
           LLAMA_DESKTOP_E2E_LLAMA_SERVER: ${{ github.workspace }}/.e2e-cache/llamacpp
           LLAMA_DESKTOP_E2E_MODEL: ${{ github.workspace }}/.e2e-cache/stories260K.gguf
         run: go test ./core/ -run TestServiceChainE2E -count=1 -timeout 10m -v
+      - name: Service-chain E2E (direct mode, Android start path)
+        # Exercises the Android direct-mode start path on a real llama-server: the desktop (ubuntu) binary is fine because the test pins the in-test platformGOOS seam to "android" (-m/--alias start, /models 404 -> /v1/models fallback, completion, stop).
+        env:
+          LLAMA_DESKTOP_E2E: "1"
+          LLAMA_DESKTOP_E2E_MODE: direct
+          LLAMA_DESKTOP_E2E_LLAMA_SERVER: ${{ github.workspace }}/.e2e-cache/llamacpp
+          LLAMA_DESKTOP_E2E_MODEL: ${{ github.workspace }}/.e2e-cache/stories260K.gguf
+        run: go test ./core -run 'TestServiceChainE2EDirect' -count=1 -v
       - name: gofmt check
         run: test -z "$(gofmt -l .)"
       - name: golangci-lint

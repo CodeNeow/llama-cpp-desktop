@@ -45,6 +45,18 @@ go test ./core/ -run TestServiceChainE2E -count=1 -timeout 10m -v
 
 不设 `LLAMA_DESKTOP_E2E` 时该测试自动跳过,常规 `go test` 不受影响。CI 固定使用 llama.cpp **b10695** 的 CPU 构建与 stories260K 模型(约 2 MB),通过 actions/cache 复用;刷新固定版本时同步更新缓存键 `e2e-assets-llama-b10695-stories260K`。
 
+直连模式变体(Android 真机实际使用的启动路径):在上述环境变量基础上追加 `LLAMA_DESKTOP_E2E_MODE=direct`,只运行 `TestServiceChainE2EDirect`——测试内把 `platformGOOS` seam 固定为 `android`,用同一个真实 llama-server(桌面二进制即可)以 `-m`/`--alias` 直连参数拉起单个模型,断言模型 id 为净化别名、路由 `/models` 404 后回退 `/v1/models` 列表(单一驻留模型、状态 loaded),再走真实补全推理与优雅停止:
+
+```bash
+LLAMA_DESKTOP_E2E=1 \
+LLAMA_DESKTOP_E2E_MODE=direct \
+LLAMA_DESKTOP_E2E_LLAMA_SERVER="D:/llama-desktop/llama-cpp" \
+LLAMA_DESKTOP_E2E_MODEL="$PWD/stories260K.gguf" \
+go test ./core/ -run TestServiceChainE2EDirect -count=1 -timeout 10m -v
+```
+
+CI 的 backend 任务(ubuntu)在路由模式 E2E 步骤之后追加了直连模式步骤,复用同一份缓存资产;直连启动路径与 OS 无关(经 seam 驱动),单一 OS 覆盖即可。
+
 ## 安卓模拟器冒烟
 
 CI 的 `smoke-android` 任务会为 x86_64 模拟器单独构建调试 APK(`wails3 task android:build:go ABI=x86_64` + `gradlew -PtargetAbi=x86_64`),装入 API 30 模拟器后:轮询进程存活(≤90 秒)、扫描 logcat 断言无 `FATAL EXCEPTION`、断言未出现 `keeping cwd-relative app paths`(即 JNI 存储锚点正常解析),并留存模拟器截图工件。

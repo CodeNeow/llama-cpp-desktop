@@ -449,13 +449,13 @@ export function SetTheme(theme: string): $CancellablePromise<void> {
  * stubs). Concurrency-safe (configMu and trayMu guard global state), called
  * by the frontend settings page system tray toggle.
  *
- * Note: fyne.io/systray has a package-level quitOnce (sync.Once) that prevents
- * Run from being called again after it exits in the same process — so when
+ * Note: the tray is one-shot per process (the old fyne.io/systray had a
+ * package-level quitOnce, and the v3 SystemTray tray deliberately keeps the
+ * same semantics — see the trayStarted comment in core/tray.go) — so when
  * enabling the tray, InitTray is only called to start a tray that has not
- * started yet (idempotent), never calling Run again; when disabling the tray,
- * QuitTray removes the icon and the tray will not restart in this process
- * (see trayStarted comment in core/tray_windows.go and systray's quitOnce
- * source). Re-enabling takes effect after an app restart.
+ * started yet (idempotent); when disabling the tray, QuitTray removes the
+ * icon and the tray will not restart in this process. Re-enabling takes
+ * effect after an app restart.
  */
 export function SetTrayEnabled(enabled: boolean): $CancellablePromise<void> {
     return $Call.ByID(3214759057, enabled);
@@ -471,6 +471,17 @@ export function StartLlamaCppDownload(): $CancellablePromise<void> {
 
 export function StartServer(): $CancellablePromise<void> {
     return $Call.ByID(4115957591);
+}
+
+/**
+ * StartServerWithModel starts the service for one specific model. Desktop
+ * (router mode) ignores the model and keeps the StartServer already-running
+ * no-op; on Android (direct mode) the model becomes the single resident: a
+ * running server with the same model is a no-op, a different one restarts
+ * the service. Idempotent on both platforms.
+ */
+export function StartServerWithModel(model: string): $CancellablePromise<void> {
+    return $Call.ByID(1420164860, model);
 }
 
 /**

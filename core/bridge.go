@@ -24,6 +24,13 @@ import (
 // "adoptedPid > 0 ⟹ serverCmd == nil".
 var adoptedPid int
 
+// directServingModel records the resident model of a direct-mode llama-server
+// (Android: one process serves exactly one model chosen at start). Set on a
+// successful direct start and cleared wherever serverPort is reset (the wait
+// goroutine, stopAdoptedServerIfAny), guarded by serverMu alongside it.
+// Desktop (router mode) always leaves it "" — models there lazy-load instead.
+var directServingModel string
+
 // ─── Wails binding helpers ───────────────────────────────────────
 
 // osInterrupt is os.Interrupt on Unix, os.Kill on Windows.
@@ -53,19 +60,125 @@ var stopGrace = 5 * time.Second
 // ─── Server start/stop (extracted from HTTP handlers) ────────────
 
 func startServerInternal() error {
+	return startServerInternalWithModel("")
+}
+
+// directStartAction is the android direct-mode start decision produced by
+// directStartDecision.
+type directStartAction int
+
+const (
+	directStartSpawn   directStartAction = iota // not running: fresh spawn
+	directStartNoop                             // running with the same resident model: no-op
+	directStartRestart                          // running with a different model: stop + start
+)
+
+// directStartDecision is the pure android direct-mode start decision: a
+// running server whose resident model equals the requested one makes the
+// start a no-op (idempotent); a different resident model requires a stop +
+// start restart; nothing running is a plain spawn. Compare CONCRETE resolved
+// model names, so a repeat start with the default pick (requested resolved to
+// the first scanned model) stays a no-op while that model is resident.
+func directStartDecision(running bool, resident, requested string) directStartAction {
+	if !running {
+		return directStartSpawn
+	}
+	if resident == requested {
+		return directStartNoop
+	}
+	return directStartRestart
+}
+
+// resolveDirectModel picks the direct-mode resident from the scanned models:
+// the exact ModelInfo.Name match for requested, or the first scanned model
+// (deterministic scan order) when requested is empty.
+func resolveDirectModel(models []ModelInfo, requested string) (ModelInfo, error) {
+	if len(models) == 0 {
+		return ModelInfo{}, errors.New(tr("LLM-Models 目录中没有模型", "no models found in the LLM-Models directory"))
+	}
+	if requested == "" {
+		return models[0], nil
+	}
+	for _, m := range models {
+		// The UI addresses models by the id the API exposes — the scanned
+		// alias (sanitized display name) falling back to the display name —
+		// so accept either form as an exact match.
+		if m.Name == requested || m.Alias == requested {
+			return m, nil
+		}
+	}
+	return ModelInfo{}, fmt.Errorf(tr("未找到模型: %s", "model not found: %s"), requested)
+}
+
+// startServerInternalWithModel starts llama-server. Desktop keeps router mode
+// (models preset + lazy loading; requested is ignored — the already-running
+// no-op is owned by the bindings). On Android the release llama-server ships
+// without LLAMA_SUBPROCESS, so the router-models subsystem cannot initialize
+// ("subprocess is not enabled on this build") — direct mode is used instead:
+// one process, one model, chosen explicitly. A running direct server with the
+// same resident model makes the call a no-op; a different resident model
+// stops the service first, then starts with the new model.
+func startServerInternalWithModel(requested string) error {
 	serverConfigMu.Lock()
 	cfg := cachedServerConfig
 	serverConfigMu.Unlock()
 
-	// Generate models preset file
-	presetPath, err := generateModelsPreset()
-	if err != nil {
-		return fmt.Errorf(tr("生成模型预设失败: %w", "failed to generate models preset: %w"), err)
+	var llamaServer string
+	var args []string
+	var err error
+	resident := "" // direct-mode resident model name (android); "" on desktop
+	if platformGOOS == "android" {
+		modelConfigsMu.Lock()
+		cfgs := cachedModelConfigs
+		modelConfigsMu.Unlock()
+		m, err := resolveDirectModel(scanModels(), requested)
+		if err != nil {
+			return err
+		}
+		serverMu.Lock()
+		running := serverRunning
+		prev := directServingModel
+		serverMu.Unlock()
+		switch directStartDecision(running, prev, m.Name) {
+		case directStartNoop:
+			addServerLog(fmt.Sprintf("[INFO] direct mode: model %q already resident, start is a no-op", m.Name))
+			return nil
+		case directStartRestart:
+			addServerLog(fmt.Sprintf("[INFO] direct mode: switching model %q -> %q, restarting llama-server", prev, m.Name))
+			if err := stopServerInternal(); err != nil {
+				return err
+			}
+		}
+		llamaServer, args, err = buildServerCommand(cfg, "", &directModel{info: m, cfg: cfgs[m.Name]})
+		if err != nil {
+			return err
+		}
+		resident = m.Name
+	} else {
+		// Router mode lazy-loads models, so requested is ignored. No running
+		// check here: startServerInternal keeps its historical semantics (the
+		// bindings own the already-running no-op; the headless startup path
+		// legitimately attempts a start while adopted state is registered).
+		var presetPath string
+		presetPath, err = generateModelsPreset()
+		if err != nil {
+			return fmt.Errorf(tr("生成模型预设失败: %w", "failed to generate models preset: %w"), err)
+		}
+		llamaServer, args, err = buildServerCommand(cfg, presetPath, nil)
+		if err != nil {
+			return err
+		}
 	}
 
-	// Build command
-	llamaServer, args := buildServerCommand(cfg, presetPath)
+	return spawnServerProcess(llamaServer, args, cfg, resident)
+}
 
+// spawnServerProcess is the shared spawn/log/tail/wait machinery behind every
+// llama-server start (router and direct mode alike): builds the exec.Command,
+// binds the shared log-file capture, starts the child, registers the
+// lifecycle state (serverRunning/serverCmd/serverPort and, in direct mode,
+// the resident model) and starts the wait goroutine that clears it.
+func spawnServerProcess(llamaServer string, args []string, cfg ServerConfig, resident string) error {
 	// Stop a leftover tailer from a previous server (e.g. an adopted one not
 	// stopped through the normal path) so it cannot double-append the new
 	// child's lines into the ring alongside the tailer started below.
@@ -151,6 +264,7 @@ func startServerInternal() error {
 	serverStartTime = time.Now()
 	serverTrueStart = serverStartTime
 	serverPort = cfg.Port
+	directServingModel = resident
 	serverLogTail = tailer
 	serverDone = done
 	serverMu.Unlock()
@@ -161,6 +275,7 @@ func startServerInternal() error {
 		serverRunning = false
 		serverStartTime = time.Time{}
 		serverPort = 0
+		directServingModel = ""
 		// Only clear the global references when they still point to this
 		// instance, to avoid clobbering a newly started server.
 		if serverCmd == cmd {
@@ -196,10 +311,19 @@ func startServerInternal() error {
 	return nil
 }
 
+// directModel carries the resolved Android direct-mode launch target to
+// buildServerCommand: the scanned model info plus its per-model config.
+type directModel struct {
+	info ModelInfo
+	cfg  ModelConfig
+}
+
 // buildServerCommand resolves the llama-server binary (custom dir, then the
 // llama-cpp/ download dir, then PATH) and builds its argument list from the
-// server config. The preset path points at the generated models INI file.
-func buildServerCommand(cfg ServerConfig, presetPath string) (string, []string) {
+// server config. The preset path points at the generated models INI file
+// (desktop router mode); on Android the direct-mode branch ignores it and
+// assembles single-model serving args from d instead.
+func buildServerCommand(cfg ServerConfig, presetPath string, d *directModel) (string, []string, error) {
 	// Shares resolveLlamaServerBin with getLlamaCppInfo to keep llama.cpp
 	// install-location resolution consistent in both places (download dir is
 	// ready to serve immediately after extraction); falls back to the bare
@@ -207,6 +331,37 @@ func buildServerCommand(cfg ServerConfig, presetPath string) (string, []string) 
 	llamaServer := resolveLlamaServerBin()
 	if llamaServer == "" {
 		llamaServer = "llama-server"
+	}
+
+	if platformGOOS == "android" {
+		// The official Android llama.cpp release ships llama-server WITHOUT
+		// the LLAMA_SUBPROCESS macro, so the router-models subsystem cannot
+		// initialize ("failed to initialize router models: subprocess is not
+		// enabled on this build"). Serve the one resolved model directly
+		// instead: no --models-preset / --models-max, no lazy loading —
+		// switching models restarts the process (see directStartDecision).
+		modelArgs, err := modelDirectArgs(sanitizeAlias(d.info.Name), d.info, d.cfg)
+		if err != nil {
+			return "", nil, err
+		}
+		args := append([]string{
+			"--host", effectiveHost(cfg.AccessMode),
+			"--port", strconv.Itoa(cfg.Port),
+		}, modelArgs...)
+		args = append(args,
+			"--cont-batching",
+			"--no-webui",
+		)
+		if cfg.CacheRAM > 0 {
+			args = append(args, "--cache-ram", strconv.Itoa(cfg.CacheRAM))
+		}
+		// Optional bearer-token authentication for the inference API: only
+		// passed when set; empty keeps llama-server's default
+		// no-authentication behavior. Both flags are valid in direct mode.
+		if cfg.APIKey != "" {
+			args = append(args, "--api-key", cfg.APIKey)
+		}
+		return llamaServer, args, nil
 	}
 
 	args := []string{
@@ -230,7 +385,7 @@ func buildServerCommand(cfg ServerConfig, presetPath string) (string, []string) 
 	if cfg.APIKey != "" {
 		args = append(args, "--api-key", cfg.APIKey)
 	}
-	return llamaServer, args
+	return llamaServer, args, nil
 }
 
 // platformGOOS is the OS branch selector (runtime.GOOS in production); a var
@@ -325,6 +480,7 @@ func stopAdoptedServerIfAny() bool {
 	serverMu.Lock()
 	serverRunning = false
 	serverPort = 0
+	directServingModel = ""
 	serverStartTime = time.Time{}
 	adoptedPid = 0
 	tail := serverLogTail

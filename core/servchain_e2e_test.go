@@ -38,6 +38,31 @@ const (
 )
 
 func TestServiceChainE2E(t *testing.T) {
+	if os.Getenv("LLAMA_DESKTOP_E2E_MODE") == "direct" {
+		t.Skip("LLAMA_DESKTOP_E2E_MODE=direct selects the direct-mode variant")
+	}
+	runServiceChainE2E(t, false)
+}
+
+// TestServiceChainE2EDirect drives the same service chain through the Android
+// direct-mode start path (platformGOOS pinned to "android" via the test seam):
+// startServerInternalWithModel spawns llama-server with -m/--alias instead of
+// a models preset — the mode the official Android release build REQUIRES,
+// since it ships without LLAMA_SUBPROCESS and the router-models subsystem
+// aborts startup ("subprocess is not enabled on this build"). Also exercises
+// the direct-mode contract end to end: the router /models route answers 404
+// and fetchRouterModels falls back to /v1/models. Same env gates as the
+// router variant plus LLAMA_DESKTOP_E2E_MODE=direct.
+func TestServiceChainE2EDirect(t *testing.T) {
+	if os.Getenv("LLAMA_DESKTOP_E2E_MODE") != "direct" {
+		t.Skip("LLAMA_DESKTOP_E2E_MODE=direct not set; direct-mode e2e runs only on demand")
+	}
+	runServiceChainE2E(t, true)
+}
+
+// runServiceChainE2E is the shared scan → start → health → models →
+// completion → stop chain; direct selects the android direct-mode start.
+func runServiceChainE2E(t *testing.T, direct bool) {
 	if os.Getenv("LLAMA_DESKTOP_E2E") != "1" {
 		t.Skip("LLAMA_DESKTOP_E2E not set; service-chain e2e runs only in CI or on demand")
 	}
@@ -48,6 +73,13 @@ func TestServiceChainE2E(t *testing.T) {
 	}
 	if _, err := os.Stat(modelFile); err != nil {
 		t.Fatalf("e2e model missing: %v", err)
+	}
+
+	// Direct mode branches on the platformGOOS seam (runtime.GOOS in
+	// production): pin android for the duration so the start path takes the
+	// direct branch while the host resolves binaries as usual.
+	if direct {
+		withPlatformGOOS(t, "android")
 	}
 
 	// Isolated state: temp cwd + absolute state-file paths (no ~/config
@@ -75,7 +107,8 @@ func TestServiceChainE2E(t *testing.T) {
 	if got := resolveLlamaServerBin(); got == "" {
 		t.Fatalf("llama-server not found under %s (production resolver)", serverDir)
 	}
-	if models := scanModels(); len(models) == 0 {
+	scanned := scanModels()
+	if len(scanned) == 0 {
 		t.Fatalf("scanModels found no model next to %s (GGUF header parse failed?)", modelFile)
 	}
 
@@ -93,8 +126,16 @@ func TestServiceChainE2E(t *testing.T) {
 
 	base := "http://127.0.0.1:" + strconv.Itoa(port)
 
-	if err := startServerInternal(); err != nil {
-		t.Fatalf("startServerInternal: %v", err)
+	if direct {
+		// Direct mode resolves the requested name against the scan; the
+		// first scanned model is the default pick.
+		if err := startServerInternalWithModel(scanned[0].Name); err != nil {
+			t.Fatalf("startServerInternalWithModel(%q): %v", scanned[0].Name, err)
+		}
+	} else {
+		if err := startServerInternal(); err != nil {
+			t.Fatalf("startServerInternal: %v", err)
+		}
 	}
 	t.Cleanup(func() {
 		serverConfigMu.Lock()
@@ -149,6 +190,23 @@ func TestServiceChainE2E(t *testing.T) {
 		modelID = body.Data[0].ID
 		return nil
 	}, e2eRequestTimeout)
+
+	// Direct-mode contract: the resident model is served under its sanitized
+	// display name (--alias), the router /models route is absent (404) and
+	// fetchRouterModels degrades to the OpenAI listing, reporting the single
+	// resident as loaded.
+	if direct {
+		if want := sanitizeAlias(scanned[0].Name); modelID != want {
+			t.Errorf("direct mode model id = %q, want the sanitized alias %q", modelID, want)
+		}
+		loaded, err := fetchRouterModels(port)
+		if err != nil {
+			t.Fatalf("fetchRouterModels direct-mode fallback: %v", err)
+		}
+		if len(loaded) != 1 || loaded[0].ID != modelID || loaded[0].Type != "chat" || loaded[0].Status != "loaded" {
+			t.Errorf("direct-mode loaded models = %+v, want [{%s chat loaded}]", loaded, modelID)
+		}
+	}
 
 	// Real inference round-trip through the OpenAI-compatible completion API.
 	var comp struct {
