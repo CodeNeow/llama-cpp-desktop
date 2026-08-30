@@ -13,7 +13,7 @@ describe('lib/i18n', () => {
   })
 
   it('t gets current locale dict value (zh)', () => {
-    expect(t('nav.home')).toBe('本机环境')
+    expect(t('nav.home')).toBe('本机')
     expect(t('settings.themeMode')).toBe('主题模式')
   })
 

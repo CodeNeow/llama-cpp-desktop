@@ -13,22 +13,37 @@
       <!-- Tabs row: same pattern as Models.vue (icon + label buttons with an
            underline active state). The active tab is derived from the route and
            clicks push the child route, so deep links and back/forward
-           navigation stay correct. -->
-      <div class="env-tabs" role="tablist" :aria-label="t('home.title')">
-        <button
-          v-for="tab in tabs"
-          :key="tab.id"
-          :id="`${tab.id}-tab`"
-          class="tab-btn"
-          :class="{ active: activeTabId === tab.id }"
-          role="tab"
-          :aria-selected="activeTabId === tab.id"
-          :aria-controls="panelId"
-          @click="router.push(tab.route)"
-        >
-          <span class="tab-icon" v-html="tab.icon"></span>
-          {{ tab.label() }}
-        </button>
+           navigation stay correct. The row's right side carries the system
+           tab's updated-at stamp + refresh toolbar, wired to the SystemInfoTab
+           instance through its exposed API and shown only while that tab is
+           active. -->
+      <div class="env-tabs-row">
+        <div class="env-tabs" role="tablist" :aria-label="t('home.title')">
+          <button
+            v-for="tab in tabs"
+            :key="tab.id"
+            :id="`${tab.id}-tab`"
+            class="tab-btn"
+            :class="{ active: activeTabId === tab.id }"
+            role="tab"
+            :aria-selected="activeTabId === tab.id"
+            :aria-controls="panelId"
+            @click="router.push(tab.route)"
+          >
+            <span class="tab-icon" v-html="tab.icon"></span>
+            {{ tab.label() }}
+          </button>
+        </div>
+        <div v-if="activeTabId === 'tab-system'" class="header-actions">
+          <span v-if="systemLastUpdated" class="updated-at">{{ t('home.updatedAt', { time: systemLastUpdated }) }}</span>
+          <button class="refresh-btn" :disabled="systemRefreshing" @click="refreshSystem">
+            <svg :class="{ spinning: systemRefreshing }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+            </svg>
+            {{ systemRefreshing ? t('home.refreshing') : t('home.refresh') }}
+          </button>
+        </div>
       </div>
     </div>
 
@@ -41,7 +56,7 @@
     <div :id="panelId" role="tabpanel" :aria-labelledby="`${activeTabId}-tab`" class="page-scroll">
       <router-view v-slot="{ Component }">
         <keep-alive>
-          <component :is="Component" />
+          <component :is="Component" ref="systemTabRef" />
         </keep-alive>
       </router-view>
     </div>
@@ -49,7 +64,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { t } from '../lib/i18n'
 
@@ -63,6 +78,25 @@ const panelId = 'home-panel'
 // else under the shell (/system, and the bare / while the default resolver is
 // still probing) shows the system tab
 const activeTabId = computed(() => (route.path.startsWith('/runtime') ? 'tab-runtime' : 'tab-system'))
+
+// Exposed API of the system tab (SystemInfoTab.vue defineExpose): the refresh
+// toolbar beside the tab bar delegates the manual re-probe to the active
+// system tab instance and mirrors refreshing/lastUpdated. Optional chaining
+// everywhere: while the EnvironmentDefault resolver or the RuntimeSection
+// child is the bound instance, the exposed API is absent.
+interface SystemTabExposed {
+  refresh: () => Promise<void> | void
+  refreshing: boolean
+  lastUpdated: string
+}
+const systemTabRef = ref<SystemTabExposed | null>(null)
+const systemRefreshing = computed(() => systemTabRef.value?.refreshing ?? false)
+const systemLastUpdated = computed(() => systemTabRef.value?.lastUpdated ?? '')
+
+/** Header refresh: forces the system tab to re-probe the hardware snapshot. */
+function refreshSystem() {
+  systemTabRef.value?.refresh()
+}
 
 // Tab definitions (icons are inline stroke SVGs, mirroring Models.vue)
 const tabs = [
@@ -123,14 +157,72 @@ const tabs = [
   gap: 16px;
 }
 
-/* ─── Tabs (same pattern as Models.vue) ─── */
+/* ─── Tabs row (same pattern as Models.vue): tab bar left, actions right.
+       Border and bottom gap live on the row so the system-tab toolbar shares
+       the same underline and baseline ─── */
+.env-tabs-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 20px;
+  flex-shrink: 0;
+}
+
 .env-tabs {
   display: flex;
   gap: 4px;
   padding: 0;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 20px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   flex-shrink: 0;
+}
+
+.updated-at {
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.refresh-btn:hover:not(:disabled) {
+  background: var(--hover-bg);
+  border-color: var(--overlay-20);
+  color: var(--text-primary);
+}
+
+.refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.refresh-btn svg.spinning {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .tab-btn {

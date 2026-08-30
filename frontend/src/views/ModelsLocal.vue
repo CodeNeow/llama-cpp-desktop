@@ -1,9 +1,7 @@
 <template>
   <div class="models-local">
-    <!-- Local-model directory bar (non-sticky): the directory sources. The
-         merged page shell owns the sticky header and the refresh action
-         (delegated to this component via defineExpose), so this block scrolls
-         with the content. -->
+    <!-- Local-model directory bar (non-sticky): the directory sources plus the
+         manual rescan action, so this block scrolls with the content. -->
     <div class="dir-bar">
       <div class="dir-sources">
         <div class="dir-info">
@@ -15,7 +13,16 @@
           <span class="dir-value" :class="{ 'dir-empty': !modelsDir }">{{ modelsDir || t('models.dirNotSet') }}</span>
         </div>
       </div>
-      <button class="dir-btn" :title="t('models.chooseDirTitle')" @click="chooseModelsDir">{{ t('models.chooseDir') }}</button>
+      <div class="dir-actions">
+        <button class="dir-btn" :title="t('models.chooseDirTitle')" @click="chooseModelsDir">{{ t('models.chooseDir') }}</button>
+        <button class="refresh-btn" :disabled="loading" :title="t('models.refreshTitle')" @click="fetchModels(true)">
+          <svg :class="{ spinning: loading }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          </svg>
+          {{ t('models.refresh') }}
+        </button>
+      </div>
     </div>
 
     <!-- Loading skeleton -->
@@ -157,12 +164,6 @@ async function fetchModels(force = false) {
   }
 }
 
-// Expose the rescan action and loading state to the Models shell: the shell's
-// header refresh button delegates to the active local tab instance (the
-// keep-alive cache keeps this instance alive across tab switches, so the
-// shell ref stays valid; exposed refs unwrap, so loading reads as boolean)
-defineExpose({ fetchModels, loading })
-
 onMounted(() => {
   loadModelsDir()
   fetchModels()
@@ -178,8 +179,7 @@ onMounted(() => {
 
 /* ─── Models directory bar ─── */
 .dir-bar {
-  /* Bottom spacing before the list: the shell's header refresh button took
-     over the old toolbar row, so this bar is the first content block */
+  /* Bottom spacing before the list: this bar is the first content block */
   margin-bottom: 24px;
   display: flex;
   align-items: center;
@@ -241,6 +241,51 @@ onMounted(() => {
   background: var(--overlay-8);
   border-color: var(--scrollbar-thumb-hover);
   color: var(--text-primary);
+}
+
+/* Right-side action group: keeps the directory picker and the rescan button
+   side by side while .dir-bar's space-between pins the group to the row's end */
+.dir-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+/* Rescan button (same visual language as the former toolbar refresh buttons) */
+.refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.refresh-btn:hover:not(:disabled) {
+  background: var(--hover-bg);
+  border-color: var(--overlay-20);
+  color: var(--text-primary);
+}
+
+.refresh-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.refresh-btn svg.spinning {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 /* ─── Model list ─── */

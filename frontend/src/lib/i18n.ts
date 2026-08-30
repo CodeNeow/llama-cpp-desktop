@@ -16,11 +16,11 @@ export type Locale = 'zh' | 'en'
 export const messages: Record<Locale, Record<string, string>> = {
   zh: {
     // ─── Sidebar navigation ───
-    'nav.home': '本机环境',
-    'nav.chat': '本地聊天',
-    'nav.models': '模型管理',
-    'nav.api': 'API 路由',
-    'nav.settings': '偏好设置',
+    'nav.home': '本机',
+    'nav.chat': '聊天',
+    'nav.models': '模型',
+    'nav.api': 'API',
+    'nav.settings': '设置',
     'nav.docs': '帮助',
     'nav.ready': '系统就绪',
     'nav.notReady': '系统未就绪',
@@ -135,6 +135,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'dl.error': '下载失败',
 
     // ─── Models page (Models.vue shell + ModelsLocal.vue tab) ───
+    'models.title': '模型管理',
     'models.tabDownload': '下载模型',
     'models.tabLocal': '我的模型',
     'models.refresh': '刷新',
@@ -506,10 +507,10 @@ export const messages: Record<Locale, Record<string, string>> = {
   en: {
     // ─── Sidebar navigation ───
     'nav.home': 'System',
-    'nav.chat': 'Local Chat',
+    'nav.chat': 'Chat',
     'nav.models': 'Models',
-    'nav.api': 'API Router',
-    'nav.settings': 'Preferences',
+    'nav.api': 'API',
+    'nav.settings': 'Settings',
     'nav.docs': 'Docs',
     'nav.ready': 'System Ready',
     'nav.notReady': 'Not ready',
@@ -624,6 +625,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'dl.error': 'Download failed',
 
     // ─── Models (Models.vue shell + ModelsLocal.vue tab) ───
+    'models.title': 'Model Manager',
     'models.tabDownload': 'Download',
     'models.tabLocal': 'My Models',
     'models.refresh': 'Refresh',

@@ -1,23 +1,10 @@
 <template>
   <!-- System Info tab panel of the System Environment page (Home.vue shell):
        hardware identity + live metrics + the quick-start onboarding checklist.
-       The shell owns the page chrome (title + tab bar), so there is no page
-       padding or header here — only the tab toolbar and the cards. -->
+       The shell owns the page chrome (title + tab bar + refresh toolbar, driven
+       through the exposed API below), so there is no page padding or header
+       here — only the cards. -->
   <div class="system-info-tab">
-    <!-- Tab toolbar (non-sticky): last-refresh stamp + manual refresh. The
-         shell header holds only the title and the tab bar, so the hardware
-         refresh action lives here, scoped to this tab. -->
-    <div class="tab-toolbar">
-      <span v-if="lastUpdated" class="updated-at">{{ t('home.updatedAt', { time: lastUpdated }) }}</span>
-      <button class="refresh-btn" :disabled="refreshing" @click="fetchSystemInfo(true)">
-        <svg :class="{ spinning: refreshing }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
-          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-        </svg>
-        {{ refreshing ? t('home.refreshing') : t('home.refresh') }}
-      </button>
-    </div>
-
     <!-- Loading skeleton -->
     <div v-if="loading" class="cards-grid">
       <div v-for="i in 6" :key="i" class="info-section skeleton-card">
@@ -553,6 +540,11 @@ async function pollLive() {
   }
 }
 
+// Expose the manual refresh to the Home shell: the toolbar beside the tab bar
+// delegates the re-probe here and mirrors refreshing/lastUpdated (exposed refs
+// unwrap, so they read as boolean/string through the shell's ref)
+defineExpose({ refresh: () => fetchSystemInfo(true), refreshing, lastUpdated })
+
 onMounted(() => {
   fetchSystemInfo()
   pollLive()
@@ -573,57 +565,6 @@ onUnmounted(() => {
    blowing the panel past the viewport */
 .system-info-tab {
   min-width: 0;
-}
-
-/* ─── Tab toolbar (updatedAt + refresh; non-sticky, scrolls with content) ─── */
-.tab-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
-  margin-bottom: 20px;
-}
-
-.updated-at {
-  font-size: 12px;
-  color: var(--text-dim);
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-
-.refresh-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
-  background: transparent;
-  color: var(--text-secondary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.refresh-btn:hover:not(:disabled) {
-  background: var(--hover-bg);
-  border-color: var(--overlay-20);
-  color: var(--text-primary);
-}
-
-.refresh-btn:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-
-.refresh-btn svg.spinning {
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
 }
 
 .section-title {
