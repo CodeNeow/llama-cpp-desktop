@@ -25,7 +25,7 @@ The panel is locked while the server is running ("stop it to modify") so configu
 The lower half of the page refreshes every second:
 
 - **Server Log**: llama-server's raw output — the first place to look when troubleshooting;
-- **Token Speed**: prompt processing speed (prefill — how fast your input is ingested) and generation speed (decode — how fast the model writes); thinking and answering both count as decode.
+- **Token Speed**: prompt processing speed (prefill — how fast your input is ingested) and generation speed (decode — how fast the model writes); thinking and answering both count as decode. A decode-speed trend chart for the last 60s sits below.
 
 ## Calling the service from code
 

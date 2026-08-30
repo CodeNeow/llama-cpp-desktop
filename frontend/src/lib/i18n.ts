@@ -136,6 +136,7 @@ export const messages: Record<Locale, Record<string, string>> = {
 
     // ─── Models page (Models.vue shell + ModelsLocal.vue tab) ───
     'models.title': '模型管理',
+    'models.subtitle': '在线搜索下载与本机模型管理',
     'models.tabDownload': '下载模型',
     'models.tabLocal': '我的模型',
     'models.refresh': '刷新',
@@ -266,6 +267,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'monitor.promptSub': '提示词预填充（prefill）',
     'monitor.decodeSpeed': '生成速度',
     'monitor.decodeSub': '实时解码（decode）',
+    'monitor.chartLabel': '近 {n} 秒生成速度',
     'monitor.footnote': '提示词处理速度在预填充期间实时刷新 · 思考与回答同属解码过程',
 
     // ─── Settings page (Settings.vue) ───
@@ -626,6 +628,7 @@ export const messages: Record<Locale, Record<string, string>> = {
 
     // ─── Models (Models.vue shell + ModelsLocal.vue tab) ───
     'models.title': 'Model Manager',
+    'models.subtitle': 'Search, download and manage local models',
     'models.tabDownload': 'Download',
     'models.tabLocal': 'My Models',
     'models.refresh': 'Refresh',
@@ -756,6 +759,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'monitor.promptSub': 'Prompt prefill',
     'monitor.decodeSpeed': 'Generation Speed',
     'monitor.decodeSub': 'Real-time decode',
+    'monitor.chartLabel': 'Decode speed over last {n}s',
     'monitor.footnote': 'Prompt speed refreshes live during prefill · thinking and answering are both decode',
 
     // ─── Settings (Settings.vue) ───

@@ -3,6 +3,7 @@
     <div class="sticky-top">
       <div class="page-header">
         <h1 class="page-title">{{ t('models.title') }}</h1>
+        <p class="page-subtitle">{{ t('models.subtitle') }}</p>
       </div>
 
       <!-- Tabs row: same pattern as Settings.vue (icon + label buttons with an
@@ -93,6 +94,12 @@ const tabs = [
   margin: 0 0 4px;
   letter-spacing: -0.5px;
   line-height: 1.2;
+}
+
+.page-subtitle {
+  font-size: 14px;
+  color: var(--text-dim);
+  margin: 0;
 }
 
 /* ─── Tabs (same pattern as Settings.vue) ─── */
