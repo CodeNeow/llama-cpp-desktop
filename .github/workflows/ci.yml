@@ -154,45 +154,36 @@ jobs:
             build/bin/llama-desktop-setup-*.exe
 
   build-linux:
-    # TEMPORARILY DISABLED: the app is not adapted to Ubuntu yet — do not build
-    # or publish .deb artifacts until Linux support lands. Re-enable by removing
-    # the `if: false` line below and restoring build-linux in the release job's
-    # needs + artifact-count check.
-    if: false
-    # Build Ubuntu 20.04 / 22.04 / 24.04 .deb packages.
-    # Note: GitHub-hosted ubuntu-20.04 runner is retired; all three distros build in their respective
-    # ubuntu containers for consistent binary / glibc / dependency versions. 20.04 repo only has
-    # libwebkit2gtk-4.0-dev at 2.38 (< 2.40), requiring webkit2_36 tag (wails Go-layer fallback);
-    # 22.04 / 24.04 use libwebkit2gtk-4.1-dev, requiring webkit2_41 tag.
+    # Build Ubuntu 22.04 / 24.04 .deb packages with the Wails v3 GTK3 stack.
+    # 20.04 was dropped from the old v2-era matrix: Wails v3 has no webkit2gtk-4.0 path at
+    # all — the gtk3 tag hard-compiles against pkg-config "webkit2gtk-4.1 libsoup-3.0"
+    # (v3 internal/assetserver/webview/*_linux_gtk3.go) and the default path targets
+    # "gtk4 webkitgtk-6.0"; Ubuntu 20.04 (focal) ships neither (libwebkit2gtk-4.0-dev
+    # exposes only the webkit2gtk-4.0 pc file and soup 2.x). The old webkit2_36 /
+    # webkit2_41 build tags are v2-era and do not exist in v3, so a focal build is
+    # impossible under v3 rather than merely needing fallback tags.
+    # Note: GitHub-hosted ubuntu-20.04 runner is retired; each distro builds in its own
+    # ubuntu container for consistent binary / glibc / dependency versions.
     runs-on: ubuntu-latest
     needs: frontend
     strategy:
       matrix:
         include:
-          - os: "20.04"
-            container: ubuntu:20.04
-            webkit-dev: libwebkit2gtk-4.0-dev
-            webkit-runtime: libwebkit2gtk-4.0-37
-            build-tags: "desktop,production,webkit2_36"
           - os: "22.04"
             container: ubuntu:22.04
-            webkit-dev: libwebkit2gtk-4.1-dev
             webkit-runtime: libwebkit2gtk-4.1-0
-            build-tags: "desktop,production,webkit2_41"
           - os: "24.04"
             container: ubuntu:24.04
-            webkit-dev: libwebkit2gtk-4.1-dev
             webkit-runtime: libwebkit2gtk-4.1-0
-            build-tags: "desktop,production,webkit2_41"
     container: ${{ matrix.container }}
     env:
       DEBIAN_FRONTEND: noninteractive
       TZ: Etc/UTC
     steps:
       - name: Bootstrap Node 20 in container
-        # Container image does not preinstall node, but actions/* (checkout / setup-go / artifact) need
-        # node runtime; first step must be pure-run Node bootstrap (NodeSource node 20),
-        # then actions can be used. 20.04 container is replacement for retired GitHub-hosted runner.
+        # Container image does not preinstall node, but actions/* (checkout / setup-go /
+        # artifact) need node runtime; first step must be pure-run Node bootstrap
+        # (NodeSource node 20), then actions can be used.
         run: |
           apt-get update
           apt-get install -y ca-certificates curl gnupg
@@ -203,18 +194,19 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Download frontend build
-          # Reuse frontend job's frontend/dist (go:embed compile dependency), Linux build skips npm
+        # Reuse frontend job's frontend/dist (go:embed compile dependency), Linux build skips npm
         uses: actions/download-artifact@v4
         with:
           name: frontend-dist
           path: frontend/dist
 
-      - name: Install GTK and WebKit development packages
-        # Wails v2 Linux dependencies: build-essential / pkg-config / GTK3 dev packages + WebKit dev packages
-        # (webkit-dev provided by matrix; 20.04 is 4.0 series, 22.04 / 24.04 is 4.1 series)
+      - name: Install GTK / WebKit development packages
+        # Wails v3 Linux build is cgo: -tags gtk3 selects the GTK3 + WebKit2GTK 4.1 API
+        # (same stack the backend job compiles on ubuntu-latest); the dev package name is
+        # identical on 22.04 / 24.04, the runtime package is resolved per distro in control.
         run: |
           apt-get update
-          apt-get install -y build-essential pkg-config libgtk-3-dev ${{ matrix.webkit-dev }}
+          apt-get install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev
 
       - uses: actions/setup-go@v5
         with:
@@ -229,13 +221,16 @@ jobs:
 
       - name: Build Linux app
         # Direct go build (go:embed embeds frontend/dist), no wails CLI / npm;
-        # 20.04 needs webkit2_36 (libwebkit2gtk-4.0-dev is 2.38, < 2.40,
-        # no 2.40-specific C API, wails uses Go-layer http.NoBody fallback),
-        # 22.04 / 24.04 need webkit2_41 to match libwebkit2gtk-4.1-dev
-        # (wails default #cgo targets webkit2gtk-4.0, 4.1 must explicitly use webkit2_41 tag)
-        run: go build -tags "${{ matrix.build-tags }}" -trimpath -o build/bin/llama-desktop .
+        # -tags production,gtk3 is the v3 production build for the GTK3 + WebKit2GTK 4.1
+        # stack; CGO is required (webview via cgo) and stated explicitly.
+        run: CGO_ENABLED=1 go build -tags "production,gtk3" -trimpath -buildvcs=false -ldflags="-w -s" -o build/bin/llama-desktop .
 
       - name: Package .deb
+        # Hand-rolled dpkg-deb layout (mirrors the v3 nfpm template's file placement):
+        # /usr/local/bin binary, /usr/share/applications .desktop entry, icon under
+        # /usr/share/icons/hicolor/<size>/apps. The distro is embedded in the deb Version
+        # revision (e.g. 0.3.9-ubuntu22.04) so parallel-installed per-distro packages and
+        # their filenames are distinguishable.
         run: |
           # Version source matches windows job: tag build uses tag (e.g. v0.1.6);
           # non-tag build falls back to core/VERSION. deb Version field must not have v prefix.
@@ -244,56 +239,185 @@ jobs:
           else
             VER="$(cat core/VERSION)"
           fi
-          DEBVER="${VER#v}"
+          DEBVER="${VER#v}-ubuntu${{ matrix.os }}"
 
-          # Assemble pkg/ directory layout: DEBIAN/control + binary + desktop entry
-          mkdir -p pkg/DEBIAN pkg/usr/bin pkg/usr/share/applications
+          # Assemble pkg/ directory layout: DEBIAN/control + binary + desktop entry + icon
+          mkdir -p pkg/DEBIAN pkg/usr/local/bin pkg/usr/share/applications
 
-          # Depends uses alternatives to cover 24.04 t64 transition gtk3 rename
+          # Depends uses alternatives to cover the 24.04 time64 transition gtk3 rename
           # (libgtk-3-0 -> libgtk-3-0t64); WebKit runtime per distro matrix
           cat > pkg/DEBIAN/control <<EOF
           Package: llama-desktop
           Version: ${DEBVER}
+          Section: utils
           Architecture: amd64
           Maintainer: CodeNeow
           Description: Local LLM desktop manager powered by llama.cpp
           Depends: libgtk-3-0 | libgtk-3-0t64, ${{ matrix.webkit-runtime }}
           EOF
 
-          cp build/bin/llama-desktop pkg/usr/bin/llama-desktop
+          cp build/bin/llama-desktop pkg/usr/local/bin/llama-desktop
 
           cat > pkg/usr/share/applications/llama-desktop.desktop <<EOF
           [Desktop Entry]
+          Version=1.0
           Name=Llama Desktop
-          Exec=llama-desktop
+          Comment=Local LLM desktop manager powered by llama.cpp
+          Exec=/usr/local/bin/llama-desktop %u
+          Terminal=false
           Type=Application
+          Icon=llama-desktop
           Categories=Utility;
+          StartupWMClass=llama-desktop
           EOF
 
-          # Include app icon when build/appicon.png exists; omit otherwise (see conditional below)
+          # Include app icon when build/appicon.png exists; omit otherwise.
+          # build/appicon.png is 512x512, so it ships under hicolor/512x512 (the size
+          # directory must match the actual image size per the freedesktop icon spec).
           if [[ -f build/appicon.png ]]; then
-            mkdir -p pkg/usr/share/icons/hicolor/256x256/apps
-            cp build/appicon.png pkg/usr/share/icons/hicolor/256x256/apps/llama-desktop.png
-            echo "Icon=llama-desktop" >> pkg/usr/share/applications/llama-desktop.desktop
+            mkdir -p pkg/usr/share/icons/hicolor/512x512/apps
+            cp build/appicon.png pkg/usr/share/icons/hicolor/512x512/apps/llama-desktop.png
           fi
 
           dpkg-deb --build --root-owner-group pkg
-          mv pkg.deb "build/bin/llama-desktop-setup-${VER}-ubuntu${{ matrix.os }}-amd64.deb"
+          mv pkg.deb "build/bin/llama-desktop_${DEBVER}_amd64.deb"
           ls -la build/bin/
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: llama-desktop-ubuntu-${{ matrix.os }}
-          path: build/bin/llama-desktop-setup-*.deb
+          name: llama-desktop-linux-${{ matrix.os }}
+          path: build/bin/llama-desktop_*.deb
+
+  build-macos:
+    # Build a universal (arm64 + amd64) .app bundle zipped for distribution.
+    # Codesigning is ad-hoc only: real distribution needs a Developer ID Application
+    # certificate plus notarization — Gatekeeper will warn ("unidentified developer" /
+    # "damaged and can't be opened") on ad-hoc signed builds; users must right-click >
+    # Open once, or clear quarantine with `xattr -cr /Applications/llama-desktop.app`.
+    # Done on a native macOS runner: CGO cross-arch builds (arm64 + amd64), lipo, sips,
+    # iconutil and codesign are all preinstalled there.
+    runs-on: macos-latest
+    needs: frontend
+    env:
+      # Mirror the v3 beta16 darwin build template (build_assets/darwin/Taskfile.yml):
+      # deployment target 12.0, which is also this repo's real floor — go.mod's Go 1.25
+      # requires macOS 12 Monterey, and v3's Info.plist template pins 12.0.0.
+      MACOSX_DEPLOYMENT_TARGET: "12.0"
+      CGO_CFLAGS: "-mmacosx-version-min=12.0"
+      CGO_LDFLAGS: "-mmacosx-version-min=12.0"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download frontend build
+        # Reuse frontend job's frontend/dist (go:embed compile dependency), macOS build skips npm
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - name: Sync version file from tag
+        # Same logic as windows job: release version uses git tag as sole source, push v* tag
+        # writes core/VERSION (embedded at compile time); non-tag build uses repo default
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: echo "$GITHUB_REF_NAME" > core/VERSION
+      - name: Build universal binary (arm64 + amd64, lipo merge)
+        # Direct go build (go:embed embeds frontend/dist), no wails CLI / npm needed:
+        # the wailsjs bindings are committed and frontend/dist comes from the artifact,
+        # so the plain v3 production build (-tags production) suffices.
+        # CGO_ENABLED=1 + the job-level deployment-target env compile each slice with
+        # the 12.0 minimum, then lipo merges them into one universal binary.
+        run: |
+          CGO_ENABLED=1 go build -tags production -trimpath -buildvcs=false -ldflags="-w -s" \
+            -o build/bin/llama-desktop-arm64 .
+          CGO_ENABLED=1 GOARCH=amd64 go build -tags production -trimpath -buildvcs=false -ldflags="-w -s" \
+            -o build/bin/llama-desktop-amd64 .
+          lipo -create -output build/bin/llama-desktop \
+            build/bin/llama-desktop-arm64 build/bin/llama-desktop-amd64
+          rm build/bin/llama-desktop-arm64 build/bin/llama-desktop-amd64
+          lipo -info build/bin/llama-desktop
+      - name: Assemble .app bundle
+        # Hand-rolled bundle mirroring the v3 darwin template layout: binary in
+        # Contents/MacOS, generated icns in Contents/Resources, Info.plist in Contents.
+        # The icns is generated from build/appicon.png via sips + iconutil (preinstalled
+        # on macOS runners). No Developer ID in CI, so ad-hoc codesign only.
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then VER="$GITHUB_REF_NAME"; else VER="$(cat core/VERSION)"; fi
+          echo "ARTIFACT_VERSION=$VER" >> "$GITHUB_ENV"
+          APPVER="${VER#v}"
+
+          mkdir -p build/bin/llama-desktop.app/Contents/MacOS
+          mkdir -p build/bin/llama-desktop.app/Contents/Resources
+
+          # Generate appicon.icns from build/appicon.png (512x512) via sips + iconutil
+          mkdir -p appicon.iconset
+          sips -z 16 16 build/appicon.png --out appicon.iconset/icon_16x16.png
+          sips -z 32 32 build/appicon.png --out appicon.iconset/icon_16x16@2x.png
+          sips -z 32 32 build/appicon.png --out appicon.iconset/icon_32x32.png
+          sips -z 64 64 build/appicon.png --out appicon.iconset/icon_32x32@2x.png
+          sips -z 128 128 build/appicon.png --out appicon.iconset/icon_128x128.png
+          sips -z 256 256 build/appicon.png --out appicon.iconset/icon_128x128@2x.png
+          sips -z 256 256 build/appicon.png --out appicon.iconset/icon_256x256.png
+          sips -z 512 512 build/appicon.png --out appicon.iconset/icon_256x256@2x.png
+          sips -z 512 512 build/appicon.png --out appicon.iconset/icon_512x512.png
+          iconutil -c icns appicon.iconset \
+            -o build/bin/llama-desktop.app/Contents/Resources/appicon.icns
+          rm -rf appicon.iconset
+
+          cp build/bin/llama-desktop build/bin/llama-desktop.app/Contents/MacOS/llama-desktop
+
+          cat > build/bin/llama-desktop.app/Contents/Info.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+            <dict>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleName</key>
+              <string>Llama Desktop</string>
+              <key>CFBundleExecutable</key>
+              <string>llama-desktop</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.codeneow.llama-desktop</string>
+              <key>CFBundleVersion</key>
+              <string>${APPVER}</string>
+              <key>CFBundleShortVersionString</key>
+              <string>${APPVER}</string>
+              <key>CFBundleIconFile</key>
+              <string>appicon</string>
+              <key>LSMinimumSystemVersion</key>
+              <string>12.0</string>
+              <key>NSHighResolutionCapable</key>
+              <string>true</string>
+            </dict>
+          </plist>
+          EOF
+
+          # Ad-hoc signature: see job-level comment for the distribution caveat
+          codesign --force --deep -s - build/bin/llama-desktop.app
+      - name: Zip .app bundle with version
+        # -y preserves symlinks inside the bundle (none expected today, but standard
+        # practice for .app zips)
+        run: |
+          cd build/bin
+          zip -r -y "llama-desktop-macos-${ARTIFACT_VERSION}-universal.zip" llama-desktop.app
+          ls -la
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: llama-desktop-macos
+          path: build/bin/llama-desktop-macos-*.zip
 
   release:
-    # Centralized release to avoid build-windows / build-linux jobs competing to create the same Release.
-    # Tag push publishes a formal Release, workflow_dispatch publishes a draft preview.
-    # build-linux is temporarily disabled (Ubuntu not yet adapted): only the
-    # Windows exe is gathered and the artifact count check expects 1.
+    # Centralized release to avoid build-windows / build-linux / build-macos jobs competing
+    # to create the same Release. Tag push publishes a formal Release, workflow_dispatch
+    # publishes a draft preview. Expected release artifacts: 1 windows exe installer
+    # + 2 ubuntu debs (22.04 / 24.04; 20.04 dropped, see build-linux) + 1 macos
+    # universal zip = 4.
     runs-on: ubuntu-latest
-    needs: [build-windows]
+    needs: [build-windows, build-linux, build-macos]
     permissions:
       contents: write
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
@@ -303,7 +427,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Download all build artifacts
         # Exclude frontend-dist by pattern, only pull release artifacts and merge into one directory:
-        # windows 1 exe (linux 3 deb disabled with build-linux)
+        # windows 1 exe + linux 2 deb (ubuntu 22.04 / 24.04) + macos 1 zip
         uses: actions/download-artifact@v4
         with:
           pattern: llama-desktop-*
@@ -340,12 +464,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          # Validate artifact count must be 1 (windows 1 exe; linux 3 deb disabled),
-          # fail if missing to avoid incomplete Release
+          # Validate artifact count must be 4 (windows 1 exe; linux 2 deb: ubuntu 22.04
+          # + 24.04; macos 1 universal zip), fail if missing to avoid incomplete Release
           shopt -s nullglob
           files=(artifacts/*)
           shopt -u nullglob
-          [[ ${#files[@]} -eq 1 ]] || { echo "Expected 1 artifacts, found ${#files[@]}"; exit 1; }
+          [[ ${#files[@]} -eq 4 ]] || { echo "Expected 4 artifacts, found ${#files[@]}"; exit 1; }
           for f in "${files[@]}"; do
             [[ -f "$f" ]] || { echo "Missing artifact: $f"; exit 1; }
           done
