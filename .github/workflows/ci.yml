@@ -167,9 +167,11 @@ jobs:
           if (-not (Test-Path .e2e-cache/llamacpp/llama-server.exe)) {
             Invoke-WebRequest -Uri 'https://github.com/ggml-org/llama.cpp/releases/download/b10695/llama-b10695-bin-win-cpu-x64.zip' -OutFile .e2e-cache/llamacpp.zip
             Expand-Archive .e2e-cache/llamacpp.zip -DestinationPath .e2e-cache/unpack -Force
+            # Ship the WHOLE extracted tree: llama-server.exe needs its sibling
+            # ggml DLLs (a lone exe dies instantly with 0xc0000135).
             $exe = Get-ChildItem .e2e-cache/unpack -Recurse -Filter llama-server.exe | Select-Object -First 1
             if (-not $exe) { throw 'llama-server.exe not found in the release zip' }
-            Move-Item $exe.FullName .e2e-cache/llamacpp/llama-server.exe
+            Copy-Item (Join-Path $exe.DirectoryName '*') .e2e-cache/llamacpp/ -Force
           }
           if (-not (Test-Path .e2e-cache/stories260K.gguf)) {
             Invoke-WebRequest -Uri 'https://huggingface.co/ggml-org/models/resolve/main/tinyllamas/stories260K.gguf' -OutFile .e2e-cache/stories260K.gguf

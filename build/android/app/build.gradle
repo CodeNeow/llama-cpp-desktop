@@ -50,8 +50,12 @@ android {
         // devices). CI's emulator smoke passes -PtargetAbi=x86_64 to package
         // a second debug APK for the x86_64 CI emulator (which cannot run
         // arm64 native libs). Comma-separated values are accepted.
+        // Property assignment (not a method call): NdkOptions.abiFilters is a
+        // Set<String> field — a Groovy method call with a List argument does
+        // not resolve.
+        def targetAbis = ((project.findProperty("targetAbi") ?: "arm64-v8a").split(",").collect { it.trim() }) as Set
         ndk {
-            abiFilters ((project.findProperty("targetAbi") ?: "arm64-v8a").split(",").collect { it.trim() })
+            abiFilters = targetAbis
         }
     }
 

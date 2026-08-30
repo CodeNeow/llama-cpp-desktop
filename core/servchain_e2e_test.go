@@ -27,6 +27,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -103,9 +104,21 @@ func TestServiceChainE2E(t *testing.T) {
 			_ = stopServerInternal()
 		}
 	})
+	// The wait goroutine closes serverDone when the child exits — a closed
+	// channel during bring-up means llama-server died (bad assets, missing
+	// DLLs, port clash): fail immediately with its captured output instead of
+	// polling a port nothing will ever serve.
+	serverMu.Lock()
+	childDone := serverDone
+	serverMu.Unlock()
 
 	// /health turns 200 {"status":"ok"} once the model is loaded; 503 while loading.
 	waitFor(t, "llama-server /health", func() error {
+		select {
+		case <-childDone:
+			return fmt.Errorf("llama-server exited during bring-up; log tail:\n%s", e2eServerLogDump())
+		default:
+		}
 		resp, err := http.Get(base + "/health")
 		if err != nil {
 			return err
@@ -206,7 +219,23 @@ func waitFor(t *testing.T, what string, check func() error, timeout time.Duratio
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
-	t.Fatalf("%s not ready within %s: %v", what, timeout, last)
+	t.Fatalf("%s not ready within %s: %v\nserver log tail:\n%s", what, timeout, last, e2eServerLogDump())
+}
+
+// e2eServerLogDump returns the captured llama-server output for failure
+// diagnostics.
+func e2eServerLogDump() string {
+	lines, _ := serverLogsSince(0)
+	n := len(lines)
+	if n > 40 {
+		n = 40
+	}
+	var b strings.Builder
+	for _, e := range lines[len(lines)-n:] {
+		b.WriteString(e.text)
+		b.WriteByte('\n')
+	}
+	return b.String()
 }
 
 func e2eGetJSON(url string, out any) error {

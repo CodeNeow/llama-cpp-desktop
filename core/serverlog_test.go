@@ -3,6 +3,7 @@ package core
 import (
 	"io"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -178,18 +179,28 @@ func TestServerLogTailerCarriesSplitUTF8AcrossReads(t *testing.T) {
 
 // ─── Log-file path resolution ─────────────────────────────────────
 
-// TestAbsServerLogPath verifies the handover log-path resolution: a
-// cwd-relative serverLogFile resolves to an absolute path under the current
-// directory, and an already-absolute path passes through unchanged.
+// TestAbsServerLogPath verifies the handover log-path resolution: a bare
+// serverLogFile resolves under the app-data base on non-Windows (a
+// cwd-relative name would be unwritable on Android / macOS .app where the cwd
+// is "/") and stays cwd-relative on Windows; an already-absolute path passes
+// through unchanged (tests, handover adoption).
 func TestAbsServerLogPath(t *testing.T) {
-	tmp := withTempCwd(t)
 	orig := serverLogFile
 	t.Cleanup(func() { serverLogFile = orig })
 
 	serverLogFile = "relative-server.log"
-	got := absServerLogPath()
-	want := filepath.Join(tmp, "relative-server.log")
-	if got != want {
+	var want string
+	if runtime.GOOS == "windows" {
+		tmp := withTempCwd(t)
+		want = filepath.Join(tmp, "relative-server.log")
+	} else {
+		// Force the non-Windows app-data branch through the path seams so the
+		// expectation stays deterministic (a real UserConfigDir would leak).
+		root := t.TempDir()
+		withPathsSeams(t, "linux", root, nil, nil)
+		want = filepath.Join(root, "llama-desktop", "relative-server.log")
+	}
+	if got := absServerLogPath(); got != want {
 		t.Errorf("absServerLogPath() = %q, want %q", got, want)
 	}
 

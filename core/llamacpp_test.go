@@ -52,6 +52,18 @@ func saveDownloadState(t *testing.T) {
 // Path is an absolute path; the control group (no llama-cpp/ directory) → Installed=false.
 // Previously detection only checked PATH and custom directories; a successfully extracted
 // binary could never be recognized as installed (home page showed "not found").
+
+// normalizeWantPath resolves symlinks in a test-expected path (t.TempDir /
+// TMPDIR are logical paths on darwin, while production paths derive from
+// os.Getwd, which returns the physical path — /var -> /private/var).
+func normalizeWantPath(t *testing.T, p string) string {
+	t.Helper()
+	if resolved, err := filepath.EvalSymlinks(p); err == nil {
+		return resolved
+	}
+	return p
+}
+
 func TestGetLlamaCppInfoDetectsDownloadDir(t *testing.T) {
 	// llama-related binaries on PATH would interfere with the control group (misdetected as installed), skip
 	for _, bin := range []string{"llama-server", "llama-cli", "llama.cpp", "llama"} {
@@ -74,7 +86,7 @@ func TestGetLlamaCppInfoDetectsDownloadDir(t *testing.T) {
 	if !info.Installed {
 		t.Fatal("Installed should be true when llama-cpp/llama-server stub exists")
 	}
-	wantPath := filepath.Join(tmp, "llama-cpp", binName)
+	wantPath := normalizeWantPath(t, filepath.Join(tmp, "llama-cpp", binName))
 	if info.Path != wantPath {
 		t.Errorf("Path = %q, want absolute path %q", info.Path, wantPath)
 	}
@@ -229,7 +241,7 @@ func TestGetLlamaCppInfoDetectsDownloadDirSubdir(t *testing.T) {
 	if !info.Installed {
 		t.Fatal("Installed should be true when llama-cpp/<subdir>/llama-server stub exists")
 	}
-	wantPath := filepath.Join(tmp, subdir, binName)
+	wantPath := normalizeWantPath(t, filepath.Join(tmp, subdir, binName))
 	if info.Path != wantPath {
 		t.Errorf("Path = %q, want %q", info.Path, wantPath)
 	}
@@ -253,7 +265,7 @@ func TestBuildServerCommandDetectsDownloadDir(t *testing.T) {
 	cfg := ServerConfig{AccessMode: accessLocal, Host: "127.0.0.1", Port: 8080, MaxModels: 1, CacheRAM: 0}
 	bin, _ := buildServerCommand(cfg, "/tmp/preset.ini")
 
-	want := filepath.Join(tmp, "llama-cpp", binName)
+	want := normalizeWantPath(t, filepath.Join(tmp, "llama-cpp", binName))
 	if bin != want {
 		t.Errorf("bin = %q, want download-dir absolute path %q", bin, want)
 	}
