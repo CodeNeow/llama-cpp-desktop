@@ -49,6 +49,16 @@ describe('lib/i18n', () => {
     expect(t('settings.repo')).toBe('Repository')
   })
 
+  it('non-Windows updates hint keys render in both locales and point at GitHub Releases', () => {
+    setLocale('zh')
+    expect(t('settings.updateNotSupported')).toBe('自动更新当前仅支持 Windows，请前往 GitHub Releases 获取新版本。')
+    expect(t('settings.updateReleasesLink')).toBe('GitHub Releases')
+    setLocale('en')
+    expect(t('settings.updateNotSupported')).toContain('Windows-only')
+    expect(t('settings.updateNotSupported')).toContain('GitHub Releases')
+    expect(t('settings.updateReleasesLink')).toBe('GitHub Releases')
+  })
+
   it('runtime section and shared download labels render in both locales', () => {
     setLocale('zh')
     expect(t('runtime.llamacpp.path')).toBe('安装路径')

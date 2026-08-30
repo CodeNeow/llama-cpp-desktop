@@ -55,7 +55,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { Application, Window as WailsWindow } from '@wailsio/runtime'
 import Sidebar from './components/Sidebar.vue'
@@ -66,6 +66,7 @@ import { dockReserve } from './lib/dockSpace'
 import { t } from './lib/i18n'
 import { appConfig } from './store'
 import { getOS } from './wails'
+import { buildPlatformState, parseOs, setPlatform, type OsId } from './lib/platform'
 
 const w = window as any
 // Wails v3 no longer injects window.go; the bundled @wailsio/runtime marks the
@@ -87,11 +88,26 @@ const isFixedPage = computed(() => route.meta.fixed === true)
 const platform = ref('')
 const isMax = ref(false)  // Maximized state: query the Wails API when possible, fall back to a local toggle
 
+// Shared platform state (lib/platform): the parsed OS id starts at the module's
+// desktop-windows default and is republished with the current viewport tier on
+// OS detection and every window resize (passive listener; no debounce needed —
+// buildPlatformState is a cheap pure classifier).
+const osId = ref<OsId>('windows')
+function syncPlatformState() {
+  setPlatform(buildPlatformState(osId.value, window.innerWidth))
+}
+window.addEventListener('resize', syncPlatformState, { passive: true })
+onUnmounted(() => window.removeEventListener('resize', syncPlatformState))
+
 // Detect the OS on startup; on failure silently keep the empty string (same style as existing getOS optional chaining)
 onMounted(async () => {
   try {
     const info = await getOS()
     platform.value = (info as { os?: string }).os ?? ''
+    // Publish the detected OS + current viewport tier into the shared platform
+    // state so platform-scoped UI gates (Settings visibility etc.) react.
+    osId.value = parseOs((info as { os?: string }).os)
+    syncPlatformState()
   } catch {
     // Backend unavailable (standalone vite) or parse failure: keep the default empty string
   }

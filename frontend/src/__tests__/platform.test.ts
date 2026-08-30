@@ -4,6 +4,10 @@ import {
   buildPlatformState,
   usePlatform,
   setPlatform,
+  showTraySetting,
+  showApiRouteSetting,
+  showServingGpuSetting,
+  updateSectionMode,
   type OsId,
   type PlatformState,
 } from '../lib/platform'
@@ -88,6 +92,31 @@ describe('buildPlatformState capability matrix', () => {
     expect(state.supportsTray).toBe(tray)
     expect(state.supportsFramelessTitlebar).toBe(titlebar)
   })
+})
+
+describe('OS-scoped setting gates (Settings.vue visibility)', () => {
+  // All gates are Windows-only today and OS-scoped (never viewport-scoped):
+  // tray + headless relaunch are Windows backend features, CUDA device pinning
+  // no-ops elsewhere, and the self-update installer is Windows-only.
+  it.each<[OsId, boolean, boolean, boolean, 'native' | 'link']>([
+    ['windows', true, true, true, 'native'],
+    ['linux', false, false, false, 'link'],
+    ['darwin', false, false, false, 'link'],
+    ['android', false, false, false, 'link'],
+    ['ios', false, false, false, 'link'],
+    ['other', false, false, false, 'link'],
+  ])(
+    '%s -> tray=%s apiRoute=%s gpu=%s updates=%s',
+    (os, tray, apiRoute, gpu, updates) => {
+      for (const width of [390, MOBILE_MAX, TABLET_MAX, TABLET_MAX + 1, 1920]) {
+        const state: PlatformState = buildPlatformState(os, width)
+        expect(showTraySetting(state)).toBe(tray)
+        expect(showApiRouteSetting(state)).toBe(apiRoute)
+        expect(showServingGpuSetting(state)).toBe(gpu)
+        expect(updateSectionMode(state)).toBe(updates)
+      }
+    },
+  )
 })
 
 describe('reactive platform singleton', () => {

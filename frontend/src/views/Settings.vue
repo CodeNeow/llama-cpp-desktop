@@ -252,33 +252,36 @@
         <p v-if="apiKeyError" class="source-error">{{ apiKeyError }}</p>
         <!-- Inference GPU selection: pins the llama-server child to the chosen
              CUDA device via CUDA_VISIBLE_DEVICES (empty = auto, default device).
-             Persisted through the same whole-serverConfig round-trip as the key. -->
-        <div class="setting-row gpu-row">
-          <div class="setting-info">
-            <span class="setting-label">{{ t('settings.gpu.label') }}</span>
-            <span class="setting-desc">{{ t('settings.gpu.desc') }}</span>
+             Persisted through the same whole-serverConfig round-trip as the key.
+             Windows-only: the backend device pinning no-ops on other platforms. -->
+        <template v-if="showGpu">
+          <div class="setting-row gpu-row">
+            <div class="setting-info">
+              <span class="setting-label">{{ t('settings.gpu.label') }}</span>
+              <span class="setting-desc">{{ t('settings.gpu.desc') }}</span>
+            </div>
+            <ThemedSelect
+              class="gpu-select"
+              :model-value="gpuValue"
+              :options="gpuOptions"
+              :placeholder="t('settings.gpu.auto')"
+              :disabled="!gpuDetected || gpuSwitching"
+              variant="field"
+              :label="t('settings.gpu.label')"
+              @update:model-value="onGpuSelected"
+            />
           </div>
-          <ThemedSelect
-            class="gpu-select"
-            :model-value="gpuValue"
-            :options="gpuOptions"
-            :placeholder="t('settings.gpu.auto')"
-            :disabled="!gpuDetected || gpuSwitching"
-            variant="field"
-            :label="t('settings.gpu.label')"
-            @update:model-value="onGpuSelected"
-          />
-        </div>
-        <p v-if="!gpuDetected" class="source-hint">{{ t('settings.gpu.none') }}</p>
-        <p v-else class="source-hint">{{ t('settings.gpu.hint') }}</p>
-        <p v-if="gpuError" class="source-error">{{ gpuError }}</p>
+          <p v-if="!gpuDetected" class="source-hint">{{ t('settings.gpu.none') }}</p>
+          <p v-else class="source-hint">{{ t('settings.gpu.hint') }}</p>
+          <p v-if="gpuError" class="source-error">{{ gpuError }}</p>
+        </template>
       </section>
     </div>
 
     <!-- App & updates: tray + API route mode + updates + about -->
     <div id="tab-app" role="tabpanel" aria-labelledby="tab-app-tab" v-show="activeTab === 3">
       <!-- System tray (Windows only; other platforms exit directly on close) -->
-      <section v-if="isWindows" class="settings-section">
+      <section v-if="showTray" class="settings-section">
         <h2 class="section-title">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
@@ -310,7 +313,7 @@
       </section>
 
       <!-- API route mode (Windows only): restart into headless tray+server mode -->
-      <section v-if="isWindows" class="settings-section">
+      <section v-if="showApiRoute" class="settings-section">
         <h2 class="section-title">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
@@ -343,7 +346,8 @@
         <p v-if="apiRouteError" class="source-error">{{ apiRouteError }}</p>
       </section>
 
-      <!-- Updates -->
+      <!-- Updates: visible on every platform; the in-app self-update action is
+           Windows-only, other platforms get a hint + GitHub Releases link -->
       <section class="settings-section">
         <h2 class="section-title">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -356,13 +360,25 @@
             <span class="setting-label">{{ t('settings.checkUpdate') }}</span>
             <span class="setting-desc">{{ t('settings.updateDesc', { version: appVersion }) }}</span>
           </div>
-          <div class="update-actions">
+          <!-- Windows: native check-for-updates / self-update action -->
+          <div v-if="updatesNative" class="update-actions">
             <span v-if="checkError" class="update-error">{{ checkError }}</span>
             <span v-else-if="checkResult && !checkResult.hasUpdate" class="update-latest">{{ t('settings.latest') }}</span>
             <button class="btn-check" :disabled="checking" @click="manualCheck">
               {{ checking ? t('settings.checking') : t('settings.checkUpdate') }}
             </button>
           </div>
+          <!-- Other platforms: hint instead of the action; the Releases link
+               goes through the shared external-link handler (system browser,
+               never an in-WebView navigation) -->
+          <p v-else class="source-hint update-hint">
+            {{ t('settings.updateNotSupported') }}
+            <a
+              class="hint-link"
+              href="https://github.com/CodeNeow/llama-cpp-desktop/releases"
+              @click="handleLinkClick"
+            >{{ t('settings.updateReleasesLink') }}</a>
+          </p>
         </div>
       </section>
 
@@ -397,7 +413,9 @@
 import { computed, onMounted, ref } from 'vue'
 import { appConfig, setTheme, loadConfig, setDownloadSource as applyDownloadSource, setLanguage as applyLanguage, setServerAccessMode as applyServerAccessMode, setApiKey as applyApiKey, setTrayEnabled as applyTrayEnabled } from '../store'
 import { updateState, checkForUpdate } from '../lib/update'
-import { getAppVersion, getOS, getSystemInfo, getServerConfig, saveServerConfig, browseLlamaCppDownloadDir, browseModelDownloadDir, setApiRouteMode } from '../wails'
+import { getAppVersion, getSystemInfo, getServerConfig, saveServerConfig, browseLlamaCppDownloadDir, browseModelDownloadDir, setApiRouteMode } from '../wails'
+import { showTraySetting, showApiRouteSetting, showServingGpuSetting, updateSectionMode, usePlatform } from '../lib/platform'
+import { handleLinkClick } from '../lib/linkHandler'
 import ThemedSelect, { type SelectOption } from '../components/ThemedSelect.vue'
 import { formatMB } from '../lib/format'
 import { t } from '../lib/i18n'
@@ -568,9 +586,17 @@ async function onGpuSelected(value: string) {
   }
 }
 
+// OS-scoped setting gates: driven by the shared platform state (App.vue wires
+// it from the backend getOS() binding), not by viewport tiers. All helpers are
+// Windows-only today; see lib/platform.ts for the per-feature rationale.
+const platform = usePlatform()
+const showTray = computed(() => showTraySetting(platform.value))
+const showApiRoute = computed(() => showApiRouteSetting(platform.value))
+const showGpu = computed(() => showServingGpuSetting(platform.value))
+const updatesNative = computed(() => updateSectionMode(platform.value) === 'native')
+
 // System tray toggle: rendered on Windows only. Disabling takes effect immediately (backend removes icon and
 // persists); systray cannot restart in same process, so re-enabling requires app restart (hint shown below toggle).
-const isWindows = ref(false)
 const trayError = ref('')
 const traySwitching = ref(false)
 
@@ -619,8 +645,6 @@ const checkResult = computed(() => updateState.result)
 
 onMounted(async () => {
   if (!appConfig.loaded) await loadConfig()
-  // The system tray setting is rendered on Windows only (other platforms persist it in the backend but have no tray behavior)
-  getOS().then((info) => { isWindows.value = info.os === 'windows' }).catch(() => {})
   // Read the current service access scope from the backend (default local) so the page selection matches the persisted value
   getServerConfig().then((scfg) => {
     if (scfg.accessMode === 'local' || scfg.accessMode === 'lan') {
@@ -975,6 +999,23 @@ async function manualCheck() {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+/* Non-Windows updates hint: replaces the check action in the same row;
+   right-aligned to line up under the action column */
+.update-hint {
+  max-width: 420px;
+  text-align: right;
+}
+
+.hint-link {
+  color: var(--accent);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.hint-link:hover {
+  text-decoration: underline;
 }
 
 .update-error {

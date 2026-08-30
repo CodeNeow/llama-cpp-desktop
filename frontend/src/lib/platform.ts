@@ -5,9 +5,11 @@
  * Pure state module: no side effects at import time, no backend access,
  * fully testable without mocks. `buildPlatformState` is a pure classifier;
  * the module-level reactive singleton starts from a desktop-windows default
- * so current behavior is unchanged. Nothing in the app calls setPlatform
- * yet — wiring it to the backend getOS() binding and viewport observation
- * happens in a later phase.
+ * so current behavior is unchanged. App.vue wires it: once the backend
+ * getOS() binding resolves it publishes the state via setPlatform and keeps
+ * the viewport tier in sync with window resizes. The showXxxSetting /
+ * updateSectionMode helpers below are the OS-scoped UI gates used by
+ * Settings.vue to hide Windows-only features on other platforms.
  */
 
 import { ref, readonly } from 'vue'
@@ -83,7 +85,7 @@ const platform: Readonly<Ref<PlatformState>> = readonly(state)
 
 /**
  * Publish a new platform state (OS detection + viewport observation).
- * Not called anywhere yet — wiring happens in a later phase.
+ * Called by App.vue after getOS() resolves and on window resizes.
  */
 export function setPlatform(next: PlatformState): void {
   state.value = next
@@ -92,4 +94,45 @@ export function setPlatform(next: PlatformState): void {
 /** Readonly reactive view of the current platform state for components. */
 export function usePlatform(): Readonly<Ref<PlatformState>> {
   return platform
+}
+
+// ─── OS-scoped setting gates ─────────────────────────────────────────────────
+// These decide whether Settings-page items render at all. They are OS-scoped
+// by design (NOT viewport-scoped): the features are bound to OS-level backend
+// behavior, so they stay constant across window resizes. All Windows-only
+// today, kept as separate named helpers so they can diverge per feature when
+// macOS/Linux support arrives (e.g. tray on macOS first).
+
+/** System-tray setting row: tray integration is Windows-only today. */
+export function showTraySetting(state: PlatformState): boolean {
+  return state.os === 'windows'
+}
+
+/**
+ * API-route (headless) mode setting: the backend ShouldRunHeadless decision
+ * and the tray-only return path are Windows-only today.
+ */
+export function showApiRouteSetting(state: PlatformState): boolean {
+  return state.os === 'windows'
+}
+
+/**
+ * Serving-GPU (推理显卡) selector: pinning llama-server to an NVIDIA device
+ * via CUDA_VISIBLE_DEVICES is a Windows + NVIDIA feature today; the backend
+ * cudaDeviceEnv no-ops on other platforms, so the selector is hidden there.
+ */
+export function showServingGpuSetting(state: PlatformState): boolean {
+  return state.os === 'windows'
+}
+
+/** How the update section offers new versions to the user. */
+export type UpdateSectionMode = 'native' | 'link'
+
+/**
+ * Update section mode: 'native' renders the in-app check-for-updates action
+ * (self-update installer is Windows-only); 'link' renders a hint pointing at
+ * the GitHub Releases page instead.
+ */
+export function updateSectionMode(state: PlatformState): UpdateSectionMode {
+  return state.os === 'windows' ? 'native' : 'link'
 }
