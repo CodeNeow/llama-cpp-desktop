@@ -83,14 +83,14 @@ wails dev
 
 **First steps (same for both options):**
 
-1. On **System Environment**, in the "Runtime Environment" section, click "Download llama.cpp" to fetch the latest release from GitHub (resumable), or point the app at an existing llama.cpp directory.
+1. On **System Environment**, in the "Runtime Environment" tab, click "Download llama.cpp" to fetch the latest release from GitHub (resumable), or point the app at an existing llama.cpp directory.
 2. On the **Models** page's "Download" tab, search HF Mirror or ModelScope and download a GGUF file into the models directory (`LLM-Models/` by default); progress shows up in the task dock at the bottom-right corner.
 3. Open **Local Chat**, pick the model, and just send a message — sending auto-starts the local service and loads the selected model on demand, no manual start needed.
 4. To connect other OpenAI-compatible clients or manage the service by hand, click "Start Server" on the **API Router** page (default `127.0.0.1:8080`).
 
 ## 🧭 Usage
 
-- **System Environment** — detects CPU, memory, GPU and CUDA with live samples, and flags CUDA compatibility for Blackwell GPUs; the embedded "Runtime Environment" section shows the llama.cpp installation status (main program and CUDA runtime components) with one-click resumable download or a custom directory.
+- **System Environment** — detects CPU, memory, GPU and CUDA with live samples, and flags CUDA compatibility for Blackwell GPUs; the "Runtime Environment" tab shows the llama.cpp installation status (main program and CUDA runtime components) with one-click resumable download or a custom directory.
 - **Local Chat** — streaming chat with markdown rendering and image attachments; when the service is stopped, sending a message auto-starts it and loads the selected model on demand (guided prompts when models or the runtime are missing), switching models unloads the previous one, and load / unload changes show up in the task dock in real time.
 - **Models** — the "Download" tab: dual-source search (HF Mirror / ModelScope, switchable in Preferences), file-level selection and a persistent, resumable download queue; the "My Models" tab: scans the models directory for GGUF files (architecture, quantization, multimodal / embedding detection) with one-click hardware-aware auto-tune; each model links to its settings page (basic / inference / memory / multi-GPU / long-context / advanced tabs).
 - **API Router** — start / stop / restart llama-server, watch the server log and dual token-speed metrics, edit the port / max concurrent models / prompt cache, and see which models are currently loaded; the access scope and inference GPU are configured under Preferences.
@@ -165,7 +165,7 @@ The Vite dev server binds `localhost:5173` (see `frontend:dev:serverUrl` in `wai
 The app enforces a single-instance mutex. Close any running Llama Desktop first (including the installed copy and tray-only background instances), then start dev mode again.
 
 **"Start" on the API Router page fails with "no models found".**
-Startup scans the models directory and generates presets first, so an empty directory is an error. Put GGUF files into `LLM-Models/` (check the "My Models" tab of the Models page) and try again. Also confirm llama.cpp is installed, as shown in the "Runtime Environment" section of the System Environment page.
+Startup scans the models directory and generates presets first, so an empty directory is an error. Put GGUF files into `LLM-Models/` (check the "My Models" tab of the Models page) and try again. Also confirm llama.cpp is installed, as shown in the "Runtime Environment" tab of the System Environment page.
 
 **API calls fail with `model not found`.**
 The `model` field must match the name shown in the UI exactly (the service matches case-sensitively). Copy-paste from the API Router model tags or the "My Models" tab of the Models page instead of typing it by hand.
@@ -174,7 +174,7 @@ The `model` field must match the name shown in the UI exactly (the service match
 `window.go` is injected by the Wails runtime, so Vite without `wails dev` has no bridge to the Go backend — this is expected. Use `wails dev` to debug the UI with the backend attached.
 
 **Downloading llama.cpp is slow or fails.**
-The download comes from GitHub Releases; it supports pause / resume with resumable transfers. On a restricted network, download the Windows release manually, extract it, and select the directory via "Custom" in the "Runtime Environment" section of the System Environment page.
+The download comes from GitHub Releases; it supports pause / resume with resumable transfers. On a restricted network, download the Windows release manually, extract it, and select the directory via "Custom" in the "Runtime Environment" tab of the System Environment page.
 
 ## 📄 License
 

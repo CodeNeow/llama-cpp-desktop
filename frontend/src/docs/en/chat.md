@@ -7,7 +7,7 @@ The "Local Chat" page is a ready-to-use chat interface talking straight to your 
 3. If the service is not running yet, sending **starts it automatically** and loads the selected model on demand before streaming begins — no trip to the "API Router" page needed (that page still offers manual start/stop and monitoring);
 4. Replies stream in token by token; when a reply finishes, its generation speed (tok/s) is shown under the message.
 
-Before the auto-start, a guided check runs: with no usable models you are pointed to the Models page to download or import one; if the llama.cpp runtime is missing you are pointed to the "Runtime Environment" section of the System Environment page. Fill the gap and you are ready to chat.
+Before the auto-start, a guided check runs: with no usable models you are pointed to the Models page to download or import one; if the llama.cpp runtime is missing you are pointed to the "Runtime Environment" tab of the System Environment page. Fill the gap and you are ready to chat.
 
 Sending a message first unloads every OTHER loaded model so the selected one is the only one in memory; load / unload changes show up in the task dock in real time, and models can be unloaded from there at any moment.
 
