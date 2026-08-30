@@ -73,7 +73,10 @@ tasks:
       - task: install:frontend:deps
     dir: frontend
     cmds:
-      - npm run dev -- --port {{.VITE_PORT}} --strictPort
+      # --host 127.0.0.1: vite's default "localhost" binds IPv6 ::1 only on
+      # this stack, while the v3 dev binary's asset proxy dials tcp4 127.0.0.1
+      # (the window 502s otherwise).
+      - npm run dev -- --port {{.VITE_PORT}} --strictPort --host 127.0.0.1
 
   run:dev:
     summary: Run the dev-built binary (primary process of the wails3 dev loop)
