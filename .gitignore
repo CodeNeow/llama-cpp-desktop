@@ -3,6 +3,16 @@ dist/
 dist-electron/
 release/
 build/bin/
+# Android gradle project: keep sources + gradle wrapper committed, ignore
+# build outputs, gradle caches, machine-local SDK paths and the overlay JSON
+# that android:build:go regenerates every run.
+build/android/.gradle/
+build/android/build/
+build/android/app/build/
+build/android/app/src/main/jniLibs/
+build/android/local.properties
+build/android/overlay.json
+build/android/captures/
 build/windows/installer/*
 !build/windows/installer/project.nsi
 # Committed installer macro library: CI runs makensis directly on project.nsi
