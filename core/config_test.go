@@ -15,6 +15,9 @@ import (
 // The state-file path vars are additionally pinned to explicit paths inside the
 // temp directory so the tests are independent of the per-OS default resolution
 // (on non-Windows the defaults resolve under the app-data base, see paths.go).
+// The default llama.cpp / models directory vars are likewise pinned to their
+// bare cwd-relative names: test fixtures and assertions live in the temp cwd,
+// which matches the pre-app-data geometry the tests were written against.
 func withTempCwd(t *testing.T) string {
 	t.Helper()
 	orig, err := os.Getwd()
@@ -30,8 +33,12 @@ func withTempCwd(t *testing.T) string {
 	handoverFile = filepath.Join(tmp, handoverFileName)
 	benchCacheFile = filepath.Join(tmp, benchCacheFileName)
 	docsCacheDir = filepath.Join(tmp, docsCacheDirName)
+	oldLlamaDir, oldModelsDir := defaultLlamaCppDir, defaultModelsDir
+	defaultLlamaCppDir = func() string { return llamaCppDirName }
+	defaultModelsDir = func() string { return modelsDirName }
 	t.Cleanup(func() {
 		configFile, handoverFile, benchCacheFile, docsCacheDir = oldConfig, oldHandover, oldBench, oldDocs
+		defaultLlamaCppDir, defaultModelsDir = oldLlamaDir, oldModelsDir
 		if err := os.Chdir(orig); err != nil {
 			t.Errorf("failed to restore working directory: %v", err)
 		}
