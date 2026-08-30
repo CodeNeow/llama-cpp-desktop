@@ -10,8 +10,15 @@ import (
 	"runtime"
 	"strings"
 
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
-) // App is the Wails application struct whose methods are bound to the frontend.
+	"github.com/wailsapp/wails/v3/pkg/application"
+)
+
+// MainWindowName is the unique name of the single application window. main.go
+// creates the frameless main window with this name; the theme background
+// switcher (applyThemeBackground) looks the window up by it at runtime.
+const MainWindowName = "main"
+
+// App is the Wails application struct whose methods are bound to the frontend.
 type App struct {
 	ctx context.Context
 }
@@ -20,9 +27,71 @@ func NewApp() *App {
 	return &App{}
 }
 
-// Startup is called by Wails after the runtime is ready; it loads persisted
-// config, adopts a handed-over llama-server (when returning from headless
-// API-route mode) and applies the saved theme to the window background.
+// applyThemeBackground paints the main window background to match the theme
+// (light: near-white, dark: near-black). Uses the v3 global application's
+// window manager; degrades to a no-op when no application / window exists
+// (unit tests, headless mode). Before the window is realized the call only
+// mutates the pending window options — exactly right for the startup path,
+// where ServiceStartup runs before the queued main window is built.
+func applyThemeBackground(theme string) {
+	wa := application.Get()
+	if wa == nil {
+		return
+	}
+	win, ok := wa.Window.GetByName(MainWindowName)
+	if !ok || win == nil {
+		return
+	}
+	if theme == "light" {
+		win.SetBackgroundColour(application.NewRGBA(248, 250, 252, 255))
+	} else {
+		win.SetBackgroundColour(application.NewRGBA(15, 15, 20, 255))
+	}
+}
+
+// quitApp asks the Wails v3 application to quit (runs the full shutdown
+// sequence, then exits). No-op when no application instance exists (tests,
+// headless mode), matching the nil-ctx guard the v2 runtime.Quit call sites
+// had.
+func quitApp() {
+	if wa := application.Get(); wa != nil {
+		wa.Quit()
+	}
+}
+
+// pickDirectory shows a native folder chooser and returns the selected path.
+// Cancellation normalizes to ("", nil) — the contract the v2
+// OpenDirectoryDialog exposed and the frontend browse wrappers rely on. v3
+// surfaces a cancel as an error whose sentinel (cfd.ErrorCancelled) is
+// internal to the v3 module, so its stable message is matched here.
+func pickDirectory(title string) (string, error) {
+	wa := application.Get()
+	if wa == nil {
+		return "", nil
+	}
+	dir, err := wa.Dialog.OpenFile().
+		SetTitle(title).
+		CanChooseDirectories(true).
+		CanChooseFiles(false).
+		PromptForSingleSelection()
+	if err != nil {
+		if err.Error() == "cancelled by user" {
+			return "", nil
+		}
+		return "", err
+	}
+	if dir == "" {
+		return "", nil
+	}
+	return dir, nil
+}
+
+// Startup loads persisted config, adopts a handed-over llama-server (when
+// returning from headless API-route mode) and applies the saved theme to the
+// window background. Called by ServiceStartup (the v3 lifecycle hook); kept
+// public because core/handover_test.go exercises it directly.
+//
+//wails:ignore
 func (a *App) Startup(ctx context.Context) {
 	a.ctx = ctx
 
@@ -41,21 +110,36 @@ func (a *App) Startup(ctx context.Context) {
 	configMu.Lock()
 	theme := currentTheme
 	configMu.Unlock()
-	if theme == "light" {
-		wailsRuntime.WindowSetBackgroundColour(ctx, 248, 250, 252, 255)
-	} else {
-		wailsRuntime.WindowSetBackgroundColour(ctx, 15, 15, 20, 255)
-	}
+	applyThemeBackground(theme)
 
 	log.Println("[INFO] Llama Desktop started")
 }
 
-// Shutdown is called by Wails on application exit; it persists the download
-// queue, stops llama-server and cancels all in-flight downloads — except
-// during a mode-switch restart (GUI → headless via SetApiRouteMode), where
-// the relaunched process adopts the running llama-server via the handover
-// file and in-flight downloads continue from the persisted queue, so both the
-// service stop and the download cancels are skipped.
+// ServiceStartup is the Wails v3 service lifecycle hook (replacement for the
+// v2 OnStartup callback); it runs inside application.Run, before the queued
+// main window is realized.
+func (a *App) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
+	a.Startup(ctx)
+
+	// Start system tray based on persisted config (unconditionally since
+	// 4aacac2; user can disable in settings). loadConfig defaults missing
+	// legacy fields to true. When enabled, the app starts with a tray icon;
+	// disabling the setting requires an app restart.
+	if TrayEnabled() {
+		InitTray(ctx, TrayIcon)
+	}
+	return nil
+}
+
+// Shutdown persists the download queue, stops llama-server and cancels all
+// in-flight downloads — except during a mode-switch restart (GUI → headless
+// via SetApiRouteMode), where the relaunched process adopts the running
+// llama-server via the handover file and in-flight downloads continue from
+// the persisted queue, so both the service stop and the download cancels are
+// skipped. Called by ServiceShutdown (the v3 lifecycle hook); kept public
+// because core/handover_test.go exercises it directly.
+//
+//wails:ignore
 func (a *App) Shutdown(ctx context.Context) {
 	// Persist the download task queue before cancelling anything (#12): save
 	// before cancelling downloads to guarantee the latest state is restored
@@ -116,6 +200,15 @@ func (a *App) Shutdown(ctx context.Context) {
 	dlTasksMu.Unlock()
 
 	log.Println("[INFO] Llama Desktop stopped")
+}
+
+// ServiceShutdown is the Wails v3 service lifecycle hook (replacement for the
+// v2 OnShutdown callback): remove the tray icon first, then clean up the app
+// (stop server / persist config), mirroring the v2 OnShutdown ordering.
+func (a *App) ServiceShutdown() error {
+	QuitTray()
+	a.Shutdown(a.ctx)
+	return nil
 }
 
 // ─── Config ─────────────────────────────────────────────────────
@@ -222,13 +315,7 @@ func (a *App) SetTheme(theme string) {
 	saveConfig()
 
 	// Update window background to match theme
-	if a.ctx != nil {
-		if theme == "light" {
-			wailsRuntime.WindowSetBackgroundColour(a.ctx, 248, 250, 252, 255)
-		} else {
-			wailsRuntime.WindowSetBackgroundColour(a.ctx, 15, 15, 20, 255)
-		}
-	}
+	applyThemeBackground(theme)
 }
 
 // SetSidebarCollapsed sets the sidebar collapsed/expanded preference: writes
@@ -336,9 +423,7 @@ func (a *App) SetApiRouteMode(enabled bool) error {
 	}
 
 	switchRestartPending.Store(true)
-	if a.ctx != nil {
-		wailsRuntime.Quit(a.ctx)
-	}
+	quitApp()
 	return nil
 }
 
@@ -370,12 +455,7 @@ func (a *App) SetModelsDir(dir string) error {
 // the same validation and write as SetModelsDir and returns the chosen
 // directory.
 func (a *App) BrowseModelsDir() (string, error) {
-	if a.ctx == nil {
-		return "", nil
-	}
-	dir, err := wailsRuntime.OpenDirectoryDialog(a.ctx, wailsRuntime.OpenDialogOptions{
-		Title: tr("选择模型目录", "Select Models Directory"),
-	})
+	dir, err := pickDirectory(tr("选择模型目录", "Select Models Directory"))
 	if err != nil || dir == "" {
 		return "", err
 	}
@@ -406,12 +486,7 @@ func (a *App) SetModelDownloadDir(dir string) error {
 // performs the same write as SetModelDownloadDir and returns the chosen
 // directory.
 func (a *App) BrowseModelDownloadDir() (string, error) {
-	if a.ctx == nil {
-		return "", nil
-	}
-	dir, err := wailsRuntime.OpenDirectoryDialog(a.ctx, wailsRuntime.OpenDialogOptions{
-		Title: tr("选择模型下载路径", "Select Model Download Path"),
-	})
+	dir, err := pickDirectory(tr("选择模型下载路径", "Select Model Download Path"))
 	if err != nil || dir == "" {
 		return "", err
 	}
@@ -442,12 +517,7 @@ func (a *App) SetLlamaCppDownloadDir(dir string) error {
 // success performs the same write as SetLlamaCppDownloadDir and returns the
 // chosen directory.
 func (a *App) BrowseLlamaCppDownloadDir() (string, error) {
-	if a.ctx == nil {
-		return "", nil
-	}
-	dir, err := wailsRuntime.OpenDirectoryDialog(a.ctx, wailsRuntime.OpenDialogOptions{
-		Title: tr("选择 llama.cpp 下载路径", "Select llama.cpp Download Path"),
-	})
+	dir, err := pickDirectory(tr("选择 llama.cpp 下载路径", "Select llama.cpp Download Path"))
 	if err != nil || dir == "" {
 		return "", err
 	}
@@ -800,12 +870,7 @@ func (a *App) StopLlamaCppDownload() {
 }
 
 func (a *App) BrowseLlamaCppDir() (string, error) {
-	if a.ctx == nil {
-		return "", nil
-	}
-	dir, err := wailsRuntime.OpenDirectoryDialog(a.ctx, wailsRuntime.OpenDialogOptions{
-		Title: tr("选择 llama.cpp 目录", "Select llama.cpp Directory"),
-	})
+	dir, err := pickDirectory(tr("选择 llama.cpp 目录", "Select llama.cpp Directory"))
 	if err != nil || dir == "" {
 		return "", err
 	}
@@ -873,7 +938,7 @@ func (a *App) StopUpdateDownload() {
 // update modal). Only valid for a completed download of the installer
 // artifact; see installUpdateNow for the guards.
 func (a *App) InstallUpdate() error {
-	return installUpdateNow(func() { wailsRuntime.Quit(a.ctx) })
+	return installUpdateNow(quitApp)
 }
 
 // ─── Downloads (HF Mirror / ModelScope) ──────────────────────────

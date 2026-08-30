@@ -59,7 +59,7 @@ import { t, locale } from '../lib/i18n'
 import { LatestOnly } from '../lib/latestOnly'
 import { getRemoteDoc } from '../wails'
 import { DOCS_GITHUB_URLS, formatDocFetchedAt, resolveDocContent, type DocSourceState } from '../lib/remoteDocs'
-import { BrowserOpenURL } from '../../wailsjs/runtime'
+import { Browser } from '@wailsio/runtime'
 
 // Currently displayed section; defaults to the first entry of the manifest
 const activeSection = ref<DocSectionId>(docSections[0].id)
@@ -158,7 +158,7 @@ async function refreshRemote(): Promise<void> {
 // system browser (Wails runtime), so the newest released tutorial is one
 // click away even when the remote fetch path is unavailable.
 function openOnGithub(): void {
-  BrowserOpenURL(DOCS_GITHUB_URLS[locale.value])
+  Browser.OpenURL(DOCS_GITHUB_URLS[locale.value])
 }
 
 // Reload on section switch and on language switch (content follows app language reactively)

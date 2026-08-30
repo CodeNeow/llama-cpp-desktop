@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // Mock the Wails runtime bridge (side-effect-bearing dependency); the handler
-// must route absolute links through BrowserOpenURL and nothing else.
+// must route absolute links through Browser.OpenURL and nothing else.
 const { browserOpenURL } = vi.hoisted(() => ({ browserOpenURL: vi.fn() }))
-vi.mock('../../wailsjs/runtime', () => ({ BrowserOpenURL: browserOpenURL }))
+vi.mock('@wailsio/runtime', () => ({ Browser: { OpenURL: browserOpenURL } }))
 
 import { externalUrlFor, handleLinkClick } from '../lib/linkHandler'
 

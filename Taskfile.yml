@@ -1,0 +1,86 @@
+version: '3'
+
+# Wails v3 task runner layout (trimmed from the v3 beta.16 template at
+# v3/internal/commands/build_assets/Taskfile.tmpl.yml). `wails3 build` /
+# `wails3 dev` wrap these tasks; see build/config.yml for the dev loop.
+
+vars:
+  APP_NAME: 'llama-desktop'
+  BIN_DIR: 'build/bin'
+  VITE_PORT: '{{.WAILS_VITE_PORT | default 5173}}'
+
+tasks:
+  go:mod:tidy:
+    summary: Runs `go mod tidy`
+    internal: true
+    cmds:
+      - go mod tidy
+
+  install:frontend:deps:
+    summary: Install frontend dependencies
+    dir: frontend
+    sources:
+      - package.json
+      - package-lock.json
+    generates:
+      - node_modules
+    cmds:
+      - npm install
+
+  generate:bindings:
+    summary: Generate TypeScript bindings for the bound core.App service
+    deps:
+      - task: go:mod:tidy
+    sources:
+      - '**/*.go'
+      - go.mod
+      - go.sum
+      - frontend/bindings/**/*
+    generates:
+      - frontend/bindings/**/*
+    cmds:
+      - wails3 generate bindings -clean=true -ts
+
+  build:frontend:
+    summary: Type-check (vue-tsc) and build the frontend into dist/
+    run: once
+    dir: frontend
+    sources:
+      - '**/*'
+      - exclude: node_modules/**/*
+    generates:
+      - dist/**/*
+    deps:
+      - task: install:frontend:deps
+      - task: generate:bindings
+    cmds:
+      - npm run build
+
+  build:
+    summary: Production build (embedded frontend, production tag, windowsgui)
+    cmds:
+      - task: build:frontend
+      - go build -tags production -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui" -o "{{.BIN_DIR}}/{{.APP_NAME}}.exe" .
+
+  build:go:dev:
+    summary: Compile the Go binary for the dev loop (no production tag so the FRONTEND_DEVSERVER_URL proxy is compiled in; `dev` build tag keeps core/devbuild_dev.go active, mirroring v2's `wails dev`)
+    cmds:
+      - go build -tags dev -buildvcs=false -gcflags=all="-l" -o "{{.BIN_DIR}}/{{.APP_NAME}}.exe" .
+
+  dev:frontend:
+    summary: Start the Vite dev server (hot reload)
+    deps:
+      - task: install:frontend:deps
+    dir: frontend
+    cmds:
+      - npm run dev -- --port {{.VITE_PORT}} --strictPort
+
+  run:dev:
+    summary: Run the dev-built binary (primary process of the wails3 dev loop)
+    cmds:
+      - '{{.BIN_DIR}}/{{.APP_NAME}}.exe'
+
+  dev:
+    summary: Dev loop (Vite hot reload + supervised Go rebuild); task flow lives in build/config.yml
+    cmds:
+      - wails3 dev -port {{.VITE_PORT}}

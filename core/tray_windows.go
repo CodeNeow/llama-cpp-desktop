@@ -9,7 +9,7 @@ import (
 	"sync"
 
 	"fyne.io/systray"
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 // TrayIcon holds the tray icon bytes (injected by main.go after embedding
@@ -104,12 +104,13 @@ func InitHeadlessTray(icon []byte, onShow func(), onQuit func()) {
 
 // InitTray starts the system tray in a dedicated goroutine (Windows only): sets
 // the tray icon and tooltip ("Llama Desktop"), with menu items "Show Main
-// Window" and "Quit" (separator in between). Menu click callbacks use the
-// passed ctx to drive Wails runtime window operations: showing the main window
-// also restores it from minimized state; quit ends the app for real
-// (runtime.Quit triggers Wails OnShutdown → app.Shutdown cleanup). The ctx
-// source matches App.Startup's ctx in core/app.go (injected by Wails
-// OnStartup).
+// Window" and "Quit" (separator in between). Menu click callbacks drive the
+// Wails v3 runtime via the global application handle (application.Get) — the
+// named main window is shown/restored for "Show Main Window"; quit ends the
+// app for real (App.Quit triggers the shutdown sequence → App.ServiceShutdown
+// cleanup). The ctx parameter is retained for call-site compatibility (it is
+// the ServiceStartup ctx from core/app.go) but no longer needed to drive the
+// runtime, which is ctx-free in v3.
 //
 // systray.Run on Windows carries its own GetMessage loop and can be called
 // from a non-main goroutine alongside the Wails main-thread message loop
@@ -149,14 +150,24 @@ func InitTray(ctx context.Context, icon []byte) {
 
 			go func() {
 				for range showItem.ClickedCh {
-					// WindowShow may not restore when minimized; also unminimize.
-					wailsRuntime.WindowShow(ctx)
-					wailsRuntime.WindowUnminimise(ctx)
+					// Show may not restore when minimized; also unminimize.
+					// The v3 application is a global (no ctx/window handle is
+					// held by the tray); guard against it not running yet.
+					if wa := application.Get(); wa != nil {
+						if win, ok := wa.Window.GetByName(MainWindowName); ok && win != nil {
+							win.Show()
+							win.UnMinimise()
+						}
+					}
 				}
 			}()
 			go func() {
 				for range quitItem.ClickedCh {
-					wailsRuntime.Quit(ctx)
+					// Quit runs the full shutdown sequence (tray removal +
+					// service cleanup via App.ServiceShutdown), then exits.
+					if wa := application.Get(); wa != nil {
+						wa.Quit()
+					}
 				}
 			}()
 		}, func() {

@@ -1,4 +1,4 @@
-import { BrowserOpenURL } from '../../wailsjs/runtime'
+import { Browser } from '@wailsio/runtime'
 
 /**
  * Absolute http(s) URL detection for rendered-markdown links. Only a scheme
@@ -22,8 +22,9 @@ export function externalUrlFor(href: string): string | null {
  * (model description, chat messages, in-app docs): the WebView must never
  * navigate on a link click. Bind on the container with @click — every click
  * that lands inside an anchor is intercepted first; absolute http(s) links
- * then open in the system browser via Wails' BrowserOpenURL, every other
- * href (relative, #anchor, javascript:, mailto:, empty) is silently blocked.
+ * then open in the system browser via the Wails runtime (Browser.OpenURL),
+ * every other href (relative, #anchor, javascript:, mailto:, empty) is
+ * silently blocked.
  */
 export function handleLinkClick(event: MouseEvent): void {
   // Deepest element under the pointer; text nodes are never click targets in
@@ -35,5 +36,5 @@ export function handleLinkClick(event: MouseEvent): void {
   // unopenable — a link click must never replace the app UI.
   event.preventDefault()
   const external = externalUrlFor(anchor.getAttribute('href') ?? '')
-  if (external) BrowserOpenURL(external)
+  if (external) Browser.OpenURL(external)
 }

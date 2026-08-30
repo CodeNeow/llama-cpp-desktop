@@ -57,6 +57,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { Application, Window as WailsWindow } from '@wailsio/runtime'
 import Sidebar from './components/Sidebar.vue'
 import UpdateModal from './components/UpdateModal.vue'
 import TaskDock from './components/TaskDock.vue'
@@ -67,7 +68,12 @@ import { appConfig } from './store'
 import { getOS } from './wails'
 
 const w = window as any
-const isDesktop = !!(w.go || w.electronAPI)  // Wails or Electron
+// Wails v3 no longer injects window.go; the bundled @wailsio/runtime marks the
+// page with window._wails (Electron keeps its own electronAPI bridge). In a
+// plain browser (standalone vite) _wails is set by the bundle too, so the
+// title bar shows there as well — the control clicks then fail silently
+// inside the runtime, matching the old w.runtime?. optional-chaining style.
+const isDesktop = !!(w._wails || w.go || w.electronAPI)  // Wails or Electron
 
 // Current route: fixed-viewport pages (route meta fixed: true) fill the window
 // below the titlebar and manage their own internal scroll bands, so the shared
@@ -96,24 +102,23 @@ onMounted(async () => {
 })
 
 function minimize() {
-  w.runtime?.WindowMinimise()
+  // .catch guards the standalone-vite case where the runtime has no backend.
+  WailsWindow.Minimise().catch(() => {})
 }
 
 // Maximize/restore: toggle the window; flip the icon state locally first for instant feedback,
-// then correct it later against the real state if the runtime exposes WindowIsMaximised
+// then correct it later against the real state
 // (Toggle is asynchronous, so an immediate query could read a stale value).
 function maximize() {
-  w.runtime?.WindowToggleMaximise()
+  WailsWindow.ToggleMaximise().catch(() => {})
   isMax.value = !isMax.value
-  if (w.runtime?.WindowIsMaximised) {
-    setTimeout(async () => {
-      try {
-        isMax.value = await w.runtime.WindowIsMaximised()
-      } catch {
-        // On query failure keep the locally flipped value
-      }
-    }, 150)
-  }
+  setTimeout(async () => {
+    try {
+      isMax.value = await WailsWindow.IsMaximised()
+    } catch {
+      // On query failure keep the locally flipped value
+    }
+  }, 150)
 }
 
 // Close button: only minimize to tray when on Windows with the system tray enabled
@@ -121,8 +126,8 @@ function maximize() {
 // Tray state is read from the store cache — main.ts already ran loadConfig before
 // mount, so the backend config (including persisted trayEnabled) is guaranteed to be
 // loaded by the time the user clicks close; no extra getConfig call needed. If getOS
-// fails (e.g. standalone vite), silently fall back to a direct quit, matching the
-// existing w.runtime?. optional-chaining style.
+// fails (e.g. standalone vite), silently fall back to a direct quit; the runtime
+// calls themselves .catch-guard the no-backend case.
 async function closeWindow() {
   let onWindows = false
   try {
@@ -132,9 +137,9 @@ async function closeWindow() {
     // Backend unavailable (standalone vite): keep default behavior
   }
   if (onWindows && appConfig.trayEnabled) {
-    w.runtime?.WindowHide()
+    WailsWindow.Hide().catch(() => {})
   } else {
-    w.runtime?.Quit()
+    Application.Quit().catch(() => {})
   }
 }
 </script>

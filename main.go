@@ -1,15 +1,12 @@
 package main
 
 import (
-	"context"
 	"embed"
 	"flag"
 	"os"
 
 	"github.com/CodeNeow/llama-cpp-desktop/core"
-	"github.com/wailsapp/wails/v2"
-	"github.com/wailsapp/wails/v2/pkg/options"
-	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 //go:embed frontend/dist
@@ -17,6 +14,11 @@ var assets embed.FS
 
 //go:embed build/windows/icon.ico
 var trayIcon []byte
+
+// mainWindowName is the unique name of the single application window; core
+// looks the window up by this name (application.Get().Window.GetByName) for
+// runtime background-colour switches from the tray / theme setters.
+const mainWindowName = "main"
 
 func main() {
 	// Mode flags for API-route (headless) mode: --headless forces headless
@@ -31,14 +33,15 @@ func main() {
 
 	app := core.NewApp()
 
-	// Tray icon is injected before Wails starts (needed because SetTrayEnabled
-	// may start/stop the tray at runtime); main only declares the embed, and
-	// the bytes are exposed to core via core.TrayIcon.
+	// Tray icon is injected before the GUI starts (needed because
+	// SetTrayEnabled may start/stop the tray at runtime); main only declares
+	// the embed, and the bytes are exposed to core via core.TrayIcon.
 	core.TrayIcon = trayIcon
 
-	// Headless branch: skip wails.Run entirely (no WebView2 process tree) —
-	// core.RunHeadless loads the config, takes the single-instance mutex,
-	// starts the headless tray and starts/adopts llama-server.
+	// Headless branch: skip the Wails application entirely (no WebView2
+	// process tree) — core.RunHeadless loads the config, takes the
+	// single-instance mutex, starts the headless tray and starts/adopts
+	// llama-server.
 	if core.ShouldRunHeadless(*headless, *gui) {
 		core.RunHeadless(trayIcon)
 		return
@@ -51,37 +54,40 @@ func main() {
 		return
 	}
 
-	err := wails.Run(&options.App{
-		Title:     "Llama Desktop",
-		Width:     1200,
-		Height:    800,
-		MinWidth:  900,
-		MinHeight: 600,
-		AssetServer: &assetserver.Options{
-			Assets: assets,
+	// Wails v3 application: the core.App service is bound to the frontend
+	// (all exported methods except the v3 lifecycle hooks), and the embedded
+	// frontend/dist is served through the asset handler. Without the
+	// FRONTEND_DEVSERVER_URL env var (set only by `wails3 dev`) the embedded
+	// assets are served directly.
+	wailsApp := application.New(application.Options{
+		Name:     "Llama Desktop",
+		Services: []application.Service{application.NewService(app)},
+		Assets: application.AssetOptions{
+			Handler: application.AssetFileServerFS(assets),
 		},
-		Frameless: true,
-		OnStartup: func(ctx context.Context) {
-			app.Startup(ctx)
-			// Start system tray based on persisted config (unconditionally since
-			// 4aacac2; user can disable in settings). loadConfig defaults missing
-			// legacy fields to true. When enabled, the app starts with a tray
-			// icon; disabling the setting requires an app restart.
-			if core.TrayEnabled() {
-				core.InitTray(ctx, trayIcon)
-			}
-		},
-		OnShutdown: func(ctx context.Context) {
-			// Remove tray icon first, then clean up the app (stop server /
-			// persist config, etc.)
-			core.QuitTray()
-			app.Shutdown(ctx)
-		},
-		Bind:             []interface{}{app},
-		BackgroundColour: &options.RGBA{R: 248, G: 250, B: 252, A: 1},
 	})
 
-	if err != nil {
+	// Single frameless main window. Created before Run, so the window is
+	// queued and actually built after App.ServiceStartup — meaning the
+	// startup-time background-colour switch (saved theme applied via
+	// SetBackgroundColour, which only mutates window options until the
+	// window is realized) lands before first paint. Startup sequencing
+	// (config load, handover adoption, monitor, tray) lives in
+	// core.App.ServiceStartup, the v3 equivalent of the v2 OnStartup hook.
+	wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
+		Name:             mainWindowName,
+		Title:            "Llama Desktop",
+		Width:            1200,
+		Height:           800,
+		MinWidth:         900,
+		MinHeight:        600,
+		Frameless:        true,
+		StartState:       application.WindowStateNormal,
+		BackgroundType:   application.BackgroundTypeSolid,
+		BackgroundColour: application.NewRGBA(248, 250, 252, 255),
+	})
+
+	if err := wailsApp.Run(); err != nil {
 		println("Error:", err.Error())
 	}
 }
