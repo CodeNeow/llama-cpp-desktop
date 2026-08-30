@@ -85,7 +85,11 @@ jobs:
               "https://github.com/ggml-org/llama.cpp/releases/download/b10695/llama-b10695-bin-ubuntu-x64.tar.gz"
             mkdir -p /tmp/llamacpp-unpack
             tar -xzf /tmp/llamacpp.tar.gz -C /tmp/llamacpp-unpack
-            find /tmp/llamacpp-unpack -name llama-server -type f -exec mv {} .e2e-cache/llamacpp/ \;
+            # Ship the WHOLE extracted dir: llama-server needs its sibling
+            # libllama-server-impl / libggml libraries (.so on linux, .dylib on
+            # macOS) — a lone binary dies on the loader (@rpath / cannot open).
+            SERVER_DIR="$(dirname "$(find /tmp/llamacpp-unpack -name llama-server -type f | head -1)")"
+            cp -R "$SERVER_DIR"/. .e2e-cache/llamacpp/
           fi
           if [ ! -f .e2e-cache/stories260K.gguf ]; then
             curl -fL --retry 3 -o .e2e-cache/stories260K.gguf \
@@ -425,7 +429,11 @@ jobs:
               "https://github.com/ggml-org/llama.cpp/releases/download/b10695/llama-b10695-bin-macos-arm64.tar.gz"
             mkdir -p /tmp/llamacpp-unpack
             tar -xzf /tmp/llamacpp.tar.gz -C /tmp/llamacpp-unpack
-            find /tmp/llamacpp-unpack -name llama-server -type f -exec mv {} .e2e-cache/llamacpp/ \;
+            # Ship the WHOLE extracted dir: llama-server needs its sibling
+            # libllama-server-impl / libggml libraries (.so on linux, .dylib on
+            # macOS) — a lone binary dies on the loader (@rpath / cannot open).
+            SERVER_DIR="$(dirname "$(find /tmp/llamacpp-unpack -name llama-server -type f | head -1)")"
+            cp -R "$SERVER_DIR"/. .e2e-cache/llamacpp/
           fi
           if [ ! -f .e2e-cache/stories260K.gguf ]; then
             curl -fL --retry 3 -o .e2e-cache/stories260K.gguf \
@@ -601,6 +609,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-android
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: smoke-android-apk
@@ -620,39 +629,10 @@ jobs:
           api-level: 30
           target: google_apis
           arch: x86_64
-          script: |
-            set -e
-            adb install -r "$(ls apk/*.apk)"
-            adb logcat -c
-            adb shell am start -W -n com.wails.app/com.wails.app.MainActivity || true
-            # Poll for a live process up to ~90s (Go runtime + WebView boot).
-            PID=""
-            for i in $(seq 1 30); do
-              PID=$(adb shell pidof com.wails.app | tr -d '\r' || true)
-              [ -n "$PID" ] && break
-              sleep 3
-            done
-            if [ -z "$PID" ]; then
-              echo "::error::app process not running after launch"
-              adb logcat -d | tail -120
-              exit 1
-            fi
-            echo "app running with pid $PID"
-            if adb logcat -d | grep -q "FATAL EXCEPTION"; then
-              echo "::error::crash recorded in logcat"
-              adb logcat -d | grep -B 5 -A 25 "FATAL EXCEPTION"
-              exit 1
-            fi
-            # The storage anchor must resolve through the JNI bridge; this
-            # WARN is emitted by core/paths.go when it falls back to the
-            # read-only cwd-relative layout.
-            if adb logcat -d | grep -q "keeping cwd-relative app paths"; then
-              echo "::error::Android storage anchor unresolved (JNI bridge), app fell back to read-only cwd paths"
-              adb logcat -d | grep -i "llama-desktop" | tail -40
-              exit 1
-            fi
-            adb exec-out screencap -p > emulator-screen.png || true
-            ls -la emulator-screen.png || true
+          # The logic lives in scripts/android_smoke.sh: the action's single
+          # `script` input has proven newline-fragile (a multiline loop was
+          # flattened to one line and dash died parsing it).
+          script: bash scripts/android_smoke.sh
       - name: Upload emulator screenshot
         if: always()
         uses: actions/upload-artifact@v4
