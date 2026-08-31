@@ -1,6 +1,7 @@
 package core
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -234,18 +235,29 @@ func GetMonitorStatus() *MonitorStatus {
 }
 
 // sampleMonitor runs one round of system sampling and updates the cache
-// (monitorMu). All platform parsers use runCmd (hideWindow suppresses the
-// console window).
+// (monitorMu). Platform parsers use runCmd or readProcFile: Windows shells
+// out to PowerShell (hideWindow suppresses the console window), kernel
+// pseudo-files go through readProcFile (in-process os.ReadFile on Android,
+// `cat` elsewhere).
 func sampleMonitor() {
 	var st MonitorStatus
 	switch runtime.GOOS {
 	case "windows":
 		st.CPUPercent = sampleCPUWindows()
 		st.MemTotal, st.MemUsed = sampleMemWindows()
-	case "linux", "android":
-		// Android is Linux-kernel: /proc/stat and /proc/meminfo exist and are
-		// parsed by the same sampleCPULinux / sampleMemLinux path
+	case "linux":
+		// Desktop Linux: /proc/stat + /proc/meminfo are readable and exec is
+		// available (readProcFile shells out to `cat` here).
 		st.CPUPercent = sampleCPULinux()
+		st.MemTotal, st.MemUsed = sampleMemLinux()
+	case "android":
+		// Android is Linux-kernel so /proc/meminfo parses the same way, but
+		// the app sandbox cannot exec (readProcFile falls back to an
+		// in-process os.ReadFile there) and /proc/stat is additionally
+		// SELinux-blocked for apps, so system-wide CPU% is unobtainable: the
+		// llama-server child's /proc/<pid>/stat deltas stand in instead (its
+		// share of total CPU capacity, same 0-100 scale as desktop).
+		st.CPUPercent = sampleAndroidServiceCPU()
 		st.MemTotal, st.MemUsed = sampleMemLinux()
 	case "darwin":
 		st.CPUPercent = sampleCPUDarwin()
@@ -364,7 +376,7 @@ func cpuPercentFromDeltas(prevIdle, prevTotal, curIdle, curTotal uint64) float64
 // The sampler holds prevIdle/prevTotal as package-level state; returns 0
 // when no previous sample exists.
 func sampleCPULinux() float64 {
-	curIdle, curTotal := parseProcStat(runCmd("cat", "/proc/stat"))
+	curIdle, curTotal := parseProcStat(readProcFile("/proc/stat"))
 	if curTotal == 0 {
 		return 0
 	}
@@ -376,6 +388,120 @@ func sampleCPULinux() float64 {
 	pct := cpuPercentFromDeltas(linuxCPUPrevIdle, linuxCPUPrevTotal, curIdle, curTotal)
 	linuxCPUPrevIdle = curIdle
 	linuxCPUPrevTotal = curTotal
+	return pct
+}
+
+// ─── Android Service CPU Sampling ─────────────────────────────────
+
+// procStatUserHz is USER_HZ, the clock-tick frequency /proc/<pid>/stat's
+// utime/stime are expressed in (Linux userland has standardized on 100; same
+// constant as procClockTicks in proctime_proc.go, kept separate because that
+// file is linux||android-tagged while this sampler compiles everywhere).
+const procStatUserHz = 100
+
+// androidServiceCPUPrevTicks / androidServiceCPUPrevWall hold the previous
+// sample's llama-server tick counter and wall-clock reading for delta
+// computation (only the sampling goroutine reads/writes them, matching
+// linuxCPUPrev*); zero / zero time means "no baseline yet — the next sample
+// primes it".
+var (
+	androidServiceCPUPrevTicks uint64
+	androidServiceCPUPrevWall  time.Time
+)
+
+// runningServerPID returns the running llama-server child's pid (0 when not
+// running), reading the server lifecycle state under serverMu. Lock-ordering
+// rule respected: the sampler takes serverMu alone and releases it before
+// sampleMonitor takes monitorMu at the end of the round.
+func runningServerPID() int {
+	serverMu.Lock()
+	defer serverMu.Unlock()
+	if !serverRunning || serverCmd == nil || serverCmd.Process == nil {
+		return 0
+	}
+	return serverCmd.Process.Pid
+}
+
+// sampleAndroidServiceCPU computes the running llama-server's share of the
+// total CPU capacity (%) from consecutive /proc/<pid>/stat samples. System
+// -wide CPU% is unobtainable on Android (no exec; /proc/stat SELinux-blocked
+// for apps), so the inference service's own load stands in for the 处理器
+// card's ring: 0 while the service is stopped, meaningful load while it
+// serves requests. Returns 0 and re-primes the baseline when the service is
+// not running or its stat file disappears.
+func sampleAndroidServiceCPU() float64 {
+	pid := runningServerPID()
+	if pid <= 0 {
+		androidServiceCPUPrevTicks = 0
+		androidServiceCPUPrevWall = time.Time{}
+		return 0
+	}
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		androidServiceCPUPrevTicks = 0
+		androidServiceCPUPrevWall = time.Time{}
+		return 0
+	}
+	ticks, ok := procStatCPUTicks(string(data))
+	if !ok {
+		androidServiceCPUPrevTicks = 0
+		androidServiceCPUPrevWall = time.Time{}
+		return 0
+	}
+	now := time.Now()
+	prevTicks, prevWall := androidServiceCPUPrevTicks, androidServiceCPUPrevWall
+	androidServiceCPUPrevTicks, androidServiceCPUPrevWall = ticks, now
+	return serviceCPUPercentFromDeltas(prevTicks, ticks, prevWall, now, runtime.NumCPU())
+}
+
+// procStatCPUTicks extracts utime + stime (fields 14-15, clock ticks) from a
+// /proc/<pid>/stat payload. Field 2 (comm) is parenthesized and may contain
+// spaces and parentheses, so field indexing starts after the LAST ')' — the
+// standard procfs parsing caveat (man 5 proc), same approach as
+// procStatStartTime; everything after comm is numeric, so no later field can
+// reintroduce a ')'. ok is false on malformed or truncated payloads.
+func procStatCPUTicks(stat string) (ticks uint64, ok bool) {
+	idx := strings.LastIndex(stat, ")")
+	if idx < 0 || idx+2 > len(stat) {
+		return 0, false
+	}
+	// Fields after "comm " start at field 3 (state); utime / stime are
+	// fields 14 / 15, i.e. indexes 11 / 12 in this slice.
+	fields := strings.Fields(stat[idx+2:])
+	if len(fields) < 13 {
+		return 0, false
+	}
+	utime, err := strconv.ParseUint(fields[11], 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	stime, err := strconv.ParseUint(fields[12], 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return utime + stime, true
+}
+
+// serviceCPUPercentFromDeltas turns two consecutive /proc/<pid>/stat samples
+// into the child's share of total CPU capacity: the utime+stime tick delta
+// divided by the wall-clock interval scaled by USER_HZ and the core count,
+// so multi-threaded inference maps onto the same 0-100 scale the desktop
+// system-wide samplers report. Returns 0 for a missing baseline (zero ticks
+// or zero time), a non-positive wall interval, a backwards tick counter
+// (fresh child after a restart), or a non-positive core count; caps at 100.
+// Pure function.
+func serviceCPUPercentFromDeltas(prevTicks, curTicks uint64, prevWall, curWall time.Time, ncpu int) float64 {
+	if prevTicks == 0 || curTicks == 0 || prevWall.IsZero() || curWall.IsZero() {
+		return 0
+	}
+	seconds := curWall.Sub(prevWall).Seconds()
+	if seconds <= 0 || curTicks < prevTicks || ncpu <= 0 {
+		return 0
+	}
+	pct := 100 * float64(curTicks-prevTicks) / (seconds * float64(procStatUserHz) * float64(ncpu))
+	if pct > 100 {
+		pct = 100
+	}
 	return pct
 }
 
@@ -454,7 +580,7 @@ func parseMemLinux(out string) (total, avail uint64) {
 
 // sampleMemLinux reads /proc/meminfo and computes (total, used) bytes.
 func sampleMemLinux() (total, used uint64) {
-	total, avail := parseMemLinux(runCmd("cat", "/proc/meminfo"))
+	total, avail := parseMemLinux(readProcFile("/proc/meminfo"))
 	if avail <= total {
 		used = total - avail
 	}

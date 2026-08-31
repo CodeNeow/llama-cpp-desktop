@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 )
 
 // ─── parsePromptTPS ────────────────────────────────────────────────
@@ -414,5 +415,85 @@ func TestDiskUsageForPath(t *testing.T) {
 	}
 	if d.Used > d.Total {
 		t.Errorf("disk sampling Used=%d must not exceed Total=%d", d.Used, d.Total)
+	}
+}
+
+// ─── procStatCPUTicks / serviceCPUPercentFromDeltas ───────────────
+
+// TestProcStatCPUTicks verifies utime+stime extraction from /proc/<pid>/stat
+// payloads: field indexing must start after the LAST ')' so a comm containing
+// spaces and parentheses ("llama-se: r(v) 1") cannot shift the numeric
+// fields; utime is field 14 and stime field 15 (indexes 11/12 after comm).
+// Malformed or truncated payloads return ok=false.
+func TestProcStatCPUTicks(t *testing.T) {
+	cases := []struct {
+		name  string
+		stat  string
+		ticks uint64
+		ok    bool
+	}{
+		{
+			// Real-shape payload: 1 (comm) S ... utime(14)=1200 stime(15)=300,
+			// comm itself carries spaces and parentheses.
+			name:  "comm with spaces and parens",
+			stat:  "4769 (llama-se: r(v) 1) S 1 4769 4769 0 -1 4194560 100 0 0 0 1200 300 0 0 20 5 1 0 1000 100 100 18446744073709551615 1 1 1 0 0 0 0 0 0 0 0 0 0 0 0 0",
+			ticks: 1500,
+			ok:    true,
+		},
+		{"no parens", "4769 broken", 0, false},
+		{"too short after comm", "4769 (srv) S 1 2 3 4 5 6 7 8 9 10", 0, false},
+		{"non-numeric utime", "4769 (srv) S 1 2 3 4 5 6 7 8 9 10 x 12 13", 0, false},
+		{"non-numeric stime", "4769 (srv) S 1 2 3 4 5 6 7 8 9 10 11 x", 0, false},
+		{"empty", "", 0, false},
+	}
+	for _, tc := range cases {
+		ticks, ok := procStatCPUTicks(tc.stat)
+		if ok != tc.ok {
+			t.Errorf("%s: ok = %v, want %v", tc.name, ok, tc.ok)
+			continue
+		}
+		if ok && ticks != tc.ticks {
+			t.Errorf("%s: ticks = %d, want %d", tc.name, ticks, tc.ticks)
+		}
+	}
+}
+
+// TestServiceCPUPercentFromDeltas verifies the llama-server child's share of
+// total CPU capacity: ticks/(seconds*USER_HZ*cores)*100; zero-value or zero
+// -time baselines (missing prior sample), non-positive intervals, backwards
+// tick counters (fresh child after restart) and non-positive core counts all
+// yield 0; the result is capped at 100.
+func TestServiceCPUPercentFromDeltas(t *testing.T) {
+	base := time.Unix(1000, 0)
+	oneSecLater := base.Add(time.Second)
+
+	cases := []struct {
+		name      string
+		prevTicks uint64
+		curTicks  uint64
+		prevWall  time.Time
+		curWall   time.Time
+		ncpu      int
+		want      float64
+	}{
+		// 150 ticks in 1s on 1 core at USER_HZ=100 → 150% of one core, i.e.
+		// the full capacity share → capped at 100.
+		{"saturating single core capped", 100, 250, base, oneSecLater, 1, 100},
+		// 150 ticks in 1s across 2 cores → half of total capacity.
+		{"half of two cores", 100, 250, base, oneSecLater, 2, 75},
+		// 50 ticks in 1s across 4 cores → 12.5% of total capacity.
+		{"quarter load on four cores", 100, 150, base, oneSecLater, 4, 12.5},
+		{"missing prev baseline", 0, 150, time.Time{}, oneSecLater, 1, 0},
+		{"missing cur baseline", 150, 0, base, oneSecLater, 1, 0},
+		{"backwards ticks restart", 500, 100, base, oneSecLater, 1, 0},
+		{"zero interval", 100, 150, base, base, 1, 0},
+		{"negative interval", 100, 150, oneSecLater, base, 1, 0},
+		{"zero cores", 0, 150, base, oneSecLater, 0, 0},
+	}
+	for _, tc := range cases {
+		got := serviceCPUPercentFromDeltas(tc.prevTicks, tc.curTicks, tc.prevWall, tc.curWall, tc.ncpu)
+		if got != tc.want {
+			t.Errorf("%s: got %v, want %v", tc.name, got, tc.want)
+		}
 	}
 }

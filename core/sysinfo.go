@@ -136,8 +136,10 @@ func getCPUInfo() CPUInfo {
 			info.Cores = w.cpuCores
 		}
 	case "linux", "android":
-		// Android is Linux-kernel: /proc/cpuinfo exists and parses the same way
-		cpuinfo := runCmd("cat", "/proc/cpuinfo")
+		// Android is Linux-kernel: /proc/cpuinfo exists and parses the same
+		// way. Read via readProcFile — Android's app sandbox cannot exec, so
+		// the read must be in-process there (procfile_android.go).
+		cpuinfo := readProcFile("/proc/cpuinfo")
 		info.Model = parseLinuxCPUModel(cpuinfo)
 		info.Cores = countString(cpuinfo, "processor")
 		if info.Model == "" {
@@ -146,7 +148,7 @@ func getCPUInfo() CPUInfo {
 			// Desktop x86 boxes all carry "model name" and never pay for the
 			// extra reads; an empty result keeps the generic
 			// "(unknown model)" fallback below in charge.
-			info.Model = parseAndroidCPUModel(cpuinfo, runCmd("cat", "/system/build.prop"))
+			info.Model = parseAndroidCPUModel(cpuinfo, readProcFile("/system/build.prop"))
 			// Best-effort big.LITTLE detection via cpufreq max frequencies;
 			// any read failure leaves PerfCores 0 (= unknown, no capping).
 			info.PerfCores = countPerformanceCPUs(readCPUMaxFreqs())
@@ -175,8 +177,9 @@ func getTotalMemoryGB() float64 {
 			return float64(w.totalMemBytes) / (1024 * 1024 * 1024)
 		}
 	case "linux", "android":
-		// Android is Linux-kernel: /proc/meminfo exists and parses the same way
-		out := runCmd("cat", "/proc/meminfo")
+		// Android is Linux-kernel: /proc/meminfo exists and parses the same
+		// way (readProcFile — Android cannot exec, see getCPUInfo).
+		out := readProcFile("/proc/meminfo")
 		kb := parseMemInfo(out, "MemTotal")
 		if kb > 0 {
 			return float64(kb) / (1024 * 1024)
@@ -197,8 +200,9 @@ func getFreeMemoryGB() float64 {
 			return float64(w.freeMemKB) / (1024 * 1024)
 		}
 	case "linux", "android":
-		// Android is Linux-kernel: /proc/meminfo exists and parses the same way
-		out := runCmd("cat", "/proc/meminfo")
+		// Android is Linux-kernel: /proc/meminfo exists and parses the same
+		// way (readProcFile — Android cannot exec, see getCPUInfo).
+		out := readProcFile("/proc/meminfo")
 		kb := parseMemInfo(out, "MemAvailable")
 		if kb == 0 {
 			kb = parseMemInfo(out, "MemFree")
