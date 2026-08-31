@@ -363,6 +363,13 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
     max-width: 100%;
   }
 
+  .themed-select__menu {
+    /* Keep the 240px option-list floor from exceeding the viewport on
+       narrow (<=360px) screens; the trigger-anchored left/right positioning
+       above is untouched */
+    min-width: min(240px, calc(100vw - 24px));
+  }
+
   .themed-select__option {
     min-height: 40px;
   }

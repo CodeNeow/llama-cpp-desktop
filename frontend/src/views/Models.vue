@@ -108,8 +108,15 @@ const tabs = [
   gap: 4px;
   padding: 0;
   border-bottom: 1px solid var(--border);
-  margin-bottom: 20px;
   flex-shrink: 0;
+}
+
+/* The 20px gap under the tabs lives here as sticky-top padding instead of a
+   margin on .models-tabs: the sticky background never paints a child's margin,
+   so the old margin left a transparent 20px band where scrolled content showed
+   through above the sticky header. */
+.sticky-top {
+  padding-bottom: 20px;
 }
 
 .tab-btn {

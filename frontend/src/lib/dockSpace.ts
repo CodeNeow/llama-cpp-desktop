@@ -15,11 +15,16 @@
 import { ref, watchEffect, onScopeDispose, type Ref } from 'vue'
 
 // Bottom offset of the fixed dock pill: the vertical centering offset on the
-// chat page's input row band, input-area bottom padding 24 + (row height 42 -
-// pill height 32) / 2 = 29, which places the pill's center on the send
-// button's center. Keep in sync with `bottom: 29px` in TaskDock.vue's
-// `.task-dock` style (change both or the reserve drifts). With this offset the
-// scrollable-page reserve becomes root height (32) + 29 + 8 = 69px.
+// chat page's input row band. DESKTOP-ONLY value: input-area bottom padding
+// 24 + (row height 42 - pill height 32) / 2 = 29, which places the pill's
+// center on the send button's center. Keep in sync with `bottom: 29px` in
+// TaskDock.vue's `.task-dock` style (change both or the reserve drifts). With
+// this offset the scrollable-page reserve becomes root height (32) + 29 + 8 =
+// 69px. Phones (<=767px) have a different composer (row 44, input-area bottom
+// padding 10), so TaskDock.vue's media query overrides `bottom` to
+// calc(10px + var(--mobile-nav-height)); this constant stays desktop-tuned,
+// which only slightly over-reserves on phone scrollable pages (harmless extra
+// bottom padding).
 const DOCK_BOTTOM_OFFSET = 29
 
 // Small breathing gap between the reserved band and the content above it.

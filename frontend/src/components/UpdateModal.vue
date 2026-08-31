@@ -150,7 +150,9 @@ function close() {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: 16px;
-  width: 520px;
+  /* min() clamp: the fixed 520px overflowed narrow phone viewports; a no-op
+     on viewports >= 552px where it resolves to 520px */
+  width: min(520px, calc(100vw - 32px));
   max-height: 80vh;
   display: flex;
   flex-direction: column;

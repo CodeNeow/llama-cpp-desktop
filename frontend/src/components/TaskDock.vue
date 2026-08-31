@@ -426,9 +426,11 @@ onUnmounted(() => {
    `bottom: 29px` vertically centers the pill on the chat page's input row:
    input-area bottom padding 24 + (row height 42 - pill height 32) / 2 = 29,
    which puts the pill's center on the send button's center. Keep this value
-   in sync with DOCK_BOTTOM_OFFSET in lib/dockSpace.ts. On mobile the bottom
-   tab bar takes its own fixed band, so the pill rides above it via the global
-   --mobile-nav-height (0px on desktop — the calc is a no-op there). */
+   in sync with DOCK_BOTTOM_OFFSET in lib/dockSpace.ts; it is desktop-only —
+   the phone breakpoint overrides `bottom` from the phone composer metrics in
+   the media query below. On mobile the bottom tab bar takes its own fixed
+   band, so the pill rides above it via the global --mobile-nav-height (0px on
+   desktop — the calc is a no-op there). */
 .task-dock {
   position: fixed;
   right: 16px;
@@ -777,15 +779,26 @@ onUnmounted(() => {
 
 /* ─── Phone (<=767px): the pill grows to a 44px touch target (it is the only
        dock control visible without expanding) while keeping its band above the
-       bottom tab bar — the bottom offset already includes
-       var(--mobile-nav-height), so the calc below stays untouched. The
+       bottom tab bar. Horizontal padding tightens to 8px so a single-segment
+       pill stays ~40px wide (2x8 padding + 12 icon + 4 gap + 8 count digit):
+       Chat.vue's phone right-padding lane (64 = 16 right offset + 40 pill +
+       8 gap) is computed from this width, keeping the send button 8px clear of
+       the pill's left edge as on desktop. The bottom offset is recomputed from
+       the phone composer metrics instead of the desktop-tuned 29px, which rode
+       high enough to cover the composer's top: Chat.vue phone input-area
+       padding-bottom 10 + (row 44 - pill 44) / 2 = 10, and
+       var(--mobile-nav-height) keeps the band above the bottom tab bar. The
        popover caps at the viewport width, and in-card controls get
        touch-sized hit areas. The measured --dock-reserve tracks the pill's new
        height automatically (ResizeObserver on offsetHeight). ─── */
 @media (max-width: 767px) {
+  .task-dock {
+    bottom: calc(10px + var(--mobile-nav-height, 0px));
+  }
+
   .dock-pill {
     height: 44px;
-    padding: 0 14px;
+    padding: 0 8px;
   }
 
   .dock-popover {

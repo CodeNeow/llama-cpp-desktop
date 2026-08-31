@@ -733,12 +733,17 @@ onUnmounted(() => {
      right gap (see padding-right) and shares the send button's vertical band,
      so the page layout simply fills the viewport below the titlebar. */
   height: calc(100vh - 36px);
+  /* dvh twin: progressive override for mobile browsers reporting a dynamic
+     viewport (soft keyboard / browser chrome); no-op where dvh is unsupported */
+  height: calc(100dvh - 36px);
   display: flex;
   flex-direction: column;
   /* Right 72 = pill band (16 right offset + 48 pill width) + 8px gap: the
      input row (send button) and the messages scrollbar stop left of the pill,
-     keeping the pill vertically aligned with the send button. */
-  padding: 0 72px 0 48px;
+     keeping the pill vertically aligned with the send button. Top padding
+     rides the --safe-area-top inset (0 on desktop) so an edge-to-edge status
+     bar cannot eat the header. */
+  padding: var(--safe-area-top, 0px) 72px 0 48px;
   /* Chat page does not scroll with page: layout fills remaining viewport height, messages area scrolls independently */
 }
 
@@ -1415,16 +1420,37 @@ onUnmounted(() => {
    make this rule an exact no-op on desktop. The flex column (header /
    messages / composer) plus the viewport-height chain keeps the composer
    visible when the soft keyboard resizes the window (AndroidManifest
-   adjustResize) — no 100vh-independent magic needed. Right padding keeps the
-   TaskDock pill band (16 + 48 + 8); left padding shrinks to the shared 16px
-   phone gutter. */
+   adjustResize) — the 100dvh twin tracks the same chain where the browser
+   reports a dynamic viewport. Right padding keeps the TaskDock pill band
+   (16 right offset + 40 phone pill width + 8 gap = 64, see TaskDock.vue's
+   phone block); left padding shrinks to the shared 16px phone gutter, and the
+   top rides --safe-area-top (0 on desktop) for edge-to-edge status bars. */
 .chat-page {
   height: calc(100vh - var(--titlebar-h, 36px) - var(--mobile-nav-height, 0px));
+  /* dvh twin: progressive override, no-op where dvh is unsupported */
+  height: calc(100dvh - var(--titlebar-h, 36px) - var(--mobile-nav-height, 0px));
 }
 
 @media (max-width: 767px) {
   .chat-page {
-    padding: 0 72px 0 16px;
+    /* 64 = 16 pill right offset + 40 phone pill width (2x8 padding + 12 icon
+       + 4 gap + 8 count digit, TaskDock.vue phone sizing) + 8 gap, so the send
+       button clears the pill's left edge by the same 8px as desktop */
+    padding: var(--safe-area-top, 0px) 64px 0 16px;
+  }
+
+  /* Compact the desktop-grade header: the 28px bottom pad + 28px title eat a
+     large slice of a short phone viewport */
+  .chat-page .page-header {
+    padding-bottom: 12px;
+  }
+
+  .chat-page .page-title {
+    font-size: 22px;
+  }
+
+  .chat-page .page-subtitle {
+    font-size: 12px;
   }
 
   /* Toolbar wraps: the model picker takes the main space (long names truncate
@@ -1472,9 +1498,12 @@ onUnmounted(() => {
     flex-wrap: wrap;
   }
 
-  /* Composer: 44px touch controls, trimmed band above the bottom tab bar */
+  /* Composer: 44px touch controls, trimmed band above the bottom tab bar.
+     The 10px bottom padding anchors the TaskDock phone offset arithmetic
+     (padding-bottom 10 + (row 44 - pill 44) / 2 = 10, see TaskDock.vue's
+     media query) — keep both in sync */
   .input-area {
-    padding: 10px 0 12px;
+    padding: 8px 0 10px;
   }
 
   .attach-btn {

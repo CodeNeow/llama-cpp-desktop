@@ -152,8 +152,21 @@ code, pre {
    keep the normal document flow and let .content-area scroll instead. */
 .page-fixed {
   height: calc(100vh - var(--titlebar-h, 36px) - var(--mobile-nav-height, 0px));
+  /* dvh twin: progressive override for mobile browsers reporting a dynamic
+     viewport (soft keyboard / browser chrome); no-op where dvh is unsupported */
+  height: calc(100dvh - var(--titlebar-h, 36px) - var(--mobile-nav-height, 0px));
   display: flex;
   flex-direction: column;
+}
+
+/* Top safe-area padding for the fixed pages: an edge-to-edge Android status
+   bar (viewport-fit=cover in index.html) would otherwise eat the header. The
+   #app ID prefix is required to out-rank the views' scoped
+   `.page[data-v-…]` padding shorthand (same reason as the mobile gutter
+   override at the bottom of this file); the inset is 0 on desktop, so the
+   rule is a no-op there. */
+#app .page-fixed {
+  padding-top: var(--safe-area-top, 0px);
 }
 
 /* Page header styles: the sticky duty is delegated to the outer .sticky-top
@@ -220,6 +233,12 @@ html {
      (bottom offset) so content and the floating pill stay clear of the bar.
      Keep the 58px + env() expression in sync with MobileNav.vue's height. */
   --mobile-nav-height: 0px;
+
+  /* Top safe-area inset for edge-to-edge displays (viewport-fit=cover in
+     index.html): the OS status bar / display cutout height, 0 on desktop
+     where env() resolves to 0. Consumed as top padding by .page-fixed and
+     Chat.vue's .chat-page so a cutout cannot eat the page header. */
+  --safe-area-top: max(0px, env(safe-area-inset-top, 0px));
 }
 
 /* mobile (<=767px): publish the real tab bar height (matches MobileNav.vue). */
