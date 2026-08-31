@@ -18,8 +18,11 @@
                 <span class="greet-rest">· {{ t('home.greet.readySuffix') }}</span>
               </template>
               <template v-else>
-                <span class="greet-dot" :class="{ idle: greetState === 'idle' }"></span>
-                <span class="greet-text">{{ greetLine }}</span>
+                <span class="greet-dot" :class="{ idle: greetState === 'idle', off: greetState === 'off' }"></span>
+                <span class="greet-text" :class="{ 'is-off': greetState === 'off' }">{{ greetLine }}</span>
+                <!-- Phone tier (Aurora frame ①): while the checklist card is up
+                     and the service is not ready, the subline points at it -->
+                <span v-if="showOnboardHint" class="greet-rest greet-hint">· {{ t('home.greet.onboardHint') }}</span>
               </template>
             </p>
           </div>
@@ -51,13 +54,22 @@
           </button>
         </div>
         <div v-if="activeTabId === 'tab-system'" class="header-actions">
-          <span v-if="systemLastUpdated" class="updated-at">{{ t('home.updatedAt', { time: systemLastUpdated }) }}</span>
-          <button class="refresh-btn" :disabled="systemRefreshing" @click="refreshSystem">
+          <span v-if="systemLastUpdated" class="updated-at">
+            {{ t(platformState.isMobile ? 'home.updatedAtAsOf' : 'home.updatedAt', { time: systemLastUpdated }) }}
+          </span>
+          <!-- Phone tier renders this icon-only as a round button (the text
+               label is hidden via CSS); the aria-label keeps it announced -->
+          <button
+            class="refresh-btn"
+            :disabled="systemRefreshing"
+            :aria-label="systemRefreshing ? t('home.refreshing') : t('home.refresh')"
+            @click="refreshSystem"
+          >
             <svg :class="{ spinning: systemRefreshing }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
               <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
             </svg>
-            {{ systemRefreshing ? t('home.refreshing') : t('home.refresh') }}
+            <span class="refresh-label">{{ systemRefreshing ? t('home.refreshing') : t('home.refresh') }}</span>
           </button>
         </div>
       </div>
@@ -83,10 +95,13 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { t } from '../lib/i18n'
+import { usePlatform } from '../lib/platform'
+import { appConfig } from '../store'
 import { getServerStatus, getLoadedModels, type LoadedModel } from '../wails'
 
 const route = useRoute()
 const router = useRouter()
+const platformState = usePlatform()
 
 // ─── Greeting header (frame ①) ──────────────────────────────────
 // Time-of-day greeting + honest service status. The shell polls the light
@@ -124,6 +139,18 @@ const greetState = computed<'loading' | 'online' | 'idle' | 'off'>(() => {
 })
 
 const greetModel = computed(() => residentModel.value?.id ?? '')
+
+// Phone-tier guidance hint (Aurora frame ①): shown while the service is not
+// ready and the quick-start checklist can be on screen. SystemInfoTab owns the
+// checklist's probe-derived visibility; from the shell, "not dismissed and
+// service not ready" is an exact-enough proxy — a stopped / model-less service
+// always keeps the checklist incomplete, so the card is up unless dismissed.
+const showOnboardHint = computed(
+  () =>
+    platformState.value.isMobile &&
+    (greetState.value === 'off' || greetState.value === 'idle') &&
+    !appConfig.onboardingDismissed
+)
 
 const greetLine = computed(() => {
   switch (greetState.value) {
@@ -416,28 +443,81 @@ const tabs = [
   display: flex;
 }
 
-/* ─── Phone (<=767px): the tab row must never push the page wider than the
-       viewport. Tabs scroll horizontally inside their own container (page
-       overflow stays impossible); the refresh toolbar wraps onto its own row.
-       Tab buttons get 44px touch height. The greeting scales down per the
-       design's 24px phone heading. ─── */
+/* ─── Phone (<=767px): Aurora mockup frames ①/② header. Greeting 27px, the
+       ready-suffix stays visible (ellipsis on overflow), the offline status
+       turns red, the tab row becomes mockup pill chips sharing one line with
+       an icon-only round refresh button (44px touch targets throughout). ─── */
 @media (max-width: 767px) {
   .greet-title {
-    font-size: 24px;
+    font-size: 27px;
   }
 
-  .greet-rest {
-    display: none;
+  /* Offline status (mockup frame ① .h-greet .off): red dot + red text */
+  .greet-dot.off {
+    background: var(--danger);
   }
 
-  .env-tabs-row {
+  .greet-text.is-off {
+    color: var(--danger);
+    font-weight: 700;
+  }
+
+  /* Online glow (mockup .hero .tag .dot): mint 0 0 8px halo */
+  .greet-dot.on {
+    box-shadow: 0 0 8px #6ee7b7;
+  }
+
+  /* Subline must never clip mid-glyph: every segment is a single-line
+     ellipsizing box. The greeting block gets min-width: 0 so it can shrink
+     inside the header row; the model name shrinks first (long router ids
+     ellipsize) while the green dot stays non-shrinking. */
+  .greet-block {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .greet-sub {
+    min-width: 0;
+    max-width: 100%;
     flex-wrap: wrap;
-    gap: 0 12px;
+    overflow: hidden;
+  }
+
+  .greet-live {
+    min-width: 0;
+    flex: 0 1 auto;
+    overflow: hidden;
+  }
+
+  .greet-model,
+  .greet-text,
+  .greet-rest {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* First-use guidance (mockup frame ①): the "complete the 3 steps" line
+     drops onto its own row under the status instead of competing with it */
+  .greet-hint {
+    flex-basis: 100%;
+    margin-left: 19px;
+  }
+
+  /* Tab row: pill chips (mockup .tabs), no underline, refresh stays on the
+     same line — the row must never wrap below the tabs */
+  .env-tabs-row {
+    flex-wrap: nowrap;
+    gap: 8px;
+    border-bottom: none;
+    margin-bottom: 14px;
   }
 
   .env-tabs {
-    flex: 1 1 100%;
+    flex: 0 1 auto;
     min-width: 0;
+    gap: 8px;
     overflow-x: auto;
     scrollbar-width: none;
   }
@@ -448,17 +528,65 @@ const tabs = [
 
   .tab-btn {
     flex-shrink: 0;
-    padding: 12px 14px;
+    min-height: 44px;
+    padding: 8px 15px;
+    border-bottom: none;
+    margin-bottom: 0;
+    border-radius: 999px;
+    background: rgba(120, 124, 160, 0.12);
+    color: var(--text-muted);
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .tab-btn .tab-icon {
+    display: none;
+  }
+
+  /* Active pill follows the ink color and flips per theme via tokens
+     (mockup .tabs .tab.on + dark override .dark .tabs .tab.on) */
+  .tab-btn.active {
+    background: var(--text-primary);
+    color: var(--bg-primary);
+    box-shadow: 0 4px 12px rgba(25, 28, 43, 0.25);
   }
 
   .header-actions {
-    flex: 1 1 100%;
-    justify-content: space-between;
-    padding-bottom: 10px;
+    flex: 0 1 auto;
+    min-width: 0;
+    gap: 8px;
+    padding-bottom: 0;
+  }
+
+  .updated-at {
+    font-size: 11.5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .refresh-btn {
-    min-height: 36px;
+    flex-shrink: 0;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    justify-content: center;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+  }
+
+  .refresh-btn:hover:not(:disabled) {
+    background: var(--hover-bg);
+    border-color: transparent;
+  }
+
+  .refresh-btn .refresh-label {
+    display: none;
+  }
+
+  .refresh-btn svg {
+    width: 16px;
+    height: 16px;
   }
 }
 

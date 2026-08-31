@@ -1,4 +1,12 @@
 <template>
+  <!-- Phone expanded backdrop (frame ⑲): full-screen dim under the open card,
+       tap to close. Deliberately a SIBLING of the dock root, not a child —
+       the root's inline translate() would become the containing block of a
+       fixed-position descendant and shrink the "full-screen" layer to the
+       pill's box. Desktop keeps the plain outside-click dismissal, so this
+       renders only on the phone tier. z-order: below the dock root (46) but
+       above the bottom nav (40) and the status-bar scrim (45). -->
+  <div v-if="visible && expanded && isMobileTier" class="dock-dim" @click="expanded = false"></div>
   <!-- The root keeps its fixed right/bottom CSS anchor at all times; the
        capsule position rides a translate() (see the drag section below), so
        the ResizeObserver-measured box — and therefore --dock-reserve and
@@ -7,7 +15,7 @@
     v-if="visible"
     ref="dockEl"
     class="task-dock"
-    :class="{ 'task-dock--dragging': dragging, 'task-dock--left': dockSide === 'left' }"
+    :class="{ 'task-dock--dragging': dragging, 'task-dock--left': dockSide === 'left', 'task-dock--expanded': expanded }"
     :style="{ transform: `translate(${dragTranslate.x}px, ${dragTranslate.y}px)` }"
   >
     <!-- Popover card: absolute overlay landing on the pill's original spot,
@@ -40,6 +48,7 @@
             @click="openUpdateModal"
           >
             <div class="dock-task-header">
+              <span class="dock-row-badge badge-update">{{ t('dock.badge.update') }}</span>
               <span class="dock-task-name">llama-desktop {{ updateDownload?.version }}</span>
               <span class="dock-task-status" :class="'status-' + updateDownload?.status">
                 {{ updateStatusLabel(updateDownload?.status || '') }}
@@ -56,6 +65,7 @@
           <!-- Llama.cpp download -->
           <div v-if="llamaActive" class="dock-task">
             <div class="dock-task-header">
+              <span class="dock-row-badge badge-runtime">{{ t('dock.badge.runtime') }}</span>
               <span class="dock-task-name">llama.cpp</span>
               <span class="dock-task-status" :class="'status-' + llamaStatus.status">{{ statusLabel(llamaStatus.status) }}</span>
             </div>
@@ -71,11 +81,40 @@
             </div>
           </div>
 
-          <!-- Model download tasks -->
+          <!-- Model download tasks. The ops cluster (pause/resume/cancel,
+               frame ⑲ .op) renders on the phone tier only; desktop keeps the
+               downloads page as the single place with task controls. -->
           <div v-for="task in activeTasks" :key="task.id" class="dock-task">
             <div class="dock-task-header">
+              <span class="dock-row-badge badge-model">{{ t('dock.badge.model') }}</span>
               <span class="dock-task-name" :title="task.fileName">{{ truncatedName(task.fileName) }}</span>
-              <span class="dock-task-status" :class="'status-' + task.status">{{ statusLabel(task.status) }}</span>
+              <span class="dock-task-status" :class="'status-' + task.status">{{ phoneTaskStatus(task) }}</span>
+              <span class="dock-task-ops">
+                <button
+                  v-if="task.status === 'downloading'"
+                  class="dock-op"
+                  type="button"
+                  :aria-label="t('downloads.pause')"
+                  :title="t('downloads.pause')"
+                  @click.stop="pauseTask(task.id)"
+                >❚❚</button>
+                <button
+                  v-else-if="task.status === 'paused'"
+                  class="dock-op"
+                  type="button"
+                  :aria-label="t('downloads.resume')"
+                  :title="t('downloads.resume')"
+                  @click.stop="resumeTask(task.id)"
+                >▶</button>
+                <button
+                  v-if="task.status === 'downloading' || task.status === 'paused' || task.status === 'queued'"
+                  class="dock-op dock-op--danger"
+                  type="button"
+                  :aria-label="t('downloads.cancel')"
+                  :title="t('downloads.cancel')"
+                  @click.stop="cancelTask(task.id)"
+                >✕</button>
+              </span>
             </div>
             <div v-if="task.status === 'downloading' || task.status === 'paused'" class="dock-bar-wrap">
               <div class="dock-bar">
@@ -102,7 +141,7 @@
             <div class="dock-model-row">
               <span class="dock-model-badge" :class="'type-' + model.type">{{ typeLabel(model.type) }}</span>
               <span class="dock-model-id" :title="model.id">{{ truncatedName(model.id) }}</span>
-              <span class="dock-model-status">{{ unloadingId === model.id ? t('dock.unloading') : modelStatusLabel(model.status) }}</span>
+              <span class="dock-model-status">{{ phoneModelStatus(model) }}</span>
               <!-- Capability gate: direct-mode servers (Android) have no
                    unload route — the single resident leaves memory only by
                    stopping the service, so the affordance is hidden there. -->
@@ -139,15 +178,29 @@
       :aria-label="t('dock.title')"
       :title="t('dock.title')"
     >
-      <span v-if="hasDownloads" class="pill-seg">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        <span>{{ activeDownloadCount }}</span>
-      </span>
-      <span v-if="serverRunning && loadedModels.length > 0" class="pill-seg">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>
-        <span>{{ loadedModels.length }}</span>
-      </span>
-      <span v-if="pillAlert" class="pill-alert"></span>
+      <!-- Desktop segments: icon + bold count per metric -->
+      <template v-if="!isMobileTier">
+        <span v-if="hasDownloads" class="pill-seg">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span>{{ activeDownloadCount }}</span>
+        </span>
+        <span v-if="serverRunning && loadedModels.length > 0" class="pill-seg">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>
+          <span>{{ loadedModels.length }}</span>
+        </span>
+        <span v-if="pillAlert" class="pill-alert"></span>
+      </template>
+      <!-- Phone capsule (frame ⑲ .capsule): status dot + hairline separator +
+           mono counts ("N│M"), switching to "Downloading {pct}%" while any
+           download actively progresses (amber dot); errors flip the dot red. -->
+      <template v-else>
+        <span
+          class="pill-dot"
+          :class="{ 'pill-dot--warn': pillWarnPercent !== null, 'pill-dot--error': pillAlert }"
+        ></span>
+        <span class="pill-sep" aria-hidden="true"></span>
+        <span class="pill-count">{{ pillPhoneText }}</span>
+      </template>
     </button>
   </div>
 </template>
@@ -159,8 +212,12 @@ import {
   getDownloadTasks,
   getServerStatus,
   getLoadedModels,
-  unloadModel
+  unloadModel,
+  pauseDownloadTask,
+  resumeDownloadTask,
+  cancelDownloadTask
 } from '../wails'
+import { formatSpeed } from '../lib/format'
 import { activeLlamaCppDownload, activeModelTasks, activeUpdateDownload, shouldShowDock } from '../lib/dock'
 import { dockNudgeCounter, nudgeDock } from '../lib/dockNudge'
 import { dockLane, dockSide, dockWidth, useDockReserve } from '../lib/dockSpace'
@@ -208,8 +265,9 @@ let pollTimer: ReturnType<typeof setInterval> | null = null
 // shows idle before first poll, so it doesn't enter the active display area.
 const llamaStatus = ref<{ status: string; progress: number }>({ status: 'idle', progress: 0 })
 
-// Model download tasks
-const allTasks = ref<{ id: string; fileName: string; status: string; progress: number }[]>([])
+// Model download tasks (speed in bytes/sec feeds the phone status line;
+// desktop ignores it)
+const allTasks = ref<{ id: string; fileName: string; status: string; progress: number; speed: number }[]>([])
 
 // Server status
 const serverRunning = ref(false)
@@ -224,6 +282,10 @@ const unloadErrors = reactive<Record<string, string>>({})
 // ─── Computed ─────────────────────────────────────────────────────
 
 const platform = usePlatform()
+
+// Phone-tier gate (viewport width <= 767): swaps the pill content model and
+// adds the expanded-card backdrop; desktop rendering is untouched.
+const isMobileTier = computed(() => platform.value.isMobile)
 
 // In-memory unload is a router-mode (desktop) capability: direct-mode servers
 // (Android) always hold exactly one resident model that can only leave memory
@@ -261,6 +323,27 @@ const activeDownloadCount = computed(
 const pillAlert = computed(
   () => llamaStatus.value.status === 'error' || updateDownload.value?.status === 'error'
 )
+
+// Phone capsule warn state (frame ⑲ .capsule.warn): the progress percent of
+// the first actively-downloading item (app update > llama.cpp > model tasks),
+// or null when nothing is actively transferring (paused/queued don't count).
+const pillWarnPercent = computed<number | null>(() => {
+  if (updateDownload.value?.status === 'downloading') return updateDownload.value.progress
+  if (llamaStatus.value.status === 'downloading') return llamaStatus.value.progress
+  const downloading = activeTasks.value.find((task) => task.status === 'downloading')
+  return downloading ? downloading.progress : null
+})
+
+// Phone capsule text: "Downloading {pct}%" while a download progresses,
+// otherwise the segment counts joined with the mockup's hairline glyph
+// ("N│M" = downloads│in-memory; absent segments are dropped).
+const pillPhoneText = computed(() => {
+  if (pillWarnPercent.value !== null) return t('dock.downloadingPct', { pct: pillWarnPercent.value })
+  const parts: string[] = []
+  if (hasDownloads.value) parts.push(String(activeDownloadCount.value))
+  if (loadedModels.value.length > 0) parts.push(String(loadedModels.value.length))
+  return parts.join('│')
+})
 
 const visible = computed(() =>
   shouldShowDock(
@@ -548,7 +631,8 @@ async function poll() {
       id: t.id,
       fileName: t.fileName,
       status: t.status,
-      progress: t.progress || 0
+      progress: t.progress || 0,
+      speed: t.speed || 0
     }))
 
     serverRunning.value = server.running
@@ -607,6 +691,35 @@ async function handleUnload(id: string) {
   }
 }
 
+// ─── Phone row ops (frame ⑲ .op): mirror the downloads page's bindings ───
+
+async function pauseTask(id: string) {
+  try {
+    await pauseDownloadTask(id)
+    nudgeDock()
+  } catch {
+    // Best-effort: the next poll reconciles the real state
+  }
+}
+
+async function resumeTask(id: string) {
+  try {
+    await resumeDownloadTask(id)
+    nudgeDock()
+  } catch {
+    // Best-effort: the next poll reconciles the real state
+  }
+}
+
+async function cancelTask(id: string) {
+  try {
+    await cancelDownloadTask(id)
+    nudgeDock()
+  } catch {
+    // Best-effort: the next poll reconciles the real state
+  }
+}
+
 // ─── Labels ───────────────────────────────────────────────────────
 
 function statusLabel(status: string): string {
@@ -628,15 +741,40 @@ function isProgressStatus(status: string): boolean {
   return status === 'downloading' || status === 'paused'
 }
 
-// Update row labels: unlike llama.cpp rows, done/error outcomes stay visible here
+// Update row labels: unlike llama.cpp rows, done/error outcomes stay visible here.
+// Phone tier uses the ✓-prefixed done copy (frame ⑳ drow); desktop keeps the
+// shared downloads-page label.
 function updateStatusLabel(status: string): string {
   const map: Record<string, string> = {
     downloading: t('dl.downloading'),
     installing: t('updateModal.installing'),
-    done: t('downloads.statusDone'),
+    done: isMobileTier.value ? t('dock.statusDone') : t('downloads.statusDone'),
     error: t('downloads.statusError')
   }
   return map[status] || status
+}
+
+// Phone model-task status line (frame ⑳ .ds): "Downloading · {pct}% · {speed}"
+// — the transfer speed comes straight from the DlTask payload and the segment
+// is dropped while it is not measurable. Desktop keeps the plain statusLabel.
+function phoneTaskStatus(task: { status: string; progress: number; speed: number }): string {
+  if (!isMobileTier.value) return statusLabel(task.status)
+  if (task.status === 'downloading') {
+    let text = `${t('dl.downloading')} · ${task.progress}%`
+    if (task.speed > 0) text += ` · ${formatSpeed(task.speed)}`
+    return text
+  }
+  if (task.status === 'paused') return `${t('dl.paused')} · ${task.progress}%`
+  return statusLabel(task.status)
+}
+
+// Phone in-memory status: a live dot prefixes the loaded state (frame ⑳
+// .ds.g); loading/sleeping/unloading keep the shared labels on both tiers.
+// Size segment deferred: the router payload carries no model size field.
+function phoneModelStatus(model: LoadedModel): string {
+  if (unloadingId.value === model.id) return t('dock.unloading')
+  if (isMobileTier.value && model.status === 'loaded') return t('dock.modelStatus.loadedDot')
+  return modelStatusLabel(model.status)
 }
 
 // Clicking the update row reopens the modal (download/result state lives in lib/update)
@@ -833,6 +971,74 @@ onUnmounted(() => {
   border-radius: 50%;
   background: #ef4444;
   flex-shrink: 0;
+}
+
+/* ─── Phone capsule pieces (frame ⑲ .capsule) ───
+   Only rendered on the phone tier (template branch); base styles live here so
+   the phone media query below only reskins the shell. */
+.pill-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 6px #6ee7b7;
+  flex-shrink: 0;
+}
+
+.pill-dot--warn {
+  background: #fbbf24;
+  box-shadow: 0 0 6px #fbbf24;
+}
+
+.pill-dot--error {
+  background: #ef4444;
+  box-shadow: 0 0 6px #ef4444;
+}
+
+.pill-sep {
+  width: 1px;
+  height: 12px;
+  background: rgba(255, 255, 255, 0.28);
+  flex-shrink: 0;
+}
+
+.pill-count {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* Expanded-card backdrop (phone only, frame ⑲): covers the viewport under
+   the open card; tap closes. A root-level sibling of the transformed dock
+   root, so its fixed positioning resolves against the real viewport. Layered
+   above the bottom nav (40) / status-bar scrim (45), below the dock root in
+   its expanded state (46) and the update modal (1000). */
+.dock-dim {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  background: rgba(16, 18, 33, 0.25);
+}
+
+/* Row type badges (frame ⑳ .tbadge): phone-tier only — hidden on desktop so
+   the desktop rows keep their exact layout. Colors per badge kind with the
+   dark-theme mapping from the mockup. */
+.dock-row-badge {
+  display: none;
+  align-items: center;
+  border-radius: 5px;
+  padding: 2px 5px;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1.4;
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
+}
+
+/* Phone ops cluster (frame ⑳ .op): hidden on desktop, the downloads page
+   stays the desktop control surface */
+.dock-task-ops {
+  display: none;
 }
 
 .dock-header {
@@ -1106,18 +1312,190 @@ onUnmounted(() => {
        touch-sized hit areas. The measured --dock-reserve tracks the pill's new
        height automatically (ResizeObserver on offsetHeight). ─── */
 @media (max-width: 767px) {
+  /* Layering (frame ⑲): the collapsed capsule sits UNDER the glass bottom
+     nav (40) so the nav wins any overlap; when the card opens the root jumps
+     ABOVE the nav (40) and the status-bar scrim (45) while staying below the
+     update modal (1000) — the dim + card need the whole screen. */
   .task-dock {
     bottom: calc(10px + var(--mobile-nav-height, 0px));
+    z-index: 38;
   }
 
+  .task-dock--expanded {
+    z-index: 46;
+  }
+
+  /* Dark AssistiveTouch capsule (frame ⑲ .capsule) in BOTH themes: dark
+     translucent pill, white bold label, docked-edge corners flattened toward
+     the hugging edge. Height stays the 44px touch target the composer lane
+     arithmetic is built on (padding 0, not the mockup's 11px vertical). */
   .dock-pill {
     height: 44px;
-    padding: 0 8px;
+    padding: 0 14px;
+    gap: 7px;
+    background: rgba(25, 28, 43, 0.82);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: none;
+    border-radius: 24px 4px 4px 24px;
+    box-shadow: 0 8px 22px rgba(20, 22, 40, 0.35);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  /* Right-docked (default) flattens the right edge; left-docked mirrors. */
+  .task-dock--left .dock-pill {
+    border-radius: 4px 24px 24px 4px;
   }
 
   .dock-toggle {
     width: 32px;
     height: 32px;
+  }
+
+  /* Expanded card skin (frame ⑳ .dockcard): rounded floating island with the
+     deep phone shadow; header 13/800; progress bars pill-rounded */
+  .dock-popover {
+    border: none;
+    border-radius: 22px;
+    box-shadow: 0 18px 50px rgba(20, 22, 45, 0.35);
+    max-height: 60vh;
+  }
+
+  .dock-title {
+    font-size: 13px;
+    font-weight: 800;
+  }
+
+  .dock-bar {
+    border-radius: 999px;
+  }
+
+  .dock-fill {
+    border-radius: 999px;
+  }
+
+  /* Download rows (frame ⑳ .drow): badge + name/status stacked in a grid,
+     ops column on the right; the separate percent text is folded into the
+     status line, so the bar spans freely */
+  .dock-task-header {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    grid-template-areas:
+      'badge name ops'
+      'badge status ops';
+    column-gap: 8px;
+    row-gap: 2px;
+    align-items: center;
+  }
+
+  .dock-row-badge {
+    display: inline-flex;
+    grid-area: badge;
+  }
+
+  .dock-task-name {
+    grid-area: name;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .dock-task-status {
+    grid-area: status;
+    justify-self: start;
+    font-size: 10.5px;
+    color: var(--text-muted);
+  }
+
+  .dock-percent {
+    display: none;
+  }
+
+  .dock-bar-wrap {
+    margin-top: 5px;
+  }
+
+  /* Row type badge colors (frame ⑳ .tbadge): 更新 indigo / 运行时 amber /
+     模型 neutral, dark mappings per the mockup */
+  .badge-update {
+    background: #eef0ff;
+    color: #4338ca;
+  }
+
+  html[data-theme='dark'] .badge-update {
+    background: #1a1f3d;
+    color: #c4b5fd;
+  }
+
+  .badge-runtime {
+    background: #fff7ea;
+    color: #b45309;
+  }
+
+  html[data-theme='dark'] .badge-runtime {
+    background: #2c2416;
+    color: #fcd34d;
+  }
+
+  .badge-model {
+    background: var(--overlay-8);
+    color: var(--text-secondary);
+  }
+
+  /* Ops circles (frame ⑳ .op): 26px visual circle inside a 44px touch box
+     (background-clip keeps the painted circle small under the padding) */
+  .dock-task-ops {
+    display: flex;
+    grid-area: ops;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .dock-op {
+    width: 44px;
+    height: 44px;
+    padding: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-card);
+    background-clip: content-box;
+    border: none;
+    border-radius: 50%;
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .dock-op--danger {
+    color: #ef4444;
+  }
+
+  /* In-memory rows: badge goes tbadge-shaped; the chat badge turns green
+     (replaces the desktop purple tint) */
+  .dock-model-badge {
+    border-radius: 5px;
+    padding: 2px 5px;
+    font-size: 9px;
+    font-weight: 800;
+    border: none;
+  }
+
+  .dock-model-badge.type-chat {
+    background: #e7f8f1;
+    color: #0b7c5b;
+  }
+
+  html[data-theme='dark'] .dock-model-badge.type-chat {
+    background: #12261f;
+    color: #6ee7b7;
+  }
+
+  .dock-model-status {
+    font-size: 10.5px;
   }
 
   .dock-unload-btn {

@@ -7,7 +7,10 @@
       class="mobile-nav-item"
       :class="{ active: isActiveNav(item.path, route.path) }"
     >
-      <span class="mobile-nav-icon" v-html="item.icon"></span>
+      <!-- Phone tier prefers the Aurora mockup glyph (2.2 stroke, see
+           lib/navigation.ts auroraIcon); API / settings have no aurora variant
+           and fall back to the shared sidebar icon, which already matches. -->
+      <span class="mobile-nav-icon" v-html="item.auroraIcon ?? item.icon"></span>
       <span class="mobile-nav-label">{{ t(item.labelKey) }}</span>
     </router-link>
   </nav>

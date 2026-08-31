@@ -20,6 +20,37 @@
       </div>
     </div>
 
+    <!-- ─── Phone tier (frame ⑰): source badges + section list ───
+         Each row navigates to /docs/:id where DocsReader.vue renders the
+         section. The desktop two-pane layout below stays in the DOM (hidden
+         via CSS on this tier) so the shared content pipeline keeps feeding
+         the badge pills. -->
+    <template v-if="isPhone">
+      <div class="srcbadges">
+        <span class="sb" :class="'sb-' + docSource">{{ sourceLabel }}</span>
+        <button class="sb sb-action" type="button" :disabled="refreshing" @click="refreshRemote">
+          {{ refreshing ? t('docs.refreshing') : t('docs.refresh') }}
+        </button>
+        <button class="sb sb-action sb-github" type="button" @click="openOnGithub">{{ t('docs.openOnGithub') }}</button>
+      </div>
+      <!-- Section rows: numbered grad-soft tile + title + chevron (Aurora
+           .docrow). The manifest carries no per-section descriptions, so the
+           mockup's desc line is omitted. -->
+      <nav class="doclist" :aria-label="t('docs.toc')">
+        <button
+          v-for="(section, index) in docSections"
+          :key="section.id"
+          type="button"
+          class="docrow"
+          @click="openSection(section.id)"
+        >
+          <span class="no">{{ String(index + 1).padStart(2, '0') }}</span>
+          <span class="docrow-t">{{ t(section.titleKey) }}</span>
+          <span class="ar" aria-hidden="true">›</span>
+        </button>
+      </nav>
+    </template>
+
     <div class="docs-layout">
       <!-- In-page section navigator: a sticky vertical list on wide screens,
            collapsing into a wrapping chip row on narrow ones (CSS only) -->
@@ -50,49 +81,53 @@
   </div>
 </template>
 
-<script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue'
-import { docSections, loadDocSection, type DocSectionId } from '../docs/manifest'
-import { renderMarkdown } from '../lib/markdown'
-import { handleLinkClick } from '../lib/linkHandler'
+<script lang="ts">
+import { computed, ref, watch, type ComputedRef, type Ref } from 'vue'
+import { loadDocSection, type DocSectionId } from '../docs/manifest'
 import { t, locale } from '../lib/i18n'
 import { LatestOnly } from '../lib/latestOnly'
 import { getRemoteDoc } from '../wails'
-import { DOCS_GITHUB_URLS, formatDocFetchedAt, resolveDocContent, type DocSourceState } from '../lib/remoteDocs'
-import { Browser } from '@wailsio/runtime'
+import { formatDocFetchedAt, resolveDocContent, type DocSourceState } from '../lib/remoteDocs'
 
-// Currently displayed section; defaults to the first entry of the manifest
-const activeSection = ref<DocSectionId>(docSections[0].id)
+/**
+ * Content pipeline for one docs section, shared by the desktop Docs page and
+ * the phone DocsReader (frames ⑰⑱ — this named export keeps the remote-first
+ * logic in exactly one place): the bundled text shows immediately, then a
+ * remote fetch (getRemoteDoc: online → backend disk cache) may seamlessly
+ * replace it. A LatestOnly sequence guards against a slow locale/section
+ * fetch overwriting a newer one; network trouble degrades to the bundled copy
+ * with a console warning, never an error UI. Reloads on section and locale
+ * change (immediate).
+ */
+export interface DocContentView {
+  content: Ref<string>
+  loading: Ref<boolean>
+  loadError: Ref<string>
+  docSource: Ref<DocSourceState>
+  fetchedAt: Ref<string>
+  sourceLabel: ComputedRef<string>
+  refreshing: Ref<boolean>
+  loadSection: () => Promise<void>
+  refreshRemote: () => Promise<void>
+}
 
-// Raw markdown of the active section; previous content stays visible (dimmed)
-// while a new section loads, so switching never flashes an empty pane
-const content = ref('')
-const loading = ref(false)
-const loadError = ref('')
+export function useDocContent(sectionId: Ref<DocSectionId>): DocContentView {
+  // Raw markdown of the active section; previous content stays visible
+  // (dimmed) while a new section loads, so switching never flashes an empty pane
+  const content = ref('')
+  const loading = ref(false)
+  const loadError = ref('')
+  // Source state of the displayed content (badge): which tier produced it —
+  // a successful network fetch, the backend's disk cache, or the bundled copy
+  const docSource = ref<DocSourceState>('bundled')
+  // RFC3339 fetchedAt of the cached content; the badge shows it for 'cached'
+  const fetchedAt = ref('')
+  const refreshing = ref(false)
 
-// Source state of the displayed content (badge): which tier produced it —
-// a successful network fetch, the backend's disk cache, or the bundled copy
-const docSource = ref<DocSourceState>('bundled')
-// RFC3339 fetchedAt of the cached content; the badge shows it for 'cached'
-const fetchedAt = ref('')
-const refreshing = ref(false)
-
-// Badge label per current state; the cached state carries the fetch time, or
-// falls back to the plain label when the timestamp is unavailable (a cached
-// file whose meta entry is missing) — never a dangling "· " separator
-const sourceLabel = computed(() => {
-  if (docSource.value === 'online') return t('docs.sourceOnline')
-  if (docSource.value === 'cached') {
-    const when = formatDocFetchedAt(fetchedAt.value)
-    return when !== '' ? t('docs.sourceCached', { time: when }) : t('docs.sourceCachedPlain')
-  }
-  return t('docs.sourceBundled')
-})
-
-// Race protection: a slow locale/section fetch must not overwrite a newer one.
-// Shared by the section load and the refresh button so either path discards
-// the other's stale response.
-const latest = new LatestOnly()
+  // Race protection: a slow locale/section fetch must not overwrite a newer one.
+  // Shared by the section load and the refresh action so either path discards
+  // the other's stale response.
+  const latest = new LatestOnly()
 
 async function loadSection(): Promise<void> {
   const seq = latest.begin()
@@ -102,7 +137,7 @@ async function loadSection(): Promise<void> {
   // pane's current text if the bundled asset itself failed — near-impossible)
   let bundled = ''
   try {
-    const md = await loadDocSection(activeSection.value, locale.value)
+    const md = await loadDocSection(sectionId.value, locale.value)
     if (!latest.isLatest(seq)) return
     bundled = md
     content.value = md
@@ -118,7 +153,7 @@ async function loadSection(): Promise<void> {
   // Network trouble is an expected state — swallowed here (console.warn), the
   // pane keeps the bundled text and the badge stays 'bundled'.
   try {
-    const remote = await getRemoteDoc(locale.value, activeSection.value)
+    const remote = await getRemoteDoc(locale.value, sectionId.value)
     if (!latest.isLatest(seq)) return
     const resolved = resolveDocContent(remote, bundled || content.value)
     content.value = resolved.text
@@ -139,7 +174,7 @@ async function refreshRemote(): Promise<void> {
   refreshing.value = true
   const seq = latest.begin()
   try {
-    const remote = await getRemoteDoc(locale.value, activeSection.value, true)
+    const remote = await getRemoteDoc(locale.value, sectionId.value, true)
     if (!latest.isLatest(seq)) return
     const resolved = resolveDocContent(remote, content.value)
     if (resolved.state !== 'bundled') {
@@ -154,15 +189,67 @@ async function refreshRemote(): Promise<void> {
   }
 }
 
+  // Reload on section switch and on language switch (content follows app language reactively)
+  watch([sectionId, locale], () => { void loadSection() }, { immediate: true })
+
+  // Badge label per current state; the cached state carries the fetch time, or
+  // falls back to the plain label when the timestamp is unavailable (a cached
+  // file whose meta entry is missing) — never a dangling "· " separator
+  const sourceLabel = computed(() => {
+    if (docSource.value === 'online') return t('docs.sourceOnline')
+    if (docSource.value === 'cached') {
+      const when = formatDocFetchedAt(fetchedAt.value)
+      return when !== '' ? t('docs.sourceCached', { time: when }) : t('docs.sourceCachedPlain')
+    }
+    return t('docs.sourceBundled')
+  })
+
+  return { content, loading, loadError, docSource, fetchedAt, sourceLabel, refreshing, loadSection, refreshRemote }
+}
+</script>
+
+<script setup lang="ts">
+import { nextTick } from 'vue'
+import { useRouter } from 'vue-router'
+import { docSections } from '../docs/manifest'
+import { renderMarkdown } from '../lib/markdown'
+import { handleLinkClick } from '../lib/linkHandler'
+import { DOCS_GITHUB_URLS } from '../lib/remoteDocs'
+import { Browser } from '@wailsio/runtime'
+import { usePlatform } from '../lib/platform'
+
+// Currently displayed section; defaults to the first entry of the manifest.
+// Content loading lives in useDocContent (plain <script> block above) — the
+// same pipeline the phone DocsReader imports for /docs/:id. On the phone tier
+// it keeps running behind the CSS-hidden desktop panes so the list's badge
+// pills report a real content tier (bundled / cached / online).
+const activeSection = ref<DocSectionId>(docSections[0].id)
+const {
+  content,
+  loading,
+  loadError,
+  docSource,
+  refreshing,
+  sourceLabel,
+  refreshRemote,
+} = useDocContent(activeSection)
+
+// Phone tier (frame ⑰): the section list replaces the two panes; rows push
+// /docs/:id where DocsReader renders the section.
+const platformState = usePlatform()
+const isPhone = computed(() => platformState.value.isMobile)
+const router = useRouter()
+
+function openSection(id: DocSectionId): void {
+  router.push(`/docs/${id}`)
+}
+
 // Escape hatch: open the current locale's docs directory on GitHub in the
 // system browser (Wails runtime), so the newest released tutorial is one
 // click away even when the remote fetch path is unavailable.
 function openOnGithub(): void {
   Browser.OpenURL(DOCS_GITHUB_URLS[locale.value])
 }
-
-// Reload on section switch and on language switch (content follows app language reactively)
-watch([activeSection, locale], () => { void loadSection() }, { immediate: true })
 
 // Rendered HTML via the shared markdown-it instance (html disabled — see template comment)
 const rendered = computed(() => renderMarkdown(content.value))
@@ -464,10 +551,10 @@ function selectSection(id: DocSectionId): void {
   }
 }
 
-/* ─── Phone (<=767px): single-column content with phone-density paddings; TOC
-       chips and header actions grow to touch size. Code blocks already scroll
-       horizontally inside themselves (.docs-content :deep(pre)), tables wrap
-       in the block's own padding — the page itself never overflows. ─── */
+/* ─── Phone (<=767px): the two-pane layout is replaced by the section list
+       (the .srcbadges/.doclist blocks below, v-if-gated on the platform
+       state). The desktop panes stay in the DOM (the shared content pipeline
+       keeps feeding the badge pills) but do not render. ─── */
 @media (max-width: 767px) {
   .docs-page {
     padding-bottom: 40px;
@@ -477,34 +564,136 @@ function selectSection(id: DocSectionId): void {
     padding-bottom: 20px;
   }
 
-  /* Phone heading = the design's 24px phone tier (same as Home's .greet-title
-     phone rule, same 1.2 line-height), so every page header block reads the
-     same height as the greeting */
   .page-title {
     font-size: 24px;
   }
 
-  .docs-header-actions {
-    flex-wrap: wrap;
-    gap: 8px;
+  /* Frame ⑰ has no subtitle and no header action buttons: the pills move
+     into the .srcbadges row, the panes give way to the section list */
+  .page-subtitle,
+  .docs-header-actions,
+  .docs-layout {
+    display: none;
   }
+}
 
-  .docs-action-btn {
-    min-height: 40px;
-    padding: 8px 14px;
-  }
+/* ─── Phone section list (frame ⑰) — the markup is v-if-gated on
+       platformState.isMobile, so these classes are inert on desktop tiers ─── */
+.srcbadges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px 14px;
+}
 
-  .docs-toc {
-    gap: 6px;
-  }
+.sb {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 800;
+  border-radius: 999px;
+  padding: 6px 12px;
+  background: var(--grad-soft);
+  color: #6d28d9;
+  border: none;
+  font-family: inherit;
+}
 
-  .toc-item {
-    min-height: 40px;
-    padding: 8px 14px;
-  }
+html[data-theme='dark'] .sb {
+  color: #c4b5fd;
+}
 
-  .docs-content {
-    padding: 16px 16px 24px;
-  }
+/* cached content: amber pill carrying the fetch time (mockup .sb.cache) */
+.sb-cached {
+  background: #fdf3e0;
+  color: #b45309;
+}
+
+html[data-theme='dark'] .sb-cached {
+  background: #2c2416;
+  color: #fcd34d;
+}
+
+/* bundled fallback: neutral pill */
+.sb-bundled {
+  background: var(--surface-2);
+  color: var(--text-secondary);
+}
+
+/* Action pills: surface island chips with a 44px hit target; the GitHub
+   pill is right-aligned (mockup margin-left:auto) */
+.sb-action {
+  min-height: 44px;
+  padding: 6px 16px;
+  background: var(--bg-secondary);
+  box-shadow: var(--shadow-island);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.sb-action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.sb-github {
+  margin-left: auto;
+}
+
+.doclist {
+  display: flex;
+  flex-direction: column;
+}
+
+.docrow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 44px;
+  text-align: left;
+  background: var(--bg-secondary);
+  border: none;
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-island);
+  padding: 15px 16px;
+  margin-bottom: 11px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.docrow .no {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  background: var(--grad-soft);
+  color: #6d28d9;
+  font-weight: 800;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+html[data-theme='dark'] .docrow .no {
+  color: #c4b5fd;
+}
+
+.docrow .docrow-t {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.docrow .ar {
+  margin-left: auto;
+  color: var(--text-dim);
+  font-size: 15px;
+  flex-shrink: 0;
 }
 </style>

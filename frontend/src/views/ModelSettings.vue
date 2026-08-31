@@ -2,11 +2,15 @@
   <div class="page">
     <div class="sticky-top">
       <div class="page-header">
-        <button class="back-btn" @click="router.back()">
+        <!-- Phone tier (frame ⑪ .mstop .bk) restyles this into a circular
+             icon-only island button; the aria-label keeps it announced once
+             the visible text label is hidden there. Desktop keeps the
+             "< 返回" text button. -->
+        <button class="back-btn" :aria-label="t('models.back')" @click="router.back()">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="15 18 9 12 15 6"/>
           </svg>
-          <span>{{ t('models.back') }}</span>
+          <span class="back-label">{{ t('models.back') }}</span>
         </button>
         <h1 class="page-title">{{ decodedModelName }}</h1>
         <p class="page-subtitle">{{ t('modelSettings.subtitle') }}</p>
@@ -79,8 +83,14 @@
       </div>
 
       <!-- Service running hint: the preset is generated at service start, so
-           saved parameters only apply after a restart -->
-      <div v-if="serverRunning" class="restart-note">{{ t('modelSettings.restartNote') }}</div>
+           saved parameters only apply after a restart. Phone tier (frame ⑪)
+           swaps the old ⚠ text prefix for a circled-! amber SVG icon. -->
+      <div v-if="serverRunning" class="restart-note">
+        <svg v-if="platformState.isMobile" class="note-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+          <circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.5"/>
+        </svg>
+        {{ t('modelSettings.restartNote') }}
+      </div>
     </div>
 
     <!-- Loading -->
@@ -99,7 +109,10 @@
         <div class="param-group">
           <h3 class="group-title">{{ t('modelSettings.groupBase') }}</h3>
           <div class="param-grid">
-            <div class="param">
+            <!-- param-frow marks plain input rows: the phone tier reflows them
+                 into the Aurora frame ⑪ .frow layout (label left, mono input
+                 right); select / toggle rows keep the stacked layout -->
+            <div class="param param-frow">
               <label class="param-field">
                 <span class="param-label">{{ t('modelSettings.threads') }}</span>
                 <input v-model.number="cfg.threads" type="number" min="-1" step="1" class="param-input" :placeholder="t('modelSettings.threadsPlaceholder')" />
@@ -120,21 +133,21 @@
               </label>
               <p class="param-hint">{{ t('modelSettings.gpuLayersHint') }}</p>
             </div>
-            <div class="param">
+            <div class="param param-frow">
               <label class="param-field">
                 <span class="param-label">{{ t('modelSettings.ctxSize') }}</span>
                 <input v-model.number="cfg.ctxSize" type="number" min="1" step="1" class="param-input" placeholder="4096" />
               </label>
               <p class="param-hint">{{ t('modelSettings.ctxSizeHint') }}</p>
             </div>
-            <div class="param">
+            <div class="param param-frow">
               <label class="param-field">
                 <span class="param-label">{{ t('modelSettings.batchSize') }}</span>
                 <input v-model.number="cfg.batchSize" type="number" min="1" step="1" class="param-input" placeholder="2048" />
               </label>
               <p class="param-hint">{{ t('modelSettings.batchSizeHint') }}</p>
             </div>
-            <div class="param">
+            <div class="param param-frow">
               <label class="param-field">
                 <span class="param-label">{{ t('modelSettings.ubatchSize') }}</span>
                 <input v-model.number="cfg.ubatchSize" type="number" min="1" step="1" class="param-input" placeholder="512" />
@@ -181,7 +194,7 @@
               </div>
               <p class="param-hint">{{ t('modelSettings.cpuMoeHint') }}</p>
             </div>
-            <div v-if="showOffload" class="param">
+            <div v-if="showOffload" class="param param-frow">
               <label class="param-field">
                 <span class="param-label">{{ t('modelSettings.nCpuMoe') }}</span>
                 <input v-model.number="cfg.nCpuMoe" type="number" min="0" step="1" class="param-input" :placeholder="t('modelSettings.nCpuMoePlaceholder')" />
@@ -232,6 +245,15 @@
             </div>
           </div>
         </div>
+
+        <!-- Phone tier (Aurora frame ⑫): live "参数速览" summary island at the
+             bottom of the memory tab — current form values plus the auto-tune
+             hardware basis. Desktop keeps the plain form (isMobile-gated DOM). -->
+        <div v-if="platformState.isMobile" class="summary-island">
+          <h4 class="summary-title">{{ t('modelSettings.summaryTitle') }}</h4>
+          <p class="summary-body">{{ summaryBody }}</p>
+          <p class="summary-sub">{{ summarySub }}</p>
+        </div>
       </div>
 
       <!-- Multi-GPU -->
@@ -251,14 +273,14 @@
               </label>
               <p class="param-hint">{{ t('modelSettings.splitModeHint') }}</p>
             </div>
-            <div class="param">
+            <div class="param param-frow">
               <label class="param-field">
                 <span class="param-label">{{ t('modelSettings.tensorSplit') }}</span>
                 <input v-model="cfg.tensorSplit" type="text" class="param-input" :placeholder="t('modelSettings.tensorSplitPlaceholder')" />
               </label>
               <p class="param-hint">{{ t('modelSettings.tensorSplitHint') }}</p>
             </div>
-            <div class="param">
+            <div class="param param-frow">
               <label class="param-field">
                 <span class="param-label">{{ t('modelSettings.mainGpu') }}</span>
                 <input v-model.number="cfg.mainGpu" type="number" min="0" step="1" class="param-input" placeholder="0" />
@@ -285,7 +307,7 @@
               </label>
               <p class="param-hint">{{ t('modelSettings.ropeScalingHint') }}</p>
             </div>
-            <div class="param">
+            <div class="param param-frow">
               <label class="param-field">
                 <span class="param-label">{{ t('modelSettings.ropeScale') }}</span>
                 <input v-model.number="cfg.ropeScale" type="number" min="0" step="0.5" class="param-input" placeholder="0" />
@@ -301,7 +323,7 @@
         <div class="param-group">
           <h3 class="group-title">{{ t('modelSettings.groupAdvanced') }}</h3>
           <div class="param-grid col-1">
-            <div class="param">
+            <div class="param param-frow">
               <label class="param-field">
                 <span class="param-label">{{ t('modelSettings.mmproj') }}</span>
                 <input v-model="cfg.mmproj" type="text" class="param-input" :placeholder="t('modelSettings.mmprojPlaceholder')" />
@@ -332,7 +354,7 @@
               </label>
               <p class="param-hint">{{ t('modelSettings.specTypeHint') }}</p>
             </div>
-            <div class="param">
+            <div class="param param-frow">
               <label class="param-field">
                 <span class="param-label">{{ t('modelSettings.specDraftNMax') }}</span>
                 <input v-model.number="cfg.specDraftNMax" type="number" min="0" step="1" class="param-input" placeholder="0" />
@@ -349,7 +371,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { getModelConfig, saveModelConfig, getServerStatus, tuneModelConfig, benchmarkModel } from '../wails'
+import { getModelConfig, saveModelConfig, getServerStatus, tuneModelConfig, benchmarkModel, getSystemInfo } from '../wails'
 import { t } from '../lib/i18n'
 import { tunedSummaryParams, tunedToastKey } from '../lib/modelTune'
 import { showGpuOffloadParam, showMultiGpuPanel, loadModeOptions as buildLoadModeOptions, usePlatform } from '../lib/platform'
@@ -478,8 +500,17 @@ const showOffload = computed(() => showGpuOffloadParam(platformState.value))
 const activeTab = ref('tab-base')
 
 /** Tabs visible on this platform: filters out the Multi-GPU tab where
-    splitting across devices is not a real capability. */
-const visibleTabs = computed(() => tabs.filter((tab) => tab.id !== 'tab-gpu' || showMultiGpu.value))
+    splitting across devices is not a real capability, and the Inference tab
+    where every param is GPU-offload-gated — on CPU-only platforms (Android)
+    that tab would render as an empty shell (frame ⑪: exactly 基础参数 /
+    内存·加载 / 长上下文 / 高级 there). */
+const visibleTabs = computed(() =>
+  tabs.filter(
+    (tab) =>
+      (tab.id !== 'tab-gpu' || showMultiGpu.value) &&
+      (tab.id !== 'tab-infer' || showOffload.value)
+  )
+)
 
 /** Current config (reactive), initialized from defaults + loaded values */
 const cfg = reactive<ModelConfig>({ ...defaults })
@@ -535,6 +566,36 @@ const specTypeOptions: SelectOption[] = [
   { value: '', label: t('modelSettings.specOff') },
   { value: 'draft-mtp', label: 'draft-mtp' },
 ]
+
+// ─── Phone summary island (frame ⑫ "参数速览") ────────────────────────────────
+// Live readout of the current form values (mirrors the auto-tune vocabulary:
+// empty cache types mean the backend default f16; the load-mode label comes
+// from the platform-filtered option list). The sub line names the hardware
+// basis from the system snapshot (RAM total + CPU/SoC model); when the probe
+// is unavailable it degrades to a generic line.
+const sysRamGb = ref(0)
+const sysCpuModel = ref('')
+
+const summaryBody = computed(() => {
+  const modeLabel = loadModeOptions.value.find((o) => o.value === cfg.loadMode)?.label || '—'
+  return t('modelSettings.summaryBody', {
+    ctx: cfg.ctxSize,
+    threads: cfg.threads,
+    ctk: cfg.cacheTypeK || 'f16',
+    ctv: cfg.cacheTypeV || 'f16',
+    mode: modeLabel,
+  })
+})
+
+const summarySub = computed(() => {
+  if (sysRamGb.value > 0 && sysCpuModel.value) {
+    return t('modelSettings.summarySubHardware', {
+      ram: `${Math.round(sysRamGb.value)}GB`,
+      soc: sysCpuModel.value,
+    })
+  }
+  return t('modelSettings.summarySubGeneric')
+})
 
 // ─── Tab definitions (6 categories, icons are inline stroke SVGs) ────────────────────────────
 const tabs = [
@@ -755,6 +816,12 @@ onMounted(async () => {
   try {
     const status = await getServerStatus()
     serverRunning.value = status.running
+  } catch {}
+  // Best-effort hardware snapshot for the phone summary island sub line
+  try {
+    const info = await getSystemInfo()
+    sysRamGb.value = Number(info?.memory?.totalGb) || 0
+    sysCpuModel.value = String(info?.cpu?.model || '')
   } catch {}
 })
 
@@ -1145,28 +1212,61 @@ onUnmounted(() => {
   outline-offset: 2px;
 }
 
-/* ─── Phone (<=767px): this standalone route (reachable outside the bottom
-       tab bar) keeps its back affordance as a 44px touch target; the six-tab
-       row scrolls horizontally inside its own container (never the page); the
-       tune/bench/reset/save action row wraps with touch-sized buttons; the
-       two-column parameter grid collapses to one column. ─── */
+/* ─── Phone (<=767px, Aurora frames ⑪⑫): the header becomes the mockup
+       .mstop — a 44px circular island back button (chevron only) in its own
+       row, then the model name at 17px/800 on a single ellipsized line, then
+       the 11.5px muted sub-line; the tab row becomes scrollable pill chips
+       (active = gradient); the four actions share ONE equal-flex row;
+       tune/bench results render as the green toast block; input rows reflow
+       into the .frow layout (label left, right-aligned mono input); the
+       memory tab gains the live "参数速览" summary island. ─── */
 @media (max-width: 767px) {
+  /* Frame ⑪ .mstop .bk: 44px circular surface button with the island shadow
+     (mockup .bk uses 36px; 44px keeps the app-wide touch-target floor) */
   .back-btn {
-    min-height: 44px;
-    padding: 10px 8px;
-    margin-bottom: 8px;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    margin-bottom: 10px;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--bg-card);
+    box-shadow: var(--shadow-island);
+    color: var(--text-secondary);
   }
 
-  /* Phone heading = the design's 24px phone tier (same as Home's .greet-title
-     phone rule, same 1.2 line-height): every page header block reads the same
-     height as the greeting. Long model names stay safe via word-break below. */
+  /* Icon-only on phone: the visible text label is hidden (the button's
+     aria-label keeps the accessible name) */
+  .back-btn .back-label {
+    display: none;
+  }
+
+  /* Frame ⑪ .mstop .t: 17px/800 model name, one line with an ellipsis so
+     long GGUF names cannot push the header band wider */
   .page-title {
-    font-size: 24px;
+    font-size: 17px;
+    font-weight: 800;
+    letter-spacing: -0.3px;
+    margin-bottom: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
+  /* Frame ⑪ .mstop .s: 11.5px muted sub-line ("模型推理参数") */
+  .page-subtitle {
+    font-size: 11.5px;
+    color: var(--text-muted);
+  }
+
+  /* Frame ⑪⑫ .mtabs: inactive = surface chips, active = gradient pill with
+     the purple glow; the row scrolls horizontally, never the page */
   .settings-tabs {
+    gap: 8px;
     overflow-x: auto;
     scrollbar-width: none;
+    border-bottom: none;
+    padding-bottom: 14px;
   }
 
   .settings-tabs::-webkit-scrollbar {
@@ -1175,16 +1275,33 @@ onUnmounted(() => {
 
   .tab-btn {
     flex-shrink: 0;
-    padding: 12px 14px;
+    padding: 8px 14px;
+    background: rgba(120, 124, 160, 0.12);
+    border: none;
+    border-bottom: none;
+    margin-bottom: 0;
+    border-radius: 999px;
+    color: var(--text-muted);
+    font-size: 12.5px;
+    font-weight: 700;
   }
 
+  .tab-btn .tab-icon {
+    display: none;
+  }
+
+  .tab-btn.active {
+    background: var(--grad);
+    color: #fff;
+    border-bottom-color: transparent;
+    box-shadow: 0 4px 12px rgba(124, 92, 246, 0.35);
+  }
+
+  /* Frame ⑪ .actbar: ONE row of 4 equal-flex buttons (radius 14, 13/700);
+     the feedback message rides its own wrapped line above */
   .settings-actions {
     flex-wrap: wrap;
     gap: 8px;
-  }
-
-  .action-msg {
-    flex-basis: 100%;
   }
 
   .action-spacer {
@@ -1193,18 +1310,174 @@ onUnmounted(() => {
 
   .btn-secondary,
   .btn-primary {
-    flex: 1 1 auto;
+    flex: 1 1 0;
+    min-width: 0;
     min-height: 44px;
-    padding: 10px 16px;
+    padding: 11px 0;
+    border: none;
+    border-radius: 14px;
+    font-size: 13px;
+    font-weight: 700;
+    text-align: center;
+    justify-content: center;
   }
 
-  .btn-primary {
+  .btn-secondary {
+    background: var(--hover-bg);
+    color: var(--text-secondary);
+  }
+
+  .btn-secondary:hover {
+    background: var(--overlay-8);
+  }
+
+  /* ✨ 一键调优: the row's leading gradient action */
+  .tune-btn {
+    background: var(--grad);
+    color: #fff;
+    box-shadow: 0 6px 14px rgba(124, 92, 246, 0.35);
+  }
+
+  .tune-btn:hover {
+    background: var(--grad);
+  }
+
+  /* 保存: gradient while dirty, neutral wash while disabled */
+  .btn-primary:not(:disabled) {
+    background: var(--grad);
+    color: #fff;
+    box-shadow: 0 5px 12px rgba(124, 92, 246, 0.35);
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    background: var(--grad);
+    opacity: 0.92;
+  }
+
+  .btn-primary:disabled {
+    background: var(--hover-bg);
+    color: var(--text-dim);
+    opacity: 1;
+  }
+
+  /* Frame ⑪ .toast: tune/bench results as the green block; errors keep the
+     red variant of the same shape */
+  .action-msg {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     flex-basis: 100%;
-    order: 1;
+    padding: 10px 14px;
+    border-radius: 12px;
+    background: #e7f8f1;
+    color: #0b7c5b;
+    font-size: 12px;
+    font-weight: 700;
   }
 
-  .param-grid {
-    grid-template-columns: 1fr;
+  html[data-theme='dark'] .action-msg {
+    background: #12261f;
+    color: #6ee7b7;
+  }
+
+  .action-err {
+    background: #fdecec;
+    color: #ef4444;
+  }
+
+  html[data-theme='dark'] .action-err {
+    background: #2c1a1f;
+    color: #f87171;
+  }
+
+  /* Frame ⑪ .frow / .formcard: hairline-separated rows; plain input rows
+     (.param-frow) reserve a 110px input zone and absolutely position the
+     field on the row's right, vertically centered */
+  .param-grid,
+  .param-grid.col-1 {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .param {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .param:last-child {
+    border-bottom: none;
+  }
+
+  .param-label {
+    margin-bottom: 0;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .param-hint {
+    margin-top: 2px;
+    font-size: 11.5px;
+  }
+
+  .param-frow {
+    position: relative;
+    padding-right: 122px;
+  }
+
+  .param-frow .param-input {
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 110px;
+    padding: 8px 12px;
+    text-align: right;
+    font-family: var(--font-mono);
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
+    border-radius: 12px;
+  }
+
+  /* Frame ⑫ summary island: live parameter readout + hardware basis sub */
+  .summary-island {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-island);
+    padding: 16px 18px;
+    margin-bottom: 16px;
+  }
+
+  .summary-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    margin: 0 0 8px;
+  }
+
+  .summary-body {
+    font-size: 12.5px;
+    line-height: 1.7;
+    color: var(--text-secondary);
+    margin: 0;
+  }
+
+  .summary-sub {
+    font-size: 11.5px;
+    color: var(--text-dim);
+    margin: 4px 0 0;
+  }
+
+  /* Frame ⑪ .notify: icon + text share one amber row */
+  .restart-note {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .restart-note .note-icon {
+    flex-shrink: 0;
   }
 
   .retry-btn {

@@ -19,7 +19,7 @@
         {{ searching ? t('downloads.searching') : t('downloads.search') }}
       </button>
       <button class="pill-btn ghost" @click="showTasksModal = true" :title="t('downloads.downloadTitle')">
-        {{ t('downloads.download') }}
+        {{ t('downloads.tasks') }}
         <span v-if="activeTaskCount > 0" class="task-badge">{{ activeTaskCount }}</span>
       </button>
     </div>
@@ -39,14 +39,24 @@
         <span class="dl-card-meta">
           <span v-if="task.sizeHuman && task.sizeHuman !== '0 B'" class="dl-size">{{ task.sizeHuman }}</span>
           <span v-if="etaText(task)" class="dl-eta">{{ etaText(task) }}</span>
-          <span class="dl-status" :class="'status-' + task.status">{{ statusMap[task.status] || task.status }}</span>
+          <!-- Frame ⑧ meta tail "… · 12.4 MB/s": while a transfer speed is
+               measurable the pinned card ends with the speed; the status word
+               is only the fallback. Desktop always keeps the status word. -->
+          <span v-if="speedTail(task)" class="dl-speed">{{ formatSpeed(task.speed) }}</span>
+          <span v-else class="dl-status" :class="'status-' + task.status">{{ statusMap[task.status] || task.status }}</span>
         </span>
       </button>
     </div>
 
-    <!-- Search results -->
+    <!-- Search results.
+         Header split is phone-tier DOM (Aurora frame ⑧): plain label left +
+         accent count right. Desktop/tablet keep the inline "(n)" form. -->
     <div v-if="searchResults.length > 0" class="results-section">
-      <h2 class="section-heading">{{ t('downloads.resultsTitle', { n: searchResults.length }) }}</h2>
+      <h2 v-if="!platformState.isMobile" class="section-heading">{{ t('downloads.resultsTitle', { n: searchResults.length }) }}</h2>
+      <div v-else class="section-head-row">
+        <h2 class="section-heading">{{ t('downloads.resultsLabel') }}</h2>
+        <span class="section-count">{{ t('downloads.resultsCount', { n: searchResults.length }) }}</span>
+      </div>
       <div class="results-grid">
         <div
           v-for="r in searchResults"
@@ -178,6 +188,7 @@ import { hasActiveTask, countActiveTasks, visibleTasks, activeTaskItems, finishe
 import { LimitedQueue } from '../lib/limitedQueue'
 import { searchQuery, searched, searchResults, modelSizes, HFResult } from '../lib/downloadsState'
 import { t } from '../lib/i18n'
+import { usePlatform } from '../lib/platform'
 
 interface DlTask {
   id: string
@@ -194,6 +205,10 @@ interface DlTask {
 }
 
 const router = useRouter()
+
+// Viewport tier gate: the phone-only results-header split (frame ⑧) swaps DOM
+// structure, so it must branch on the shared platform state, not a media query
+const platformState = usePlatform()
 
 const searching = ref(false)
 // Concurrency-limited queue for search cards' batched size requests
@@ -239,6 +254,13 @@ function etaText(task: DlTask): string {
   const secs = Math.round(remaining / task.speed)
   if (secs < 60) return t('downloads.etaSeconds', { n: secs })
   return t('downloads.etaMinutes', { n: Math.max(1, Math.round(secs / 60)) })
+}
+
+// Frame ⑧ pinned-card meta tail: on the phone tier a measurable transfer
+// speed closes the line (mockup "8.29 GB · 剩余约 6 分钟 · 12.4 MB/s");
+// otherwise — and on desktop always — the status word is the last segment.
+function speedTail(task: DlTask): boolean {
+  return platformState.value.isMobile && task.status === 'downloading' && task.speed > 0
 }
 
 function goToDetail(modelId: string) {
@@ -525,6 +547,13 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
 }
 
 .dl-eta {
+  font-weight: 600;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Frame ⑧ meta tail: live transfer speed, same muted voice as the ETA */
+.dl-speed {
   font-weight: 600;
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
@@ -929,30 +958,64 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
   margin: 0 0 8px;
 }
 
-/* ─── Phone (<=767px): single-column results, stacked toolbar, touch-sized
-       controls. The search input takes its own full-width row and the two
-       actions share the row below it; task action buttons grow to 44px.
-       Tablet (768..1099px) keeps the desktop two-column results grid but gets
-       wider cards automatically from the collapsed sidebar rail. ─── */
+/* ─── Phone (<=767px, Aurora frame ⑧): the search controls stay in ONE flex
+       row (pill input + 搜索 + 任务), result cards go single-column with the
+       whole card as the tap target, and the round download button grows to a
+       44px touch target. Tablet (768..1099px) keeps the desktop two-column
+       results grid but gets wider cards automatically from the collapsed
+       sidebar rail. ─── */
 @media (max-width: 767px) {
+  /* Single search row: input pill + both actions share one line (frame ⑧
+     .searchrow), so the input no longer takes its own wrapped row */
   .search-bar {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 8px;
     margin-bottom: 20px;
   }
 
+  /* Frame ⑧ .search: surface pill + island shadow only — no 1px border */
   .search-input-wrap {
-    flex: 1 1 100%;
+    flex: 1 1 auto;
+    border: none;
   }
 
   .search-input {
     min-height: 44px;
+    font-size: 13.5px;
   }
 
+  /* Frame ⑧ .gbtn: 13px/800 with the deeper purple glow */
   .pill-btn {
-    flex: 1;
+    flex: 0 0 auto;
     min-height: 44px;
     padding: 0 16px;
+    font-size: 13px;
+    font-weight: 800;
+    box-shadow: 0 8px 18px rgba(124, 92, 246, 0.4);
+  }
+
+  /* Frame ⑧ .gbtn.ghost: surface + island shadow, no border */
+  .pill-btn.ghost {
+    border: none;
+  }
+
+  /* Frame ⑧ .gbtn .nbadge: 17px red dot ringed by the page background,
+     tucked onto the button's corner */
+  .task-badge {
+    top: -5px;
+    right: -5px;
+    min-width: 17px;
+    height: 17px;
+    padding: 0 4px;
+    border: 2px solid var(--bg-primary);
+    border-radius: 999px;
+    background: #ef4444;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .dl-pinned {
@@ -961,6 +1024,64 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
 
   .dl-card {
     padding: 14px 16px;
+  }
+
+  /* Frame ⑧ .dlcard: mono filename, ink-bold percent, and one muted
+     "size · remaining · speed" meta line joined with separators (the status
+     word only substitutes for the speed while none is measurable) */
+  .dl-name {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .dl-pct {
+    color: var(--text-primary);
+    font-weight: 700;
+  }
+
+  .dl-card-meta {
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .dl-card-meta span + span::before {
+    content: '·';
+    margin: 0 6px;
+  }
+
+  .dl-status {
+    margin-left: 0;
+  }
+
+  /* Frame ⑧ results header: plain label left + accent count right (the
+     isMobile v-if swap in the template provides the two nodes) */
+  .section-head-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+
+  .section-heading {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-muted);
+    margin-bottom: 0;
+  }
+
+  .section-count {
+    color: #7c3aed;
+    font-size: 12px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  html[data-theme='dark'] .section-count {
+    color: #a78bfa;
   }
 
   /* Full-width result cards; the whole card is the tap target */
@@ -973,8 +1094,13 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
     min-height: 76px;
   }
 
-  .section-heading {
-    margin-bottom: 10px;
+  /* Frame ⑧ .dlbtn with a 44px hit: negative margins keep the card row's
+     38px visual rhythm around the larger circle (same technique as the
+     model-card gear button) */
+  .dl-round {
+    width: 44px;
+    height: 44px;
+    margin: -3px;
   }
 
   .task-btn {

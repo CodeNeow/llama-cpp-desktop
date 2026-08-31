@@ -81,9 +81,13 @@
               </svg>
               <template v-else>{{ idx + 1 }}</template>
             </span>
-            <span class="step-label">{{ t(ONBOARDING_LABELS[step.id]) }}</span>
+            <span class="step-text">
+              <span class="step-label">{{ t(ONBOARDING_LABELS[step.id]) }}</span>
+              <!-- Phone tier (Aurora .cstep .sd): muted per-step sub-description -->
+              <span v-if="platformState.isMobile" class="step-sub">{{ t(ONBOARDING_SUBS[step.id]) }}</span>
+            </span>
             <button v-if="!step.done" class="step-action" @click="goStep(step.route)">
-              {{ t('onboarding.goto') }}
+              {{ stepGoLabel(step.id) }}
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
               </svg>
@@ -97,7 +101,7 @@
            and the live decode speed with a CTA into the chat page. All values
            come from the live monitor / router / model probes — nothing here is
            hardcoded or invented. -->
-      <section class="island hero-card">
+      <section class="island hero-card" :class="{ off: !serviceRunning }">
         <span class="hero-tag" :class="{ off: !serviceRunning }">
           <span class="tag-dot"></span>
           {{ serviceRunning ? t('home.hero.tagReady') : t('home.hero.tagOffline') }}
@@ -119,7 +123,7 @@
         <section class="island mini">
           <div class="mini-lbl">{{ t('home.memory') }}</div>
           <div class="mini-main">
-            <div class="mini-val">{{ memoryValUsed }}<small> / {{ memoryValTotal }} GB</small></div>
+            <div class="mini-val"><span class="mini-num">{{ memoryValUsed }}</span><small> / {{ memoryValTotal }} GB</small></div>
             <svg
               class="ring"
               viewBox="0 0 46 46"
@@ -138,7 +142,7 @@
         <section class="island mini">
           <div class="mini-lbl">{{ t('home.cpu') }}</div>
           <div class="mini-main">
-            <div class="mini-val">{{ cpuVal }}<small> %</small></div>
+            <div class="mini-val"><span class="mini-num">{{ cpuVal }}</span><small> %</small></div>
             <svg
               class="ring"
               viewBox="0 0 46 46"
@@ -189,7 +193,9 @@
           </div>
           <div class="brick">
             <span class="brick-lbl">{{ t('home.storage.llamacpp') }}</span>
-            <b class="brick-val" :title="llamacppBrick">{{ llamacppBrick }}</b>
+            <!-- Phone tier (Aurora frame ①): the "not installed" brick reads
+                 amber in the first-use state -->
+            <b class="brick-val" :class="{ warn: !runtimeInstalled }" :title="llamacppBrick">{{ llamacppBrick }}</b>
           </div>
         </div>
       </section>
@@ -210,6 +216,8 @@
             <i>{{ typeLabel(m.type) }}</i>
             <i v-if="residentQuant(m)">{{ residentQuant(m) }}</i>
             <i v-if="residentSize(m)">{{ residentSize(m) }}</i>
+            <!-- Phone tier (Aurora .mt i.src-g): trailing green source pill -->
+            <i v-if="platformState.isMobile" class="resident-chip">{{ t('home.residentBadge') }}</i>
           </div>
           <div v-if="unloadErrors[m.id]" class="mcard-error">
             {{ t('dock.unloadFailed', { msg: unloadErrors[m.id] }) }}
@@ -424,6 +432,27 @@ const ONBOARDING_LABELS: Record<OnboardingStepId, string> = {
   runtime: 'onboarding.step.runtime',
   models: 'onboarding.step.models',
   service: 'onboarding.step.service'
+}
+
+// Phone-tier muted sub-descriptions (Aurora .cstep .sd), rendered only on the
+// phone tier where the checklist matches the mockup layout
+const ONBOARDING_SUBS: Record<OnboardingStepId, string> = {
+  runtime: 'onboarding.sub.runtime',
+  models: 'onboarding.sub.models',
+  service: 'onboarding.sub.service'
+}
+
+// Phone-tier per-step go-link labels (Aurora .cstep .go); the desktop button
+// keeps the single generic label
+const ONBOARDING_GOTOS: Record<OnboardingStepId, string> = {
+  runtime: 'onboarding.goto.runtime',
+  models: 'onboarding.goto.models',
+  service: 'onboarding.goto.service'
+}
+
+/** Go-link label for one checklist step: per-step copy on phone, generic on desktop. */
+function stepGoLabel(id: OnboardingStepId): string {
+  return platformState.value.isMobile ? t(ONBOARDING_GOTOS[id]) : t('onboarding.goto')
 }
 
 const info = ref<SystemInfo>({
@@ -1604,15 +1633,16 @@ onUnmounted(() => {
   }
 }
 
-/* ─── Phone (<=767px): checklist rows and the unload button grow to 44px
-       touch targets; the elastic grid is already single-column. ─── */
+/* ─── Phone (<=767px): Aurora mockup frames ①/②. Checklist becomes the
+       mockup .check card (13px title, dashed separators, 26px markers, muted
+       sub-lines, bare bold go-links), the offline hero gets the mockup gray
+       gradient, minis + hero drop to the 22px --r-md radius, resident card
+       tiles shrink to 42px/13px with the accent stroke and gain the green
+       "resident" source pill, the uninstalled llama.cpp brick reads amber and
+       metric digits render in the mono face. Touch targets stay ≥44px. ─── */
 @media (max-width: 767px) {
   .onboarding-step {
     min-height: 44px;
-  }
-
-  .step-action {
-    padding: 10px 14px;
   }
 
   .onboarding-dismiss {
@@ -1625,6 +1655,159 @@ onUnmounted(() => {
 
   .unload-btn {
     min-height: 44px;
+  }
+
+  /* ── Checklist (mockup .check / .cstep) ── */
+  .onboarding-head .section-title {
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .onboarding-steps {
+    gap: 0;
+  }
+
+  .onboarding-step {
+    padding: 10px 0;
+    border-bottom: 1px dashed var(--border);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .onboarding-step:last-child {
+    border-bottom: none;
+    padding-bottom: 2px;
+  }
+
+  .step-marker {
+    width: 26px;
+    height: 26px;
+    border: none;
+    background: var(--overlay-8);
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .step-text {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .step-sub {
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--text-dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Go-link: mockup .cstep .go — bare bold accent text, no filled chip */
+  .step-action {
+    min-height: 44px;
+    padding: 10px 0 10px 12px;
+    background: transparent;
+    border-radius: 8px;
+    color: #7c3aed;
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .step-action:hover {
+    background: transparent;
+  }
+
+  .step-action svg {
+    display: none;
+  }
+
+  html[data-theme='dark'] .step-action {
+    color: #a78bfa;
+  }
+
+  /* ── Hero (mockup .hero / .hero.off) ── */
+  .hero-card {
+    border-radius: var(--r-md);
+  }
+
+  .hero-card.off {
+    background: linear-gradient(135deg, #4b5069 0%, #6b7186 60%, #8b90a5 100%);
+    box-shadow: 0 14px 34px rgba(70, 74, 100, 0.3);
+  }
+
+  .hero-card.off .tag-dot {
+    background: #cbd0e0;
+    box-shadow: none;
+  }
+
+  /* Metric digits in the mono face (mockup .num / .val numerals) */
+  .hero-num {
+    font-family: var(--font-mono);
+  }
+
+  /* ── Mini cards (mockup .mini: --r-md radius) ── */
+  .mini {
+    border-radius: var(--r-md);
+  }
+
+  .mini-val {
+    font-family: var(--font-mono);
+    /* Frame ② .mini .val: number + unit share one line and the unit must
+       survive intact ("6.9 /16 GB" both visible). Flex layout makes the
+       <small> unit non-shrinking; the number shrinks/ellipsizes first when
+       space runs out instead of the unit being cut mid-glyph. */
+    display: flex;
+    align-items: baseline;
+    min-width: 0;
+    /* Slightly smaller digits + tighter gap than desktop (frame ② proportions:
+       "16.5 / 16 GB" fits the 390px card next to the 46px ring) */
+    font-size: 19px;
+  }
+
+  .mini-num {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mini-val small {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+  .mini-main {
+    gap: 6px;
+  }
+
+  /* ── Resident model card (mockup .mcard tile + .src-g pill) ── */
+  .mcard .tile {
+    width: 42px;
+    height: 42px;
+    border-radius: 13px;
+    color: #7c3aed;
+  }
+
+  html[data-theme='dark'] .mcard .tile {
+    color: #a78bfa;
+  }
+
+  .mcard-chips i.resident-chip {
+    background: #e7f8f1;
+    color: #0b7c5b;
+  }
+
+  html[data-theme='dark'] .mcard-chips i.resident-chip {
+    background: #12261f;
+    color: #6ee7b7;
+  }
+
+  /* ── Storage island: uninstalled llama.cpp brick reads amber ── */
+  .brick-val.warn {
+    color: var(--warning);
   }
 }
 

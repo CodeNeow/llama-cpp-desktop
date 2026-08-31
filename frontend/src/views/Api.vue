@@ -13,7 +13,7 @@
       <section class="api-hero">
         <div class="hero-status-row">
           <span class="pulse-dot" :class="{ on: serverRunning }"></span>
-          <span class="hero-status-text">{{ serverRunning ? t('api.running') : t('api.stopped') }}</span>
+          <span class="hero-status-text" :class="{ off: !serverRunning }">{{ serverRunning ? t('api.running') : t('api.stopped') }}</span>
           <span v-if="serverRunning && status.uptimeSeconds > 0" class="hero-uptime">
             {{ formatUptime(status.uptimeSeconds, locale) }}
             <span class="hero-uptime-label">{{ t('monitor.uptimeLabel') }}</span>
@@ -39,13 +39,17 @@
         </button>
 
         <!-- Generation speed: gradient area chart (frame ④ chart-wrap) fed by
-             the existing 60s decode sampling chain. Stopped state ghosts the
-             data (visibility, not display) so the card height never shifts. -->
+             the existing 60s decode sampling chain. Stopped state: the phone
+             tier ghosts the block at 45% ink and swaps the chart for a dashed
+             baseline with a "— tok/s" value (frame ⑭ .ghosted); desktop keeps
+             the visibility-hidden ghost — either way the card height never
+             shifts. -->
         <div class="hero-speed">
           <div class="speed-head">
             <span class="speed-label">{{ t('api.speedLabel') }}</span>
             <span class="speed-value" :class="{ 'tps-ghost': !status.serverRunning }" :aria-hidden="!status.serverRunning">
-              {{ decodeTpsText }} <small>tok/s</small>
+              <template v-if="status.serverRunning">{{ decodeTpsText }} <small>tok/s</small></template>
+              <template v-else>{{ t('monitor.noSpeed') }}</template>
             </span>
           </div>
           <div class="speed-chart" :class="{ 'tps-ghost': !status.serverRunning }" :aria-hidden="!status.serverRunning">
@@ -60,9 +64,10 @@
                   <stop offset="100%" stop-color="#a855f7"/>
                 </linearGradient>
               </defs>
-              <path class="speed-area" :d="decodeAreaPath" />
-              <path class="speed-line" :d="decodeLinePath" />
-              <circle v-if="decodeEndDot" class="speed-dot" :cx="decodeEndDot.x" :cy="decodeEndDot.y" r="4" />
+              <line v-if="!status.serverRunning" class="speed-baseline" x1="0" :y1="chartHeight / 2" :x2="chartWidth" :y2="chartHeight / 2" />
+              <path v-if="status.serverRunning" class="speed-area" :d="decodeAreaPath" />
+              <path v-if="status.serverRunning" class="speed-line" :d="decodeLinePath" />
+              <circle v-if="status.serverRunning && decodeEndDot" class="speed-dot" :cx="decodeEndDot.x" :cy="decodeEndDot.y" r="4" />
             </svg>
           </div>
           <div class="speed-meta" :class="{ 'tps-ghost': !status.serverRunning }" :aria-hidden="!status.serverRunning">
@@ -108,22 +113,30 @@
           </svg>
         </button>
 
-        <!-- Server parameters popover (anchored to the action row) -->
+        <!-- Phone bottom-sheet scrim (frame ⑮ .dim); display:none on >=768px -->
+        <div v-if="showCfg" class="cfg-dim"></div>
+        <!-- Server parameters: popover anchored to the action row (desktop) /
+             bottom sheet (phone, frame ⑮). Same fields, same 500ms debounced
+             silent save, same disabled-while-running lock on both tiers. -->
         <div v-if="showCfg" class="cfg-popover" @click.stop>
-          <div class="cfg-popover-title">{{ t('api.settings') }}</div>
-          <div class="cfg-item">
-            <label>{{ t('api.cfgPort') }}</label>
+          <div class="cfg-grab"></div>
+          <div class="cfg-popover-title cfg-title-desktop">{{ t('api.settings') }}</div>
+          <div class="cfg-popover-title cfg-title-phone">{{ t('api.serviceSettings') }}</div>
+          <div v-if="serverRunning" class="cfg-locked-sheet">{{ t('api.cfgLockedSheet') }}</div>
+          <div class="cfg-item" :class="{ locked: serverRunning }">
+            <label>{{ t('api.cfgPort') }}<small class="cfg-item-sub">{{ t('api.cfgPortSub') }}</small></label>
             <input v-model.number="cfg.port" type="number" min="1024" max="65535" step="1" class="cfg-input cfg-num" :disabled="serverRunning" />
           </div>
-          <div class="cfg-item">
-            <label>{{ t('api.cfgMaxModels') }}</label>
+          <div class="cfg-item" :class="{ locked: serverRunning }">
+            <label>{{ t('api.cfgMaxModels') }}<small class="cfg-item-sub">{{ t('api.cfgMaxModelsSub') }}</small></label>
             <input v-model.number="cfg.maxModels" type="number" min="1" step="1" class="cfg-input cfg-num" :disabled="serverRunning" />
           </div>
-          <div class="cfg-item">
-            <label>{{ t('api.cfgCacheRam') }}</label>
+          <div class="cfg-item" :class="{ locked: serverRunning }">
+            <label>{{ t('api.cfgCacheRam') }}<small class="cfg-item-sub">{{ t('api.cfgCacheRamSub') }}</small></label>
             <input v-model.number="cfg.cacheRam" type="number" min="0" step="1" class="cfg-input cfg-num" :disabled="serverRunning" placeholder="8192" />
           </div>
           <div v-if="serverRunning" class="cfg-locked-hint">{{ t('api.cfgLockedHint') }}</div>
+          <button type="button" class="cfg-done" @click="showCfg = false">{{ t('api.done') }}</button>
         </div>
       </div>
     </div>
@@ -131,30 +144,50 @@
     <!-- Main area: scrollable band with the available-models island (frame ④)
          above the terminal-style log console -->
     <div class="page-scroll">
-      <!-- Available models (frame ④ island): static chips on a neutral surface -->
+      <!-- Available models (frame ④ island → ⑬ chips): chips are real buttons —
+           tapping a non-active chip loads that model; the loaded model's chip
+           wears the active gradient + "●" marker (phone tier per frames) -->
       <section class="models-island">
         <div class="island-head">
           <span class="island-title">{{ t('api.modelsHeading') }}</span>
           <span class="island-more">{{ t('api.modelsMore', { n: modelCount }) }}</span>
         </div>
         <div v-if="modelCount > 0" class="model-chips">
-          <span v-for="m in availableModels" :key="m" class="model-chip">{{ m }}</span>
+          <button
+            v-for="m in availableModels"
+            :key="m"
+            type="button"
+            class="model-chip"
+            :class="{ active: m === activeModelName }"
+            :disabled="switchingModel"
+            @click="loadModel(m)"
+          >{{ m === activeModelName && platform.isMobile ? `● ${m}` : m }}</button>
         </div>
-        <span v-else class="empty-hint">
+        <span v-if="modelCount === 0" class="empty-hint">
           {{ t('api.emptyHint') }}
           <button class="empty-cta" @click="goDownloads">{{ t('action.gotoDownloads') }}</button>
         </span>
+        <!-- Phone empty state (frame ⑭): centered emptycard pattern; the
+             desktop inline hint above keeps the >=768px rendering -->
+        <div v-if="modelCount === 0" class="emptycard api-empty-card">
+          <div class="ico">📦</div>
+          <b>{{ t('api.emptyTitle') }}</b>
+          <p>{{ t('api.emptySub') }}</p>
+          <button type="button" class="cta" @click="goDownloads">{{ t('action.gotoDownloads') }}</button>
+        </div>
       </section>
 
-      <!-- Service log: terminal-dark console (unchanged) inside a floating
-           island; the clear button stays as the log-toolbar equivalent -->
-      <section class="log-panel">
+      <!-- Service log (frame ⑬ .logbox on phone): terminal-dark console inside
+           a floating island; the footer link toggles the phone console between
+           compact preview and expanded height -->
+      <section class="log-panel" :class="{ 'log-expanded': logExpanded }">
         <div class="panel-header">
           <span class="panel-title">{{ t('api.logTitle') }}</span>
           <button v-if="serverLog.length" class="log-clear-btn" @click="clearLog">{{ t('api.logClear') }}</button>
         </div>
         <div v-if="serverLog.length" class="console-log" ref="logEl">
-          <div v-for="(line, i) in serverLog" :key="i" class="console-line">{{ line }}</div>
+          <div v-for="(line, i) in serverLog" :key="i" class="console-line" :class="logLineClass(line)">{{ line }}</div>
+          <button type="button" class="log-more-btn" @click="logExpanded = !logExpanded">{{ t('api.logMore') }}</button>
         </div>
         <div v-else class="console-empty">{{ t('api.logEmpty') }}</div>
       </section>
@@ -165,9 +198,11 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { getMonitorStatus, getModels, getServerConfig, getServerLogsSince, getServerStatus, refreshModels, saveServerConfig, startServer, stopServer } from '../wails'
+import { getLoadedModels, getMonitorStatus, getModels, getServerConfig, getServerLogsSince, getServerStatus, refreshModels, saveServerConfig, startServer, startServerWithModel, stopServer, unloadModel } from '../wails'
 import { applyFullLogFetch, appendLogEntries, type ServerLogEntry } from '../lib/serverLog'
+import { modelsToUnload } from '../lib/chat'
 import { appendHistory, chartPoints, formatPromptTps, formatUptime, type MonitorStatus } from '../lib/monitor'
+import { usePlatform } from '../lib/platform'
 import { locale, t } from '../lib/i18n'
 
 const serverRunning = ref(false)
@@ -179,6 +214,17 @@ let logCursor = 0
 const logEl = ref<HTMLElement | null>(null)
 // Disable all buttons during start/stop/restart to prevent double-clicks
 const busy = ref(false)
+
+// Viewport tier: drives the phone chart geometry and the chip "●" marker
+const platform = usePlatform()
+// Loaded router models (1s poll; empty while stopped / router unreachable):
+// powers the active model chip (frame ⑬ "● model") and the switch unload list
+const loadedModels = ref<{ id: string; status: string }[]>([])
+const activeModelName = computed(() => loadedModels.value.find((m) => m.status === 'loaded')?.id ?? '')
+// Chip-tap model switch in flight (disables the chips)
+const switchingModel = ref(false)
+// Phone log console: compact preview ⇄ expanded height (frame ⑬ footer link)
+const logExpanded = ref(false)
 
 const router = useRouter()
 
@@ -218,8 +264,12 @@ const status = ref<MonitorStatus>({
 // Decode speed history: appended on 1s polling, keeps latest 60 samples
 // (appendHistory default cap=60); rendered as the frame ④ gradient area chart
 const decodeHistory = ref<number[]>([])
-const chartWidth = 560
-const chartHeight = 96
+// Chart geometry: desktop keeps the original 560×96 viewBox (unchanged
+// rendering); the phone tier retargets to the Aurora frame ⑬ 4:1 proportions
+// (320×80). Tier-reactive so crossing the 767px breakpoint re-projects the
+// same 60-sample history.
+const chartWidth = computed(() => (platform.value.isMobile ? 320 : 560))
+const chartHeight = computed(() => (platform.value.isMobile ? 80 : 96))
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
@@ -227,7 +277,7 @@ const promptTpsText = computed(() => formatPromptTps(status.value.promptTps))
 
 const decodeTpsText = computed(() => status.value.decodeTps.toFixed(1))
 
-const decodePoints = computed(() => chartPoints(decodeHistory.value, chartWidth, chartHeight))
+const decodePoints = computed(() => chartPoints(decodeHistory.value, chartWidth.value, chartHeight.value))
 
 // Frame ④ area chart: the sampled polyline (chartPoints) is re-expressed as
 // SVG paths — a gradient stroke line, a gradient-filled area closed down to
@@ -239,7 +289,7 @@ const decodeLinePath = computed(() => {
 
 const decodeAreaPath = computed(() => {
   const line = decodeLinePath.value
-  return line ? `${line} L ${chartWidth},${chartHeight} L 0,${chartHeight} Z` : ''
+  return line ? `${line} L ${chartWidth.value},${chartHeight.value} L 0,${chartHeight.value} Z` : ''
 })
 
 const decodeEndDot = computed<{ x: number; y: number } | null>(() => {
@@ -277,6 +327,13 @@ async function fetchMonitorStatus() {
     decodeHistory.value = appendHistory(decodeHistory.value, s.decodeTps)
   } catch {
     // Polling failure: silently keep previous data, don't disrupt monitor display
+  }
+  // Loaded-router poll for the model chips: the binding returns [] while the
+  // service is stopped; a query failure just keeps the previous list
+  try {
+    loadedModels.value = await getLoadedModels()
+  } catch {
+    loadedModels.value = []
   }
 }
 
@@ -468,6 +525,57 @@ async function doRestart() {
 // lines keep streaming in with the next polls.
 function clearLog() {
   serverLog.value = []
+}
+
+// Log line level → console color class (phone logbox, frame ⑬). The backend
+// ring carries raw llama-server text without structured levels, so classify
+// by the line's own tag: [ERROR] / "error:" → error, [WARN] / "warn(ing):" →
+// warn, [OK] → ok, everything else → info.
+function logLineClass(line: string): string {
+  if (/\[ERROR\]|error:/i.test(line)) return 'lv-error'
+  if (/\[WARN\]|warning?:/i.test(line)) return 'lv-warn'
+  if (/\[OK\]/i.test(line)) return 'lv-ok'
+  return 'lv-info'
+}
+
+// Chip-tap model switch (frame ⑬ chips are real buttons). Stopped → rescan
+// presets and start the service for that model. Running → StartServerWithModel
+// is a no-op on desktop when the server is already up (bridge.go router mode),
+// so Chat's deterministic single-model memory runs after it: unload every
+// OTHER loaded model (best effort) so the tapped chip's model is the only
+// resident and lazy-loads on the next request. On Android (direct mode) the
+// backend itself restarts the service with the tapped model. Errors land in
+// the log console exactly like start/stop failures.
+async function loadModel(m: string) {
+  if (switchingModel.value || m === activeModelName.value) return
+  switchingModel.value = true
+  try {
+    if (!serverRunning.value) {
+      await refreshModels()
+      await startServerWithModel(m)
+    } else {
+      await startServerWithModel(m)
+      if (!platform.value.isAndroid) {
+        try {
+          const loaded = await getLoadedModels()
+          for (const id of modelsToUnload(loaded, m)) {
+            try {
+              await unloadModel(id)
+            } catch {
+              // Best-effort: an unload failure must not block the switch
+            }
+          }
+        } catch {
+          // Router unreachable: the switch attempt itself already reported
+        }
+      }
+    }
+  } catch (e) {
+    serverLog.value.push(t('api.toggleFailed', { msg: e instanceof Error ? e.message : String(e) }))
+  } finally {
+    switchingModel.value = false
+    setTimeout(checkServerStatus, 500)
+  }
 }
 </script>
 
@@ -693,6 +801,19 @@ function clearLog() {
   fill: #8b5cf6;
 }
 
+/* Stopped-state dashed baseline (frame ⑭ .ghosted chart): rendered instead of
+   the data chart; on desktop it sits inside the hidden ghost, on phone inside
+   the 45% ghost — both keep the card height reserved */
+.speed-baseline {
+  stroke: #c9cdde;
+  stroke-width: 2;
+  stroke-dasharray: 4 6;
+}
+
+html[data-theme='dark'] .speed-baseline {
+  stroke: #3a4152;
+}
+
 .speed-meta {
   display: flex;
   justify-content: space-between;
@@ -702,8 +823,10 @@ function clearLog() {
   color: var(--text-dim);
 }
 
-/* visibility (not display) keeps the stopped state reserving exactly the
-   running state's space, so the hero height never shifts on start/stop */
+/* Desktop: visibility (not display) keeps the stopped state reserving exactly
+   the running state's space, so the hero height never shifts on start/stop.
+   The phone tier re-shows the ghost at 45% opacity instead (frame ⑭ .ghosted)
+   — same reserved space, visible ghost. */
 .tps-ghost {
   visibility: hidden;
 }
@@ -862,6 +985,20 @@ function clearLog() {
   text-align: center;
 }
 
+/* Phone-only chrome for the settings bottom sheet / log footer / empty card:
+   hidden at every other tier (shown inside the <=767px block below) so the
+   desktop DOM additions never render */
+.cfg-dim,
+.cfg-grab,
+.cfg-title-phone,
+.cfg-locked-sheet,
+.cfg-item-sub,
+.cfg-done,
+.log-more-btn,
+.api-empty-card {
+  display: none;
+}
+
 /* ─── Scrollable content band: available-models island above the log island ─── */
 .page-scroll {
   flex: 1;
@@ -914,6 +1051,9 @@ function clearLog() {
 }
 
 .model-chip {
+  /* Chip is a <button> (tap-to-load); font-family: inherit keeps the desktop
+     rendering identical to the former <span> (buttons default to the UA font) */
+  font-family: inherit;
   font-size: 12px;
   font-weight: 600;
   background: var(--hover-bg);
@@ -1068,64 +1208,340 @@ function clearLog() {
   .log-panel { padding: 10px 14px; min-height: 300px; }
 }
 
-/* ─── Phone (<=767px): the hero and the single primary action adapt to the
-       thumb — the big button spans the row at 44px+ and the icon buttons stay
-       square; the log console scrolls inside its own bounded band (12px mono).
-       Server params popover must never exceed the viewport. ─── */
+/* ─── Phone (<=767px): Aurora frames ⑬⑭⑮ — hero with mono speed digits over a
+       4:1 chart, soft stop button, real model chips (44px, active = gradient),
+       emptycard no-models state, one dark logbox with level colors and a
+       compact/expanded footer toggle, and the server-params bottom sheet.
+       Desktop (>=768px) is untouched by this whole block. ─── */
 @media (max-width: 767px) {
   /* Phone heading = the design's 24px phone tier (same as Home's .greet-title
-     phone rule, same 1.2 line-height), so every page header block reads the
-     same height as the greeting */
+     phone rule, same 1.2 line-height), weight 800 per the Aurora greeting */
   .page-title {
     font-size: 24px;
+    font-weight: 800;
+  }
+
+  /* Frame ⑬ header: small muted subtitle line */
+  .page-subtitle {
+    font-size: 11.5px;
+    color: var(--text-muted);
   }
 
   .api-hero {
     padding: 14px 16px;
   }
 
+  /* Stopped state (frame ⑭): static gray dot + static gray ring, secondary
+     ink for the state text */
+  .pulse-dot {
+    background: #c3c7d8;
+  }
+
+  .pulse-dot:not(.on)::before {
+    content: "";
+    position: absolute;
+    inset: -5px;
+    border-radius: 50%;
+    border: 2px solid var(--text-muted);
+    opacity: 0.3;
+  }
+
+  .hero-status-text.off {
+    color: var(--text-secondary);
+  }
+
+  .hero-uptime {
+    background: var(--surface-2);
+  }
+
+  /* Endpoint chip (frame ⑬ .chip-http): surface-2 fill, violet copy icon */
   .hero-address {
+    background: var(--surface-2);
+    border-color: transparent;
+    padding: 11px 14px;
     font-size: 12px;
+  }
+
+  .address-copy-icon {
+    color: #7c3aed;
+  }
+
+  html[data-theme='dark'] .address-copy-icon {
+    color: #c4b5fd;
+  }
+
+  /* Stopped ghost at 45% ink instead of hidden (frame ⑭ .ghosted) */
+  .tps-ghost {
+    visibility: visible;
+    opacity: 0.45;
+  }
+
+  /* Speed readout: mono digits (frame ⑬ big value) */
+  .speed-value {
+    font-family: var(--font-mono);
+  }
+
+  .speed-value small {
+    font-family: var(--font-sans);
+  }
+
+  /* Chart retargeted to the mockup's 4:1 box (320×80 viewBox + 12px margins) */
+  .speed-chart svg {
+    aspect-ratio: 332 / 92;
+  }
+
+  /* Stopped state shows the dashed baseline, not the placeholder overlay */
+  .speed-placeholder {
+    display: none;
   }
 
   .action-row {
     gap: 8px;
   }
 
-  /* The big action spans the row; nowrap keeps the zh labels intact */
+  /* The big action spans the row; nowrap keeps the zh labels intact.
+     Ghost icon squares keep the desktop 54x54 radius-20 shape (frame ⑬
+     .btn.ghost) — the row still fits. */
   .primary-btn {
     min-height: 44px;
     white-space: nowrap;
   }
 
-  .ghost-icon {
-    flex: 0 0 44px;
-    width: 44px;
-    border-radius: 16px;
+  /* Stop button (frame ⑬ .btn.danger): soft red fill + red ink, no border */
+  .primary-btn.danger {
+    border: none;
+    background: var(--danger-bg);
+    color: var(--danger);
   }
 
-  .cfg-popover {
-    width: min(300px, calc(100vw - 32px));
-  }
-
+  /* Models island (frame ⑬): real 44px chips on surface-2; the loaded model's
+     chip rides the soft gradient with the deep-violet ink and a "●" marker */
   .models-island {
     padding: 14px 16px;
   }
 
+  .model-chips {
+    max-height: none;
+    overflow-y: visible;
+  }
+
+  .model-chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 10px 15px;
+    background: var(--surface-2);
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+
+  .model-chip.active {
+    background: var(--grad-soft);
+    color: #6d28d9;
+    font-weight: 700;
+  }
+
+  html[data-theme='dark'] .model-chip.active {
+    color: #c4b5fd;
+  }
+
+  .model-chip:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  /* Empty models (frame ⑭): centered emptycard pattern replaces the inline
+     hint */
+  .empty-hint {
+    display: none;
+  }
+
+  .api-empty-card {
+    display: block;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 14px 0 6px;
+  }
+
+  /* Log console (frame ⑬ .logbox): ONE dark card in both themes with the
+     header row inside; compact preview ⇄ expanded height via the footer */
   .log-panel {
     flex: none;
     height: clamp(200px, 36vh, 320px);
     min-height: 0;
     padding: 14px;
+    background: #141626;
+    border: none;
+    border-radius: var(--r-md);
+  }
+
+  .log-panel.log-expanded {
+    height: clamp(360px, 72vh, 640px);
+  }
+
+  .panel-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: #6b7392;
+  }
+
+  .log-clear-btn {
+    color: #6b7392;
+    min-height: 44px;
+    padding: 0 8px;
   }
 
   .console-log {
-    font-size: 12px;
+    background: transparent;
+    border-radius: 0;
+    padding: 0;
+    font-size: 11px;
+    line-height: 1.9;
+    color: #9aa3c0;
   }
 
-  .empty-cta {
+  /* Level colors from the mockup logbox (.ok / .wn / .er + default ink) */
+  .console-line.lv-ok { color: #6ee7b7; }
+  .console-line.lv-warn { color: #fcd34d; }
+  .console-line.lv-error { color: #fca5a5; }
+  .console-line.lv-info { color: #9aa3c0; }
+
+  .log-more-btn {
+    display: flex;
+    align-items: center;
     min-height: 44px;
-    padding: 8px 14px;
+    padding: 0;
+    background: none;
+    border: none;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: #4c5470;
+    cursor: pointer;
+  }
+
+  .console-empty {
+    background: transparent;
+    color: #6b7392;
+  }
+
+  /* Server settings bottom sheet (frame ⑮ .dim + .sheet) */
+  .cfg-dim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 39;
+    background: rgba(16, 18, 33, 0.42);
+  }
+
+  .cfg-popover {
+    position: fixed;
+    left: 10px;
+    right: 10px;
+    top: auto;
+    bottom: calc(10px + var(--safe-area-bottom, 0px));
+    width: auto;
+    z-index: 40;
+    border: none;
+    border-radius: 26px;
+    box-shadow: 0 -10px 40px rgba(20, 22, 45, 0.3);
+    padding: 18px 20px 16px;
+  }
+
+  .cfg-grab {
+    display: block;
+    width: 40px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--border);
+    margin: 0 auto 12px;
+  }
+
+  .cfg-title-desktop {
+    display: none;
+  }
+
+  .cfg-title-phone {
+    display: block;
+    font-size: 17px;
+    font-weight: 800;
+    margin-bottom: 4px;
+  }
+
+  /* Amber lock notice (frame ⑮): replaces the tiny desktop hint */
+  .cfg-locked-sheet {
+    display: block;
+    font-size: 11.5px;
+    color: var(--warning);
+    margin: 2px 0 8px;
+  }
+
+  .cfg-locked-hint {
+    display: none;
+  }
+
+  /* Param rows: label + muted sub on the left, compact surface-2 field on the
+     right; locked rows dim (frame ⑮ .param / .finput) */
+  .cfg-item {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 0;
+    padding: 9px 0;
+  }
+
+  .cfg-item + .cfg-item {
+    border-top: 1px solid var(--border);
+  }
+
+  .cfg-item.locked {
+    opacity: 0.55;
+  }
+
+  .cfg-item label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .cfg-item-sub {
+    display: block;
+    font-size: 11.5px;
+    color: var(--text-muted);
+    font-weight: 500;
+    margin-top: 2px;
+  }
+
+  .cfg-input {
+    width: 96px;
+    padding: 7px 11px;
+    background: var(--surface-2);
+    border: none;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 700;
+    text-align: right;
+  }
+
+  /* Primary "done" closes the sheet (frame ⑮ .btn primary, radius 16) */
+  .cfg-done {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 44px;
+    margin-top: 10px;
+    padding: 13px 0;
+    border: none;
+    border-radius: 16px;
+    background: var(--grad);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 800;
+    font-family: inherit;
+    cursor: pointer;
   }
 }
 </style>

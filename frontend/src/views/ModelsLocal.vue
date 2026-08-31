@@ -6,17 +6,20 @@
       <div class="dir-sources">
         <div class="dir-info">
           <span class="dir-label">{{ t('models.downloadDir') }}</span>
-          <span class="dir-value">{{ downloadDir || t('settings.dirDefaultModels') }}</span>
+          <!-- title exposes the full path when the phone-tier ellipsis truncates -->
+          <span class="dir-value" :title="downloadDir || t('settings.dirDefaultModels')">{{ downloadDir || t('settings.dirDefaultModels') }}</span>
         </div>
         <div class="dir-info">
           <span class="dir-label">{{ t('models.importDir') }}</span>
-          <span class="dir-value" :class="{ 'dir-empty': !modelsDir }">{{ modelsDir || t('models.dirNotSet') }}</span>
+          <span class="dir-value" :class="{ 'dir-empty': !modelsDir }" :title="modelsDir || t('models.dirNotSet')">{{ modelsDir || t('models.dirNotSet') }}</span>
         </div>
       </div>
-      <div class="dir-actions">
+      <div class="dir-actions" :class="{ 'dir-actions-android': platformState.isAndroid }">
         <!-- Android has no native directory picker (the browseModelsDir binding
-             errors there): the pick button is replaced by a read-only hint -->
-        <span v-if="platformState.isAndroid" class="dir-android-hint">{{ t('models.dirAndroidHint') }}</span>
+             errors there): the pick button is replaced by a read-only hint;
+             phone tier appends the scanned model count + total size and the
+             rescan link pins to the row's right (Aurora frame ⑨ .dirbar) -->
+        <span v-if="platformState.isAndroid" class="dir-android-hint">{{ androidHint }}</span>
         <button v-else class="dir-btn" :title="t('models.chooseDirTitle')" @click="chooseModelsDir">{{ t('models.chooseDir') }}</button>
         <button class="refresh-btn" :disabled="loading" :title="t('models.refreshTitle')" @click="fetchModels(true)">
           <svg :class="{ spinning: loading }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -28,12 +31,16 @@
       </div>
     </div>
 
-    <!-- Loading skeleton -->
+    <!-- Loading skeleton. The tile/mid/block nodes are the Aurora frame ㉑
+         recipe (48px tile + two lines + 56px block); they stay display:none
+         on desktop, which keeps rendering the original three-line skeleton. -->
     <div v-if="loading" class="loading-grid">
       <div v-for="i in 3" :key="i" class="skeleton-card">
+        <div class="skeleton-tile"></div>
         <div class="skeleton-line skeleton-title"></div>
-        <div class="skeleton-line"></div>
+        <div class="skeleton-line skeleton-mid"></div>
         <div class="skeleton-line skeleton-short"></div>
+        <div class="skeleton-block"></div>
       </div>
     </div>
 
@@ -88,6 +95,9 @@
             {{ model.sourceDir === downloadDir ? t('models.sourceDownload') : t('models.sourceImport') }}
           </div>
           <div class="model-meta">
+            <!-- Phone tier (frame ⑨): the standalone author line is demoted into
+                 the meta chip row; the desktop-only author block hides via CSS -->
+            <span v-if="platformState.isMobile && model.author" class="meta-tag author-tag">{{ model.author }}</span>
             <span v-if="model.architecture && model.architecture !== '-'" class="meta-tag arch-tag">{{ model.architecture }}</span>
             <span v-if="model.quantization && model.quantization !== '-'" class="meta-tag quant-tag">{{ model.quantization }}</span>
             <span class="meta-tag size-tag">{{ model.sizeHuman }}</span>
@@ -104,6 +114,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { getModels, refreshModels, getConfig, browseModelsDir } from '../wails'
 import { t } from '../lib/i18n'
+import { formatBytes } from '../lib/format'
 import { usePlatform } from '../lib/platform'
 
 const router = useRouter()
@@ -140,6 +151,14 @@ async function loadModelsDir() {
     modelsDir.value = cfg.modelsDir || ''
   } catch {}
 }
+
+// Android hint (frame ⑨ .dirbar .hint): the phone tier appends the scanned
+// model count and total size; desktop Android keeps the plain hint line
+const androidHint = computed(() => {
+  if (!platformState.value.isMobile) return t('models.dirAndroidHint')
+  const totalBytes = models.value.reduce((sum, m) => sum + (m.sizeBytes || 0), 0)
+  return t('models.dirAndroidHintCounted', { n: models.value.length, size: formatBytes(totalBytes) })
+})
 
 async function chooseModelsDir() {
   try {
@@ -546,11 +565,19 @@ onMounted(() => {
   background: var(--accent-glow);
 }
 
-/* ─── Loading skeleton ─── */
+/* ─── Loading skeleton ───
+   The tile/block nodes below belong to the phone-tier frame ㉑ recipe; they
+   are display:none at the desktop tier so the original three-line skeleton
+   renders byte-identically there. */
 .loading-grid {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.skeleton-tile,
+.skeleton-block {
+  display: none;
 }
 
 .skeleton-card {
@@ -630,11 +657,12 @@ onMounted(() => {
   border-color: rgba(99, 102, 241, 0.4);
 }
 
-/* ─── Phone (<=767px): the directory bar stacks (sources above, actions in a
-       full-width row), model cards go single-column full-width, and the
-       per-model action button becomes a 44px touch target. Tablet (768px+)
-       keeps the desktop list — the collapsed sidebar rail simply widens the
-       cards, with metadata staying side-by-side. ─── */
+/* ─── Phone (<=767px, Aurora frame ⑨): the directory bar stacks (sources
+       above, actions in a full-width row), source pills take the semantic
+       green/blue chip colors, model names drop to 14px with muted meta chips,
+       the per-card path line hides (author demotes into the chip row), and
+       skeleton / error / empty states follow the frame ㉑ recipes. Tablet
+       (768px+) keeps the desktop list. ─── */
 @media (max-width: 767px) {
   .dir-bar {
     flex-direction: column;
@@ -647,14 +675,54 @@ onMounted(() => {
     justify-content: flex-end;
   }
 
+  /* Frame ⑨ .dirbar .d .p: single-line ellipsis (full path in the title
+     tooltip) instead of the wrapping desktop value */
+  .dir-value {
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    word-break: normal;
+  }
+
   .dir-btn,
   .refresh-btn {
     min-height: 44px;
     padding: 10px 16px;
   }
 
+  /* Android hint row: hint text left, the rescan action pinned right as a
+     bold accent text link (frame ⑨ "↻ 刷新") */
+  .dir-actions-android {
+    width: 100%;
+    justify-content: space-between;
+  }
+
   .dir-android-hint {
+    flex: 1;
+    min-width: 0;
     text-align: left;
+  }
+
+  .dir-actions-android .refresh-btn {
+    min-height: 44px;
+    padding: 10px 0 10px 12px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    color: #7c3aed;
+    font-weight: 800;
+  }
+
+  .dir-actions-android .refresh-btn:hover:not(:disabled) {
+    background: transparent;
+    border: none;
+    color: #7c3aed;
+  }
+
+  html[data-theme='dark'] .dir-actions-android .refresh-btn,
+  html[data-theme='dark'] .dir-actions-android .refresh-btn:hover:not(:disabled) {
+    color: #a78bfa;
   }
 
   .model-card {
@@ -671,11 +739,15 @@ onMounted(() => {
     align-items: flex-start;
   }
 
+  /* Frame ⑨ .mcard .nm: 14px card title on the phone tier */
   .model-name {
     flex: 1 1 auto;
     min-width: 0;
+    font-size: 14px;
   }
 
+  /* Frame ⑨ .gearbtn: 38px-circle skin at rest (bg-card disc, ink-2 glyph),
+     44px touch target via the negative-margin technique */
   .model-settings-btn {
     width: 44px;
     height: 44px;
@@ -683,12 +755,184 @@ onMounted(() => {
        keep the card's visual rhythm (28px layout box around a 44px button);
        with the top-aligned header the glyph lands on the name's first line */
     margin: -8px;
-    opacity: 0.7;
+    border-radius: 50%;
+    background: var(--bg-card);
+    color: var(--text-muted);
+    opacity: 1;
   }
 
-  .empty-cta,
+  .model-card:hover .model-settings-btn {
+    opacity: 1;
+  }
+
+  /* Frame ⑨ .mt i: source pills take semantic colors — download green,
+     external blue — at the shared chip geometry (radius 6, 10/700, no border) */
+  .source-badge {
+    padding: 2px 7px;
+    border-radius: 6px;
+    font-size: 10px;
+    font-weight: 700;
+  }
+
+  .source-download {
+    background: #e7f8f1;
+    color: #0b7c5b;
+    border: none;
+  }
+
+  html[data-theme='dark'] .source-download {
+    background: #12261f;
+    color: #6ee7b7;
+  }
+
+  .source-import {
+    background: #e8f1fd;
+    color: #2563eb;
+    border: none;
+  }
+
+  html[data-theme='dark'] .source-import {
+    background: #1a2740;
+    color: #93c5fd;
+  }
+
+  /* Frame ⑨ .mt i base: all meta chips unify to the muted surface-2 chip at
+     this tier (the desktop-tier blue/green coding drops away) */
+  .meta-tag {
+    padding: 2px 7px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0;
+    background: var(--hover-bg);
+    color: var(--text-muted);
+    border: none;
+  }
+
+  .arch-tag,
+  .quant-tag,
+  .size-tag {
+    background: var(--hover-bg);
+    color: var(--text-muted);
+    border: none;
+  }
+
+  /* Phone card slimming: the standalone author line demotes into the meta
+     chip row and the full mono path line hides (title tooltip covers it on
+     desktop; phone keeps cards compact) */
+  .model-author,
+  .model-path {
+    display: none;
+  }
+
+  /* Frame ㉑ skeleton recipe: 48px tile + 70%/45% lines + 56px block, shimmer
+     as a 1.4s background sweep (gradient defined locally; global.css is out
+     of scope for this page) */
+  .skeleton-card {
+    display: grid;
+    grid-template-columns: 48px 1fr;
+    grid-template-areas:
+      'tile l1'
+      'tile l2'
+      'block block';
+    gap: 8px 12px;
+    align-items: center;
+    padding: 16px 18px;
+  }
+
+  .skeleton-tile {
+    display: block;
+    grid-area: tile;
+    width: 48px;
+    height: 48px;
+    border-radius: 15px;
+  }
+
+  .skeleton-title {
+    grid-area: l1;
+    width: 70%;
+    height: 12px;
+    margin-bottom: 0;
+  }
+
+  .skeleton-mid {
+    grid-area: l2;
+    width: 45%;
+    height: 10px;
+    margin-bottom: 0;
+  }
+
+  .skeleton-short {
+    display: none;
+  }
+
+  .skeleton-block {
+    display: block;
+    grid-area: block;
+    height: 56px;
+    border-radius: 14px;
+    margin-top: 4px;
+  }
+
+  .skeleton-line,
+  .skeleton-tile,
+  .skeleton-block {
+    background: linear-gradient(90deg, var(--bg-card) 25%, #eceef6 45%, var(--bg-card) 65%);
+    background-size: 200% 100%;
+    animation: skel-sweep 1.4s linear infinite;
+  }
+
+  html[data-theme='dark'] .skeleton-line,
+  html[data-theme='dark'] .skeleton-tile,
+  html[data-theme='dark'] .skeleton-block {
+    background: linear-gradient(90deg, var(--bg-card) 25%, #262b3d 45%, var(--bg-card) 65%);
+  }
+
+  /* Frame ㉑ errcard: red retry pill (light #fdecec / dark #2c1a1f disc) */
   .retry-btn {
     min-height: 44px;
+    padding: 10px 20px;
+    background: #fdecec;
+    color: #ef4444;
+    border: none;
+    border-radius: 999px;
+    font-weight: 800;
   }
+
+  .retry-btn:hover {
+    background: #fdecec;
+    border: none;
+    color: #ef4444;
+  }
+
+  html[data-theme='dark'] .retry-btn,
+  html[data-theme='dark'] .retry-btn:hover {
+    background: #2c1a1f;
+    color: #f87171;
+  }
+
+  /* Frame ㉑ emptycard: gradient pill CTA */
+  .empty-cta {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 10px 22px;
+    background: var(--grad);
+    color: #fff;
+    border: none;
+    border-radius: 999px;
+    font-size: 12.5px;
+    font-weight: 800;
+    box-shadow: 0 6px 14px rgba(124, 92, 246, 0.35);
+  }
+
+  .empty-cta:hover {
+    background: var(--grad);
+  }
+}
+
+@keyframes skel-sweep {
+  to { background-position: -200% 0; }
 }
 </style>

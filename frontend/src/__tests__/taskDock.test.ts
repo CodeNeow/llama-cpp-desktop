@@ -7,6 +7,7 @@ import { dockReserve, dockSide, dockLane } from '../lib/dockSpace'
 import { nudgeDock } from '../lib/dockNudge'
 import { DOCK_POSITION_KEY } from '../lib/dockPosition'
 import { t } from '../lib/i18n'
+import { buildPlatformState, setPlatform } from '../lib/platform'
 import { getDownloadTasks, getServerStatus } from '../wails'
 
 // Mock the Wails bridge (window.go is injected only by the Wails runtime).
@@ -20,6 +21,11 @@ vi.mock('../wails', () => ({
     Promise.resolve([{ id: 'test-model', type: 'chat', status: 'loaded' }])
   ),
   unloadModel: vi.fn(() => Promise.resolve()),
+  // Phone row-ops bindings (frame ⑲): imported by TaskDock for the pause /
+  // resume / cancel circles
+  pauseDownloadTask: vi.fn(() => Promise.resolve()),
+  resumeDownloadTask: vi.fn(() => Promise.resolve()),
+  cancelDownloadTask: vi.fn(() => Promise.resolve()),
   checkForUpdate: vi.fn(() => Promise.resolve({ hasUpdate: false, version: '', notes: '', published: '' })),
   startUpdateDownload: vi.fn(() => Promise.resolve()),
   stopUpdateDownload: vi.fn(() => Promise.resolve()),
@@ -136,6 +142,44 @@ describe('TaskDock collapsed pill', () => {
     const wrapper = await mountDock()
     expect(wrapper.findAll('.pill-seg')).toHaveLength(1)
     expect(wrapper.find('.dock-pill').text()).toContain('1')
+    wrapper.unmount()
+  })
+})
+
+// ─── Phone capsule (frame ⑲): dot + separator + mono count model ────────────
+
+describe('TaskDock phone capsule', () => {
+  afterEach(() => {
+    // Restore the desktop default so other suites in this file keep the
+    // desktop pill segments
+    setPlatform(buildPlatformState('windows', Number.POSITIVE_INFINITY))
+  })
+
+  it('shows the warn percent text while a download actively progresses', async () => {
+    vi.stubGlobal('ResizeObserver', MockResizeObserver)
+    setPlatform(buildPlatformState('windows', 390))
+    vi.mocked(getDownloadTasks).mockImplementationOnce(() =>
+      Promise.resolve([
+        { id: 'task-1', fileName: 'model.gguf', status: 'downloading', progress: 10, speed: 0 },
+      ])
+    )
+    vi.mocked(getServerStatus).mockImplementationOnce(() =>
+      Promise.resolve({ running: false, log: [] })
+    )
+
+    const wrapper = await mountDock()
+    expect(wrapper.find('.pill-dot--warn').exists()).toBe(true)
+    expect(wrapper.find('.pill-count').text()).toBe(t('dock.downloadingPct', { pct: 10 }))
+    wrapper.unmount()
+  })
+
+  it('shows joined download and model counts when idle', async () => {
+    vi.stubGlobal('ResizeObserver', MockResizeObserver)
+    setPlatform(buildPlatformState('windows', 390))
+    // Default mocks: 1 loaded model, no active downloads
+    const wrapper = await mountDock()
+    expect(wrapper.find('.pill-dot--warn').exists()).toBe(false)
+    expect(wrapper.find('.pill-count').text()).toBe('1')
     wrapper.unmount()
   })
 })

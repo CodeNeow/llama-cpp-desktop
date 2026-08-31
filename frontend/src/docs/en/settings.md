@@ -2,7 +2,7 @@ The "Preferences" page centralizes the app's global configuration. Top to bottom
 
 ## Help & Tutorial
 
-The purple gradient card at the top of the page is the entry to the in-app tutorial — click it to open the "Documentation" page (the bilingual guide you are reading right now). The docs update online, so fixes reach you without waiting for an app release.
+The purple gradient card at the top of the page is the entry to the in-app tutorial — click it to open the "Help & Tutorial" page (the bilingual guide you are reading right now): you first see the list of all chapters, then tap any chapter to read it. The docs update online, so fixes reach you without waiting for an app release.
 
 ## Device
 
@@ -35,5 +35,5 @@ These two paths decide where **new** content lands; to reuse model files already
 
 ## About
 
-- **Updates**: check manually; the app also auto-checks every two days. When a new version is found you can download it and replace the original executable to update. The in-app self-update is supported on Windows (the downloaded installer takes over) and Android (the downloaded APK goes through the system installer dialog; the first install asks for the "Install unknown apps" grant), other platforms show a link to GitHub Releases instead;
-- **Version / License / Repository**: the current version, the GPL-3.0 license and the repository URL.
+- **Updates**: the app auto-checks for new versions every two days and shows an in-app update prompt when it finds one. The "Updates" row shows a "Check for Updates" button on Windows (the downloaded installer takes over); Android and other platforms show a GitHub Releases link instead (on Android, accepting the update prompt downloads the APK and installs it through the system installer dialog — the first install asks for the "Install unknown apps" grant);
+- **Version / License / Repository**: the current version, the GPL-3.0 license and the repository URL. On phones these three are consolidated into a single "About" row — tapping it opens the repository page.

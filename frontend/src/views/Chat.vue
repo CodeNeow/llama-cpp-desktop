@@ -29,6 +29,7 @@
         <ThemedSelect
           variant="toolbar"
           class="chat-model-select"
+          :class="{ 'chat-model-select--empty': modelOptions.length === 0 }"
           :model-value="selectedModel"
           :options="modelOptions"
           :disabled="serviceStarting || streaming"
@@ -66,8 +67,9 @@
           </svg>
         </button>
 
-        <!-- Chat parameters panel -->
-        <div v-if="showParams" class="params-popover" @click.stop>
+        <!-- Chat parameters panel: desktop keeps the anchored popover; the phone
+             tier (frame ⑤) gets a bottom sheet rendered below -->
+        <div v-if="showParams && !isMobileTier" class="params-popover" @click.stop>
           <div class="params-header">{{ t('chat.settings') }}</div>
           <div class="params-row">
             <label class="params-label" for="chat-temp">{{ t('chat.temperature') }}</label>
@@ -97,16 +99,138 @@
             <button class="params-reset-btn" @click="resetParams">{{ t('chat.resetDefaults') }}</button>
           </div>
         </div>
+
+        <!-- Phone params sheet (design frame ⑤): dim + docked bottom sheet with
+             grab handle, header title + reset TEXT link, and slider / stepper
+             controls. Same chatParams state and persistence as the popover —
+             only the controls differ. .stop keeps in-sheet taps from hitting the
+             document-level close handler; tapping the dim closes. -->
+        <Teleport to="body">
+          <div v-if="showParams && isMobileTier" class="params-sheet-root">
+            <div class="params-dim" @click="showParams = false"></div>
+            <div class="params-sheet" role="dialog" aria-modal="true" :aria-label="t('chat.paramsTitle')" @click.stop>
+              <div class="params-grab" aria-hidden="true"></div>
+              <div class="params-sheet-head">
+                <span class="params-sheet-title">{{ t('chat.paramsTitle') }}</span>
+                <button class="params-reset-link" type="button" @click="resetParams">{{ t('chat.resetDefaults') }}</button>
+              </div>
+              <div class="params-sheet-body">
+                <div class="psheet-row">
+                  <div class="psheet-label">
+                    <span class="psheet-name">{{ t('chat.temperature') }}</span>
+                    <span class="psheet-sub">{{ t('chat.temperatureHint') }}</span>
+                  </div>
+                  <div class="psheet-ctl">
+                    <input
+                      class="pslider"
+                      type="range"
+                      min="0"
+                      max="2"
+                      step="0.05"
+                      :value="chatParams.temperature"
+                      :style="{ '--pfill': sliderFillPercent(chatParams.temperature, 0, 2) + '%' }"
+                      :aria-label="t('chat.temperature')"
+                      @input="onSliderInput('temperature', $event)"
+                    />
+                    <span class="psheet-val">{{ formatParamValue(chatParams.temperature) }}</span>
+                  </div>
+                </div>
+                <div class="psheet-row">
+                  <div class="psheet-label">
+                    <span class="psheet-name">{{ t('chat.topP') }}</span>
+                    <span class="psheet-sub">{{ t('chat.topPHint') }}</span>
+                  </div>
+                  <div class="psheet-ctl">
+                    <input
+                      class="pslider"
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                      :value="chatParams.topP"
+                      :style="{ '--pfill': sliderFillPercent(chatParams.topP, 0, 1) + '%' }"
+                      :aria-label="t('chat.topP')"
+                      @input="onSliderInput('topP', $event)"
+                    />
+                    <span class="psheet-val">{{ formatParamValue(chatParams.topP) }}</span>
+                  </div>
+                </div>
+                <div class="psheet-row">
+                  <div class="psheet-label">
+                    <span class="psheet-name">{{ t('chat.topK') }}</span>
+                    <span class="psheet-sub">{{ t('chat.topKHint') }}</span>
+                  </div>
+                  <div class="pstepper">
+                    <button class="pstep-btn" type="button" :aria-label="t('chat.stepDown')" @click="chatParams.topK = stepNumber(chatParams.topK, -1, TOP_K_MIN, TOP_K_MAX, 1)">−</button>
+                    <span class="pstep-val">{{ chatParams.topK }}</span>
+                    <button class="pstep-btn" type="button" :aria-label="t('chat.stepUp')" @click="chatParams.topK = stepNumber(chatParams.topK, 1, TOP_K_MIN, TOP_K_MAX, 1)">+</button>
+                  </div>
+                </div>
+                <div class="psheet-row">
+                  <div class="psheet-label">
+                    <span class="psheet-name">{{ t('chat.repeatPenalty') }}</span>
+                    <span class="psheet-sub">{{ t('chat.repeatPenaltyHint') }}</span>
+                  </div>
+                  <div class="pstepper">
+                    <button class="pstep-btn" type="button" :aria-label="t('chat.stepDown')" @click="chatParams.repeatPenalty = stepNumber(chatParams.repeatPenalty, -1, PENALTY_MIN, PENALTY_MAX, 0.05)">−</button>
+                    <span class="pstep-val">{{ formatParamValue(chatParams.repeatPenalty) }}</span>
+                    <button class="pstep-btn" type="button" :aria-label="t('chat.stepUp')" @click="chatParams.repeatPenalty = stepNumber(chatParams.repeatPenalty, 1, PENALTY_MIN, PENALTY_MAX, 0.05)">+</button>
+                  </div>
+                </div>
+                <div class="psheet-row">
+                  <div class="psheet-label">
+                    <span class="psheet-name">{{ t('chat.maxTokens') }}</span>
+                    <span class="psheet-sub">{{ t('chat.maxTokensHint') }}</span>
+                  </div>
+                  <div class="pstepper">
+                    <button class="pstep-btn" type="button" :aria-label="t('chat.stepDown')" @click="chatParams.maxTokens = applyMaxTokensStep(-1)">−</button>
+                    <span class="pstep-val">{{ isUnlimitedMaxTokens(chatParams.maxTokens) ? t('chat.unlimited') : chatParams.maxTokens }}</span>
+                    <button class="pstep-btn" type="button" :aria-label="t('chat.stepUp')" @click="chatParams.maxTokens = applyMaxTokensStep(1)">+</button>
+                  </div>
+                </div>
+                <div class="psheet-row psheet-row--text">
+                  <div class="psheet-label">
+                    <span class="psheet-name">{{ t('chat.systemPrompt') }}</span>
+                    <span class="psheet-sub">{{ t('chat.systemPromptHint') }}</span>
+                  </div>
+                  <textarea
+                    class="ptext"
+                    rows="2"
+                    v-model="chatParams.systemPrompt"
+                    :placeholder="t('chat.systemPromptPh')"
+                    :aria-label="t('chat.systemPrompt')"
+                  ></textarea>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Teleport>
       </div>
     </div>
 
     <!-- Messages area -->
     <!-- Delegated link handler: links in assistant markdown open in the system
          browser, the WebView never navigates (see lib/linkHandler.ts) -->
-    <div ref="messagesContainer" class="messages-area" @click="handleLinkClick">
-      <div v-if="modelOptions.length === 0" class="empty-hint">{{ t('chat.noModels') }}</div>
+    <div
+      ref="messagesContainer"
+      class="messages-area"
+      :class="{ 'messages-area--streaming': streaming }"
+      @click="handleLinkClick"
+    >
+      <!-- Empty states (design frames ⑤⑦ .emptystate): two-line structure with
+           an emoji mark on the phone tier; the desktop keeps the original
+           single-line text (icon + sub-line are display:none there). -->
+      <div v-if="modelOptions.length === 0" class="empty-hint">
+        <span class="empty-ico" aria-hidden="true">📦</span>
+        <b class="empty-title">{{ isMobileTier ? t('chat.noModelsTitle') : t('chat.noModels') }}</b>
+        <span class="empty-sub">{{ t('chat.noModelsSub') }}</span>
+      </div>
       <template v-else>
-        <div v-if="messages.length === 0" class="empty-hint">{{ t('chat.emptyHint') }}</div>
+        <div v-if="messages.length === 0" class="empty-hint">
+          <span class="empty-ico" aria-hidden="true">💬</span>
+          <b class="empty-title">{{ t('chat.emptyHint') }}</b>
+          <span class="empty-sub">{{ t('chat.emptySub') }}</span>
+        </div>
         <div
           v-for="(msg, idx) in messages"
           :key="idx"
@@ -121,7 +245,7 @@
             <!-- Reasoning (thinking) block, assistant messages with thinking output only -->
             <div v-if="msg.reasoning" class="reasoning-block" :class="{ expanded: isReasoningExpanded(idx, msg) }">
               <button class="reasoning-header" type="button" @click="toggleReasoning(idx)">
-                <span>{{ t('chat.thinking') }}</span>
+                <span>{{ thinkingLabel(idx, msg) }}</span>
                 <svg class="reasoning-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <polyline points="6 9 12 15 18 9"/>
                 </svg>
@@ -166,31 +290,32 @@
 
     <!-- Input area -->
     <div class="input-area">
-      <!-- Auto-start / model-switch notice: sits above the input row so status
-           feedback lands next to the send action; the error variant adds the
-           guided CTA that fixes the reported blocker -->
-      <div
-        v-if="serviceStarting || switchingModel || startError"
-        class="start-notice"
-        :class="{ 'start-notice--error': !!startError }"
-        role="status"
-      >
-        <template v-if="startError">
-          <span class="start-notice-text">{{ startError }}</span>
-          <button v-if="startErrorCause === 'needModels'" class="start-notice-btn" @click="goDownloads">
-            {{ t('action.gotoDownloads') }}
-          </button>
-          <button v-else-if="startErrorCause === 'needRuntime'" class="start-notice-btn" @click="goRuntime">
-            {{ t('chat.goRuntime') }}
-          </button>
-        </template>
-        <template v-else-if="serviceStarting">
-          <span class="start-notice-spinner" aria-hidden="true"></span>
-          <span>{{ t('chat.startingServer') }}</span>
-        </template>
-        <template v-else>
-          <span>{{ t('chat.switchingModel') }}</span>
-        </template>
+      <!-- Auto-start / model-switch notices (frame ⑦ .notify): an ARRAY model —
+           starting, switching and error flags are independent, so several cards
+           can stack. Desktop keeps the single pill in flow (the flags never
+           overlap there in practice); the phone tier floats the stack above
+           the composer as anchored cards (media-scoped). -->
+      <div v-if="activeNotices.length" class="start-notice-stack" role="status">
+        <div
+          v-for="notice in activeNotices"
+          :key="notice.kind"
+          class="start-notice"
+          :class="{ 'start-notice--error': notice.kind === 'error' }"
+        >
+          <template v-if="notice.kind === 'error'">
+            <span class="start-notice-text">{{ notice.text }}</span>
+            <button v-if="notice.cause === 'needModels'" class="start-notice-btn" @click="goDownloads">
+              {{ t('action.gotoDownloads') }}
+            </button>
+            <button v-else-if="notice.cause === 'needRuntime'" class="start-notice-btn" @click="goRuntime">
+              {{ t('chat.goRuntime') }}
+            </button>
+          </template>
+          <template v-else>
+            <span v-if="notice.kind === 'starting'" class="start-notice-spinner" aria-hidden="true"></span>
+            <span>{{ notice.text }}</span>
+          </template>
+        </div>
       </div>
       <!-- Pending attachment preview bar -->
       <div v-if="pendingImages.length" class="pending-bar">
@@ -199,7 +324,7 @@
           <button class="pending-remove" @click="removePendingImage(i)" :title="t('chat.removeImage')">✕</button>
         </div>
       </div>
-      <div class="input-row">
+      <div class="input-row" :class="{ 'input-row--blocked': composerBlocked }">
         <button class="attach-btn" @click="triggerAttach" :title="t('chat.attach')" type="button">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
@@ -261,7 +386,7 @@ import { ref, computed, onMounted, nextTick, watch, onUnmounted, type ComponentP
 import { useRouter } from 'vue-router'
 import { getServerStatus, getServerConfig, getModels, getLlamaCpp, startServerWithModel, unloadModel } from '../wails'
 import { chatReadiness, fetchRouterModels, modelsToUnload, streamChatCompletion, tokenRates, type ChatReadiness } from '../lib/chat'
-import { messages, selectedModel, streaming, chatAbortController, persistChat, reconcileSelectedModel, chatParams, persistChatParams, type ChatMessage, type ChatParams } from '../lib/chatState'
+import { messages, selectedModel, streaming, chatAbortController, persistChat, reconcileSelectedModel, chatParams, persistChatParams, clampStep, sliderFillPercent, formatParamValue, stepNumber, stepMaxTokens, isUnlimitedMaxTokens, type ChatMessage, type ChatParams } from '../lib/chatState'
 import { nudgeDock } from '../lib/dockNudge'
 import { dockLane, dockWidth } from '../lib/dockSpace'
 import { t } from '../lib/i18n'
@@ -273,6 +398,10 @@ import ThemedSelect, { type SelectOption } from '../components/ThemedSelect.vue'
 
 const router = useRouter()
 const platform = usePlatform()
+
+/** Phone-tier gate (viewport width <= 767, reactive): picks the params sheet
+ * over the popover and the phone-only copy/empty-state variants. */
+const isMobileTier = computed(() => platform.value.isMobile)
 
 const serverRunning = ref(false)
 
@@ -290,6 +419,38 @@ const startError = ref('')
 
 /** Guided CTA cause for startError: which page fixes the reported blocker. */
 const startErrorCause = ref<'needModels' | 'needRuntime' | ''>('')
+
+/**
+ * Degraded-composer state (phone frame ⑦): a precheck blocker is on screen,
+ * so the composer dims and the placeholder points at the fix.
+ */
+const composerBlocked = computed(() => startErrorCause.value !== '')
+
+/** One floating notice card. Error cards carry the guided-fix cause. */
+interface PageNotice {
+  kind: 'starting' | 'switching' | 'error'
+  text: string
+  cause: '' | 'needModels' | 'needRuntime'
+}
+
+/**
+ * Independent notice flags as a stack (frame ⑦): starting, switching and the
+ * last start error are not mutually exclusive states, so each contributes its
+ * own card instead of the previous v-if / else-if chain picking a single one.
+ */
+const activeNotices = computed<PageNotice[]>(() => {
+  const out: PageNotice[] = []
+  if (serviceStarting.value) {
+    out.push({
+      kind: 'starting',
+      text: platform.value.isAndroid ? t('chat.startingServerAndroid') : t('chat.startingServer'),
+      cause: '',
+    })
+  }
+  if (switchingModel.value) out.push({ kind: 'switching', text: t('chat.switchingModel'), cause: '' })
+  if (startError.value) out.push({ kind: 'error', text: startError.value, cause: startErrorCause.value })
+  return out
+})
 
 /** Local (scanned) models backing the picker; independent of server state. */
 const localModels = ref<{ name: string; alias?: string }[]>([])
@@ -311,11 +472,37 @@ const modelOptions = computed<SelectOption[]>(() => localModels.value.map((m) =>
  * keyboard affordances, which are meaningless on touch keyboards and wrap to
  * ~3 lines inside the narrow phone input. Phones (viewport tier, reactive —
  * follows window resizes across breakpoints) get the short copy instead;
- * desktop keeps the original text and behavior unchanged.
+ * desktop keeps the original text and behavior unchanged. A blocked precheck
+ * (no models / runtime missing) swaps in the guided copy on phone.
  */
-const inputPlaceholder = computed(() =>
-  platform.value.isMobile ? t('chat.inputPlaceholderShort') : t('chat.inputPlaceholder')
-)
+const inputPlaceholder = computed(() => {
+  if (isMobileTier.value && composerBlocked.value) return t('chat.blockedPlaceholder')
+  return platform.value.isMobile ? t('chat.inputPlaceholderShort') : t('chat.inputPlaceholder')
+})
+
+/**
+ * Phone params-sheet control ranges (design frame ⑤). Slider params are
+ * clamped onto a 0.05 grid by lib/chatState clampStep; the steppers reuse the
+ * app's existing repeat-penalty bounds ([1, 2], matching the desktop popover
+ * validation) and restrict Top K to positive integers.
+ */
+const TOP_K_MIN = 1
+const TOP_K_MAX = 200
+const PENALTY_MIN = 1
+const PENALTY_MAX = 2
+
+/** Slider input: snap the dragged value onto the 0.05 grid within range. */
+function onSliderInput(key: 'temperature' | 'topP', e: Event): void {
+  const raw = parseFloat((e.target as HTMLInputElement).value)
+  if (Number.isNaN(raw)) return
+  const max = key === 'temperature' ? 2 : 1
+  chatParams[key] = clampStep(raw, 0, max, 0.05)
+}
+
+/** Max-tokens stepper with the unlimited (-1) sentinel mapping. */
+function applyMaxTokensStep(dir: -1 | 1): number {
+  return stepMaxTokens(chatParams.maxTokens, dir)
+}
 
 /**
  * Small header shown on assistant bubbles (design frame ②): the answering
@@ -370,6 +557,18 @@ function toggleReasoning(idx: number) {
   const msg = messages.value[idx]
   if (!msg) return
   reasoningExpanded.value[idx] = !isReasoningExpanded(idx, msg)
+}
+
+/**
+ * Reasoning-block header copy (frame ⑥ .think): the phone tier states the
+ * block's live phase — "deep thinking" while reasoning deltas stream in with
+ * no answer text yet, "deep thought" once done; desktop keeps the original
+ * static label.
+ */
+function thinkingLabel(idx: number, msg: ChatMessage): string {
+  if (!isMobileTier.value) return t('chat.thinking')
+  const active = idx === messages.value.length - 1 && streaming.value && !!msg.reasoning && !msg.content
+  return active ? t('chat.thinkingActive') : t('chat.thinkingDone')
 }
 
 // ─── Reasoning body stick-to-bottom ─────────────────────────────────────────
@@ -1164,6 +1363,270 @@ onUnmounted(() => {
   font-size: 14px;
 }
 
+/* Desktop renders the original single-line hint: the emoji mark and the
+   sub-caption added for the phone empty state (frame ⑦) are hidden, and the
+   title line inherits the hint's font exactly. */
+.empty-ico,
+.empty-sub {
+  display: none;
+}
+
+.empty-title {
+  display: inline;
+  font: inherit;
+  color: inherit;
+}
+
+/* ─── Phone params sheet (design frame ⑤ .dim / .sheet) ───
+   Rendered only on the phone tier (isMobileTier), teleported to <body> so the
+   dim + sheet float above every page layer. Desktop never mounts this markup. */
+.params-sheet-root {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+}
+
+.params-dim {
+  position: absolute;
+  inset: 0;
+  background: rgba(16, 18, 33, 0.42);
+  animation: dim-in 0.2s ease;
+}
+
+@keyframes dim-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.params-sheet {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: calc(10px + var(--safe-area-bottom, 0px));
+  max-height: calc(100vh - 90px);
+  max-height: calc(100dvh - 90px);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-secondary);
+  border-radius: 26px;
+  padding: 18px 20px 16px;
+  box-shadow: 0 -10px 40px rgba(20, 22, 45, 0.3);
+  animation: sheet-up 0.25s ease;
+}
+
+@keyframes sheet-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.params-grab {
+  width: 40px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border);
+  margin: 0 auto 12px;
+  flex-shrink: 0;
+}
+
+.params-sheet-head {
+  display: flex;
+  align-items: center;
+  margin-bottom: 4px;
+  flex-shrink: 0;
+}
+
+.params-sheet-title {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.params-reset-link {
+  margin-left: auto;
+  padding: 8px 0 8px 12px;
+  background: transparent;
+  border: none;
+  font-size: 12px;
+  font-weight: 700;
+  color: #7c3aed;
+  cursor: pointer;
+}
+
+html[data-theme='dark'] .params-reset-link {
+  color: #a78bfa;
+}
+
+.params-sheet-body {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.psheet-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.psheet-row:last-child {
+  border-bottom: none;
+}
+
+.psheet-row--text {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.psheet-label {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.psheet-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.psheet-sub {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.psheet-ctl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Native range input reskinned to the mockup .pslider: 4px gradient track on
+   a neutral base (--pfill drives the filled portion), 15px white thumb inside
+   a 44px-tall hit area. */
+.pslider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 110px;
+  height: 44px;
+  background: transparent;
+  cursor: pointer;
+  margin: 0;
+}
+
+.pslider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background-color: var(--overlay-10);
+  background-image: var(--grad);
+  background-size: var(--pfill, 0%) 100%;
+  background-repeat: no-repeat;
+}
+
+.pslider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 5px rgba(40, 44, 90, 0.35);
+  margin-top: -5.5px;
+}
+
+.pslider::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background-color: var(--overlay-10);
+}
+
+.pslider::-moz-range-progress {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--grad);
+}
+
+.pslider::-moz-range-thumb {
+  width: 15px;
+  height: 15px;
+  border: none;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 5px rgba(40, 44, 90, 0.35);
+}
+
+.psheet-val {
+  min-width: 38px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* Stepper (frame ⑤ .pstepper): 32px visual circle inside a 44px touch box
+   (background-clip keeps the painted circle at 32px under the padding). */
+.pstepper {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.pstep-btn {
+  width: 44px;
+  height: 44px;
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-card);
+  background-clip: content-box;
+  border: none;
+  border-radius: 50%;
+  color: var(--text-secondary);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pstep-btn:active {
+  color: #7c3aed;
+}
+
+.pstep-val {
+  min-width: 56px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* System prompt textarea (frame ⑤ .ptext) */
+.ptext {
+  width: 100%;
+  padding: 8px 11px;
+  background: var(--bg-card);
+  border: none;
+  border-radius: 14px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  outline: none;
+  resize: vertical;
+  min-height: 44px;
+}
+
+.ptext::placeholder {
+  color: var(--text-dim);
+}
+
 /* ─── Message bubbles (design frame ②) ───
    User: brand gradient, white text, small radius tucked at the sender corner
    (22/22/6/22). Assistant: lifted island surface, mirrored radius
@@ -1725,20 +2188,69 @@ onUnmounted(() => {
     height: 44px;
   }
 
-  /* The params popover spans the toolbar instead of overflowing a narrow
-     viewport from its desktop 320px fixed width */
-  .params-popover {
-    left: 0;
-    right: 0;
-    width: auto;
+  /* Disabled round buttons keep a touch more presence on phone (frame ⑤ .rnd.dis) */
+  .chat-icon-btn:disabled {
+    opacity: 0.45;
+  }
+
+  /* Open-gear state (frame ⑤ .rnd.on): purple glyph + inset accent ring */
+  .chat-settings-btn[aria-expanded='true'] {
+    color: #7c3aed;
+    border-color: transparent;
+    box-shadow: 0 0 0 2px #d6ccf7 inset, var(--shadow-island);
+  }
+
+  html[data-theme='dark'] .chat-settings-btn[aria-expanded='true'] {
+    color: #a78bfa;
+    box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.45) inset, var(--shadow-island);
+  }
+
+  /* Model chip status dot (frame ⑤ .mchip .dot): green with a soft glow;
+     without models a muted gray dot on a muted chip */
+  .chat-model-select :deep(.themed-select__trigger)::before {
+    background: #10b981;
+    box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
+  }
+
+  .chat-model-select--empty :deep(.themed-select__trigger) {
+    color: var(--text-muted);
+  }
+
+  .chat-model-select--empty :deep(.themed-select__trigger)::before {
+    background: #b9bfd2;
+    box-shadow: none;
   }
 
   .message-bubble {
     max-width: 88%;
   }
 
-  .start-notice {
-    flex-wrap: wrap;
+  /* Two-line empty states (frame ⑦ .emptystate): emoji mark + bold title +
+     muted sub-caption */
+  .empty-hint {
+    padding: 60px 20px 0;
+    color: var(--text-muted);
+  }
+
+  .empty-ico {
+    display: block;
+    font-size: 40px;
+    margin-bottom: 12px;
+  }
+
+  .empty-title {
+    display: block;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-secondary);
+  }
+
+  .empty-sub {
+    display: block;
+    margin-top: 6px;
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: var(--text-muted);
   }
 
   /* Composer: 44px touch controls, trimmed band above the bottom tab bar.
@@ -1747,6 +2259,141 @@ onUnmounted(() => {
      media query) — keep both in sync */
   .input-area {
     padding: 8px 0 10px;
+    position: relative;
+  }
+
+  /* Precheck notices float as stacked cards above the composer band (frame ⑦
+     .notify): anchored to the input-area's top edge, so the dock-lane width
+     the composer already respects carries over to the cards. */
+  .start-notice-stack {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 0;
+    right: 0;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .start-notice {
+    flex-wrap: wrap;
+    background: var(--bg-card);
+    border: none;
+    border-radius: 14px;
+    padding: 10px 14px;
+    box-shadow: var(--shadow-island);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+
+  html[data-theme='dark'] .start-notice {
+    background: #1e2233;
+  }
+
+  .start-notice--error {
+    background: #fdecec;
+    color: #b91c1c;
+  }
+
+  html[data-theme='dark'] .start-notice--error {
+    background: #2c1a1f;
+    color: #fca5a5;
+  }
+
+  .start-notice-btn {
+    background: transparent;
+    border: none;
+    padding: 8px 0 8px 10px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #7c3aed;
+  }
+
+  html[data-theme='dark'] .start-notice-btn {
+    color: #a78bfa;
+  }
+
+  .start-notice-btn:hover {
+    background: transparent;
+    text-decoration: underline;
+  }
+
+  /* Spinner card (frame ⑦ .spin): 13px ring, purple top arc */
+  .start-notice-spinner {
+    width: 13px;
+    height: 13px;
+    border: 2px solid #c7caea;
+    border-top-color: #7c3aed;
+    animation-duration: 1s;
+  }
+
+  html[data-theme='dark'] .start-notice-spinner {
+    border-color: rgba(255, 255, 255, 0.18);
+    border-top-color: #a78bfa;
+  }
+
+  /* Degraded composer (frame ⑦): a visible precheck blocker dims the bar */
+  .input-row--blocked {
+    opacity: 0.6;
+  }
+
+  /* Disabled send (frame ⑦): neutral filled circle instead of a ghosted
+     gradient — the shape still reads, the affordance clearly gone */
+  .send-btn:disabled {
+    background: var(--bg-card);
+    color: #9aa1b2;
+    opacity: 1;
+    box-shadow: none;
+  }
+
+  /* Streaming polish (frame ⑥): finished assistant bubbles recede while a
+     new reply streams; stats/meta numerals go mono; stats line gets the
+     dashed hairline; attached images round to 12px */
+  .messages-area--streaming .message-row.is-assistant:not(:last-child) .message-bubble {
+    opacity: 0.72;
+  }
+
+  .stream-meta {
+    font-family: var(--font-mono);
+  }
+
+  .message-stats {
+    font-size: 10.5px;
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px dashed var(--border);
+    font-family: var(--font-mono);
+  }
+
+  .message-image {
+    border-radius: 12px;
+  }
+
+  /* Thinking block container (frame ⑥ .think): bordered inset card with the
+     11/700 state header and 11.5/1.7 muted body */
+  .reasoning-block {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--bg-card);
+    padding: 10px 12px;
+  }
+
+  html[data-theme='dark'] .reasoning-block {
+    background: #1e2233;
+  }
+
+  .reasoning-header {
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .reasoning-body {
+    margin-top: 4px;
+    font-size: 11.5px;
+    line-height: 1.7;
+    color: var(--text-muted);
   }
 
   .attach-btn {

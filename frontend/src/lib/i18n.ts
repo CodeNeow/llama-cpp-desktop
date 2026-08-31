@@ -39,6 +39,8 @@ export const messages: Record<Locale, Record<string, string>> = {
     'home.refresh': '刷新',
     'home.refreshing': '刷新中…',
     'home.updatedAt': '{time} 更新',
+    // Phone tier (Aurora mockup .tabs .upd): "更新于 hh:mm:ss" prefix form
+    'home.updatedAtAsOf': '更新于 {time}',
     'home.errorTitle': '无法获取系统信息',
     'home.retry': '重试',
     'home.cpu': '处理器',
@@ -84,13 +86,18 @@ export const messages: Record<Locale, Record<string, string>> = {
     'home.greet.idle': '服务运行中 · 等待模型加载',
     'home.greet.offline': '服务未运行',
     'home.greet.loading': '正在获取状态…',
+    // Phone greeting second line while onboarding is visible and the service is
+    // not ready (Aurora mockup frame ① "· 完成下面 3 步即可开始")
+    'home.greet.onboardHint': '完成下面 3 步即可开始',
     'home.hero.tagReady': 'AI 就绪',
     'home.hero.tagOffline': '离线',
     'home.hero.subResident': '本机直连 · 已驻留内存 · 无需等待',
     'home.hero.subIdle': '服务运行中 · 首次对话时自动加载模型',
     'home.hero.subOffline': '服务未运行 · 发送消息时自动启动',
     'home.hero.standby': '待命',
-    'home.hero.metricLbl': 'tokens / 秒 · 实时',
+    // The hero metric is the rolling 60s average of the decode speed (same
+    // figure the Api page charts), so the label names the averaging window.
+    'home.hero.metricLbl': 'tokens / 秒 · 近 60 秒均值',
     'home.hero.cta': '进入对话 →',
     'home.memory.aux': '{pct}% · 可用 {free}',
     'home.cpu.aux': '{model} · {n} 核',
@@ -102,6 +109,8 @@ export const messages: Record<Locale, Record<string, string>> = {
     'home.storage.llamacpp': 'llama.cpp',
     'home.storage.notInstalled': '未安装',
     'home.noModel': '暂无模型',
+    // Resident-model card trailing green source pill (Aurora .mt i.src-g)
+    'home.residentBadge': '已驻留',
 
     // ─── Quick-start onboarding (Home checklist card + empty-state CTAs) ───
     'onboarding.title': '快速上手',
@@ -110,14 +119,27 @@ export const messages: Record<Locale, Record<string, string>> = {
     'onboarding.step.service': '启动 API 服务',
     'onboarding.done': '已完成',
     'onboarding.goto': '去设置',
+    // Phone-tier per-step go-link labels (Aurora .cstep .go); the generic key
+    // above stays for the desktop button
+    'onboarding.goto.runtime': '去设置 →',
+    'onboarding.goto.models': '去下载 →',
+    'onboarding.goto.service': '去启动 →',
+    // Phone-tier per-step muted sub-descriptions (Aurora .cstep .sd)
+    'onboarding.sub.runtime': 'CPU 版 · 约 40 MB',
+    'onboarding.sub.models': '建议 4B 以下 · Q4 量化',
+    'onboarding.sub.service': '一键开启本机 OpenAI 端点',
     'onboarding.dismiss': '不再显示',
-    'action.gotoDownloads': '去下载模型',
+    // Aurora frame ㉑ emptycard CTA (arrow suffix both tiers)
+    'action.gotoDownloads': '去下载模型 →',
     'home.backendError': '无法连接后端: {msg}',
 
     // ─── Runtime environment tab (RuntimeSection.vue, the Home shell's runtime tab) ───
     'runtime.errorTitle': '无法获取运行环境信息',
     'runtime.retry': '重试',
     'runtime.backendError': '无法连接后端: {msg}',
+    // Phone-tier page heading inside the runtime panel (Aurora frames ③/④)
+    'runtime.pageTitle': '运行环境',
+    'runtime.pageSub': 'llama.cpp 本地推理运行时',
     'runtime.llamacpp': 'llama.cpp',
     'runtime.llamacpp.status': '状态',
     'runtime.llamacpp.installed': '已安装',
@@ -139,6 +161,8 @@ export const messages: Record<Locale, Record<string, string>> = {
     'runtime.accel.metal': 'Metal 构建',
     'runtime.accel.cpu': 'CPU 构建',
     'runtime.accel.cpuArm64': 'CPU 构建（arm64）',
+    // Android NEON-qualified build label (Aurora frame ③ component row)
+    'runtime.accel.cpuArm64Neon': '加速构建 · cpuArm64（NEON）',
     'runtime.accel.windows': 'CPU / CUDA 构建',
     'runtime.accel.linux': 'Vulkan 构建',
     'runtime.accel.darwin': 'Metal 构建',
@@ -148,10 +172,15 @@ export const messages: Record<Locale, Record<string, string>> = {
     'runtime.downloadLlamaCpp': '下载 llama.cpp',
     'runtime.custom': '自定义',
     'runtime.customPath': '自定义路径：',
+    // Android storage hint under the download CTA (Aurora frame ④)
+    'runtime.storageHint': 'Android 使用应用内存储，路径由系统管理',
     'runtime.pause': '暂停',
     'runtime.resume': '继续',
     'runtime.stop': '取消',
-    'runtime.dlPausedHint': '下载已暂停，点击"继续"恢复',
+    'runtime.dlPausedHint': '已暂停 · 进度已保存，可随时继续',
+    // Phone-tier "About the runtime" island (Aurora frame ③)
+    'runtime.aboutTitle': '关于运行时',
+    'runtime.aboutBody': 'Android 版使用应用内存储，路径由系统管理。llama.cpp 发布新版本时，可在此页直接下载升级（支持断点续传）。',
 
     // ─── Download status labels (shared: RuntimeSection.vue / TaskDock.vue) ───
     'dl.fetching': '正在获取最新版本信息...',
@@ -169,15 +198,21 @@ export const messages: Record<Locale, Record<string, string>> = {
     'models.refresh': '刷新',
     'models.refreshTitle': '重新扫描模型目录',
     'models.dir': '模型目录',
-    'models.downloadDir': '下载路径',
-    'models.importDir': '外部路径',
+    // Aurora frame ⑨ dir-bar labels (download / import sources)
+    'models.downloadDir': '下载目录',
+    'models.importDir': '导入目录',
     'models.dirNotSet': '未设置',
     'models.chooseDir': '选择文件夹',
     'models.chooseDirTitle': '选择模型外部路径',
     'models.dirAndroidHint': '安卓版使用应用内存储，路径由系统管理',
+    // Phone-tier counted variant (Aurora frame ⑨ .dirbar .hint): appends the
+    // scanned model count and total size; the base key above stays for desktop
+    'models.dirAndroidHintCounted': 'Android 路径由系统管理 · 共 {n} 个模型 · {size}',
+    // Source pills (Aurora frame ⑨ .mt i.src-g / .src-b)
     'models.sourceDownload': '下载路径',
     'models.sourceImport': '外部路径',
-    'models.errorTitle': '无法获取模型列表',
+    // Aurora frame ㉑ errcard title
+    'models.errorTitle': '加载失败',
     'models.emptyTitle': '暂无模型',
     'models.emptyHint': '将 .gguf 模型文件放入模型目录：{dir} 中',
     'models.multimodal': '多模态',
@@ -185,21 +220,22 @@ export const messages: Record<Locale, Record<string, string>> = {
     'models.settings': '设置',
     'models.tune': '一键调优',
     'models.tuned': '已应用调优：GPU 层 {gpu} · 上下文 {ctx} · 缓存 {cache} · 线程 {threads}',
-    'models.tunedCpu': '已应用调优：上下文 {ctx} · 缓存 {cache} · 线程 {threads}',
+    // Aurora frame ⑪ toast: ctx · threads · K cache order, CPU-only plans
+    'models.tunedCpu': '✓ 已按本机自动调优：上下文 {ctx} · 线程 {threads} · K 缓存 {cache}',
     'models.tuneError': '调优失败：{msg}',
     'models.back': '返回',
     'models.backendError': '无法连接后端服务：{msg}',
 
     // ─── API page (Api.vue) ───
     'api.title': 'API 路由',
-    'api.subtitle': 'llama-server 服务启停与实时监控',
+    'api.subtitle': '本机推理服务 · OpenAI 兼容',
     'api.running': '运行中',
     'api.stopped': '已停止',
     'api.stopServer': '停止服务',
     'api.startServer': '启动服务',
-    'api.cfgPort': 'Port',
-    'api.cfgMaxModels': '最大并发模型',
-    'api.cfgCacheRam': 'Prompt 缓存 (MiB)',
+    'api.cfgPort': '端口',
+    'api.cfgMaxModels': '最大加载模型数',
+    'api.cfgCacheRam': 'RAM 缓存 MB',
     'api.emptyHint': '将 .gguf 文件放入模型目录即可自动识别',
     'api.saveFailed': '配置保存失败: {msg}',
     'api.toggleFailed': '启动/停止服务失败: {msg}',
@@ -214,14 +250,30 @@ export const messages: Record<Locale, Record<string, string>> = {
     'api.addressCopied': '已复制',
     'api.modelsHeading': '可用模型',
     'api.modelsMore': '{n} 个',
+    // Aurora frames ⑬⑭⑮: phone settings sheet / empty state / log footer
+    'api.serviceSettings': '服务设置',
+    'api.cfgPortSub': '1024 – 65535',
+    'api.cfgMaxModelsSub': '同时驻留内存的模型上限',
+    'api.cfgCacheRamSub': '--mlock 预留 · 0 = 不预留',
+    'api.cfgLockedSheet': '服务运行中无法修改，停止后编辑',
+    'api.done': '完成',
+    'api.emptyTitle': '暂无可用模型',
+    'api.emptySub': '服务启动前需要至少一个 GGUF 模型',
+    'api.logMore': '… 查看全部日志 →',
 
     // ─── Downloads page (Downloads.vue, the /models/download tab) ───
-    'downloads.searchPlaceholder': '搜索模型...（如 Qwen3.8-27B, Qwen3.6-35B-A3B）',
+    // Aurora frame ⑧: compact example-led placeholder (both tiers)
+    'downloads.searchPlaceholder': '搜索模型，如 Qwen3、LLaMA…',
     'downloads.searching': '搜索中...',
     'downloads.search': '搜索',
     'downloads.download': '下载',
+    // Aurora frame ⑧ ghost task entry label (title/aria keep downloadTitle)
+    'downloads.tasks': '任务',
     'downloads.downloadTitle': '查看下载任务',
+    // Aurora frame ⑧ results header: plain label + right-aligned count split
     'downloads.resultsTitle': '搜索结果 ({n})',
+    'downloads.resultsLabel': '搜索结果',
+    'downloads.resultsCount': '{n} 个',
     'downloads.loadingDesc': '加载描述中...',
     'downloads.loadingFiles': '加载文件列表...',
     'downloads.selectAll': '全选',
@@ -247,7 +299,8 @@ export const messages: Record<Locale, Record<string, string>> = {
     'downloads.statusCancelled': '已取消',
     'downloads.back': '返回',
     'downloads.deselectAll': '取消全选',
-    'downloads.descTitle': '模型说明',
+    // Aurora frame ⑩ description island title (both tiers)
+    'downloads.descTitle': '模型介绍',
     'downloads.noDesc': '暂无说明',
     'downloads.selectedCount': '已选 {n} 个文件',
     'downloads.viewDetail': '查看详情',
@@ -283,6 +336,30 @@ export const messages: Record<Locale, Record<string, string>> = {
     'chat.systemPromptPh': '留空则不注入系统提示',
     'chat.resetDefaults': '恢复默认',
     'chat.thinking': '思考过程',
+    // Phone-tier params sheet (Aurora frame ⑤): title + per-param muted sub-captions
+    'chat.paramsTitle': '推理参数',
+    'chat.temperatureHint': '采样随机度，越高越发散',
+    'chat.topPHint': '核采样概率阈值',
+    'chat.topKHint': '每步候选词数量',
+    'chat.repeatPenaltyHint': '抑制重复内容',
+    'chat.maxTokensHint': '单次回复长度上限',
+    'chat.systemPromptHint': '模型的人设与规则',
+    // Max-tokens -1 sentinel label (Aurora frame ⑤ stepper)
+    'chat.unlimited': '无限',
+    // Stepper button accessibility labels
+    'chat.stepDown': '减小',
+    'chat.stepUp': '增大',
+    // Phone-tier two-line empty states (Aurora frames ⑤⑦ .emptystate)
+    'chat.emptySub': '所有对话都在本机完成，不上传任何数据',
+    'chat.noModelsTitle': '还没有可用的模型',
+    'chat.noModelsSub': '下载一个 GGUF 模型后即可开始对话',
+    // Phone-tier thinking-block state copy (Aurora frame ⑥ .think)
+    'chat.thinkingActive': '🧠 正在深度思考',
+    'chat.thinkingDone': '🧠 已深度思考',
+    // Android auto-start spinner card copy (Aurora .notify + .spin)
+    'chat.startingServerAndroid': '正在启动服务…（Android 最长等待 60 秒）',
+    // Phone-tier blocked-composer placeholder (needModels / needRuntime)
+    'chat.blockedPlaceholder': '先下载模型后即可发送',
     'chat.statsThinking': '思考 {v} tok/s',
     'chat.statsAnswer': '生成 {v} tok/s',
 
@@ -291,6 +368,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'monitor.uptimePlaceholder': '启动服务后显示',
     'monitor.promptSpeed': '提示词处理速度',
     'monitor.chartLabel': '近 {n} 秒生成速度',
+    'monitor.noSpeed': '— tok/s',
 
     // ─── Settings page (Settings.vue) ───
     'settings.title': '偏好设置',
@@ -368,13 +446,21 @@ export const messages: Record<Locale, Record<string, string>> = {
     'settings.version': '版本',
     'settings.license': '开源协议',
     'settings.repo': '项目仓库',
+    // Phone-tier frame ⑯ additions (Settings.vue): counted docs-entry sub,
+    // static latest-version sub of the Android release-link row, and the
+    // counted Android model-directory sub
+    'settings.docsEntrySubCounted': '{n} 章节双语指南 · 在线更新',
+    'settings.updateLatestVersion': '已是最新版本 · v{version}',
+    'settings.modelDirAndroidCounted': '{n} 个模型 · {size} · 路径由系统管理',
 
     // ─── Model settings modal (ModelSettings.vue) ───
-    'modelSettings.subtitle': '推理参数配置',
+    // zh copy follows the Aurora frame ⑪ .mstop sub-line wording
+    'modelSettings.subtitle': '模型推理参数',
     'modelSettings.tabsAria': '参数分类',
-    'modelSettings.tabBase': '基础',
+    // Aurora frames ⑪⑫ tab labels (full names both tiers)
+    'modelSettings.tabBase': '基础参数',
     'modelSettings.tabInfer': '推理',
-    'modelSettings.tabMemory': '内存/加载',
+    'modelSettings.tabMemory': '内存·加载',
     'modelSettings.tabGpu': '多 GPU',
     'modelSettings.tabContext': '长上下文',
     'modelSettings.tabAdvanced': '高级',
@@ -405,8 +491,9 @@ export const messages: Record<Locale, Record<string, string>> = {
     'modelSettings.nCpuMoeHint': '前 N 层 MoE 专家留 CPU,0 不启用;显存不足时逐步加大',
     'modelSettings.groupMemory': '内存 / 加载',
     'modelSettings.cacheTypeK': 'KV 缓存 K 类型',
-    'modelSettings.defaultF16': '默认 (f16)',
-    'modelSettings.q8Recommended': 'q8_0 ★ 推荐',
+    // Aurora frame ⑫ pselect option labels (both tiers)
+    'modelSettings.defaultF16': '默认 f16',
+    'modelSettings.q8Recommended': 'q8_0（推荐）',
     'modelSettings.cacheTypeKHint': 'q8_0 推荐(缓存体积几乎减半,CPU/GPU 皆可);f32/f16 精度高体积大;q4 系最省',
     'modelSettings.cacheTypeV': 'KV 缓存 V 类型',
     'modelSettings.cacheTypeVHint': '同 K 类型,一般跟随 K 保持一致',
@@ -452,22 +539,30 @@ export const messages: Record<Locale, Record<string, string>> = {
     'modelSettings.specDraftNMax': '额外预测 token 数',
     'modelSettings.specDraftNMaxHint': '额外预测 token 数,>0 生效',
     'modelSettings.saved': '✓ 已保存',
-    'modelSettings.restartNote': '⚠ 服务正在运行，参数将在下次启动服务时生效',
+    // Aurora frame ⑪ amber notice: the ⚠ prefix is replaced by an SVG icon on phone
+    'modelSettings.restartNote': '服务运行中 · 保存的参数将在重启服务后生效',
     'modelSettings.saving': '保存中...',
     'modelSettings.tuning': '调优中...',
-    'modelSettings.bench': '深度实测',
+    // Aurora frames ⑪⑫: deep-benchmark action + plain result toast
+    'modelSettings.bench': '深度基准',
     'modelSettings.benching': '实测中...（可能需要几分钟）',
-    'modelSettings.benched': '实测解码速度：{tps} t/s（ngl={ngl} · threads={threads}）',
+    'modelSettings.benched': '生成 {tps} tok/s · ngl={ngl} · threads={threads}',
     'modelSettings.benchError': '实测失败：{msg}',
     'modelSettings.benchHint': '将完整加载当前模型并用 llama-bench 实测解码速度，可能需要数分钟',
-    'modelSettings.save': '保存设置',
+    'modelSettings.save': '保存',
     'modelSettings.reset': '重置',
     'modelSettings.loading': '加载中...',
     'modelSettings.loadFailed': '加载失败',
     'modelSettings.retry': '重试',
+    // Aurora frame ⑫ "参数速览" summary island (phone tier, memory tab bottom):
+    // live form values + the auto-tune hardware basis sub line
+    'modelSettings.summaryTitle': '参数速览',
+    'modelSettings.summaryBody': '上下文 {ctx} · 线程 {threads} · K 缓存 {ctk} · V 缓存 {ctv} · 加载 {mode}',
+    'modelSettings.summarySubHardware': '由「一键调优」按 {ram} 内存 + {soc} 自动计算',
+    'modelSettings.summarySubGeneric': '由「一键调优」按本机硬件自动计算',
 
     // ─── Update modal (UpdateModal.vue) ───
-    'updateModal.title': '发现新版本',
+    'updateModal.title': '🎉 发现新版本',
     'updateModal.close': '关闭',
     'updateModal.downloading': '正在下载 {version} ...',
     'updateModal.doneTitle': '下载完成',
@@ -488,7 +583,9 @@ export const messages: Record<Locale, Record<string, string>> = {
     'updateModal.published': '发布时间：{date}',
     'updateModal.notesTitle': '更新内容',
     'updateModal.cancel': '取消',
-    'updateModal.download': '下载',
+    'updateModal.download': '⬇ 下载更新',
+    // Confirm-view dismiss copy (Aurora frame ⑳ .mbtns .c "稍后再说")
+    'updateModal.later': '稍后再说',
     'updateModal.gotIt': '知道了',
     'updateModal.cancelDownload': '取消下载',
     'updateModal.hideDownload': '后台下载',
@@ -511,12 +608,22 @@ export const messages: Record<Locale, Record<string, string>> = {
     'dock.modelType.audio': '语音',
     'dock.modelType.image': '图像',
     'dock.modelType.video': '视频',
+    // Phone-tier row type badges (Aurora frame ⑲ .tbadge); 聊天 reuses dock.modelType.chat
+    'dock.badge.update': '更新',
+    'dock.badge.runtime': '运行时',
+    'dock.badge.model': '模型',
+    // Phone capsule warn copy: in-progress download with its percent
+    'dock.downloadingPct': '下载中 {pct}%',
+    // Dock-row done label with the ✓ prefix (Aurora frame ⑳ drow)
+    'dock.statusDone': '✓ 已完成',
     'dock.modelStatus.loaded': '已加载',
+    // Phone-tier in-memory row status with the live dot prefix (Aurora .ds.g)
+    'dock.modelStatus.loadedDot': '● 已加载',
     'dock.modelStatus.loading': '加载中',
     'dock.modelStatus.sleeping': '休眠',
 
     // ─── Docs page (Docs.vue + docs/manifest.ts) ───
-    'docs.title': '帮助文档',
+    'docs.title': '帮助与教程',
     'docs.subtitle': '使用教程与常见问题',
     'docs.toc': '目录',
     'docs.loadError': '内容加载失败：{msg}',
@@ -529,13 +636,19 @@ export const messages: Record<Locale, Record<string, string>> = {
     'docs.section.settings': '偏好设置',
     'docs.section.headless': '无头模式',
     'docs.section.faq': '常见问题',
-    'docs.sourceOnline': '在线文档',
+    'docs.sourceOnline': '● 在线',
     'docs.sourceCached': '缓存 · {time}',
     'docs.sourceCachedPlain': '缓存',
     'docs.sourceBundled': '内置文档',
-    'docs.refresh': '刷新',
+    'docs.refresh': '↻ 刷新',
     'docs.refreshing': '刷新中…',
-    'docs.openOnGithub': '在浏览器查看最新文档',
+    'docs.openOnGithub': '在 GitHub 打开 ↗',
+    // Phone docs list + reader (Aurora frames ⑰⑱)
+    'docs.back': '返回',
+    'docs.retry': '重试',
+    'docs.loadFailed': '加载失败',
+    'docs.pagerPrev': '上一节',
+    'docs.pagerNext': '下一节',
   },
 
   en: {
@@ -563,6 +676,8 @@ export const messages: Record<Locale, Record<string, string>> = {
     'home.refresh': 'Refresh',
     'home.refreshing': 'Refreshing…',
     'home.updatedAt': 'Updated {time}',
+    // Phone tier (Aurora mockup .tabs .upd): "Updated at hh:mm:ss" prefix form
+    'home.updatedAtAsOf': 'Updated at {time}',
     'home.errorTitle': 'Unable to load system info',
     'home.retry': 'Retry',
     'home.cpu': 'CPU',
@@ -608,13 +723,18 @@ export const messages: Record<Locale, Record<string, string>> = {
     'home.greet.idle': 'Service running · waiting for a model',
     'home.greet.offline': 'Service stopped',
     'home.greet.loading': 'Fetching status…',
+    // Phone greeting second line while onboarding is visible and the service is
+    // not ready (Aurora mockup frame ① "· 完成下面 3 步即可开始")
+    'home.greet.onboardHint': 'Complete the 3 steps below to get started',
     'home.hero.tagReady': 'AI ready',
     'home.hero.tagOffline': 'Offline',
     'home.hero.subResident': 'Local direct · resident in memory · zero wait',
     'home.hero.subIdle': 'Service running · the model loads on your first chat',
     'home.hero.subOffline': 'Service stopped · starts automatically on your first message',
     'home.hero.standby': 'Standby',
-    'home.hero.metricLbl': 'tokens / s · live',
+    // The hero metric is the rolling 60s average of the decode speed (same
+    // figure the Api page charts), so the label names the averaging window.
+    'home.hero.metricLbl': 'tokens / s · 60s average',
     'home.hero.cta': 'Chat now →',
     'home.memory.aux': '{pct}% · {free} free',
     'home.cpu.aux': '{model} · {n} cores',
@@ -626,6 +746,8 @@ export const messages: Record<Locale, Record<string, string>> = {
     'home.storage.llamacpp': 'llama.cpp',
     'home.storage.notInstalled': 'Not installed',
     'home.noModel': 'No models',
+    // Resident-model card trailing green source pill (Aurora .mt i.src-g)
+    'home.residentBadge': 'Resident',
 
     // ─── Quick-start onboarding (Home checklist card + empty-state CTAs) ───
     'onboarding.title': 'Quick Start',
@@ -634,14 +756,27 @@ export const messages: Record<Locale, Record<string, string>> = {
     'onboarding.step.service': 'Start the API service',
     'onboarding.done': 'Done',
     'onboarding.goto': 'Set up',
+    // Phone-tier per-step go-link labels (Aurora .cstep .go); the generic key
+    // above stays for the desktop button
+    'onboarding.goto.runtime': 'Set up →',
+    'onboarding.goto.models': 'Download →',
+    'onboarding.goto.service': 'Launch →',
+    // Phone-tier per-step muted sub-descriptions (Aurora .cstep .sd)
+    'onboarding.sub.runtime': 'CPU build · about 40 MB',
+    'onboarding.sub.models': '4B or smaller · Q4 quant',
+    'onboarding.sub.service': 'One tap to a local OpenAI endpoint',
     'onboarding.dismiss': "Don't show again",
-    'action.gotoDownloads': 'Download models',
+    // Aurora frame ㉑ emptycard CTA (arrow suffix both tiers)
+    'action.gotoDownloads': 'Download models →',
     'home.backendError': 'Unable to connect to backend: {msg}',
 
     // ─── Runtime environment tab (RuntimeSection.vue, the Home shell's runtime tab) ───
     'runtime.errorTitle': 'Unable to load runtime info',
     'runtime.retry': 'Retry',
     'runtime.backendError': 'Unable to connect to backend: {msg}',
+    // Phone-tier page heading inside the runtime panel (Aurora frames ③/④)
+    'runtime.pageTitle': 'Runtime',
+    'runtime.pageSub': 'llama.cpp local inference runtime',
     'runtime.llamacpp': 'llama.cpp',
     'runtime.llamacpp.status': 'Status',
     'runtime.llamacpp.installed': 'Installed',
@@ -663,6 +798,8 @@ export const messages: Record<Locale, Record<string, string>> = {
     'runtime.accel.metal': 'Metal build',
     'runtime.accel.cpu': 'CPU build',
     'runtime.accel.cpuArm64': 'CPU build (arm64)',
+    // Android NEON-qualified build label (Aurora frame ③ component row)
+    'runtime.accel.cpuArm64Neon': 'Accelerated build · cpuArm64 (NEON)',
     'runtime.accel.windows': 'CPU / CUDA build',
     'runtime.accel.linux': 'Vulkan build',
     'runtime.accel.darwin': 'Metal build',
@@ -672,10 +809,15 @@ export const messages: Record<Locale, Record<string, string>> = {
     'runtime.downloadLlamaCpp': 'Download llama.cpp',
     'runtime.custom': 'Custom',
     'runtime.customPath': 'Custom path:',
+    // Android storage hint under the download CTA (Aurora frame ④)
+    'runtime.storageHint': 'Android uses app-internal storage; the path is managed by the system',
     'runtime.pause': 'Pause',
     'runtime.resume': 'Resume',
     'runtime.stop': 'Cancel',
-    'runtime.dlPausedHint': 'Download paused. Click "Resume" to continue',
+    'runtime.dlPausedHint': 'Paused · Progress saved, resume anytime',
+    // Phone-tier "About the runtime" island (Aurora frame ③)
+    'runtime.aboutTitle': 'About the runtime',
+    'runtime.aboutBody': 'The Android build uses app-internal storage with system-managed paths. When a new llama.cpp version is released, you can download the upgrade right from this page (resumable download supported).',
 
     // ─── Download status labels (shared: RuntimeSection.vue / TaskDock.vue) ───
     'dl.fetching': 'Fetching latest release info...',
@@ -693,15 +835,21 @@ export const messages: Record<Locale, Record<string, string>> = {
     'models.refresh': 'Refresh',
     'models.refreshTitle': 'Rescan models directory',
     'models.dir': 'Models Directory',
-    'models.downloadDir': 'Download Path',
-    'models.importDir': 'External Path',
+    // Aurora frame ⑨ dir-bar labels (download / import sources)
+    'models.downloadDir': 'Download dir',
+    'models.importDir': 'Import dir',
     'models.dirNotSet': 'Not set',
     'models.chooseDir': 'Choose Folder',
     'models.chooseDirTitle': 'Select an external model path',
     'models.dirAndroidHint': 'Android uses app-internal storage; paths are managed by the system',
-    'models.sourceDownload': 'Download Path',
-    'models.sourceImport': 'External Path',
-    'models.errorTitle': 'Unable to load model list',
+    // Phone-tier counted variant (Aurora frame ⑨ .dirbar .hint): appends the
+    // scanned model count and total size; the base key above stays for desktop
+    'models.dirAndroidHintCounted': 'Android paths are managed by the system · {n} models · {size}',
+    // Source pills (Aurora frame ⑨ .mt i.src-g / .src-b)
+    'models.sourceDownload': 'Downloaded',
+    'models.sourceImport': 'External',
+    // Aurora frame ㉑ errcard title
+    'models.errorTitle': 'Load failed',
     'models.emptyTitle': 'No models yet',
     'models.emptyHint': 'Put .gguf model files into the models directory: {dir}',
     'models.multimodal': 'Multimodal',
@@ -709,21 +857,22 @@ export const messages: Record<Locale, Record<string, string>> = {
     'models.settings': 'Settings',
     'models.tune': 'Auto-tune',
     'models.tuned': 'Tuned: GPU layers {gpu} · ctx {ctx} · cache {cache} · threads {threads}',
-    'models.tunedCpu': 'Tuned: ctx {ctx} · cache {cache} · threads {threads}',
+    // Aurora frame ⑪ toast: ctx · threads · K cache order, CPU-only plans
+    'models.tunedCpu': '✓ Auto-tuned for this device: ctx {ctx} · threads {threads} · K cache {cache}',
     'models.tuneError': 'Auto-tune failed: {msg}',
     'models.back': 'Back',
     'models.backendError': 'Unable to connect to backend: {msg}',
 
     // ─── API (Api.vue) ───
     'api.title': 'API Router',
-    'api.subtitle': 'llama-server start/stop & real-time monitoring',
+    'api.subtitle': 'Local inference · OpenAI-compatible',
     'api.running': 'Running',
     'api.stopped': 'Stopped',
     'api.stopServer': 'Stop Server',
     'api.startServer': 'Start Server',
     'api.cfgPort': 'Port',
-    'api.cfgMaxModels': 'Max Concurrent Models',
-    'api.cfgCacheRam': 'Prompt Cache (MiB)',
+    'api.cfgMaxModels': 'Max Loaded Models',
+    'api.cfgCacheRam': 'RAM Cache (MB)',
     'api.emptyHint': 'Put .gguf files into the models directory to auto-detect',
     'api.saveFailed': 'Failed to save config: {msg}',
     'api.toggleFailed': 'Failed to start/stop server: {msg}',
@@ -738,14 +887,30 @@ export const messages: Record<Locale, Record<string, string>> = {
     'api.addressCopied': 'Copied',
     'api.modelsHeading': 'Available Models',
     'api.modelsMore': '{n} in total',
+    // Aurora frames ⑬⑭⑮: phone settings sheet / empty state / log footer
+    'api.serviceSettings': 'Service Settings',
+    'api.cfgPortSub': '1024 – 65535',
+    'api.cfgMaxModelsSub': 'Max models resident in memory',
+    'api.cfgCacheRamSub': '--mlock reservation · 0 = none',
+    'api.cfgLockedSheet': 'Locked while the server is running — stop it to edit',
+    'api.done': 'Done',
+    'api.emptyTitle': 'No models available',
+    'api.emptySub': 'At least one GGUF model is required before starting',
+    'api.logMore': '… View all logs →',
 
     // ─── Downloads (Downloads.vue, the /models/download tab) ───
-    'downloads.searchPlaceholder': 'Search models... (e.g. Qwen3.8-27B, Qwen3.6-35B-A3B)',
+    // Aurora frame ⑧: compact example-led placeholder (both tiers)
+    'downloads.searchPlaceholder': 'Search models, e.g. Qwen3, LLaMA…',
     'downloads.searching': 'Searching...',
     'downloads.search': 'Search',
     'downloads.download': 'Downloads',
+    // Aurora frame ⑧ ghost task entry label (title/aria keep downloadTitle)
+    'downloads.tasks': 'Tasks',
     'downloads.downloadTitle': 'View download tasks',
+    // Aurora frame ⑧ results header: plain label + right-aligned count split
     'downloads.resultsTitle': 'Search Results ({n})',
+    'downloads.resultsLabel': 'Search results',
+    'downloads.resultsCount': '{n} found',
     'downloads.loadingDesc': 'Loading description...',
     'downloads.loadingFiles': 'Loading file list...',
     'downloads.selectAll': 'Select All',
@@ -771,7 +936,8 @@ export const messages: Record<Locale, Record<string, string>> = {
     'downloads.statusCancelled': 'Cancelled',
     'downloads.back': 'Back',
     'downloads.deselectAll': 'Deselect all',
-    'downloads.descTitle': 'Description',
+    // Aurora frame ⑩ description island title (both tiers)
+    'downloads.descTitle': 'About this model',
     'downloads.noDesc': 'No description',
     'downloads.selectedCount': '{n} files selected',
     'downloads.viewDetail': 'View detail',
@@ -807,6 +973,30 @@ export const messages: Record<Locale, Record<string, string>> = {
     'chat.systemPromptPh': 'Leave empty to omit system prompt',
     'chat.resetDefaults': 'Reset defaults',
     'chat.thinking': 'Thinking',
+    // Phone-tier params sheet (Aurora frame ⑤): title + per-param muted sub-captions
+    'chat.paramsTitle': 'Inference Parameters',
+    'chat.temperatureHint': 'Sampling randomness — higher is more creative',
+    'chat.topPHint': 'Nucleus sampling probability cutoff',
+    'chat.topKHint': 'Candidate tokens considered per step',
+    'chat.repeatPenaltyHint': 'Suppresses repetitive output',
+    'chat.maxTokensHint': 'Upper bound on a single reply',
+    'chat.systemPromptHint': 'The model persona and rules',
+    // Max-tokens -1 sentinel label (Aurora frame ⑤ stepper)
+    'chat.unlimited': 'Unlimited',
+    // Stepper button accessibility labels
+    'chat.stepDown': 'Decrease',
+    'chat.stepUp': 'Increase',
+    // Phone-tier two-line empty states (Aurora frames ⑤⑦ .emptystate)
+    'chat.emptySub': 'Everything stays on this device — nothing is uploaded',
+    'chat.noModelsTitle': 'No models available yet',
+    'chat.noModelsSub': 'Download a GGUF model to start chatting',
+    // Phone-tier thinking-block state copy (Aurora frame ⑥ .think)
+    'chat.thinkingActive': '🧠 Deep thinking',
+    'chat.thinkingDone': '🧠 Deep thought',
+    // Android auto-start spinner card copy (Aurora .notify + .spin)
+    'chat.startingServerAndroid': 'Starting the service… (may take up to 60s on Android)',
+    // Phone-tier blocked-composer placeholder (needModels / needRuntime)
+    'chat.blockedPlaceholder': 'Download a model to start sending',
     'chat.statsThinking': 'Thinking {v} tok/s',
     'chat.statsAnswer': 'Generating {v} tok/s',
 
@@ -815,6 +1005,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'monitor.uptimePlaceholder': 'Shown after starting the server',
     'monitor.promptSpeed': 'Prompt Processing Speed',
     'monitor.chartLabel': 'Decode speed over last {n}s',
+    'monitor.noSpeed': '— tok/s',
 
     // ─── Settings (Settings.vue) ───
     'settings.title': 'Preferences',
@@ -892,13 +1083,20 @@ export const messages: Record<Locale, Record<string, string>> = {
     'settings.version': 'Version',
     'settings.license': 'License',
     'settings.repo': 'Repository',
+    // Phone-tier frame ⑯ additions (Settings.vue): counted docs-entry sub,
+    // static latest-version sub of the Android release-link row, and the
+    // counted Android model-directory sub
+    'settings.docsEntrySubCounted': '{n} bilingual chapters · updated online',
+    'settings.updateLatestVersion': 'Up to date · v{version}',
+    'settings.modelDirAndroidCounted': '{n} models · {size} · path managed by the system',
 
     // ─── Model settings dialog (ModelSettings.vue) ───
     'modelSettings.subtitle': 'Inference parameters',
     'modelSettings.tabsAria': 'Parameter categories',
-    'modelSettings.tabBase': 'Basic',
+    // Aurora frames ⑪⑫ tab labels (full names both tiers)
+    'modelSettings.tabBase': 'Basic params',
     'modelSettings.tabInfer': 'Inference',
-    'modelSettings.tabMemory': 'Memory / Loading',
+    'modelSettings.tabMemory': 'Memory & loading',
     'modelSettings.tabGpu': 'Multi-GPU',
     'modelSettings.tabContext': 'Long Context',
     'modelSettings.tabAdvanced': 'Advanced',
@@ -929,8 +1127,9 @@ export const messages: Record<Locale, Record<string, string>> = {
     'modelSettings.nCpuMoeHint': 'Keep the first N MoE expert layers on CPU; 0 disables; increase when VRAM is low',
     'modelSettings.groupMemory': 'Memory / Loading',
     'modelSettings.cacheTypeK': 'KV Cache K Type',
+    // Aurora frame ⑫ pselect option labels (both tiers)
     'modelSettings.defaultF16': 'Default (f16)',
-    'modelSettings.q8Recommended': 'q8_0 ★ Recommended',
+    'modelSettings.q8Recommended': 'q8_0 (recommended)',
     'modelSettings.cacheTypeKHint': 'q8_0 recommended (nearly half the cache size; works on CPU and GPU); f32/f16 higher precision, larger footprint; q4 most compact',
     'modelSettings.cacheTypeV': 'KV Cache V Type',
     'modelSettings.cacheTypeVHint': 'Same as the K type; usually follow K',
@@ -976,22 +1175,30 @@ export const messages: Record<Locale, Record<string, string>> = {
     'modelSettings.specDraftNMax': 'Extra Predicted Tokens',
     'modelSettings.specDraftNMaxHint': 'Extra predicted tokens, active when >0',
     'modelSettings.saved': '✓ Saved',
-    'modelSettings.restartNote': '⚠ The service is running — changes take effect after the service is restarted',
+    // Aurora frame ⑪ amber notice: the ⚠ prefix is replaced by an SVG icon on phone
+    'modelSettings.restartNote': 'Service running · saved parameters take effect after the service is restarted',
     'modelSettings.saving': 'Saving...',
     'modelSettings.tuning': 'Tuning...',
+    // Aurora frames ⑪⑫: deep-benchmark action + plain result toast
     'modelSettings.bench': 'Deep benchmark',
     'modelSettings.benching': 'Benchmarking... (may take minutes)',
-    'modelSettings.benched': 'Measured decode: {tps} t/s (ngl={ngl} · threads={threads})',
+    'modelSettings.benched': 'Generated {tps} tok/s · ngl={ngl} · threads={threads}',
     'modelSettings.benchError': 'Benchmark failed: {msg}',
     'modelSettings.benchHint': 'Loads the full model and measures its real decode speed with llama-bench; may take several minutes',
-    'modelSettings.save': 'Save Settings',
+    'modelSettings.save': 'Save',
     'modelSettings.reset': 'Reset',
     'modelSettings.loading': 'Loading...',
     'modelSettings.loadFailed': 'Load failed',
     'modelSettings.retry': 'Retry',
+    // Aurora frame ⑫ "参数速览" summary island (phone tier, memory tab bottom):
+    // live form values + the auto-tune hardware basis sub line
+    'modelSettings.summaryTitle': 'Parameter summary',
+    'modelSettings.summaryBody': 'Context {ctx} · Threads {threads} · K cache {ctk} · V cache {ctv} · Load {mode}',
+    'modelSettings.summarySubHardware': 'Computed by auto-tune for {ram} RAM + {soc}',
+    'modelSettings.summarySubGeneric': 'Computed by auto-tune from this device\'s hardware',
 
     // ─── Update modal (UpdateModal.vue) ───
-    'updateModal.title': 'New Version Found',
+    'updateModal.title': '🎉 New Version Found',
     'updateModal.close': 'Close',
     'updateModal.downloading': 'Downloading {version} ...',
     'updateModal.doneTitle': 'Download Complete',
@@ -1012,7 +1219,9 @@ export const messages: Record<Locale, Record<string, string>> = {
     'updateModal.published': 'Published: {date}',
     'updateModal.notesTitle': 'Release Notes',
     'updateModal.cancel': 'Cancel',
-    'updateModal.download': 'Download',
+    'updateModal.download': '⬇ Download Update',
+    // Confirm-view dismiss copy (Aurora frame ⑳ .mbtns .c)
+    'updateModal.later': 'Later',
     'updateModal.gotIt': 'Got it',
     'updateModal.cancelDownload': 'Cancel Download',
     'updateModal.hideDownload': 'Download in background',
@@ -1035,12 +1244,22 @@ export const messages: Record<Locale, Record<string, string>> = {
     'dock.modelType.audio': 'Audio',
     'dock.modelType.image': 'Image',
     'dock.modelType.video': 'Video',
+    // Phone-tier row type badges (Aurora frame ⑲ .tbadge); Chat reuses dock.modelType.chat
+    'dock.badge.update': 'Update',
+    'dock.badge.runtime': 'Runtime',
+    'dock.badge.model': 'Model',
+    // Phone capsule warn copy: in-progress download with its percent
+    'dock.downloadingPct': 'Downloading {pct}%',
+    // Dock-row done label with the ✓ prefix (Aurora frame ⑳ drow)
+    'dock.statusDone': '✓ Done',
     'dock.modelStatus.loaded': 'Loaded',
+    // Phone-tier in-memory row status with the live dot prefix (Aurora .ds.g)
+    'dock.modelStatus.loadedDot': '● Loaded',
     'dock.modelStatus.loading': 'Loading',
     'dock.modelStatus.sleeping': 'Sleeping',
 
     // ─── Docs page (Docs.vue + docs/manifest.ts) ───
-    'docs.title': 'Documentation',
+    'docs.title': 'Help & Tutorial',
     'docs.subtitle': 'Tutorials and FAQ',
     'docs.toc': 'Contents',
     'docs.loadError': 'Failed to load content: {msg}',
@@ -1053,13 +1272,19 @@ export const messages: Record<Locale, Record<string, string>> = {
     'docs.section.settings': 'Preferences',
     'docs.section.headless': 'Headless Mode',
     'docs.section.faq': 'FAQ',
-    'docs.sourceOnline': 'Online docs',
+    'docs.sourceOnline': '● Online',
     'docs.sourceCached': 'Cached · {time}',
     'docs.sourceCachedPlain': 'Cached',
     'docs.sourceBundled': 'Bundled docs',
-    'docs.refresh': 'Refresh',
+    'docs.refresh': '↻ Refresh',
     'docs.refreshing': 'Refreshing…',
-    'docs.openOnGithub': 'Open the latest docs in your browser',
+    'docs.openOnGithub': 'Open on GitHub ↗',
+    // Phone docs list + reader (Aurora frames ⑰⑱)
+    'docs.back': 'Back',
+    'docs.retry': 'Retry',
+    'docs.loadFailed': 'Load failed',
+    'docs.pagerPrev': 'Previous',
+    'docs.pagerNext': 'Next',
   },
 }
 

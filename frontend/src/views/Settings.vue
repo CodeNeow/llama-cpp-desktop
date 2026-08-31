@@ -15,9 +15,11 @@
       <span class="docs-entry-icon" v-html="DOCS_ICON"></span>
       <span class="docs-entry-text">
         <span class="docs-entry-title">{{ t('settings.docsEntry') }}</span>
-        <span class="docs-entry-sub">{{ t('settings.docsEntrySub') }}</span>
+        <span class="docs-entry-sub">{{ docsEntrySub }}</span>
       </span>
       <svg class="docs-entry-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+      <!-- Phone tail (frame ⑯): the chevron SVG becomes a plain → glyph -->
+      <span v-if="isPhone" class="docs-entry-arrow-glyph" aria-hidden="true">→</span>
     </router-link>
 
     <!-- Device island (frame ⑤): OS · arch · llama-server acceleration build ·
@@ -148,7 +150,9 @@
           <span class="row-ic ic-violet" v-html="ICON_FOLDER"></span>
           <div class="row-text">
             <span class="row-title">{{ t('settings.modelDownloadDir') }}</span>
-            <span class="row-sub">{{ t('settings.modelDownloadDirDesc') }}</span>
+            <!-- Android phone (frame ⑯): sub carries the scanned model count
+                 and total size; other tiers keep the plain description -->
+            <span class="row-sub">{{ modelDirSub }}</span>
           </div>
         </div>
         <div class="dir-path-row">
@@ -313,7 +317,7 @@
           <span class="row-ic ic-blue" v-html="ICON_REFRESH"></span>
           <div class="row-text">
             <span class="row-title">{{ t('settings.update') }}</span>
-            <span class="row-sub">{{ t('settings.updateDesc', { version: appVersion }) }}</span>
+            <span class="row-sub" :class="{ 'row-sub-ok': updatesLink && isPhone }">{{ updateSub }}</span>
           </div>
           <!-- Windows: native check-for-updates / self-update action -->
           <div v-if="updatesNative" class="row-tail update-actions">
@@ -323,11 +327,19 @@
               {{ checking ? t('settings.checking') : t('settings.checkUpdate') }}
             </button>
           </div>
+          <!-- Phone link mode (frame ⑯): the Releases link IS the row tail;
+               the shared external-link handler opens the system browser -->
+          <a
+            v-else-if="isPhone"
+            class="row-tail updates-link"
+            href="https://github.com/CodeNeow/llama-cpp-desktop/releases"
+            @click="handleLinkClick"
+          >{{ t('settings.updateReleasesLink') }} <span aria-hidden="true">↗</span></a>
         </div>
-        <!-- Other platforms: hint instead of the action; the Releases link
+        <!-- Desktop link mode: hint instead of the action; the Releases link
              goes through the shared external-link handler (system browser,
              never an in-WebView navigation) -->
-        <p v-if="!updatesNative" class="row-foot update-hint">
+        <p v-if="!updatesNative && !isPhone" class="row-foot update-hint">
           {{ t('settings.updateNotSupported') }}
           <a
             class="hint-link"
@@ -337,10 +349,11 @@
         </p>
       </div>
 
-      <!-- About: version / license / repository. The repo URL is plain
-           selectable text, NOT an <a> link: clicking a link would navigate the
-           WebView away from the app. -->
-      <div class="group-item">
+      <!-- About: version / license / repository. Desktop keeps the three
+           label/value rows — the repo URL is plain selectable text, NOT an
+           <a> link: clicking a link would navigate the WebView away from the
+           app. -->
+      <div v-if="!isPhone" class="group-item">
         <div class="about-row">
           <span class="about-label">{{ t('settings.version') }}</span>
           <span class="about-value">{{ appVersion || '—' }}</span>
@@ -354,6 +367,24 @@
           <span class="about-value about-mono">https://github.com/CodeNeow/llama-cpp-desktop</span>
         </div>
       </div>
+      <!-- Phone (frame ⑯): the three rows consolidate into ONE row — label,
+           version · license · repo sub line, and a tail that opens the repo
+           externally through the shared link handler -->
+      <div v-else class="group-item">
+        <div class="group-row">
+          <span class="row-ic ic-about" v-html="ICON_INFO"></span>
+          <div class="row-text">
+            <span class="row-title">{{ t('settings.about') }}</span>
+            <span class="row-sub">v{{ appVersion || '—' }} · GPL-3.0 · CodeNeow/llama-cpp-desktop</span>
+          </div>
+          <a
+            class="row-tail about-link"
+            href="https://github.com/CodeNeow/llama-cpp-desktop"
+            :aria-label="t('settings.repo')"
+            @click="handleLinkClick"
+          >›</a>
+        </div>
+      </div>
     </section>
   </div>
 </template>
@@ -362,12 +393,13 @@
 import { computed, onMounted, ref } from 'vue'
 import { appConfig, setTheme, loadConfig, setDownloadSource as applyDownloadSource, setLanguage as applyLanguage, setServerAccessMode as applyServerAccessMode, setApiKey as applyApiKey, setTrayEnabled as applyTrayEnabled } from '../store'
 import { updateState, checkForUpdate } from '../lib/update'
-import { getAppVersion, getLlamaCpp, getSystemInfo, getServerConfig, saveServerConfig, browseLlamaCppDownloadDir, browseModelDownloadDir, setApiRouteMode } from '../wails'
+import { getAppVersion, getLlamaCpp, getSystemInfo, getServerConfig, saveServerConfig, browseLlamaCppDownloadDir, browseModelDownloadDir, setApiRouteMode, getModels } from '../wails'
 import { accelBuildKey, showTraySetting, showApiRouteSetting, showServingGpuSetting, updateSectionMode, usePlatform } from '../lib/platform'
 import { handleLinkClick } from '../lib/linkHandler'
 import { DOCS_ICON } from '../lib/navigation'
+import { docSections } from '../docs/manifest'
 import ThemedSelect, { type SelectOption } from '../components/ThemedSelect.vue'
-import { formatMB } from '../lib/format'
+import { formatMB, formatBytes } from '../lib/format'
 import { t } from '../lib/i18n'
 
 // ─── Row icons (inline stroke SVGs, mirroring the former section titles) ─────
@@ -381,6 +413,7 @@ const ICON_GPU = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" st
 const ICON_TRAY = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>`
 const ICON_SHARE = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>`
 const ICON_REFRESH = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>`
+const ICON_INFO = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`
 
 // ─── Device island (frame ⑤) ─────────────────────────────────────────────────
 // OS + arch come from the shared platform state (App.vue wires it from the
@@ -389,6 +422,19 @@ const ICON_REFRESH = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none
 // back to the platform capability guess (accelBuildKey), and keep the
 // android arm64 qualifier on the CPU-only label. Version via getAppVersion().
 const platform = usePlatform()
+
+// Phone tier (frame ⑯): gates the structural phone variants — the counted
+// docs-entry sub, the → entry tail, the consolidated About row and the
+// update release-link row. Styling-only phone changes stay in media queries.
+const isPhone = computed(() => platform.value.isMobile)
+
+// Docs-entry sub (frame ⑯): the phone tier carries the REAL section count
+// from the docs manifest; desktop keeps the plain copy.
+const docsEntrySub = computed(() =>
+  isPhone.value
+    ? t('settings.docsEntrySubCounted', { n: docSections.length })
+    : t('settings.docsEntrySub'),
+)
 
 const osName = computed(() => {
   switch (platform.value.os) {
@@ -516,6 +562,23 @@ async function chooseModelDownloadDir() {
 // directory picker (the Browse* bindings error there), so on android the path
 // rows stay readable but the pick buttons are hidden.
 const isAndroid = computed(() => platform.value.isAndroid)
+
+// Android phone model-directory sub (frame ⑯): scanned model count + total
+// size ("{n} 个模型 · {size} · 路径由系统管理"). getModels is the cheap cached
+// scan; until it resolves (or when it fails) the row keeps the plain
+// description.
+interface ScannedModel {
+  sizeBytes?: number
+}
+const scannedModels = ref<ScannedModel[] | null>(null)
+
+const modelDirSub = computed(() => {
+  if (!(isAndroid.value && isPhone.value) || scannedModels.value === null) {
+    return t('settings.modelDownloadDirDesc')
+  }
+  const totalBytes = scannedModels.value.reduce((sum, m) => sum + (m.sizeBytes || 0), 0)
+  return t('settings.modelDirAndroidCounted', { n: scannedModels.value.length, size: formatBytes(totalBytes) })
+})
 
 // ─── Server access scope ─────────────────────────────────────────────────────
 // (listen address, see backend SaveServerConfig): refreshed from backend on
@@ -664,6 +727,19 @@ const checking = computed(() => updateState.checking)
 const checkError = computed(() => updateState.error)
 const checkResult = computed(() => updateState.result)
 
+// Link mode = every platform without the native check-for-updates action
+// (frame ⑯ renders Android as a release-link row too).
+const updatesLink = computed(() => !updatesNative.value)
+
+// Phone link mode (frame ⑯): static green "up to date · v{x}" sub — the
+// automatic check + UpdateModal stay the actual discovery path. Desktop link
+// mode keeps the version-only description.
+const updateSub = computed(() =>
+  updatesLink.value && isPhone.value
+    ? t('settings.updateLatestVersion', { version: appVersion.value || '—' })
+    : t('settings.updateDesc', { version: appVersion.value }),
+)
+
 onMounted(async () => {
   if (!appConfig.loaded) await loadConfig()
   // Read the current service access scope from the backend (default local) so the page selection matches the persisted value
@@ -687,6 +763,11 @@ onMounted(async () => {
     .then((info: { accel?: string }) => { llamacppAccel.value = info?.accel ?? '' })
     .catch(() => { llamacppAccel.value = '' })
   getAppVersion().then((v) => { appVersion.value = v }).catch(() => {})
+  // Android phone directory sub (frame ⑯): cheap cached scan feeding the
+  // model count + total size; failures keep the plain description
+  getModels()
+    .then((list) => { scannedModels.value = list as ScannedModel[] })
+    .catch(() => { scannedModels.value = null })
 })
 
 async function manualCheck() {
@@ -918,6 +999,12 @@ async function manualCheck() {
   color: var(--text-dim);
   font-weight: 500;
   margin-top: 3px;
+}
+
+/* Green "up to date" sub (frame ⑯ .sub.ok, phone release-link row only) */
+.row-sub-ok {
+  color: var(--success);
+  font-weight: 700;
 }
 
 .row-tail {
@@ -1219,7 +1306,7 @@ async function manualCheck() {
 
   .row-seg-btn {
     flex: 1;
-    min-height: 36px;
+    min-height: 44px;
   }
 
   .gpu-select,
@@ -1240,19 +1327,8 @@ async function manualCheck() {
     min-height: 44px;
   }
 
-  .switch {
-    width: 52px;
-    height: 30px;
-  }
-
-  .switch::after {
-    width: 26px;
-    height: 26px;
-  }
-
-  .switch.on::after {
-    transform: translateX(22px);
-  }
+  /* The base 46×27 capsule already matches the mockup: the former phone
+     enlargement is intentionally NOT re-applied here (frame ⑯ .sw) */
 
   .dir-path-row {
     flex-wrap: wrap;
@@ -1275,6 +1351,128 @@ async function manualCheck() {
 
   .btn-check {
     min-height: 44px;
+  }
+
+  /* ─── Frame ⑯ phone styling ─── */
+
+  /* Docs entry card: 18px padding, stronger brand shadow, 15/700 title,
+     brighter sub, and the plain → glyph tail instead of the chevron SVG */
+  .docs-entry {
+    padding: 18px;
+    box-shadow: 0 14px 34px rgba(124, 92, 246, 0.38);
+  }
+
+  .docs-entry-title {
+    font-size: 15px;
+    font-weight: 700;
+  }
+
+  .docs-entry-sub {
+    color: rgba(255, 255, 255, 0.8);
+  }
+
+  .docs-entry-arrow {
+    display: none;
+  }
+
+  .docs-entry-arrow-glyph {
+    margin-left: auto;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 16px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  /* Device island chips sit on the shared second surface */
+  .device-chip {
+    background: var(--surface-2);
+  }
+
+  /* Icon bricks (frame ⑯ .row .ic): 34px pastel solid tiles; the dark theme
+     flattens every brick to one muted surface with a single violet glyph
+     tone (mockup dark rail) */
+  .row-ic {
+    width: 34px;
+    height: 34px;
+    border-radius: 12px;
+  }
+
+  .ic-indigo {
+    background: #eef0ff;
+    color: #4f46e5;
+  }
+
+  .ic-emerald {
+    background: #ecfdf3;
+    color: #059669;
+  }
+
+  .ic-amber {
+    background: #fff7ea;
+    color: #b45309;
+  }
+
+  .ic-violet {
+    background: #f3e8ff;
+    color: #9333ea;
+  }
+
+  .ic-sky {
+    background: #e0f2fe;
+    color: #0369a1;
+  }
+
+  .ic-rose {
+    background: #f1f5f9;
+    color: #475569;
+  }
+
+  .ic-teal {
+    background: #f0fdfa;
+    color: #0f766e;
+  }
+
+  .ic-slate {
+    background: #f1f5f9;
+    color: #475569;
+  }
+
+  .ic-fuchsia {
+    background: #fdf4ff;
+    color: #a21caf;
+  }
+
+  .ic-blue {
+    background: #fdecec;
+    color: #dc2626;
+  }
+
+  .ic-about {
+    background: #f8fafc;
+    color: #475569;
+  }
+
+  html[data-theme='dark'] .row-ic {
+    background: #232739;
+    color: #a78bfa;
+  }
+
+  .row-title {
+    font-size: 13px;
+  }
+
+  /* Frame ⑯ link tails: compact row tail (the phone .row-tail below goes
+     full-width — these two stay beside the label) with a 44px hit target */
+  .row-tail.updates-link,
+  .row-tail.about-link {
+    width: auto;
+    min-height: 44px;
+    gap: 6px;
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
   }
 }
 </style>

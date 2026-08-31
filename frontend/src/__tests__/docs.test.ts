@@ -61,11 +61,11 @@ describe('docs manifest', () => {
 
   it('page-level docs keys render in both locales', () => {
     setLocale('zh')
-    expect(t('docs.title')).toBe('帮助文档')
+    expect(t('docs.title')).toBe('帮助与教程')
     expect(t('docs.toc')).toBe('目录')
     expect(t('docs.loadError', { msg: 'boom' })).toContain('boom')
     setLocale('en')
-    expect(t('docs.title')).toBe('Documentation')
+    expect(t('docs.title')).toBe('Help & Tutorial')
     expect(t('docs.toc')).toBe('Contents')
     expect(t('docs.loadError', { msg: 'boom' })).toContain('boom')
     setLocale('zh')

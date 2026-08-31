@@ -51,13 +51,29 @@
         <!-- Awaiting confirmation -->
         <template v-else>
           <p class="new-version-tip">{{ t('updateModal.newVersionTip') }}</p>
+          <!-- Phone tier (frame ⑳ .mchips) shows the BARE values; the
+               descriptive labels stay available to assistive tech via the
+               aria-labels. Desktop keeps the prefixed chips. -->
           <div class="meta">
-            <span class="meta-chip">{{ t('updateModal.newVersion', { version }) }}</span>
-            <span v-if="published" class="meta-chip plain">{{ t('updateModal.published', { date: formatDate(published) }) }}</span>
+            <span class="meta-chip" :aria-label="t('updateModal.newVersion', { version })">
+              {{ isMobileTier ? version : t('updateModal.newVersion', { version }) }}
+            </span>
+            <span
+              v-if="published"
+              class="meta-chip plain"
+              :aria-label="t('updateModal.published', { date: formatDate(published) })"
+            >
+              {{ isMobileTier ? formatDate(published) : t('updateModal.published', { date: formatDate(published) }) }}
+            </span>
           </div>
           <div v-if="notes" class="release-notes">
             <h3 class="notes-title">{{ t('updateModal.notesTitle') }}</h3>
-            <pre class="notes-body">{{ notes }}</pre>
+            <!-- Phone tier renders the parsed bullet digest as a list
+                 (frame ⑳ .relnotes); desktop keeps the raw preformatted body -->
+            <ul v-if="isMobileTier && noteBullets.length" class="notes-list">
+              <li v-for="(bullet, i) in noteBullets" :key="i">{{ bullet }}</li>
+            </ul>
+            <pre v-else class="notes-body">{{ notes }}</pre>
           </div>
         </template>
       </div>
@@ -75,9 +91,11 @@
           <button class="btn-cancel" :disabled="installing" @click="close">{{ t('updateModal.gotIt') }}</button>
           <button v-if="download.installer" class="btn-save" :disabled="installing" @click="installNow">{{ t('updateModal.installNow') }}</button>
         </template>
-        <!-- Confirm view and error view share the close / start(retry) actions -->
+        <!-- Confirm view and error view share the close / start(retry) actions;
+             the confirm view (no download state yet) uses the softer "later"
+             copy (frame ⑳ .mbtns), the error view keeps "cancel" -->
         <template v-else>
-          <button class="btn-cancel" @click="close">{{ t('updateModal.cancel') }}</button>
+          <button class="btn-cancel" @click="close">{{ download ? t('updateModal.cancel') : t('updateModal.later') }}</button>
           <button class="btn-save" @click="downloadNow">{{ t('updateModal.download') }}</button>
         </template>
       </div>
@@ -85,11 +103,46 @@
   </div>
 </template>
 
+<script lang="ts">
+/**
+ * Release-notes display helpers (phone frame ⑳ .relnotes): the bilingual
+ * markdown body is reduced to plain bullet strings for a <ul> list. Pure and
+ * exported from the plain script block so vitest can exercise them directly.
+ */
+
+/** Strip inline markdown emphasis/code/link syntax, keeping the label text. */
+export function stripInlineMarkdown(text: string): string {
+  return text
+    .replace(/`([^`]*)`/g, '$1') // inline code
+    .replace(/\*\*([^*]*)\*\*/g, '$1') // bold
+    .replace(/\*([^*]*)\*/g, '$1') // emphasis
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1') // links keep their label
+    .trim()
+}
+
+/**
+ * Line-based bullet extraction: only "- " list items are kept, emphasis
+ * stripped, empties dropped. Non-bullet lines (prose, headings, blank) are
+ * ignored — the modal shows the digest list, not the full document.
+ */
+export function parseReleaseBullets(notes: string): string[] {
+  const out: string[] = []
+  for (const rawLine of notes.split(/\r?\n/)) {
+    const line = rawLine.trim()
+    if (!line.startsWith('- ')) continue
+    const text = stripInlineMarkdown(line.slice(2))
+    if (text) out.push(text)
+  }
+  return out
+}
+</script>
+
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { updateState, startUpdateDownload, cancelUpdateDownload, installUpdate, extractReleaseNotes } from '../lib/update'
 import { locale, t } from '../lib/i18n'
 import { formatBytes } from '../lib/format'
+import { usePlatform } from '../lib/platform'
 
 const props = defineProps<{ visible: boolean }>()
 const emit = defineEmits<{ close: [] }>()
@@ -103,6 +156,14 @@ const notes = computed(() => extractReleaseNotes(updateState.result?.notes || ''
 const downloading = computed(() => download.value?.status === 'downloading')
 const installing = computed(() => updateState.installing)
 const installError = computed(() => updateState.installError)
+
+// Phone-tier gate (viewport width <= 767): bare-value chips, <ul> release
+// notes and the flexed footer; desktop keeps the original rendering.
+const platform = usePlatform()
+const isMobileTier = computed(() => platform.value.isMobile)
+
+/** Parsed bullet list for the phone release-notes card (empty when none). */
+const noteBullets = computed(() => parseReleaseBullets(notes.value))
 
 // Done-view tip: Android hands the APK to the system installer (dialog
 // confirms; cancellable and re-triggerable); other installer artifacts offer
@@ -451,5 +512,155 @@ function close() {
 
 .footer-err {
   color: #ef4444;
+}
+
+/* ─── Phone (<=767px, frame ⑳ .modal): card anchored below the status area,
+       rounded floating island with the deep phone shadow, bare-value chips,
+       bullet release notes and a flexed two-button footer ─── */
+@media (max-width: 767px) {
+  .modal-overlay {
+    align-items: flex-start;
+    padding: 0 16px;
+  }
+
+  .modal {
+    /* ~200px from the top on the 390x844 reference, clamped on short
+       viewports and lifted by the safe-area inset on edge-to-edge devices */
+    margin-top: min(calc(200px + var(--safe-area-top, 0px)), 28vh);
+    width: 100%;
+    border: none;
+    border-radius: 24px;
+    box-shadow: 0 24px 60px rgba(20, 22, 45, 0.4);
+  }
+
+  .modal-header {
+    padding: 20px 20px 10px;
+  }
+
+  .modal-header h2 {
+    font-size: 17px;
+    font-weight: 800;
+    /* The version text (the desktop flex spacer) is hidden on this tier:
+       pin the title left and the close button right instead */
+    flex: 1;
+  }
+
+  /* The bare-value version chip replaces the header version text */
+  .modal-version {
+    display: none;
+  }
+
+  .modal-close {
+    width: 44px;
+    height: 44px;
+    margin-right: -8px;
+    font-size: 17px;
+  }
+
+  .modal-body {
+    padding: 8px 20px 16px;
+  }
+
+  .new-version-tip {
+    margin: 0 0 12px;
+    font-size: 13px;
+  }
+
+  .meta {
+    margin-bottom: 12px;
+  }
+
+  /* Version chip: soft gradient fill + deep purple text (frame ⑳ .mchips);
+     date chip: neutral surface. Values are bare on this tier. */
+  .meta-chip {
+    padding: 6px 12px;
+    border: none;
+    background: var(--grad-soft);
+    color: #6d28d9;
+    font-size: 11.5px;
+    font-weight: 700;
+  }
+
+  html[data-theme='dark'] .meta-chip {
+    color: #c4b5fd;
+  }
+
+  .meta-chip.plain {
+    background: var(--bg-card);
+    color: var(--text-secondary);
+  }
+
+  html[data-theme='dark'] .meta-chip.plain {
+    background: var(--overlay-8);
+  }
+
+  .release-notes {
+    border: none;
+    border-radius: 14px;
+    padding: 12px 14px;
+    background: var(--bg-card);
+  }
+
+  html[data-theme='dark'] .release-notes {
+    background: #1e2233;
+  }
+
+  .notes-title {
+    font-size: 11px;
+  }
+
+  /* Bullet digest list (frame ⑳ .relnotes): 12.5/1.7, capped scroll height */
+  .notes-list {
+    margin: 0;
+    padding-left: 18px;
+    font-size: 12.5px;
+    line-height: 1.7;
+    color: var(--text-secondary);
+    max-height: 150px;
+    overflow-y: auto;
+  }
+
+  .notes-list li {
+    margin-bottom: 4px;
+    word-break: break-word;
+  }
+
+  .notes-body {
+    max-height: 150px;
+  }
+
+  .modal-footer {
+    padding: 12px 20px 20px;
+  }
+
+  /* Flexed two-button footer (frame ⑳ .mbtns): neutral filled cancel
+     (flex 1) + gradient primary (flex 1.4), 44px+ touch bands */
+  .btn-cancel {
+    flex: 1;
+    padding: 13px 0;
+    background: var(--bg-primary);
+    border: none;
+    border-radius: 14px;
+    color: var(--text-secondary);
+    font-size: 13.5px;
+    font-weight: 800;
+  }
+
+  .btn-save {
+    flex: 1.4;
+    padding: 13px 0;
+    background: var(--grad);
+    border: none;
+    border-radius: 14px;
+    color: #fff;
+    font-size: 13.5px;
+    font-weight: 800;
+    box-shadow: 0 8px 18px rgba(124, 92, 246, 0.4);
+  }
+
+  .footer-msg {
+    flex-basis: 100%;
+    margin: 0 0 8px;
+  }
 }
 </style>

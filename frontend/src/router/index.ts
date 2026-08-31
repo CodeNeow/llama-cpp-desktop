@@ -20,6 +20,7 @@ import Api from '../views/Api.vue'
 import Downloads from '../views/Downloads.vue'
 import Settings from '../views/Settings.vue'
 import Docs from '../views/Docs.vue'
+import DocsReader from '../views/DocsReader.vue'
 import ModelSettings from '../views/ModelSettings.vue'
 import ModelDetail from '../views/ModelDetail.vue'
 
@@ -137,7 +138,19 @@ const routes = [
     path: '/docs',
     name: 'Docs',
     component: Docs,
-    meta: { title: '帮助文档', icon: 'book' }
+    meta: { title: '帮助与教程', icon: 'book' }
+  },
+  {
+    // Docs reader subpage (phone tier, Aurora frame ⑱): one section per route,
+    // reached from the phone section list. NOT in the sidebar / bottom nav —
+    // /docs stays the only nav destination. On desktop tiers DocsReader
+    // redirects back to the single-page /docs (the tier check lives in the
+    // component: the route table cannot branch on viewport width). An unknown
+    // section id is treated the same way.
+    path: '/docs/:id',
+    name: 'DocsReader',
+    component: DocsReader,
+    meta: { title: '帮助与教程' }
   }
 ]
 

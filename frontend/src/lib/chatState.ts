@@ -72,6 +72,78 @@ export function reconcileSelectedModel(stored: string, available: string[]): { m
   return { model: stored, changed: false }
 }
 
+// ─── Phone params-sheet pure helpers (design frame ⑤) ─────────────────────
+// The phone tier renders sampling params as sliders / steppers instead of the
+// desktop number inputs. The clamp / step / display math lives here so it is
+// unit-testable without a component mount; the sheet in Chat.vue only wires
+// events into these functions and persists through the existing deep watch.
+
+/** Round a value onto a step grid and clamp it into [min, max]. */
+export function clampStep(value: number, min: number, max: number, step: number): number {
+  if (!Number.isFinite(value) || !Number.isFinite(min) || !Number.isFinite(max) || !Number.isFinite(step) || step <= 0) {
+    return Math.min(min, max)
+  }
+  const snapped = Math.round(value / step) * step
+  // Kill the binary-float dust a step multiply can produce (1.1 + 0.05 etc.);
+  // the decimal count of the step literal is the rounding latitude.
+  const stepStr = String(step)
+  const dot = stepStr.indexOf('.')
+  const decimals = dot < 0 ? 0 : stepStr.length - dot - 1
+  const fixed = Number(snapped.toFixed(decimals))
+  const lo = Math.min(min, max)
+  const hi = Math.max(min, max)
+  return Math.min(Math.max(fixed, lo), hi)
+}
+
+/** One stepper press: ± step from the current value, clamped into range. */
+export function stepNumber(current: number, dir: -1 | 1, min: number, max: number, step: number): number {
+  return clampStep(current + dir * step, min, max, step)
+}
+
+/** Sentinel meaning "no limit" (llama-server n_predict -1). */
+export const MAX_TOKENS_UNLIMITED = -1
+/** Lowest finite max-tokens value the stepper offers. */
+export const MAX_TOKENS_MIN = 256
+/** Highest finite max-tokens value the stepper offers. */
+export const MAX_TOKENS_MAX = 32768
+/** Stepper increment for finite max-tokens values. */
+export const MAX_TOKENS_STEP = 256
+/** Value a "+" press lands on when leaving the unlimited state. */
+export const MAX_TOKENS_UNLIMITED_ENTER = 4096
+
+/**
+ * Max-tokens stepper with the unlimited (-1) sentinel: "+" from unlimited
+ * enters at MAX_TOKENS_UNLIMITED_ENTER; a step below MIN maps back to
+ * unlimited instead of clamping (so "-" at the minimum toggles the sentinel).
+ * Documented mapping choice: the lowest finite value and the unlimited state
+ * are one press apart in both directions.
+ */
+export function stepMaxTokens(current: number, dir: -1 | 1): number {
+  const base =
+    current < MAX_TOKENS_MIN && dir > 0 ? MAX_TOKENS_UNLIMITED_ENTER : current + dir * MAX_TOKENS_STEP
+  if (base < MAX_TOKENS_MIN) return MAX_TOKENS_UNLIMITED
+  return clampStep(base, MAX_TOKENS_MIN, MAX_TOKENS_MAX, MAX_TOKENS_STEP)
+}
+
+/** Whether a max-tokens value renders as the localized "unlimited" label. */
+export function isUnlimitedMaxTokens(value: number): boolean {
+  return !Number.isFinite(value) || value < MAX_TOKENS_MIN
+}
+
+/** 0..100 slider-track fill percent for a value within [min, max]. */
+export function sliderFillPercent(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value) || !Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
+    return 0
+  }
+  const pct = ((value - min) / (max - min)) * 100
+  return Math.min(Math.max(pct, 0), 100)
+}
+
+/** Slider readout format: fixed two decimals ("0.80"). */
+export function formatParamValue(value: number): string {
+  return Number.isFinite(value) ? value.toFixed(2) : (0).toFixed(2)
+}
+
 // ─── Module-level state (survives component unmount) ──────────────────────
 
 /** Current conversation messages. */

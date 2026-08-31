@@ -5,6 +5,14 @@
        custom-directory actions; the shell owns the page chrome, so there is
        no page chrome here — only the dependency cards. -->
   <section class="runtime-section">
+    <!-- Phone tier page heading (Aurora frames ③/④): the shell's tab row has
+         no page title on phone, so the panel carries the mockup .h-greet
+         heading itself; hidden on desktop/tablet (v-if, not CSS) -->
+    <header v-if="platformState.isMobile" class="runtime-page-head">
+      <h1>{{ t('runtime.pageTitle') }}</h1>
+      <p>{{ t('runtime.pageSub') }}</p>
+    </header>
+
     <!-- Loading skeleton -->
     <div v-if="loading" class="skeleton-card">
       <div class="skeleton-line skeleton-title"></div>
@@ -34,9 +42,14 @@
             <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
           </svg>
           {{ t('runtime.llamacpp') }}
+          <!-- Phone tier (Aurora .island h4 .more): status rides the card
+               header — green when installed, AMBER when not found -->
+          <span v-if="platformState.isMobile" class="title-status" :class="{ missing: !info.installed }">
+            ● {{ info.installed ? t('runtime.llamacpp.installed') : t('runtime.llamacpp.notFound') }}
+          </span>
         </h2>
         <div class="info-grid">
-          <div class="info-item">
+          <div class="info-item" v-if="!platformState.isMobile">
             <span class="info-label">{{ t('runtime.llamacpp.status') }}</span>
             <span class="info-value">
               <span class="status-badge" :class="info.installed ? 'available' : 'unavailable'">
@@ -46,7 +59,7 @@
           </div>
           <div class="info-item" v-if="info.version">
             <span class="info-label">{{ t('runtime.llamacpp.version') }}</span>
-            <span class="info-value">{{ info.version }}</span>
+            <span class="info-value info-value-version">{{ info.version }}</span>
           </div>
           <div class="info-item info-item-full" v-if="info.installed">
             <span class="info-label">{{ t('runtime.llamacpp.path') }}</span>
@@ -64,13 +77,18 @@
         <div v-if="info.installed" class="components-area">
           <div class="components-title">{{ t('runtime.components') }}</div>
           <div class="comp-row">
+            <!-- Phone tier (Aurora frame ③): 42px gradient-soft icon tile -->
+            <span v-if="platformState.isMobile" class="comp-tile">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2l8 4.5v9L12 20l-8-4.5v-9L12 2z"/></svg>
+            </span>
             <span class="comp-name">
               {{ t('runtime.compMain') }}
               <!-- Acceleration build of the installed main program: prefers the
                    backend's detected accel (from the backend libs next to the
                    binary: CUDA / Vulkan / Metal / CPU), falling back to the
-                   platform-capability guess (see lib/platform.ts) -->
-              <span class="comp-desc">{{ t('runtime.accel.' + accelKey) }}</span>
+                   platform-capability guess (see lib/platform.ts); Android
+                   names its NEON-qualified cpuArm64 build -->
+              <span class="comp-desc">{{ accelLabel }}</span>
             </span>
             <span class="status-badge available">{{ t('runtime.llamacpp.installed') }}</span>
           </div>
@@ -91,7 +109,9 @@
         <!-- Download section: three blocks render independently via v-if (not mutually bound); display conditions unified
              by downloadVisibility, avoiding v-if/v-else-if mutual exclusion that would swallow the progress area -->
         <div v-if="!info.installed && dlStatus.status !== 'done'" class="download-area">
-          <!-- Idle/error: show download + custom buttons -->
+          <!-- Idle/error: show download + custom buttons. The custom-directory
+               browse button is Android-gated out (no native dir picker in the
+               sandbox; storage is app-managed) -->
           <div v-if="dlVisibility.showButtons" class="download-btns">
             <button class="download-btn" @click="startDownload">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -101,13 +121,16 @@
               </svg>
               {{ t('runtime.downloadLlamaCpp') }}
             </button>
-            <button class="custom-btn" @click="browseCustomDir">
+            <button v-if="!platformState.isAndroid" class="custom-btn" @click="browseCustomDir">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
               </svg>
               {{ t('runtime.custom') }}
             </button>
           </div>
+          <!-- Android storage hint (Aurora frame ④): explains why there is no
+               custom-directory option -->
+          <p v-if="platformState.isAndroid" class="dl-storage-hint">{{ t('runtime.storageHint') }}</p>
           <!-- Custom path info: independent v-if, not bound to progress area -->
           <div v-if="customPath" class="custom-path-info">
             <span class="custom-path-label">{{ t('runtime.customPath') }}</span>
@@ -115,13 +138,21 @@
           </div>
 
           <!-- Downloading / Paused / Extracting / Error: display depends only on download status,
-               independent of whether a custom path is set -->
-          <div v-if="dlVisibility.showProgress" class="download-progress">
+               independent of whether a custom path is set. is-paused drives the
+               phone card's amber left edge (mockup frame ④ paused dlcard). -->
+          <div v-if="dlVisibility.showProgress" class="download-progress" :class="{ 'is-paused': dlStatus.status === 'paused' }">
             <!-- Overall summary line + one row per package (the cudart row appears only
                  once its asset actually starts downloading; CPU/Vulkan builds never ship it) -->
             <div class="dl-info">
               <span class="dl-label">{{ statusLabel[dlStatus.status] }}</span>
               <span class="dl-percent" v-if="dlStatus.status === 'downloading' || dlStatus.status === 'paused'">{{ dlStatus.progress }}%</span>
+              <!-- Phone tier (mockup .dlcard .t .st): one combined accent /
+                   amber status line; desktop keeps the split label + percent -->
+              <span
+                v-if="platformState.isMobile && statusLineText"
+                class="dl-status-line"
+                :class="{ paused: dlStatus.status === 'paused', failed: dlStatus.status === 'error' }"
+              >{{ statusLineText }}</span>
             </div>
             <div v-for="pkg in packages" :key="pkg.id" class="pkg-row">
               <div class="pkg-head">
@@ -175,6 +206,13 @@
           </div>
         </div>
       </section>
+
+      <!-- "About the runtime" island (Aurora frame ③, phone only): in-app
+           storage, system-managed path and the in-page resumable upgrade flow -->
+      <section v-if="platformState.isMobile" class="runtime-about">
+        <h4>{{ t('runtime.aboutTitle') }}</h4>
+        <p>{{ t('runtime.aboutBody') }}</p>
+      </section>
     </template>
   </section>
 </template>
@@ -222,6 +260,15 @@ const accelKey = computed(() => {
     return 'cpuArm64'
   }
   return fallback
+})
+
+// Component-row sublabel: Android names its NEON-qualified cpuArm64 build
+// (Aurora frame ③); every other platform keeps the plain accel label
+const accelLabel = computed(() => {
+  if (platformState.value.isAndroid && accelKey.value === 'cpuArm64') {
+    return t('runtime.accel.cpuArm64Neon')
+  }
+  return t('runtime.accel.' + accelKey.value)
 })
 
 // Cudart component badge: append the detected CUDA major family (parsed from
@@ -291,6 +338,19 @@ const statusLabel = computed<Record<string, string>>(() => ({
   done: t('dl.done'),
   error: t('dl.error'),
 }))
+
+// Phone-tier combined status line (mockup .dlcard .t .st): "下载中 · 45%" /
+// "已暂停 · 62%", plain label while fetching / extracting / failed; '' hides it
+const statusLineText = computed(() => {
+  const s = dlStatus.value.status
+  if (s === 'downloading' || s === 'paused') {
+    return `${statusLabel.value[s]} · ${dlStatus.value.progress}%`
+  }
+  if (s === 'fetching' || s === 'extracting' || s === 'error') {
+    return statusLabel.value[s]
+  }
+  return ''
+})
 
 // Poll download status
 function pollDownloadStatus() {
@@ -452,6 +512,112 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 
+/* ─── Phone-tier-only elements (render behind platformState.isMobile /
+       isAndroid v-if gates, so these base styles never apply on desktop) ─── */
+
+/* Page heading inside the panel (mockup .h-greet, frames ③/④) */
+.runtime-page-head {
+  padding: 14px 4px;
+}
+
+.runtime-page-head h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.4px;
+  line-height: 1.2;
+  color: var(--text-primary);
+}
+
+.runtime-page-head p {
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+/* Island header status (mockup .island h4 .more): green / amber dot line */
+.title-status {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--success);
+  white-space: nowrap;
+}
+
+.title-status.missing {
+  color: var(--warning);
+}
+
+/* Component-row icon tile (mockup frame ③: 42px / 13px gradient-soft brick) */
+.comp-tile {
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+  background: var(--grad-soft);
+  color: #7c3aed;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+html[data-theme='dark'] .comp-tile {
+  color: #a78bfa;
+}
+
+/* Combined download status line (mockup .dlcard .t .st) */
+.dl-status-line {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 700;
+  color: #8b5cf6;
+}
+
+html[data-theme='dark'] .dl-status-line {
+  color: #a78bfa;
+}
+
+.dl-status-line.paused {
+  color: var(--warning);
+}
+
+.dl-status-line.failed {
+  color: var(--danger);
+}
+
+/* Android storage hint under the download CTA (mockup frame ④) */
+.dl-storage-hint {
+  margin: 10px 0 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+/* "About the runtime" island (mockup frame ③) */
+.runtime-about {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-island);
+  padding: 20px;
+  margin-bottom: 16px;
+  min-width: 0;
+}
+
+.runtime-about h4 {
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: var(--text-secondary);
+}
+
+.runtime-about p {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.75;
+  color: var(--text-muted);
+}
+
 /* ─── Info grid ─── */
 .info-grid {
   display: grid;
@@ -490,7 +656,7 @@ onUnmounted(() => {
 }
 
 .path-value {
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   color: var(--text-muted);
   /* Single-line ellipsis: install paths stay on one line and truncate at the end */
@@ -681,7 +847,7 @@ onUnmounted(() => {
 .custom-path-value {
   font-size: 12px;
   color: #22c55e;
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-family: var(--font-mono);
   word-break: break-all;
 }
 
@@ -810,7 +976,7 @@ onUnmounted(() => {
   justify-content: space-between;
   font-size: 11px;
   color: var(--text-dim);
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-family: var(--font-mono);
 }
 
 .dl-error {
@@ -903,29 +1069,143 @@ onUnmounted(() => {
   background: rgba(99, 102, 241, 0.25);
 }
 
-/* ─── Phone (<=767px): single stacked card, thumb-friendly actions. The
-       download / custom-directory buttons become full-width 44px rows and the
-       in-download pause/resume/stop row grows to touch size. Tablet (768px+)
-       keeps the shared desktop layout. ─── */
+/* ─── Phone (<=767px): Aurora mockup frames ③/④. The llama.cpp card becomes
+       a 28px floating island; the download CTA is one full-width gradient
+       button; the progress area wraps in its own 22px bordered card with the
+       paused state carrying an amber left edge; ops become 999px pills. All
+       interactive controls keep ≥44px touch height. Tablet (768px+) keeps the
+       shared desktop layout. ─── */
 @media (max-width: 767px) {
+  /* D1: island treatment for the main card (mockup .island) */
   .info-section {
-    padding: 16px;
+    padding: 20px;
+    background: var(--bg-secondary);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-island);
   }
 
+  /* Version value bold (mockup frame ③ <b>b5913</b>) */
+  .info-value-version {
+    font-weight: 700;
+  }
+
+  /* D4: component row — name bold with the sublabel stacked beneath */
+  .comp-row {
+    flex-wrap: wrap;
+  }
+
+  .comp-name {
+    flex: 1;
+    min-width: 0;
+    display: block;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .comp-desc {
+    display: block;
+    margin-top: 2px;
+    font-size: 11px;
+  }
+
+  /* D5: download CTA — single full-width gradient button (mockup frame ④) */
   .download-btns {
     flex-direction: column;
   }
 
-  .download-btn,
+  .download-btn {
+    justify-content: center;
+    width: 100%;
+    min-height: 44px;
+    padding: 13px 0;
+    background: var(--grad);
+    color: #fff;
+    border: none;
+    border-radius: 16px;
+    font-size: 13.5px;
+    font-weight: 800;
+    box-shadow: 0 8px 18px rgba(124, 92, 246, 0.4);
+  }
+
+  .download-btn:hover {
+    background: var(--grad);
+    border-color: transparent;
+    color: #fff;
+    transform: none;
+    box-shadow: 0 8px 18px rgba(124, 92, 246, 0.4);
+  }
+
   .custom-btn {
     justify-content: center;
     width: 100%;
     min-height: 44px;
   }
 
+  /* D6: progress area wraps as its own card (mockup .dlcard) */
+  .download-progress {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: 16px 18px;
+  }
+
+  .download-progress.is-paused {
+    border-left: 3px solid var(--warning);
+  }
+
+  /* Combined status line replaces the split label + percent */
+  .dl-label,
+  .dl-percent {
+    display: none;
+  }
+
+  /* 7px rounded progress bar (mockup .bar) */
+  .dl-bar {
+    height: 7px;
+    border-radius: 999px;
+  }
+
+  .dl-fill {
+    border-radius: 999px;
+  }
+
+  /* Ops pills (mockup .pill): 999px radius, neutral pause / green resume /
+     red stop; min-height keeps the 44px touch target */
   .dl-btn {
     min-height: 44px;
-    padding: 8px 16px;
+    padding: 6px 13px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 700;
+  }
+
+  .pause-btn {
+    background: var(--overlay-8);
+    color: var(--text-secondary);
+    border-color: transparent;
+  }
+
+  .pause-btn:hover {
+    background: var(--overlay-10);
+    color: var(--text-secondary);
+    border-color: transparent;
+  }
+
+  .stop-btn {
+    background: rgba(239, 68, 68, 0.12);
+    color: var(--danger);
+    border-color: transparent;
+  }
+
+  .stop-btn:hover {
+    background: rgba(239, 68, 68, 0.2);
+    color: var(--danger);
+    border-color: transparent;
+  }
+
+  /* Paused note at full amber (mockup frame ④) */
+  .dl-paused-hint {
+    color: var(--warning);
   }
 
   .retry-btn-sm {
@@ -934,11 +1214,6 @@ onUnmounted(() => {
 
   .retry-btn {
     min-height: 44px;
-  }
-
-  /* Component rows keep label and badge on separate lines when tight */
-  .comp-row {
-    flex-wrap: wrap;
   }
 }
 </style>

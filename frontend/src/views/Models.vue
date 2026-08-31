@@ -158,9 +158,10 @@ const tabs = [
 
   /* Phone heading = the design's 24px phone tier (same as Home's .greet-title
      phone rule, same 1.2 line-height), so every page header block reads the
-     same height as the greeting */
+     same height as the greeting. Weight 800 matches the Aurora h1 (frame ⑧). */
   .page-title {
     font-size: 24px;
+    font-weight: 800;
   }
 }
 </style>

@@ -3,7 +3,7 @@
     <div class="sticky-top">
       <!-- Back + header -->
       <div class="page-header">
-        <button class="back-btn" @click="router.back()">
+        <button class="back-btn" :aria-label="t('downloads.back')" @click="router.back()">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="15 18 9 12 15 6"/>
           </svg>
@@ -13,8 +13,12 @@
         <p class="page-subtitle">{{ fileCountLabel }}</p>
       </div>
 
-      <!-- Sticky action bar -->
-      <div v-if="files.length > 0 || filesLoading" class="action-bar">
+      <!-- Sticky action bar (desktop/tablet): rides the pinned header band.
+           Phone renders it inside .detail-scroll as a sticky island instead
+           (frame ⑩ .stickbar) — the DOM placement branches on the shared
+           platform state because position:sticky can only move an element
+           within its own parent's box. -->
+      <div v-if="showActionBar && !isMobile" class="action-bar">
         <span class="selected-count">{{ selectedCountLabel }}</span>
         <div class="action-actions">
           <button
@@ -38,6 +42,29 @@
     <!-- Content band: fills the window below the sticky header; only scrolls
          when the window is too short for the grid's internal columns -->
     <div class="detail-scroll">
+      <!-- Phone-tier sticky island action bar (frame ⑩ .stickbar): same
+           controls as the desktop band above, kept reachable while the file
+           list scrolls -->
+      <div v-if="showActionBar && isMobile" class="action-bar action-bar-sticky">
+        <span class="selected-count">{{ selectedCountLabel }}</span>
+        <div class="action-actions">
+          <button
+            class="select-all-btn"
+            :disabled="files.length === 0"
+            @click="toggleSelectAll"
+          >
+            {{ allSelected ? t('downloads.deselectAll') : t('downloads.selectAll') }}
+          </button>
+          <button
+            class="download-btn"
+            :disabled="selectedCount === 0"
+            @click="handleDownload"
+          >
+            {{ t('downloads.downloadSelected') }}
+          </button>
+        </div>
+      </div>
+
       <!-- Error state -->
       <div v-if="loadError" class="error-card">
         <p class="error-text">{{ t('home.errorTitle') }}：{{ loadError }}</p>
@@ -72,11 +99,15 @@
                 class="file-item"
                 :class="{ selected: selectedFiles.includes(f.filename) }"
               >
+                <!-- Native input stays for a11y/keyboard; the phone tier hides
+                     it visually and draws the Aurora .ck box instead -->
                 <input
                   type="checkbox"
+                  class="file-check"
                   :checked="selectedFiles.includes(f.filename)"
                   @change="toggleFile(f.filename)"
                 />
+                <span class="file-ck" :class="{ on: selectedFiles.includes(f.filename) }" aria-hidden="true"></span>
                 <span class="file-name" :title="f.filename">{{ f.filename }}</span>
                 <span v-if="guessQuant(f.filename)" class="file-quant">{{ guessQuant(f.filename) }}</span>
                 <span v-if="f.size" class="file-size">{{ formatBytes(f.size) }}</span>
@@ -97,7 +128,9 @@ import { sortModelFiles, guessQuant } from '../lib/modelFiles'
 import { formatBytes } from '../lib/format'
 import { renderDescription } from '../lib/markdown'
 import { handleLinkClick } from '../lib/linkHandler'
+import { searchResults } from '../lib/downloadsState'
 import { t } from '../lib/i18n'
+import { usePlatform } from '../lib/platform'
 
 const router = useRouter()
 const route = useRoute()
@@ -123,10 +156,19 @@ const selectedFiles = reactive<string[]>([])
 const description = ref('')
 const descLoading = ref(false)
 
-// File count label
+// File count label. The phone header (frame ⑩ .dthead .s) appends the model's
+// pipeline tag when the detail was reached from a search (the payload carries
+// no pipeline field of its own; deep links degrade to the bare file count).
+const pipelineTag = computed(() => {
+  const hit = searchResults.value.find((r) => r.modelId === decodedModelId.value)
+  return hit?.pipelineTag || ''
+})
+
 const fileCountLabel = computed(() => {
   const n = files.value.length
-  return n > 0 ? t('downloads.fileCount', { n }) : ''
+  if (n <= 0) return ''
+  const base = t('downloads.fileCount', { n })
+  return pipelineTag.value ? `${base} · ${pipelineTag.value}` : base
 })
 
 // Selected count label
@@ -135,6 +177,14 @@ const selectedCountLabel = computed(() => t('downloads.selectedCount', { n: sele
 
 // Whether all files are selected
 const allSelected = computed(() => files.value.length > 0 && selectedFiles.length === files.value.length)
+
+// Viewport tier gate: the phone action bar is a different DOM placement
+// (sticky island inside the scroll band), so it branches on platform state
+const platformState = usePlatform()
+const isMobile = computed(() => platformState.value.isMobile)
+
+// Whether the action bar renders at all (either tier)
+const showActionBar = computed(() => files.value.length > 0 || filesLoading.value)
 
 const sortedFilesList = computed(() => sortModelFiles(files.value))
 
@@ -202,16 +252,22 @@ onMounted(() => {
 
 <style scoped>
 /* Fixed-viewport layout: the router cannot mark this page fixed (route meta
-   is outside this file), so the page fills the window below the 36px titlebar
-   on its own — same height contract as .page-fixed in global.css plus the
-   .content-area dock-reserve term, so the page sits exactly inside the shared
-   content box and the content area itself never scrolls. The sticky header
-   band stays pinned above the scrolling detail columns; its variable height
-   (conditional action bar, wrappable title) is resolved by flexbox, not a
-   pixel constant. */
+   is outside this file), so the page fills the window below the titlebar band
+   on its own — the exact .page-fixed height contract from global.css
+   (--titlebar-h + --mobile-nav-height, so the phone tier reserves the floating
+   bottom nav instead of scrolling under it) plus the .content-area
+   dock-reserve term, so the page sits exactly inside the shared content box
+   and the content area itself never scrolls. On desktop both mobile vars
+   resolve to 0px, leaving the previous 100vh - 36px - dock contract. The
+   sticky header band stays pinned above the scrolling detail columns; its
+   variable height (conditional action bar, wrappable title) is resolved by
+   flexbox, not a pixel constant. */
 .page {
   padding: 0 48px 0;
-  height: calc(100vh - 36px - var(--dock-reserve, 0px));
+  height: calc(100vh - var(--titlebar-h, 36px) - var(--mobile-nav-height, 0px) - var(--dock-reserve, 0px));
+  /* dvh twin: progressive override for dynamic viewports (soft keyboard);
+     no-op where dvh is unsupported (same as .page-fixed) */
+  height: calc(100dvh - var(--titlebar-h, 36px) - var(--mobile-nav-height, 0px) - var(--dock-reserve, 0px));
   display: flex;
   flex-direction: column;
   /* Match .content-area's padding-bottom transition so appearing/disappearing
@@ -540,6 +596,12 @@ onMounted(() => {
   flex-shrink: 0;
 }
 
+/* Aurora .ck custom checkbox: desktop keeps the native input; the phone tier
+   hides it visually and draws the box instead (aria-hidden decoration) */
+.file-ck {
+  display: none;
+}
+
 .file-name {
   flex: 1 1 auto;
   /* Truncate long filenames with an ellipsis (full name exposed via the
@@ -602,52 +664,230 @@ onMounted(() => {
   }
 }
 
-/* ─── Phone (<=767px): the back affordance (this page is reachable outside
-       the bottom tab bar) becomes a 44px touch target, the selection action
-       bar wraps to full-width controls, and file rows keep wrapping cleanly
-       inside their container. ─── */
+/* ─── Phone (<=767px, Aurora frame ⑩): circular chevron-only back button,
+       compact 17px/800 title, island action bar that sticks below the status
+       bar while the file list scrolls, drawn .ck checkboxes, hairline file
+       rows, and the model-intro island with gradient blockquote callouts. ─── */
 @media (max-width: 767px) {
+  /* Frame ⑩ .dthead .bk: 44px surface circle, chevron only (the text span
+     hides; the button keeps its aria-label) */
   .back-btn {
-    min-height: 44px;
-    padding: 10px 8px;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    justify-content: center;
     margin-bottom: 8px;
+    border-radius: 50%;
+    background: var(--bg-secondary);
+    box-shadow: var(--shadow-island);
   }
 
-  /* Phone heading = the design's 24px phone tier (same as Home's .greet-title
-     phone rule, same 1.2 line-height): every page header block reads the same
-     height as the greeting. Long model ids stay safe via word-break below. */
+  .back-btn span {
+    display: none;
+  }
+
+  /* Frame ⑩ .dthead .t: 17px/800 single line with ellipsis (long org/name
+     ids truncate instead of the desktop break-all wrap) */
   .page-title {
-    font-size: 24px;
+    font-size: 17px;
+    font-weight: 800;
+    letter-spacing: -0.3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    word-break: normal;
   }
 
-  .action-bar {
-    flex-wrap: wrap;
-    gap: 8px;
+  /* Frame ⑩ .dthead .s: "{n} 个文件 · {pipeline}" 11.5px sub line */
+  .page-subtitle {
+    font-size: 11.5px;
   }
 
-  .action-actions {
-    flex: 1 1 100%;
+  /* Frame ⑩ .stickbar: surface island (radius 22, island shadow) pinned
+     below the safe-area inset so 下载所选 stays reachable while the list
+     scrolls. Rendered inside .detail-scroll by the isMobile template branch,
+     so position:sticky moves within that band's full height. */
+  .action-bar-sticky {
+    position: sticky;
+    top: var(--safe-area-top);
+    z-index: 15;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 10px 14px;
+    margin-top: 0;
+    margin-bottom: 14px;
+    background: var(--bg-secondary);
+    border: none;
+    border-radius: 22px;
+    box-shadow: var(--shadow-island);
   }
 
-  .select-all-btn,
-  .download-btn {
+  .action-bar-sticky .action-actions {
+    margin-left: auto;
+  }
+
+  .action-bar-sticky .selected-count {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+  }
+
+  /* Frame ⑩ .stickbar .all: accent text link, not a bordered chip */
+  .action-bar-sticky .select-all-btn {
+    min-height: 44px;
+    padding: 10px 12px 10px 4px;
+    background: transparent;
+    border: none;
+    color: #7c3aed;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .action-bar-sticky .select-all-btn:hover:not(:disabled) {
+    background: transparent;
+    border: none;
+    color: #7c3aed;
+  }
+
+  html[data-theme='dark'] .action-bar-sticky .select-all-btn,
+  html[data-theme='dark'] .action-bar-sticky .select-all-btn:hover:not(:disabled) {
+    color: #a78bfa;
+  }
+
+  /* Frame ⑩ .stickbar .dl: solid gradient pill with the purple glow */
+  .action-bar-sticky .download-btn {
     min-height: 44px;
     padding: 10px 18px;
+    background: var(--grad);
+    color: #fff;
+    border: none;
+    border-radius: 999px;
+    font-size: 12.5px;
+    font-weight: 800;
+    box-shadow: 0 8px 18px rgba(124, 92, 246, 0.4);
   }
 
-  .download-btn {
-    flex: 1;
+  .action-bar-sticky .download-btn:hover:not(:disabled) {
+    background: var(--grad);
   }
 
+  /* Frame ⑩ .file .ck: drawn 20px checkbox replaces the visually hidden
+     native input (kept for keyboard/a11y; the row is a wrapping label) */
   .file-item {
+    position: relative;
+    flex-wrap: nowrap;
     min-height: 44px;
     padding: 10px 12px;
   }
 
-  /* File name may truncate; quant + size drop to the wrapped second line
-     (existing flex-wrap behavior) instead of pushing the row wide */
+  .file-check {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    margin: 0;
+    pointer-events: none;
+  }
+
+  .file-ck {
+    display: inline-block;
+    position: relative;
+    width: 20px;
+    height: 20px;
+    border: 2px solid #c9cdde;
+    border-radius: 6px;
+    flex-shrink: 0;
+  }
+
+  html[data-theme='dark'] .file-ck {
+    border-color: #3d4759;
+  }
+
+  .file-ck.on {
+    background: var(--grad);
+    border-color: transparent;
+  }
+
+  .file-ck.on::after {
+    content: '';
+    position: absolute;
+    left: 5px;
+    top: 1.5px;
+    width: 5px;
+    height: 9px;
+    border: solid #fff;
+    border-width: 0 2px 2px 0;
+    transform: rotate(42deg);
+  }
+
+  .file-check:focus-visible ~ .file-ck {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  /* Frame ⑩ .file: hairline separators instead of the desktop gap + hover
+     card; mono filename left, muted size right */
+  .files-list {
+    gap: 0;
+  }
+
+  .file-item + .file-item {
+    border-top: 1px solid var(--border);
+  }
+
+  .file-item:hover {
+    background: transparent;
+  }
+
+  .file-item.selected {
+    background: rgba(99, 102, 241, 0.08);
+  }
+
   .file-name {
-    min-width: 120px;
+    flex: 0 1 auto;
+    min-width: 0;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .file-size {
+    margin-left: auto;
+    font-size: 11.5px;
+    color: var(--text-muted);
+  }
+
+  /* Frame ⑩ .qbadge: purple-on-gradient-soft quant tag (replaces green) */
+  .file-quant {
+    background: var(--grad-soft);
+    color: #6d28d9;
+    border-radius: 6px;
+    font-size: 10px;
+    font-weight: 800;
+  }
+
+  html[data-theme='dark'] .file-quant {
+    color: #c4b5fd;
+  }
+
+  /* Frame ⑩ .docpost: intro island body at the reading size + gradient
+     blockquote callouts in the rendered README */
+  .desc-text {
+    font-size: 13.5px;
+    line-height: 1.75;
+  }
+
+  .desc-text :deep(blockquote) {
+    margin: 8px 0;
+    padding: 10px 14px;
+    border-radius: 12px;
+    background: var(--grad-soft);
+    color: #5b21b6;
+  }
+
+  html[data-theme='dark'] .desc-text :deep(blockquote) {
+    color: #d8b4fe;
   }
 
   .error-card {

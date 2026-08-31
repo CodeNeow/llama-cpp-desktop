@@ -172,12 +172,13 @@ export type UpdateSectionMode = 'native' | 'link'
 
 /**
  * Update section mode: 'native' renders the in-app check-for-updates action
- * (self-update targets: Windows via the downloaded NSIS installer, Android via
- * the system package installer); 'link' renders a hint pointing at the GitHub
- * Releases page instead.
+ * (self-update target: Windows via the downloaded NSIS installer); 'link'
+ * renders a GitHub Releases pointer instead — a plain hint line on desktop,
+ * and on Android the frame ⑯ release-link row (the automatic update check and
+ * its in-app modal are independent of this gate and keep working there).
  */
 export function updateSectionMode(state: PlatformState): UpdateSectionMode {
-  return state.os === 'windows' || state.os === 'android' ? 'native' : 'link'
+  return state.os === 'windows' ? 'native' : 'link'
 }
 
 // ─── Hardware-capability render gates ────────────────────────────────────────

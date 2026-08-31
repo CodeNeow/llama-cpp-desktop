@@ -72,6 +72,13 @@
   --shadow-island: 0 12px 32px rgba(0, 0, 0, 0.45);
   --glass: rgba(24, 27, 42, 0.68);
   --glass-line: rgba(255, 255, 255, 0.09);
+
+  /* Aurora shared second surface (android-design-a-aurora.html --surface-2):
+     raised neutral for chips / skeleton tracks / pills. Declared once for all
+     tiers (the phone token refinement at the bottom of this file keeps the
+     same value); consumed by the additive .skel / .errcard / .emptycard
+     components and Api.vue's phone-tier endpoint chip + model chips. */
+  --surface-2: #232739;
 }
 
 /* Native control theming: adapt select options / scrollbars to the active theme */
@@ -113,6 +120,7 @@ html[data-theme='dark'] { color-scheme: dark; }
   --shadow-island: 0 10px 30px rgba(80, 84, 140, 0.1), 0 2px 6px rgba(80, 84, 140, 0.06);
   --glass: rgba(255, 255, 255, 0.72);
   --glass-line: rgba(255, 255, 255, 0.65);
+  --surface-2: #f6f7fc;
 }
 
 html, body {
@@ -311,14 +319,14 @@ html {
   }
 }
 
-/* mobile (<=767px): page horizontal padding 48px → 16px (Material phone
-   gutter). The ID prefix is required to out-rank every view's scoped
-   `.page[data-v-…]` padding rule; it is a padding-only override, so each view
-   keeps its own vertical rhythm. */
+/* mobile (<=767px): page horizontal padding 48px → 18px (Aurora mockup page
+   margin, android-design-a-aurora.html .body 18px gutter). The ID prefix is
+   required to out-rank every view's scoped `.page[data-v-…]` padding rule; it
+   is a padding-only override, so each view keeps its own vertical rhythm. */
 @media (max-width: 767px) {
   #app .page {
-    padding-left: 16px;
-    padding-right: 16px;
+    padding-left: 18px;
+    padding-right: 18px;
   }
 }
 
@@ -359,4 +367,207 @@ html {
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-island);
   min-width: 0;
+}
+
+/* ==========================================
+   Aurora phone-tier token refinement (<=767px)
+   ------------------------------------------
+   Source: docs/branding/android-design-a-aurora.html (:root ~12-34 / .dark
+   ~447-469 blocks). Phone-only re-baseline of the core surface / ink / status
+   tokens to the Aurora mockup values (page bg #eef0f8 family, ink trio,
+   status trio #10b981 / #ef4444 / #f59e0b with tinted *-bg pairs). The
+   html-level selectors live INSIDE the phone media query so the refinement
+   wins the cascade at <=767px ONLY — desktop and tablet keep the base tokens
+   above untouched. data-theme is always present on <html> (store.ts), so the
+   attribute blocks carry the override (html + attr out-ranks :root /
+   [data-theme="light"]); the plain html block documents the dark (default)
+   mapping for the pre-store-init frame. --surface-2 is NOT repeated here: it
+   is declared with the same value for every tier in the blocks above.
+   ========================================== */
+@media (max-width: 767px) {
+  html {
+    --bg-primary: #0e1018;
+    --bg-secondary: #191c2a;
+    --bg-card: #191c2a;
+    --border: #262a3d;
+    --text-primary: #f0f1f8;
+    --text-secondary: #a2a8bd;
+    --text-muted: #6b7186;
+    --success: #10b981;
+    --success-bg: #12261f;
+    --danger: #ef4444;
+    --danger-bg: #2c1a1f;
+    --warning: #f59e0b;
+    --warning-bg: #2c2416;
+  }
+
+  html[data-theme='dark'] {
+    --bg-primary: #0e1018;
+    --bg-secondary: #191c2a;
+    --bg-card: #191c2a;
+    --border: #262a3d;
+    --text-primary: #f0f1f8;
+    --text-secondary: #a2a8bd;
+    --text-muted: #6b7186;
+    --success: #10b981;
+    --success-bg: #12261f;
+    --danger: #ef4444;
+    --danger-bg: #2c1a1f;
+    --warning: #f59e0b;
+    --warning-bg: #2c2416;
+  }
+
+  html[data-theme='light'] {
+    --bg-primary: #eef0f8;
+    --bg-secondary: #ffffff;
+    --bg-card: #ffffff;
+    --border: #e8eaf3;
+    --text-primary: #191c2b;
+    --text-secondary: #6b7280;
+    --text-muted: #9aa1b2;
+    --success: #10b981;
+    --success-bg: #e7f8f1;
+    --danger: #ef4444;
+    --danger-bg: #fdecec;
+    --warning: #f59e0b;
+    --warning-bg: #fdf3e0;
+  }
+}
+
+/* ==========================================
+   Aurora shared state components (all tiers)
+   ------------------------------------------
+   Additive skeleton / error / empty patterns from the Aurora mockup
+   (.skel / .errcard / .retry / .emptycard / .cta, frame ㉑). Unused by
+   existing pages until referenced (Api.vue's phone tier consumes .emptycard
+   first); layout (margins / grid placement) stays owned by the consuming
+   component. Theme-aware via the base + dark selectors, phone-safe touch
+   sizes on the interactive pills.
+   ========================================== */
+
+/* Skeleton: 1.4s shimmer sweep over a 200% surface-2 track (dark midpoint
+   lifts the highlight; width comes from the consumer) */
+.skel {
+  border-radius: 8px;
+  background: linear-gradient(90deg, var(--surface-2) 25%, #eceef6 45%, var(--surface-2) 65%);
+  background-size: 200% 100%;
+  animation: skel-shimmer 1.4s infinite;
+}
+
+html[data-theme='dark'] .skel {
+  background: linear-gradient(90deg, var(--surface-2) 25%, #262b3d 45%, var(--surface-2) 65%);
+  background-size: 200% 100%;
+}
+
+@keyframes skel-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* Shape modifiers: tile (48x48 avatar/icon), line (text row), block (chunk) */
+.skel-tile {
+  width: 48px;
+  height: 48px;
+  border-radius: 15px;
+  flex-shrink: 0;
+}
+
+.skel-line {
+  height: 12px;
+}
+
+.skel-block {
+  height: 56px;
+  border-radius: 14px;
+}
+
+/* Error card: island surface + centered title / message / retry pill */
+.errcard {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-island);
+  padding: 18px;
+  text-align: center;
+}
+
+.errcard .et {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--danger);
+}
+
+.errcard .em {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 8px 0 12px;
+  line-height: 1.6;
+}
+
+.retry {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 800;
+  border: none;
+  border-radius: 999px;
+  padding: 10px 18px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+/* Empty card: centered icon + title + sub + gradient CTA pill */
+.emptycard {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-island);
+  padding: 26px 18px;
+  text-align: center;
+}
+
+.emptycard .ico {
+  font-size: 34px;
+  margin-bottom: 10px;
+}
+
+.emptycard b {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.emptycard p {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+  line-height: 1.6;
+}
+
+.emptycard .cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  background: var(--grad);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 800;
+  border: none;
+  border-radius: 999px;
+  padding: 10px 20px;
+  cursor: pointer;
+  font-family: inherit;
+  box-shadow: 0 8px 18px rgba(124, 92, 246, 0.4);
 }
