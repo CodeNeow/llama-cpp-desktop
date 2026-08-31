@@ -26,6 +26,19 @@
       </div>
     </div>
 
+    <!-- Help & tutorial entry: the former sixth navigation destination moved
+         here from the nav bars (mobile redesign IA, design/android-mockups.html
+         frame ⑤). The /docs route itself is unchanged; the card sits outside
+         the tab panels so it is reachable from every tab. -->
+    <router-link to="/docs" class="docs-entry">
+      <span class="docs-entry-icon" v-html="DOCS_ICON"></span>
+      <span class="docs-entry-text">
+        <span class="docs-entry-title">{{ t('settings.docsEntry') }}</span>
+        <span class="docs-entry-sub">{{ t('settings.docsEntrySub') }}</span>
+      </span>
+      <svg class="docs-entry-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+    </router-link>
+
     <!-- Tab panels (v-show keeps per-tab input state alive across switches) -->
     <!-- Appearance: theme mode + interface language -->
     <div id="tab-appearance" role="tabpanel" aria-labelledby="tab-appearance-tab" v-show="activeTab === 0">
@@ -421,6 +434,7 @@ import { updateState, checkForUpdate } from '../lib/update'
 import { getAppVersion, getSystemInfo, getServerConfig, saveServerConfig, browseLlamaCppDownloadDir, browseModelDownloadDir, setApiRouteMode } from '../wails'
 import { showTraySetting, showApiRouteSetting, showServingGpuSetting, updateSectionMode, usePlatform } from '../lib/platform'
 import { handleLinkClick } from '../lib/linkHandler'
+import { DOCS_ICON } from '../lib/navigation'
 import ThemedSelect, { type SelectOption } from '../components/ThemedSelect.vue'
 import { formatMB } from '../lib/format'
 import { t } from '../lib/i18n'
@@ -702,6 +716,68 @@ async function manualCheck() {
   font-size: 14px;
   color: var(--text-dim);
   margin: 0;
+}
+
+/* ─── Docs entry card (design/android-mockups.html frame ⑤) ───
+   Brand-gradient hero row linking to the /docs tutorial: white text, icon
+   tile and trailing chevron. Replaces the docs entry removed from the
+   navigation bars (Sidebar / MobileNav). */
+.docs-entry {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  margin-bottom: 16px;
+  border-radius: var(--r-md, 22px);
+  background: var(--grad, linear-gradient(135deg, #6366f1 0%, #8b5cf6 55%, #a855f7 100%));
+  color: #fff;
+  text-decoration: none;
+  box-shadow: 0 14px 34px rgba(124, 92, 246, 0.35);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.docs-entry:hover {
+  color: #fff;
+  transform: translateY(-1px);
+  box-shadow: 0 18px 40px rgba(124, 92, 246, 0.42);
+}
+
+.docs-entry-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.2);
+  flex-shrink: 0;
+}
+
+.docs-entry-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.docs-entry-title {
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.docs-entry-sub {
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.75);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.docs-entry-arrow {
+  margin-left: auto;
+  color: rgba(255, 255, 255, 0.85);
+  flex-shrink: 0;
 }
 
 /* ─── Tabs (same pattern as ModelSettings.vue) ─── */

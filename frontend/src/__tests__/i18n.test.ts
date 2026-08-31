@@ -85,6 +85,15 @@ describe('lib/i18n', () => {
     expect(t('models.dirAndroidHint')).toBe('Android uses app-internal storage; paths are managed by the system')
   })
 
+  it('settings docs-entry keys render in both locales (former nav docs entry card)', () => {
+    setLocale('zh')
+    expect(t('settings.docsEntry')).toBe('帮助与教程')
+    expect(t('settings.docsEntrySub')).toContain('教程')
+    setLocale('en')
+    expect(t('settings.docsEntry')).toBe('Help & Tutorial')
+    expect(t('settings.docsEntrySub')).toContain('guide')
+  })
+
   it('t supports {name} placeholder interpolation', () => {
     expect(t('home.cpu.coresValue', { n: 8 })).toBe('8 核')
     expect(t('models.saveFailed', { msg: 'boom' })).toBe('保存失败: boom')

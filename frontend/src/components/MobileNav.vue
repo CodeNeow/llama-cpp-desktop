@@ -20,8 +20,11 @@ import { NAV_ITEMS, isActiveNav } from '../lib/navigation'
 
 // Bottom tab bar of the mobile shell: shown only at the mobile breakpoint
 // (<=767px, see lib/layout.ts MOBILE_MAX), where it replaces the sidebar.
-// Entries and active state come from the shared navigation model, so this bar
-// and the desktop sidebar can never drift apart. Its occupied height is
+// Floating glass style per design/android-mockups.html frame ① (14px side and
+// bottom insets, 68px tall, blur+saturate backdrop, gradient pill behind the
+// active entry). Entries and active state come from the shared navigation
+// model, so this bar and the desktop sidebar can never drift apart. Its
+// occupied band — bottom float gap + bar height + safe-area inset — is
 // published globally as --mobile-nav-height (see styles/global.css); App.vue's
 // content area and TaskDock's bottom offset consume it to stay clear of the bar.
 const route = useRoute()
@@ -33,49 +36,69 @@ const route = useRoute()
   display: none;
 }
 
-/* mobile (<=767px): fixed bottom tab bar, one icon+label entry per nav item.
-   env(safe-area-inset-bottom) clears Android gesture-nav insets; the same
-   expression feeds --mobile-nav-height in global.css (keep both in sync). */
+/* mobile (<=767px): floating glass tab bar (design/android-mockups.html frame
+   ①): a 68px rounded island hovering 14px above the bottom edge with a
+   blur+saturate backdrop; the active entry gets a gradient pill with a white
+   label. env(safe-area-inset-bottom) lifts the island clear of Android
+   gesture-nav insets; the occupied band (14px gap + 68px bar + inset) feeds
+   --mobile-nav-height in global.css (keep both in sync). */
 @media (max-width: 767px) {
   .mobile-nav {
     position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    left: 14px;
+    right: 14px;
+    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
     z-index: 40; /* under the TaskDock pill (50) and the update modal (1000) */
     display: flex;
-    align-items: stretch;
-    height: calc(58px + env(safe-area-inset-bottom, 0px));
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-    background: var(--bg-secondary);
-    border-top: 1px solid var(--border);
+    align-items: center;
+    justify-content: space-around;
+    height: 68px;
+    background: var(--glass);
+    -webkit-backdrop-filter: blur(22px) saturate(1.6);
+    backdrop-filter: blur(22px) saturate(1.6);
+    border: 1px solid var(--glass-line);
+    border-radius: 26px;
+    box-shadow: 0 12px 34px rgba(40, 44, 90, 0.18);
   }
 
   .mobile-nav-item {
-    flex: 1;
+    flex: 0 1 62px; /* design .gn-item width; shrinks below it on <360px screens */
     min-width: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 3px;
+    padding: 8px 0;
+    border-radius: 18px;
     text-decoration: none;
     color: var(--text-muted);
-    font-size: 10px;
+    font-size: 10.5px;
     font-weight: 500;
     -webkit-tap-highlight-color: transparent;
   }
 
+  /* Selected entry: brand-gradient pill with white label (design frame ①) */
   .mobile-nav-item.active {
-    color: #a78bfa;
+    color: #fff;
+    background: var(--grad);
+    font-weight: 700;
+    box-shadow: 0 6px 16px rgba(124, 92, 246, 0.42);
   }
 
   .mobile-nav-icon {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 20px;
-    height: 20px;
+    width: 22px;
+    height: 22px;
+  }
+
+  /* The nav SVGs are injected via v-html (no scoped data attribute), so the
+     22px design size needs :deep to override their width/height attributes */
+  .mobile-nav-icon :deep(svg) {
+    width: 22px;
+    height: 22px;
   }
 
   .mobile-nav-label {

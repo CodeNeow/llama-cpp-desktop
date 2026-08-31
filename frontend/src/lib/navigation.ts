@@ -1,11 +1,16 @@
 /**
- * Shared navigation model: the six primary destinations consumed by both
+ * Shared navigation model: the five primary destinations consumed by both
  * navigation surfaces — the desktop/tablet left sidebar (Sidebar.vue) and the
  * mobile bottom tab bar (MobileNav.vue in App.vue's mobile shell).
  *
  * Pure data + pure matcher: no Vue reactivity, no router instance, no DOM —
  * fully unit-testable without mocks. Labels are i18n keys (resolved by the
  * consumer via t(item.labelKey)) so locale switches re-render both surfaces.
+ *
+ * IA note (mobile redesign, design/android-mockups.html frame ⑤): the docs
+ * destination left the navigation bars and moved into an entry card at the
+ * top of the Settings page; the /docs route itself is unchanged. Its book
+ * icon is kept below (DOCS_ICON) as the single source for that entry card.
  */
 
 /** One primary navigation destination. */
@@ -18,7 +23,7 @@ export interface NavItem {
   icon: string
 }
 
-/** Sidebar order: Home → Chat → Models → API → Settings → Docs. */
+/** Sidebar order: Home → Chat → Models → API → Settings (Docs lives in the Settings entry card). */
 export const NAV_ITEMS: NavItem[] = [
   {
     path: '/',
@@ -44,14 +49,16 @@ export const NAV_ITEMS: NavItem[] = [
     path: '/settings',
     labelKey: 'nav.settings',
     icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`
-  },
-  {
-    // Docs page: bundled bilingual tutorial (book icon, same stroke style as the other nav icons)
-    path: '/docs',
-    labelKey: 'nav.docs',
-    icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`
   }
 ]
+
+/**
+ * Book icon of the former Docs nav entry (same stroke style as the other nav
+ * icons): kept as the single source for the Settings-page "Help & Tutorial"
+ * entry card that replaced the sixth navigation slot. Rendered via v-html by
+ * the consumer, like NAV_ITEMS icons.
+ */
+export const DOCS_ICON = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`
 
 /**
  * Whether a nav entry is active for the current route path. Ported verbatim

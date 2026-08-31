@@ -1,14 +1,22 @@
 import { describe, it, expect } from 'vitest'
-import { NAV_ITEMS, isActiveNav } from '../lib/navigation'
+import { NAV_ITEMS, DOCS_ICON, isActiveNav } from '../lib/navigation'
 
 describe('lib/navigation', () => {
-  it('exposes the six primary destinations in sidebar order', () => {
+  it('exposes the five primary destinations in sidebar order (docs moved into the Settings entry card)', () => {
     expect(NAV_ITEMS.map((i) => i.path)).toEqual([
-      '/', '/chat', '/models', '/api', '/settings', '/docs'
+      '/', '/chat', '/models', '/api', '/settings'
     ])
     expect(NAV_ITEMS.map((i) => i.labelKey)).toEqual([
-      'nav.home', 'nav.chat', 'nav.models', 'nav.api', 'nav.settings', 'nav.docs'
+      'nav.home', 'nav.chat', 'nav.models', 'nav.api', 'nav.settings'
     ])
+    // IA regression pin (mobile redesign): /docs is no longer a navigation
+    // entry — it is reached from the Settings-page entry card instead
+    expect(NAV_ITEMS.map((i) => i.path)).not.toContain('/docs')
+  })
+
+  it('keeps the docs book icon exported as the single source for the Settings entry card', () => {
+    expect(DOCS_ICON).toContain('<svg')
+    expect(DOCS_ICON).toContain('stroke="currentColor"')
   })
 
   it('every item carries an inline svg icon matching the sidebar stroke style', () => {
@@ -37,7 +45,9 @@ describe('lib/navigation', () => {
       ['/models', '/models/model/x', true],
       ['/models', '/models/settings/y', true],
       ['/models', '/downloads', false],
-      // api / settings / docs
+      // api / settings / docs (the /docs rows pin the pure matcher contract:
+      // the route left the nav bars but isActiveNav stays a generic prefix
+      // matcher and must keep working for any path)
       ['/api', '/api', true],
       ['/api', '/monitor', false],
       ['/settings', '/settings', true],

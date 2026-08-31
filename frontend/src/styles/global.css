@@ -52,6 +52,26 @@
   --radius-xl: 20px;
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SF Mono', monospace;
+
+  /* ─── Mobile redesign design tokens (design/android-mockups.html v1) ───
+     Additive-only base for the modern mobile restyle (floating-island cards /
+     brand gradient / glassmorphism). The values below are the DARK mapping of
+     design frame ⑦ (surface lifted to #191c2a family, dark glass, gradient
+     saturation unchanged); the light values live in the [data-theme="light"]
+     block below. Theme-independent tokens (--grad, radius scale) are declared
+     once here. Nothing pre-existing consumes these yet — later batches
+     migrate page by page, so current pages render identically. Status colors
+     intentionally keep the existing --success / --danger / --warning
+     semantics above (design targets: green #10b981, red #ef4444, amber
+     #f59e0b — realigned per page when those pages migrate). */
+  --grad: linear-gradient(135deg, #6366f1 0%, #8b5cf6 55%, #a855f7 100%);
+  --grad-soft: linear-gradient(135deg, #232045 0%, #2c2145 100%);
+  --r-lg: 28px;
+  --r-md: 22px;
+  --r-sm: 16px;
+  --shadow-island: 0 12px 32px rgba(0, 0, 0, 0.45);
+  --glass: rgba(24, 27, 42, 0.68);
+  --glass-line: rgba(255, 255, 255, 0.09);
 }
 
 /* Native control theming: adapt select options / scrollbars to the active theme */
@@ -84,6 +104,15 @@ html[data-theme='dark'] { color-scheme: dark; }
   --success: #16a34a;
   --warning: #b45309;
   --danger: #dc2626;
+
+  /* Mobile redesign tokens, light mapping (design/android-mockups.html root
+     tokens): white glass, lavender-tinted island shadows, pastel gradient
+     wash. --grad and the radius scale are theme-independent (declared in
+     :root above) and are not overridden here. */
+  --grad-soft: linear-gradient(135deg, #eef0ff 0%, #f6efff 100%);
+  --shadow-island: 0 10px 30px rgba(80, 84, 140, 0.1), 0 2px 6px rgba(80, 84, 140, 0.06);
+  --glass: rgba(255, 255, 255, 0.72);
+  --glass-line: rgba(255, 255, 255, 0.65);
 }
 
 html, body {
@@ -227,11 +256,13 @@ html {
    ========================================== */
 
 :root {
-  /* Height of the mobile bottom tab bar: 0 on desktop/tablet, the bar's real
-     band (58px + safe-area inset) at the mobile breakpoint. Consumed by
-     App.vue (.content-area padding, --titlebar-h companion) and TaskDock
-     (bottom offset) so content and the floating pill stay clear of the bar.
-     Keep the 58px + env() expression in sync with MobileNav.vue's height. */
+  /* Occupied band of the mobile bottom tab bar: 0 on desktop/tablet, the
+     floating glass bar's full band at the mobile breakpoint (design
+     android-mockups.html frame ①): 14px float gap + 68px bar + safe-area
+     inset. Consumed by App.vue (.content-area padding, --titlebar-h
+     companion) and TaskDock (bottom offset) so content and the floating pill
+     stay clear of the bar. Keep the expression in sync with MobileNav.vue's
+     bottom inset + height. */
   --mobile-nav-height: 0px;
 
   /* Top safe-area inset for edge-to-edge displays (viewport-fit=cover in
@@ -241,10 +272,11 @@ html {
   --safe-area-top: max(0px, env(safe-area-inset-top, 0px));
 }
 
-/* mobile (<=767px): publish the real tab bar height (matches MobileNav.vue). */
+/* mobile (<=767px): publish the real tab bar band (matches MobileNav.vue's
+   floating glass bar: bottom 14px + height 68px). */
 @media (max-width: 767px) {
   :root {
-    --mobile-nav-height: calc(58px + env(safe-area-inset-bottom, 0px));
+    --mobile-nav-height: calc(14px + 68px + env(safe-area-inset-bottom, 0px));
   }
 }
 
