@@ -17,7 +17,7 @@ Models are `.gguf` weight files; get them from the "Download" tab of the Models 
 1. Type a model name (e.g. `Qwen`, `DeepSeek`) into the search box.
 2. Click a search result to open the model detail page.
 3. Tick the `.gguf` files you want (if unsure, pick a mid-size Q4 quantization), then click "Download Selected".
-4. Progress shows in the bottom-right task card and the download manager, with pause, resume and resumable transfers.
+4. Progress shows in the task card and the download manager, with pause, resume and resumable transfers. The task card hugs the bottom-right corner by default; drag it anywhere and it snaps to the nearest edge on release.
 
 Finished models appear automatically on the "My Models" tab of the Models page. On Chinese networks, switching the download source to the HF Mirror or ModelScope in Settings first usually gives steadier speeds.
 

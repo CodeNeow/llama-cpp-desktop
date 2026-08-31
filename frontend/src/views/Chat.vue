@@ -1,5 +1,10 @@
 <template>
-  <div class="chat-page">
+  <!-- Lane mirroring: the dock capsule can hug either window edge, so when it
+       is snapped LEFT (and actually visible, --dock-width > 0) the measured
+       reserve lane moves to the LEFT padding and the right gutter returns to
+       its base value; the default (right side / dock hidden) keeps the
+       original layout byte-for-byte. -->
+  <div class="chat-page" :class="{ 'chat-page--dock-left': dockSide === 'left' && dockWidth > 0 }">
     <div class="sticky-top">
       <div class="page-header">
         <h1 class="page-title">{{ t('chat.title') }}</h1>
@@ -180,7 +185,7 @@
           ref="inputBox"
           class="chat-input"
           rows="1"
-          :placeholder="t('chat.inputPlaceholder')"
+          :placeholder="inputPlaceholder"
           :disabled="serviceStarting || streaming || !selectedModel"
           @keydown="onInputKeydown"
           @input="onInputResize"
@@ -209,6 +214,7 @@ import { getServerStatus, getServerConfig, getModels, getLlamaCpp, startServerWi
 import { chatReadiness, fetchRouterModels, modelsToUnload, streamChatCompletion, tokenRates, type ChatReadiness } from '../lib/chat'
 import { messages, selectedModel, streaming, chatAbortController, persistChat, reconcileSelectedModel, chatParams, persistChatParams, type ChatMessage, type ChatParams } from '../lib/chatState'
 import { nudgeDock } from '../lib/dockNudge'
+import { dockSide, dockWidth } from '../lib/dockSpace'
 import { t } from '../lib/i18n'
 import { renderMarkdown } from '../lib/markdown'
 import { handleLinkClick } from '../lib/linkHandler'
@@ -250,6 +256,17 @@ const showParams = ref(false)
  * stays the human-readable display name.
  */
 const modelOptions = computed<SelectOption[]>(() => localModels.value.map((m) => ({ value: m.alias || m.name, label: m.name })))
+
+/**
+ * Composer placeholder: the desktop copy documents the Enter / Shift+Enter
+ * keyboard affordances, which are meaningless on touch keyboards and wrap to
+ * ~3 lines inside the narrow phone input. Phones (viewport tier, reactive —
+ * follows window resizes across breakpoints) get the short copy instead;
+ * desktop keeps the original text and behavior unchanged.
+ */
+const inputPlaceholder = computed(() =>
+  platform.value.isMobile ? t('chat.inputPlaceholderShort') : t('chat.inputPlaceholder')
+)
 
 const messagesContainer = ref<HTMLDivElement | null>(null)
 const inputBox = ref<HTMLTextAreaElement | null>(null)
@@ -738,13 +755,27 @@ onUnmounted(() => {
   height: calc(100dvh - 36px);
   display: flex;
   flex-direction: column;
-  /* Right 72 = pill band (16 right offset + 48 pill width) + 8px gap: the
-     input row (send button) and the messages scrollbar stop left of the pill,
-     keeping the pill vertically aligned with the send button. Top padding
-     rides the --safe-area-top inset (0 on desktop) so an edge-to-edge status
-     bar cannot eat the header. */
-  padding: var(--safe-area-top, 0px) 72px 0 48px;
+  /* Right lane reserves room for the floating TaskDock pill: the input row
+     (send button) and the messages scrollbar stop left of the pill, keeping
+     the pill vertically aligned with the send button. The lane follows the
+     pill's MEASURED width (--dock-width, published by lib/dockSpace): 16
+     right offset + pill width + 8 gap. max() floors it at the original 72px
+     band (sized for a single-segment ~48px desktop pill) so the dock-hidden
+     layout is unchanged; the old fixed 72px overflowed when both the download
+     and model counters showed (~80px pill overlapping the send button). Top
+     padding rides the --safe-area-top inset (0 on desktop) so an
+     edge-to-edge status bar cannot eat the header. */
+  padding: var(--safe-area-top, 0px) max(72px, calc(16px + var(--dock-width, 0px) + 8px)) 0 48px;
   /* Chat page does not scroll with page: layout fills remaining viewport height, messages area scrolls independently */
+}
+
+/* Capsule hugging the LEFT edge: mirror the reserve lane — the measured-width
+   lane (same max(72px, …) floor as the right lane) moves to the LEFT padding
+   so the attach button / message scrollbar stay clear of the pill, and the
+   right gutter returns to its original 48px. Bound via .chat-page--dock-left
+   (a CSS string variable cannot branch a calc). */
+.chat-page--dock-left {
+  padding: var(--safe-area-top, 0px) 48px 0 max(72px, calc(16px + var(--dock-width, 0px) + 8px));
 }
 
 /* Never compress the fixed header/input bands; the messages area absorbs overflow instead */
@@ -1433,10 +1464,22 @@ onUnmounted(() => {
 
 @media (max-width: 767px) {
   .chat-page {
-    /* 64 = 16 pill right offset + 40 phone pill width (2x8 padding + 12 icon
-       + 4 gap + 8 count digit, TaskDock.vue phone sizing) + 8 gap, so the send
-       button clears the pill's left edge by the same 8px as desktop */
-    padding: var(--safe-area-top, 0px) 64px 0 16px;
+    /* Right lane follows the TaskDock pill's MEASURED width (--dock-width,
+       published by lib/dockSpace from the same ResizeObserver as
+       --dock-reserve): 16 pill right offset + pill width + 8 gap keeps the
+       send button 8px clear of the pill's left edge whatever the counter
+       content. The old hardcoded 64px assumed a single-segment ~40px phone
+       pill and overflowed when both the download and model counters showed.
+       Dock hidden → --dock-width is 0 and the lane collapses to the 24px
+       gutter. */
+    padding: var(--safe-area-top, 0px) calc(16px + var(--dock-width, 0px) + 8px) 0 16px;
+  }
+
+  /* Capsule hugging the LEFT edge (phone tier): mirrored lane — measured-width
+     reserve moves to the left padding, right gutter back to the 16px phone
+     gutter. */
+  .chat-page--dock-left {
+    padding: var(--safe-area-top, 0px) 16px 0 calc(16px + var(--dock-width, 0px) + 8px);
   }
 
   /* Compact the desktop-grade header: the 28px bottom pad + 28px title eat a

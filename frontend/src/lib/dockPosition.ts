@@ -1,0 +1,246 @@
+/**
+ * Pure geometry + storage logic for the draggable TaskDock capsule ("smart
+ * pill"): free pointer dragging inside the window, AssistiveTouch-style edge
+ * snapping on release (horizontal: nearest left/right edge; vertical: kept
+ * where dropped but clamped into a safe band), and viewport-independent
+ * position memory in localStorage.
+ *
+ * Everything here is pure or localStorage-only — no Vue reactivity, no DOM —
+ * so TaskDock.vue stays a thin event/transform wiring layer and the math is
+ * unit-testable without mocks. The published reactive side of the position
+ * lives in lib/dockSpace.ts (`dockSide`).
+ *
+ * Position model: the horizontal axis is always snapped to an edge, so the
+ * stored state is `{ side, yNorm }`:
+ *   - `side`   which edge the pill hugs ('left' | 'right', 16px gap);
+ *   - `yNorm`  the pill's top edge as a 0..1 fraction WITHIN the vertical
+ *              safe band (top gap below the title bar / safe area, bottom gap
+ *              above the mobile nav band or the desktop floor). Band-relative
+ *              normalization (not raw viewport fraction) makes a stored
+ *              position survive resizes and phone <-> desktop tier switches
+ *              without ever landing out of bounds.
+ * Restoring maps yNorm back through the CURRENT viewport's band, then
+ * re-snaps/re-clamps, so a position saved on a tall window degrades gracefully
+ * on a short one.
+ */
+
+// Horizontal gap between the pill and the window edge it hugs. Mirrors the
+// `right: 16px` anchor in TaskDock.vue's `.task-dock` and Chat.vue's lane
+// arithmetic (`16px + var(--dock-width) + 8px`).
+export const DOCK_EDGE_GAP = 16
+
+// Vertical breathing gap below the title bar / safe area that the pill's top
+// edge must respect.
+export const DOCK_TOP_GAP = 8
+
+// Bottom safe gap (pill bottom edge -> viewport floor): plain 16px on the
+// desktop tier; on the phone tier the bottom nav band plus 10px.
+export const DOCK_BOTTOM_GAP_DESKTOP = 16
+export const DOCK_BOTTOM_GAP_MOBILE = 10
+
+// Bottom offset of TaskDock's CSS anchor (`.task-dock { bottom: ... }`),
+// desktop tier: input-area padding 24 + (row 42 - pill 32) / 2 = 29 — the same
+// constant documented in lib/dockSpace.ts (DOCK_BOTTOM_OFFSET). Phone tier:
+// input-area padding-bottom 10 + (row 44 - pill 44) / 2 = 10. Keep these in
+// sync with TaskDock.vue's `.task-dock` rules (change both or the transform
+// drifts relative to the CSS anchor).
+export const DOCK_ANCHOR_BOTTOM_DESKTOP = 29
+export const DOCK_ANCHOR_BOTTOM_MOBILE = 10
+
+// Pointer travel (px) below which a press is still a click (expand/collapse);
+// beyond it the gesture is a drag and the release must not expand the card.
+export const DOCK_DRAG_THRESHOLD = 6
+
+// localStorage key: same `llama-desktop-*` style as the theme/sidebar caches
+// in store.ts (pure UI preference, deliberately NOT part of the backend
+// config stream).
+export const DOCK_POSITION_KEY = 'llama-desktop-dock-position'
+
+/** Which window edge the capsule hugs after snapping. */
+export type DockSide = 'left' | 'right'
+
+/** Persisted position: snapped side + band-relative vertical fraction. */
+export interface DockStoredPosition {
+  side: DockSide
+  yNorm: number
+}
+
+/**
+ * Everything the math needs about the current viewport and pill. Computed by
+ * TaskDock.vue per application (window size, measured pill box via the same
+ * offsetWidth/offsetHeight the dock-space observer uses, chrome bands measured
+ * from the rendered title bar / mobile nav elements).
+ */
+export interface DockLayoutMetrics {
+  viewportW: number
+  viewportH: number
+  /** Pill width in px (TaskDock root offsetWidth; transform never changes it). */
+  pillW: number
+  /** Pill height in px (TaskDock root offsetHeight). */
+  pillH: number
+  /** Pill top edge lower bound: title bar height + safe area + top gap. */
+  minTop: number
+  /** Pill bottom edge -> viewport floor gap (desktop 16 / phone nav+10). */
+  clampBottomGap: number
+  /** CSS anchor bottom offset (desktop 29 / phone 10+nav) of `.task-dock`. */
+  anchorBottomOffset: number
+}
+
+/** Plain x/y point (px, viewport coordinates). */
+export interface DockPoint {
+  x: number
+  y: number
+}
+
+function isFiniteNumber(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v)
+}
+
+/**
+ * Click-vs-drag discrimination: true when the pointer traveled strictly more
+ * than the drag threshold (measured as straight-line distance from the press
+ * point). A distance of exactly the threshold still counts as a click.
+ */
+export function isBeyondDragThreshold(dx: number, dy: number): boolean {
+  if (!isFiniteNumber(dx) || !isFiniteNumber(dy)) return false
+  return Math.hypot(dx, dy) > DOCK_DRAG_THRESHOLD
+}
+
+/**
+ * Nearest horizontal edge for a release point: the pill hugging side is
+ * chosen from the pill CENTER's x. Ties (center exactly at mid-width) go to
+ * 'right', matching the legacy default position.
+ */
+export function nearestSide(centerX: number, viewportW: number): DockSide {
+  if (!isFiniteNumber(centerX) || !isFiniteNumber(viewportW) || viewportW <= 0) return 'right'
+  return centerX * 2 < viewportW ? 'left' : 'right'
+}
+
+/**
+ * Pill left edge px for a given side: `EDGE_GAP` from the left edge, or
+ * mirrored from the right edge. Degenerate inputs degrade to the left-edge
+ * placement (the safest visible spot).
+ */
+export function sideLeftX(side: DockSide, viewportW: number, pillW: number): number {
+  if (side === 'left') return DOCK_EDGE_GAP
+  if (!isFiniteNumber(viewportW) || !isFiniteNumber(pillW) || pillW <= 0 || viewportW <= 0) {
+    return DOCK_EDGE_GAP
+  }
+  return Math.max(DOCK_EDGE_GAP, viewportW - DOCK_EDGE_GAP - pillW)
+}
+
+/**
+ * Top edge of the pill's CSS anchor with zero transform applied — the
+ * reference every drag translate is measured against (mirrors
+ * `.task-dock { right: 16px; bottom: <anchor offset> }`).
+ */
+export function anchorTopLeft(layout: DockLayoutMetrics): DockPoint {
+  return {
+    x: sideLeftX('right', layout.viewportW, layout.pillW),
+    y: layout.viewportH - layout.anchorBottomOffset - layout.pillH,
+  }
+}
+
+/**
+ * Clamp a pill top edge into the vertical safe band
+ * `[minTop, viewportH - clampBottomGap - pillH]`. When the band is degenerate
+ * (viewport shorter than chrome + pill — never expected at real sizes) the
+ * top gap wins so the pill never hides under the title bar.
+ */
+export function clampTopPx(top: number, layout: DockLayoutMetrics): number {
+  const { minTop, viewportH, clampBottomGap, pillH } = layout
+  if (!isFiniteNumber(top) || !isFiniteNumber(minTop)) return 0
+  const maxTop = viewportH - clampBottomGap - pillH
+  if (!isFiniteNumber(maxTop) || maxTop < minTop) return minTop
+  return Math.min(Math.max(top, minTop), maxTop)
+}
+
+/**
+ * Map a clamped pill top edge to the stored 0..1 fraction within the safe
+ * band. Degenerate bands normalize to 0 (top of whatever band remains).
+ */
+export function topToNorm(top: number, layout: DockLayoutMetrics): number {
+  const { minTop } = layout
+  const maxTop = layout.viewportH - layout.clampBottomGap - layout.pillH
+  const band = maxTop - minTop
+  if (!isFiniteNumber(band) || band <= 0) return 0
+  const norm = (top - minTop) / band
+  return Math.min(Math.max(norm, 0), 1)
+}
+
+/**
+ * Inverse of `topToNorm`: map a stored fraction back to a clamped pill top
+ * edge for the CURRENT band, so resizes and tier switches re-fit the position
+ * proportionally instead of overflowing.
+ */
+export function normToTop(yNorm: number, layout: DockLayoutMetrics): number {
+  const { minTop } = layout
+  const maxTop = layout.viewportH - layout.clampBottomGap - layout.pillH
+  const band = maxTop - minTop
+  if (!isFiniteNumber(yNorm) || !isFiniteNumber(band) || band <= 0) return clampTopPx(minTop, layout)
+  return clampTopPx(minTop + Math.min(Math.max(yNorm, 0), 1) * band, layout)
+}
+
+/**
+ * Resolve a stored position into concrete pill coordinates for the current
+ * layout: horizontally snapped to the stored side, vertically re-fitted via
+ * the band fraction.
+ */
+export function resolvePosition(
+  stored: DockStoredPosition,
+  layout: DockLayoutMetrics
+): { left: number; top: number; side: DockSide } {
+  const side: DockSide = stored.side === 'left' ? 'left' : 'right'
+  return {
+    left: sideLeftX(side, layout.viewportW, layout.pillW),
+    top: normToTop(stored.yNorm, layout),
+    side,
+  }
+}
+
+/**
+ * Transform (px) to apply on the fixed TaskDock root so the pill lands on the
+ * stored position. `null` (nothing stored) yields { 0, 0 } — the pill stays
+ * exactly at its legacy CSS anchor spot (bottom-right). The root's CSS anchor
+ * itself never changes, so a hidden/never-dragged dock is pixel-identical to
+ * the pre-drag behavior.
+ */
+export function translateForPosition(
+  stored: DockStoredPosition | null,
+  layout: DockLayoutMetrics
+): DockPoint {
+  if (!stored) return { x: 0, y: 0 }
+  const target = resolvePosition(stored, layout)
+  const anchor = anchorTopLeft(layout)
+  return { x: target.left - anchor.x, y: target.top - anchor.y }
+}
+
+/**
+ * Read the persisted position. Corrupted / forged data (broken JSON, unknown
+ * side, non-finite fraction) degrades to `null` (legacy default spot); an
+ * out-of-range-but-finite fraction is clamped back into 0..1. All localStorage
+ * access is guarded — a disabled/unavailable store behaves like "no memory".
+ */
+export function loadStoredPosition(): DockStoredPosition | null {
+  try {
+    const raw = localStorage.getItem(DOCK_POSITION_KEY)
+    if (!raw) return null
+    const parsed: unknown = JSON.parse(raw)
+    if (typeof parsed !== 'object' || parsed === null) return null
+    const { side, yNorm } = parsed as Record<string, unknown>
+    if (side !== 'left' && side !== 'right') return null
+    if (!isFiniteNumber(yNorm)) return null
+    return { side, yNorm: Math.min(Math.max(yNorm, 0), 1) }
+  } catch {
+    return null
+  }
+}
+
+/** Persist the position; storage failures are swallowed (pure preference). */
+export function saveStoredPosition(pos: DockStoredPosition): void {
+  try {
+    localStorage.setItem(DOCK_POSITION_KEY, JSON.stringify(pos))
+  } catch {
+    // Quota / privacy mode: the position simply is not remembered.
+  }
+}

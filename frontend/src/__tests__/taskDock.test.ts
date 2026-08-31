@@ -3,7 +3,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import TaskDock from '../components/TaskDock.vue'
-import { dockReserve } from '../lib/dockSpace'
+import { dockReserve, dockSide } from '../lib/dockSpace'
+import { DOCK_POSITION_KEY } from '../lib/dockPosition'
 import { t } from '../lib/i18n'
 import { getDownloadTasks, getServerStatus } from '../wails'
 
@@ -89,8 +90,10 @@ afterEach(() => {
   document.body.innerHTML = ''
   vi.unstubAllGlobals()
   // dockSpace keeps module-level state (loaded once per file); drive it back to
-  // 0 so each test starts from a clean reserve.
+  // 0 / the default side so each test starts from a clean reserve.
   dockReserve.value = 0
+  dockSide.value = 'right'
+  localStorage.clear()
   vi.clearAllMocks()
 })
 
@@ -210,9 +213,154 @@ describe('TaskDock popover interactions', () => {
     // Outside click collapses the card; the pill fades back in.
     document.body.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await nextTick()
-    expect(getComputedStyle(wrapper.find('.dock-pill').element).visibility).toBe('visible')
+    expect(getComputedStyle(wrapper.find<HTMLElement>('.dock-pill').element).visibility).toBe('visible')
 
     style.remove()
+    wrapper.unmount()
+  })
+})
+
+// ─── Draggable capsule (pointer drag + edge snap + position memory) ──────────
+
+describe('TaskDock draggable capsule', () => {
+  /** happy-dom reports offsetWidth/Height 0; stub a concrete pill box. */
+  function stubPillBox(el: HTMLElement, width: number, height: number) {
+    Object.defineProperty(el, 'offsetWidth', { value: width, configurable: true })
+    Object.defineProperty(el, 'offsetHeight', { value: height, configurable: true })
+  }
+
+  /** Dispatch a PointerEvent-shaped MouseEvent that bubbles up to window. */
+  function firePointer(target: EventTarget, type: string, x: number, y: number) {
+    target.dispatchEvent(new MouseEvent(type, { clientX: x, clientY: y, bubbles: true }))
+  }
+
+  it('drags beyond the threshold, snaps left and does not expand', async () => {
+    vi.stubGlobal('ResizeObserver', MockResizeObserver)
+    const wrapper = await mountDock()
+    const dockEl = wrapper.find<HTMLElement>('.task-dock').element
+    stubPillBox(dockEl, 48, 32)
+    const pillEl = wrapper.find<HTMLElement>('.dock-pill').element
+
+    // Viewport arithmetic mirrors the default desktop metrics (no title bar /
+    // nav in the test DOM): anchor at right 16 / bottom 29, band [8, vh-48].
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+    const pillW = 48
+    const pillH = 32
+    const anchorX = vw - 16 - pillW
+    const anchorY = vh - 29 - pillH
+    const dropX = Math.floor(vw * 0.4) // clearly left of mid-width
+    const dropY = Math.floor(vh * 0.35) // upper half -> card must anchor below
+
+    firePointer(pillEl, 'pointerdown', vw - 100, vh - 100)
+    firePointer(pillEl, 'pointermove', dropX, dropY)
+    await nextTick()
+    expect(wrapper.find('.task-dock').classes()).toContain('task-dock--dragging')
+    expect(wrapper.find('.dock-popover').exists()).toBe(false)
+
+    firePointer(pillEl, 'pointerup', dropX, dropY)
+    await nextTick()
+    expect(wrapper.find('.task-dock').classes()).not.toContain('task-dock--dragging')
+
+    // Released left of mid-width: snaps to the left edge, keeps the dropped
+    // (in-band) height, persists the normalized position, republishes the side.
+    const curTop = anchorY + (dropY - (vh - 100))
+    expect(curTop).toBeGreaterThanOrEqual(8) // in-band drop for this viewport
+    expect(dockSide.value).toBe('left')
+    expect(wrapper.find<HTMLElement>('.task-dock').element.style.transform).toBe(
+      `translate(${16 - anchorX}px, ${curTop - anchorY}px)`
+    )
+    const expectedYNorm = (curTop - 8) / (vh - 16 - pillH - 8)
+    expect(JSON.parse(localStorage.getItem(DOCK_POSITION_KEY) ?? '{}')).toEqual({
+      side: 'left',
+      yNorm: expect.closeTo(expectedYNorm, 6),
+    })
+
+    // The drag-release compatibility click must NOT expand the card...
+    pillEl.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextTick()
+    expect(wrapper.find('.dock-popover').exists()).toBe(false)
+
+    // ...but once the suppression clears, clicking still expands — and the
+    // card anchors BELOW the pill, which now rides in the upper half.
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    await wrapper.find('.dock-pill').trigger('click')
+    await nextTick()
+    const popover = wrapper.find('.dock-popover')
+    expect(popover.exists()).toBe(true)
+    expect(popover.classes()).toContain('dock-popover--below')
+    wrapper.unmount()
+  })
+
+  it('keeps the click behavior for presses within the threshold', async () => {
+    vi.stubGlobal('ResizeObserver', MockResizeObserver)
+    const wrapper = await mountDock()
+    stubPillBox(wrapper.find<HTMLElement>('.task-dock').element, 48, 32)
+    const pillEl = wrapper.find<HTMLElement>('.dock-pill').element
+
+    // 5px of travel (< 6px threshold): a click, not a drag
+    firePointer(pillEl, 'pointerdown', 900, 700)
+    firePointer(pillEl, 'pointermove', 904, 703)
+    firePointer(pillEl, 'pointerup', 904, 703)
+    expect(wrapper.find('.task-dock').classes()).not.toContain('task-dock--dragging')
+    expect(dockSide.value).toBe('right')
+    expect(localStorage.getItem(DOCK_POSITION_KEY)).toBeNull()
+
+    // The release click toggles the card normally
+    await wrapper.find('.dock-pill').trigger('click')
+    await nextTick()
+    expect(wrapper.find('.dock-popover').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('ignores drag attempts while the popover is open', async () => {
+    vi.stubGlobal('ResizeObserver', MockResizeObserver)
+    const wrapper = await mountDock()
+    stubPillBox(wrapper.find<HTMLElement>('.task-dock').element, 48, 32)
+
+    await wrapper.find('.dock-pill').trigger('click')
+    await nextTick()
+    expect(wrapper.find('.dock-popover').exists()).toBe(true)
+
+    const pillEl = wrapper.find<HTMLElement>('.dock-pill').element
+    firePointer(pillEl, 'pointerdown', 500, 500)
+    firePointer(window, 'pointermove', 100, 100)
+    firePointer(window, 'pointerup', 100, 100)
+    await nextTick()
+    expect(wrapper.find('.dock-popover').exists()).toBe(true)
+    expect(wrapper.find('.task-dock').classes()).not.toContain('task-dock--dragging')
+    expect(dockSide.value).toBe('right')
+    expect(wrapper.find<HTMLElement>('.task-dock').element.style.transform).toBe('translate(0px, 0px)')
+    wrapper.unmount()
+  })
+
+  it('restores a persisted position and re-fits it on resize', async () => {
+    localStorage.setItem(DOCK_POSITION_KEY, JSON.stringify({ side: 'left', yNorm: 0 }))
+    vi.stubGlobal('ResizeObserver', MockResizeObserver)
+    const wrapper = await mountDock()
+    stubPillBox(wrapper.find<HTMLElement>('.task-dock').element, 48, 32)
+
+    // Any resize re-fits the remembered position into the current viewport.
+    window.dispatchEvent(new Event('resize'))
+    await nextTick()
+
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+    expect(wrapper.find<HTMLElement>('.task-dock').element.style.transform).toBe(
+      `translate(${16 - (vw - 16 - 48)}px, ${8 - (vh - 29 - 32)}px)`
+    )
+    expect(dockSide.value).toBe('left')
+    wrapper.unmount()
+  })
+
+  it('starts from the legacy anchor spot with no stored position', async () => {
+    vi.stubGlobal('ResizeObserver', MockResizeObserver)
+    const wrapper = await mountDock()
+    stubPillBox(wrapper.find<HTMLElement>('.task-dock').element, 48, 32)
+    window.dispatchEvent(new Event('resize'))
+    await nextTick()
+    expect(wrapper.find<HTMLElement>('.task-dock').element.style.transform).toBe('translate(0px, 0px)')
+    expect(dockSide.value).toBe('right')
     wrapper.unmount()
   })
 })

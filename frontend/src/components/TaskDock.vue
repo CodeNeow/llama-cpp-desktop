@@ -1,11 +1,24 @@
 <template>
-  <div v-if="visible" class="task-dock" ref="dockEl">
+  <!-- The root keeps its fixed right/bottom CSS anchor at all times; the
+       capsule position rides a translate() (see the drag section below), so
+       the ResizeObserver-measured box — and therefore --dock-reserve and
+       --dock-width — is unaffected by where the capsule sits. -->
+  <div
+    v-if="visible"
+    ref="dockEl"
+    class="task-dock"
+    :class="{ 'task-dock--dragging': dragging, 'task-dock--left': dockSide === 'left' }"
+    :style="{ transform: `translate(${dragTranslate.x}px, ${dragTranslate.y}px)` }"
+  >
     <!-- Popover card: absolute overlay landing on the pill's original spot,
          zero layout impact, so the root size (and --dock-reserve) never changes
          when expanding. The <Transition> slides the card up + fades it in from
-         the pill position, pairing with the pill's fade-out into a "morph". -->
+         the pill position, pairing with the pill's fade-out into a "morph".
+         Anchoring mirrors the capsule's side (left-hugging pills open the card
+         toward the window interior) and flips to top-anchored growth when the
+         capsule rides in the upper half of the viewport. -->
     <Transition name="dock-pop">
-      <div v-if="expanded" class="dock-popover">
+      <div v-if="expanded" class="dock-popover" :class="{ 'dock-popover--below': cardBelow }">
         <!-- Header -->
         <div class="dock-header">
           <span class="dock-title">{{ t('dock.title') }}</span>
@@ -111,13 +124,18 @@
     </Transition>
 
     <!-- Persistent compact pill: the collapsed form of the dock (download/task
-         and model counters). While the popover is open the pill is visually
-         hidden and yields its spot to the card (morph, see .dock-pill-hidden),
-         but keeps occupying layout so --dock-reserve stays constant. -->
+         and model counters), draggable to either window edge while collapsed.
+         While the popover is open the pill is visually hidden and yields its
+         spot to the card (morph, see .dock-pill-hidden), but keeps occupying
+         layout so --dock-reserve stays constant. Click-vs-drag discrimination
+         lives in the pointer handlers: a press moving <= 6px is a click
+         (toggles the card, keyboard Enter/Space included), anything more is a
+         drag whose release snaps the pill and must not expand the card. -->
     <button
       class="dock-pill"
       :class="{ 'dock-pill-hidden': expanded }"
-      @click="expanded = !expanded"
+      @click="onPillClick"
+      @pointerdown="onPillPointerDown"
       :aria-label="t('dock.title')"
       :title="t('dock.title')"
     >
@@ -135,7 +153,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, watchEffect, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, watch, watchEffect, nextTick, onMounted, onUnmounted } from 'vue'
 import {
   getLlamaCppDownloadStatus,
   getDownloadTasks,
@@ -145,7 +163,26 @@ import {
 } from '../wails'
 import { activeLlamaCppDownload, activeModelTasks, activeUpdateDownload, shouldShowDock } from '../lib/dock'
 import { dockNudgeCounter, nudgeDock } from '../lib/dockNudge'
-import { useDockReserve } from '../lib/dockSpace'
+import { dockSide, dockWidth, useDockReserve } from '../lib/dockSpace'
+import {
+  anchorTopLeft,
+  clampTopPx,
+  isBeyondDragThreshold,
+  loadStoredPosition,
+  nearestSide,
+  normToTop,
+  saveStoredPosition,
+  topToNorm,
+  translateForPosition,
+  DOCK_TOP_GAP,
+  DOCK_BOTTOM_GAP_DESKTOP,
+  DOCK_BOTTOM_GAP_MOBILE,
+  DOCK_ANCHOR_BOTTOM_DESKTOP,
+  DOCK_ANCHOR_BOTTOM_MOBILE,
+  type DockLayoutMetrics,
+  type DockPoint,
+  type DockStoredPosition,
+} from '../lib/dockPosition'
 import { updateState } from '../lib/update'
 import { usePlatform } from '../lib/platform'
 import { t } from '../lib/i18n'
@@ -238,6 +275,207 @@ const visible = computed(() =>
 // reachable; must run after `visible` is declared above.
 const dockEl = ref<HTMLElement | null>(null)
 useDockReserve(dockEl, visible)
+
+// ─── Draggable capsule: position memory + edge snapping ───────────
+// The pill is an AssistiveTouch-style capsule: press-and-move drags it freely
+// (transform translate, never right/top writes), releasing snaps it to the
+// nearest left/right edge while the dropped vertical spot is clamped into the
+// safe band, and the result persists as viewport-normalized fractions in
+// localStorage. All geometry lives in lib/dockPosition.ts; this block only
+// wires DOM events + platform facts into it. Component-local state only —
+// deliberately not in the global store.
+
+// Persisted capsule position, loaded once per mount; null = nothing stored
+// (corrupted data degrades here too) = the legacy bottom-right anchor spot.
+const storedPosition = ref<DockStoredPosition | null>(loadStoredPosition())
+
+// Current translate (px) applied to the fixed root, and the raw-follow flag
+// that switches the root's transform transition off while dragging.
+const dragTranslate = ref<DockPoint>({ x: 0, y: 0 })
+const dragging = ref(false)
+
+// Expand-card vertical anchor: bottom-anchored (default) the card grows
+// upward from the pill; when the capsule rides in the upper half that would
+// overflow the viewport top, so the card anchors below the pill instead.
+const cardBelow = ref(false)
+
+// Chrome bands measured from the live DOM: the custom title bar renders only
+// on frameless desktop shells (absent via v-if elsewhere), and the mobile nav
+// is display:none outside the phone tier — offsetHeight is 0 in both cases, so
+// one measurement works on every tier. Safe-area insets cannot be read from JS
+// (env() is CSS-only); desktop WebView2 always reports 0, and Android
+// edge-to-edge under-clamps by the inset amount — an accepted limitation.
+function measureChromePx(): { top: number; bottom: number } {
+  const titlebar = document.querySelector('.title-bar')
+  const nav = document.querySelector('.mobile-nav')
+  return {
+    top: titlebar instanceof HTMLElement ? titlebar.offsetHeight : 0,
+    bottom: nav instanceof HTMLElement ? nav.offsetHeight : 0,
+  }
+}
+
+// Assemble the pure-math inputs from the live viewport, the measured pill box
+// (the same offsetWidth/offsetHeight the dock-space observer reads — a
+// transform never changes them) and the current viewport tier.
+function layoutMetrics(): DockLayoutMetrics {
+  const chrome = measureChromePx()
+  const isPhone = platform.value.isMobile
+  return {
+    viewportW: window.innerWidth,
+    viewportH: window.innerHeight,
+    pillW: dockEl.value?.offsetWidth || 0,
+    pillH: dockEl.value?.offsetHeight || 0,
+    minTop: chrome.top + DOCK_TOP_GAP,
+    clampBottomGap: isPhone ? chrome.bottom + DOCK_BOTTOM_GAP_MOBILE : DOCK_BOTTOM_GAP_DESKTOP,
+    anchorBottomOffset: isPhone
+      ? chrome.bottom + DOCK_ANCHOR_BOTTOM_MOBILE
+      : DOCK_ANCHOR_BOTTOM_DESKTOP,
+  }
+}
+
+// Apply the stored position (or the legacy default) as a root translate.
+// Skipped while the pill has no real box yet (v-if just mounted, tests).
+function applyStoredPosition(): void {
+  const layout = layoutMetrics()
+  if (layout.pillW <= 0 || layout.pillH <= 0) return
+  const stored = storedPosition.value
+  dragTranslate.value = translateForPosition(stored, layout)
+  dockSide.value = stored?.side ?? 'right'
+  updateCardAnchor(layout)
+}
+
+// Flip the expand card to top-anchored growth when the capsule's (resolved)
+// spot sits in the upper half of the viewport.
+function updateCardAnchor(layout: DockLayoutMetrics): void {
+  const anchor = anchorTopLeft(layout)
+  const stored = storedPosition.value
+  const top = stored ? normToTop(stored.yNorm, layout) : anchor.y
+  cardBelow.value = top + layout.pillH < layout.viewportH / 2
+}
+
+// Drag gesture bookkeeping: press point + translate at press, whether the
+// pointer traveled beyond the click threshold, and the click-suppression flag
+// (the browser synthesizes a click after a drag pointerup, which must not
+// toggle the card).
+const dragPress = { px: 0, py: 0, tx: 0, ty: 0 }
+let dragMoved = false
+let suppressNextClick = false
+
+function onPillPointerDown(e: PointerEvent) {
+  if (expanded.value) return // popover open: pill hidden and never draggable
+  if (e.isPrimary === false) return
+  suppressNextClick = false
+  dragMoved = false
+  dragPress.px = e.clientX
+  dragPress.py = e.clientY
+  dragPress.tx = dragTranslate.value.x
+  dragPress.ty = dragTranslate.value.y
+  // Track the gesture on the window so the pointer may leave the small pill
+  // mid-drag; works identically for mouse and touch (scroll interference is
+  // blocked by touch-action: none on the pill).
+  window.addEventListener('pointermove', onWindowPointerMove)
+  window.addEventListener('pointerup', onWindowPointerUp)
+  window.addEventListener('pointercancel', onWindowPointerCancel)
+}
+
+function onWindowPointerMove(e: PointerEvent) {
+  const dx = e.clientX - dragPress.px
+  const dy = e.clientY - dragPress.py
+  if (!dragMoved) {
+    if (!isBeyondDragThreshold(dx, dy)) return
+    dragMoved = true
+    dragging.value = true
+  }
+  const layout = layoutMetrics()
+  let ny = dragPress.ty + dy
+  // Live vertical clamp keeps the capsule inside its safe band mid-drag; the
+  // horizontal axis stays free until the release snap picks the nearest edge.
+  if (layout.pillW > 0 && layout.pillH > 0) {
+    const anchor = anchorTopLeft(layout)
+    ny = clampTopPx(anchor.y + ny, layout) - anchor.y
+  }
+  dragTranslate.value = { x: dragPress.tx + dx, y: ny }
+}
+
+function onWindowPointerUp() {
+  finishDrag()
+}
+
+// Touch cancellation (e.g. an incoming system gesture) parks the capsule the
+// same way a release does.
+function onWindowPointerCancel() {
+  finishDrag()
+}
+
+function finishDrag() {
+  window.removeEventListener('pointermove', onWindowPointerMove)
+  window.removeEventListener('pointerup', onWindowPointerUp)
+  window.removeEventListener('pointercancel', onWindowPointerCancel)
+  if (dragMoved) {
+    // Swallow exactly the drag-release compatibility click (self-clearing so
+    // later clicks and keyboard activation still toggle), then snap.
+    suppressNextClick = true
+    setTimeout(() => {
+      suppressNextClick = false
+    }, 0)
+    settleAfterDrag()
+  }
+  dragMoved = false
+  dragging.value = false
+}
+
+// Snap on release: hug the nearest horizontal edge, keep the dropped vertical
+// position clamped into the safe band, persist it, and republish the side.
+function settleAfterDrag() {
+  const layout = layoutMetrics()
+  if (layout.pillW <= 0 || layout.pillH <= 0) return
+  const anchor = anchorTopLeft(layout)
+  const curLeft = anchor.x + dragTranslate.value.x
+  const curTop = anchor.y + dragTranslate.value.y
+  const side = nearestSide(curLeft + layout.pillW / 2, layout.viewportW)
+  const stored: DockStoredPosition = {
+    side,
+    yNorm: topToNorm(clampTopPx(curTop, layout), layout),
+  }
+  storedPosition.value = stored
+  saveStoredPosition(stored)
+  dockSide.value = side
+  // The root's transform transition (re-enabled now that `dragging` dropped)
+  // glides the capsule from the release point onto the snapped spot.
+  dragTranslate.value = translateForPosition(stored, layout)
+  updateCardAnchor(layout)
+}
+
+// Click toggle shared by pointer taps and keyboard activation (Enter/Space on
+// the button synthesizes a click with no pointerdown, so the suppression flag
+// is naturally false there — keyboard expand/collapse is preserved).
+function onPillClick() {
+  if (suppressNextClick) {
+    suppressNextClick = false
+    return
+  }
+  expanded.value = !expanded.value
+}
+
+// Re-fit the remembered position when the window resizes or crosses the
+// phone/desktop tier: band re-normalization re-snaps and re-clamps it into
+// the new viewport without ever landing out of bounds.
+function onWindowResize() {
+  applyStoredPosition()
+}
+
+watch(visible, (v) => {
+  if (v) nextTick(applyStoredPosition)
+})
+
+// Self-healing re-fit: the resize event can race the media-query relayout (a
+// tier switch may be applied with the pill's previous box still measured, a
+// few px off), and the pill box also changes whenever counter segments come
+// and go. The dock-space ResizeObserver publishes every such box change as
+// `dockWidth`, so re-fit on it — the side/band math is idempotent.
+watch(dockWidth, () => {
+  if (visible.value) applyStoredPosition()
+})
 
 // ─── Popover dismissal ────────────────────────────────────────────
 
@@ -410,13 +648,21 @@ function truncatedName(name: string, maxLen = 22): string {
 
 onMounted(() => {
   startPolling()
+  window.addEventListener('resize', onWindowResize, { passive: true })
 })
 
 onUnmounted(() => {
   stopPolling()
-  // Safety net: never leave document listeners attached after unmount
+  window.removeEventListener('resize', onWindowResize)
+  // Safety net: never leave document/window listeners attached after unmount
   document.removeEventListener('click', onDocClick)
   document.removeEventListener('keydown', onDocKeydown)
+  window.removeEventListener('pointermove', onWindowPointerMove)
+  window.removeEventListener('pointerup', onWindowPointerUp)
+  window.removeEventListener('pointercancel', onWindowPointerCancel)
+  // Same reset pattern as the dock-space reserve: a fresh mount starts from
+  // the default side until a stored/dragged position republishes it.
+  dockSide.value = 'right'
 })
 </script>
 
@@ -426,28 +672,46 @@ onUnmounted(() => {
    `bottom: 29px` vertically centers the pill on the chat page's input row:
    input-area bottom padding 24 + (row height 42 - pill height 32) / 2 = 29,
    which puts the pill's center on the send button's center. Keep this value
-   in sync with DOCK_BOTTOM_OFFSET in lib/dockSpace.ts; it is desktop-only —
-   the phone breakpoint overrides `bottom` from the phone composer metrics in
-   the media query below. On mobile the bottom tab bar takes its own fixed
-   band, so the pill rides above it via the global --mobile-nav-height (0px on
-   desktop — the calc is a no-op there). */
+   in sync with DOCK_ANCHOR_BOTTOM_DESKTOP in lib/dockPosition.ts and
+   DOCK_BOTTOM_OFFSET in lib/dockSpace.ts; it is desktop-only — the phone
+   breakpoint overrides `bottom` from the phone composer metrics in the media
+   query below (DOCK_ANCHOR_BOTTOM_MOBILE there). On mobile the bottom tab bar
+   takes its own fixed band, so the pill rides above it via the global
+   --mobile-nav-height (0px on desktop — the calc is a no-op there).
+
+   This anchor is also the reference frame of the draggable capsule: with no
+   transform the pill sits exactly at this legacy spot; a dragged/restored
+   position is a translate() on top of it (lib/dockPosition.ts). */
 .task-dock {
   position: fixed;
   right: 16px;
   bottom: calc(29px + var(--mobile-nav-height, 0px));
   z-index: 50;
+  /* One-shot glide when a released capsule snaps onto its edge spot or a
+     restored position re-fits after a resize; disabled while dragging so the
+     pill tracks the pointer 1:1 (see .task-dock--dragging). */
+  transition: transform 0.2s ease;
+}
+
+/* Raw-follow mode during an active pointer drag: no transform transition,
+   compositor hint for jitter-free tracking (removed on release). */
+.task-dock--dragging {
+  transition: none;
+  will-change: transform;
 }
 
 /* Full card as an absolute overlay landing on the pill's spot: `bottom: 0`
    aligns the card's bottom edge with the (now hidden) pill's bottom edge, so
    the card reads as the pill morphing into its expanded form. Absolute
    positioning keeps expansion layout-neutral, so reserved pages never jump
-   when the popover shows/hides. */
+   when the popover shows/hides. Width caps at the viewport (minus the shared
+   16px gutters) so the card stays fully visible on narrow windows whatever
+   the capsule's side. */
 .dock-popover {
   position: absolute;
   bottom: 0;
   right: 0;
-  width: 300px;
+  width: min(300px, calc(100vw - 32px));
   max-height: 50vh;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
@@ -459,7 +723,26 @@ onUnmounted(() => {
   font-size: 12px;
 }
 
-/* Persistent compact pill: collapsed-state summary of downloads and models */
+/* Mirrored anchoring for a LEFT-hugging capsule: the card opens toward the
+   window interior instead of hanging off the left edge of the screen. */
+.task-dock--left .dock-popover {
+  left: 0;
+  right: auto;
+}
+
+/* Capsule in the upper half of the viewport: bottom-anchored growth would
+   overflow the window top (max-height 50vh), so anchor the card's top edge to
+   the pill's top edge and grow downward instead (flipped by the component's
+   cardBelow flag). */
+.dock-popover--below {
+  bottom: auto;
+  top: 0;
+}
+
+/* Persistent compact pill: collapsed-state summary of downloads and models,
+   and the drag handle of the capsule. touch-action: none makes the whole pill
+   a drag surface on touch (no page scroll/refresh gestures start from it);
+   user-select: none keeps a mouse drag from rubber-band selecting text. */
 .dock-pill {
   display: flex;
   align-items: center;
@@ -474,6 +757,8 @@ onUnmounted(() => {
   color: var(--text-secondary);
   font-size: 12px;
   transition: all 0.15s;
+  touch-action: none;
+  user-select: none;
 }
 
 .dock-pill:hover {
@@ -780,11 +1065,14 @@ onUnmounted(() => {
 /* ─── Phone (<=767px): the pill grows to a 44px touch target (it is the only
        dock control visible without expanding) while keeping its band above the
        bottom tab bar. Horizontal padding tightens to 8px so a single-segment
-       pill stays ~40px wide (2x8 padding + 12 icon + 4 gap + 8 count digit):
-       Chat.vue's phone right-padding lane (64 = 16 right offset + 40 pill +
-       8 gap) is computed from this width, keeping the send button 8px clear of
-       the pill's left edge as on desktop. The bottom offset is recomputed from
-       the phone composer metrics instead of the desktop-tuned 29px, which rode
+       pill stays ~40px wide (2x8 padding + 12 icon + 4 gap + 8 count digit).
+       The pill's width is content-driven (one segment per active counter), so
+       consumers must not hardcode it: the pill's measured width is published
+       as --dock-width (lib/dockSpace, same ResizeObserver as --dock-reserve)
+       and Chat.vue's phone right-padding lane is computed from it, keeping the
+       send button 8px clear of the pill's left edge at any segment count. The
+       bottom offset is recomputed from the phone composer metrics instead of
+       the desktop-tuned 29px, which rode
        high enough to cover the composer's top: Chat.vue phone input-area
        padding-bottom 10 + (row 44 - pill 44) / 2 = 10, and
        var(--mobile-nav-height) keeps the band above the bottom tab bar. The
@@ -799,10 +1087,6 @@ onUnmounted(() => {
   .dock-pill {
     height: 44px;
     padding: 0 8px;
-  }
-
-  .dock-popover {
-    width: min(300px, calc(100vw - 32px));
   }
 
   .dock-toggle {

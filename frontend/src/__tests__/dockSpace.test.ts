@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { defineComponent, ref, nextTick } from 'vue'
-import { dockReserve, dockReservePx, useDockReserve } from '../lib/dockSpace'
+import { dockReserve, dockReservePx, dockWidth, dockWidthPx, dockSide, useDockReserve } from '../lib/dockSpace'
 
 // Mock the Wails bridge (window.go is injected only by the Wails runtime).
 // Update-related exports are included because lib/update imports the same
@@ -59,6 +59,11 @@ function stubOffsetHeight(el: HTMLElement, height: number) {
   Object.defineProperty(el, 'offsetHeight', { value: height, configurable: true })
 }
 
+/** happy-dom's offsetWidth is always 0 too; stub a concrete width. */
+function stubOffsetWidth(el: HTMLElement, width: number) {
+  Object.defineProperty(el, 'offsetWidth', { value: width, configurable: true })
+}
+
 beforeEach(() => {
   MockResizeObserver.instances = []
 })
@@ -67,8 +72,10 @@ afterEach(() => {
   document.body.innerHTML = ''
   vi.unstubAllGlobals()
   // dockSpace keeps module-level state (loaded once per file); drive it back to
-  // 0 so each test starts from a clean reserve.
+  // 0 / the default side so each test starts from a clean reserve.
   dockReserve.value = 0
+  dockWidth.value = 0
+  dockSide.value = 'right'
 })
 
 // ─── dockReservePx (pure) ────────────────────────────────────────────────────
@@ -89,6 +96,27 @@ describe('dockReservePx', () => {
     expect(dockReservePx(true, -5)).toBe(0)
     expect(dockReservePx(true, NaN)).toBe(0)
     expect(dockReservePx(true, Infinity)).toBe(0)
+  })
+})
+
+// ─── dockWidthPx (pure) ──────────────────────────────────────────────────────
+
+describe('dockWidthPx', () => {
+  it('returns the measured width unchanged when visible (no offsets added)', () => {
+    expect(dockWidthPx(true, 40)).toBe(40)
+    expect(dockWidthPx(true, 80)).toBe(80)
+  })
+
+  it('returns 0 when not visible', () => {
+    expect(dockWidthPx(false, 40)).toBe(0)
+    expect(dockWidthPx(false, 500)).toBe(0)
+  })
+
+  it('returns 0 for invalid widths', () => {
+    expect(dockWidthPx(true, 0)).toBe(0)
+    expect(dockWidthPx(true, -5)).toBe(0)
+    expect(dockWidthPx(true, NaN)).toBe(0)
+    expect(dockWidthPx(true, Infinity)).toBe(0)
   })
 })
 
@@ -200,5 +228,62 @@ describe('useDockReserve', () => {
     expect(dockReserve.value).toBe(87) // 50 + 29 + 8
     wrapper.unmount()
     expect(dockReserve.value).toBe(0)
+  })
+
+  // ─── Width lane (--dock-width) ─────────────────────────────────────────────
+
+  it('publishes the measured pill width alongside the height when visible', async () => {
+    vi.stubGlobal('ResizeObserver', MockResizeObserver)
+    const { wrapper, vm } = mountHarness()
+    const node = harnessElement(vm)
+    stubOffsetHeight(node, 100)
+    stubOffsetWidth(node, 40)
+    vm.visible = true
+    await nextTick()
+
+    // Height keeps its offset arithmetic; width passes through untouched.
+    expect(dockReserve.value).toBe(137)
+    expect(dockWidth.value).toBe(40)
+    wrapper.unmount()
+  })
+
+  it('re-measures the width when the ResizeObserver callback fires', async () => {
+    // A second pill segment (e.g. download + model counters) widens the pill;
+    // the observer must republish the new width for the reserved lane.
+    vi.stubGlobal('ResizeObserver', MockResizeObserver)
+    const { wrapper, vm } = mountHarness()
+    const node = harnessElement(vm)
+    stubOffsetHeight(node, 100)
+    stubOffsetWidth(node, 40)
+    vm.visible = true
+    await nextTick()
+    expect(dockWidth.value).toBe(40)
+
+    stubOffsetWidth(node, 80)
+    MockResizeObserver.last.trigger(node)
+    expect(dockWidth.value).toBe(80)
+    wrapper.unmount()
+  })
+
+  it('zeroes the width when hidden and on unmount', async () => {
+    vi.stubGlobal('ResizeObserver', MockResizeObserver)
+    const { wrapper, vm } = mountHarness()
+    const node = harnessElement(vm)
+    stubOffsetHeight(node, 100)
+    stubOffsetWidth(node, 40)
+    vm.visible = true
+    await nextTick()
+    expect(dockWidth.value).toBe(40)
+
+    vm.visible = false
+    await nextTick()
+    expect(dockWidth.value).toBe(0)
+
+    stubOffsetWidth(node, 40)
+    vm.visible = true
+    await nextTick()
+    expect(dockWidth.value).toBe(40)
+    wrapper.unmount()
+    expect(dockWidth.value).toBe(0)
   })
 })

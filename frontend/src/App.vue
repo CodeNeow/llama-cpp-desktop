@@ -1,5 +1,5 @@
 <template>
-  <div class="app-layout" :style="{ '--dock-reserve': dockReserve + 'px', '--titlebar-h': titlebarH }">
+  <div class="app-layout" :style="{ '--dock-reserve': dockReserve + 'px', '--dock-width': dockWidth + 'px', '--dock-side': dockSide, '--titlebar-h': titlebarH }">
     <Sidebar />
     <main class="main-content">
       <!-- Custom title bar: desktop shells only. It exists to drag / close /
@@ -73,7 +73,7 @@ import UpdateModal from './components/UpdateModal.vue'
 import TaskDock from './components/TaskDock.vue'
 import MobileNav from './components/MobileNav.vue'
 import { updateState, checkForUpdate, shouldAutoCheck, closeUpdateModal } from './lib/update'
-import { dockReserve } from './lib/dockSpace'
+import { dockReserve, dockWidth, dockSide } from './lib/dockSpace'
 import { t } from './lib/i18n'
 import { appConfig } from './store'
 import { getOS } from './wails'

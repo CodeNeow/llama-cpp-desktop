@@ -25,7 +25,7 @@ Click the "Downloads" button next to the search box to open the download manager
 - **Download Tasks**: active and queued tasks, with pause, resume, retry and cancel;
 - **Download History**: finished, failed and cancelled records.
 
-Downloads are **resumable**: after pausing or failing, the transfer picks up from where it stopped. Transient network hiccups are retried automatically (up to 3 times). The global task card in the bottom-right corner mirrors download progress on every page.
+Downloads are **resumable**: after pausing or failing, the transfer picks up from where it stopped. Transient network hiccups are retried automatically (up to 3 times). The global task card mirrors download progress on every page. It hugs the bottom-right corner by default and can be dragged to snap to either the left or right edge.
 
 ## Importing: reuse models you already have
 
