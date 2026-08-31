@@ -1,13 +1,40 @@
 <template>
   <!-- System Info tab panel of the System Environment page (Home.vue shell):
-       hardware identity + live metrics + the quick-start onboarding checklist.
-       The shell owns the page chrome (title + tab bar + refresh toolbar, driven
-       through the exposed API below), so there is no page padding or header
-       here — only the cards. -->
+       redesigned per design/android-mockups.html frame ① — a gradient hero
+       card answering "is the AI usable right now", a two-column mini-card pair
+       (memory / CPU with SVG rings), a storage island (disk bar + GGUF and
+       llama.cpp bricks) and the resident-model card with in-place unload.
+       The platform-gated GPU / CUDA cards and the system card keep their
+       existing content below in the same island visual language: they are
+       capability surfaces the Android-first mockup never had, so they stay
+       where their probes exist. The shell owns the greeting header + tab bar
+       + refresh toolbar, so there is no page chrome here — only the cards. -->
   <div class="system-info-tab">
+    <!-- Shared SVG gradient for the mini-card rings: declared once and
+         referenced by url(#home-ring-grad) from both ring SVGs -->
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <defs>
+        <linearGradient id="home-ring-grad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#6366f1" />
+          <stop offset="100%" stop-color="#a855f7" />
+        </linearGradient>
+      </defs>
+    </svg>
+
     <!-- Loading skeleton -->
-    <div v-if="loading" class="cards-grid">
-      <div v-for="i in 6" :key="i" class="info-section skeleton-card">
+    <div v-if="loading" class="sys-grid">
+      <div class="island skeleton-card hero-skel">
+        <div class="skeleton-line skeleton-title"></div>
+        <div class="skeleton-line"></div>
+        <div class="skeleton-line skeleton-short"></div>
+      </div>
+      <div class="grid2">
+        <div v-for="i in 2" :key="i" class="island skeleton-card mini-skel">
+          <div class="skeleton-line skeleton-title"></div>
+          <div class="skeleton-line skeleton-short"></div>
+        </div>
+      </div>
+      <div class="island skeleton-card">
         <div class="skeleton-line skeleton-title"></div>
         <div class="skeleton-line"></div>
         <div class="skeleton-line skeleton-short"></div>
@@ -27,11 +54,11 @@
     </div>
 
     <!-- Data -->
-    <div v-else class="cards-grid">
-      <!-- Quick-start checklist: full-width card, hides once every step
-           completes or the user dismisses it. It guides across tabs (its
-           actions router.push other routes), which works from any tab. -->
-      <section v-if="onboardingView.visible" class="info-section onboarding-card">
+    <div v-else class="sys-grid">
+      <!-- Quick-start checklist: full-width island above the hero, hides once
+           every step completes or the user dismisses it. It guides across tabs
+           (its actions router.push other routes), which works from any tab. -->
+      <section v-if="onboardingView.visible" class="island onboarding-card">
         <div class="onboarding-head">
           <h2 class="section-title">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -66,11 +93,143 @@
         </ol>
       </section>
 
+      <!-- Gradient hero card (frame ①): status tag, model name, honest subline
+           and the live decode speed with a CTA into the chat page. All values
+           come from the live monitor / router / model probes — nothing here is
+           hardcoded or invented. -->
+      <section class="island hero-card">
+        <span class="hero-tag" :class="{ off: !serviceRunning }">
+          <span class="tag-dot"></span>
+          {{ serviceRunning ? t('home.hero.tagReady') : t('home.hero.tagOffline') }}
+        </span>
+        <h2 class="hero-model" :title="heroModel">{{ heroModel }}</h2>
+        <p class="hero-sub">{{ heroSub }}</p>
+        <div class="hero-row">
+          <div class="hero-metric">
+            <div class="hero-num">{{ heroTps }}</div>
+            <div class="hero-lbl">{{ t('home.hero.metricLbl') }}</div>
+          </div>
+          <router-link class="hero-cta" to="/chat">{{ t('home.hero.cta') }}</router-link>
+        </div>
+      </section>
+
+      <!-- Mini metric pair (frame ① grid2): memory / CPU with SVG rings fed
+           by the live monitor samples, static snapshot as the fallback -->
+      <div class="grid2">
+        <section class="island mini">
+          <div class="mini-lbl">{{ t('home.memory') }}</div>
+          <div class="mini-main">
+            <div class="mini-val">{{ memoryValUsed }}<small> / {{ memoryValTotal }} GB</small></div>
+            <svg
+              class="ring"
+              viewBox="0 0 46 46"
+              role="progressbar"
+              :aria-valuenow="memoryView.pct"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              :aria-label="t('home.memory')"
+            >
+              <circle class="bg" cx="23" cy="23" r="19"/>
+              <circle class="fg" cx="23" cy="23" r="19" :stroke-dasharray="ringDash(memoryView.pct)" transform="rotate(-90 23 23)"/>
+            </svg>
+          </div>
+          <div class="mini-trend">{{ memoryAux }}</div>
+        </section>
+        <section class="island mini">
+          <div class="mini-lbl">{{ t('home.cpu') }}</div>
+          <div class="mini-main">
+            <div class="mini-val">{{ cpuVal }}<small> %</small></div>
+            <svg
+              class="ring"
+              viewBox="0 0 46 46"
+              role="progressbar"
+              :aria-valuenow="liveCpuPct ?? 0"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              :aria-label="t('home.cpu.load')"
+            >
+              <circle class="bg" cx="23" cy="23" r="19"/>
+              <circle class="fg" cx="23" cy="23" r="19" :stroke-dasharray="ringDash(liveCpuPct ?? 0)" transform="rotate(-90 23 23)"/>
+            </svg>
+          </div>
+          <div class="mini-trend" :title="info.cpu.model">{{ cpuAux }}</div>
+        </section>
+      </div>
+
+      <!-- Storage island (frame ①): disk usage bar + GGUF and llama.cpp
+           bricks. The bar keeps the design's amber "disk level" color. -->
+      <section class="island storage-card">
+        <div class="island-head">
+          <h4>{{ t('home.storage') }}</h4>
+          <span v-if="diskView" class="head-more">{{ storageFree }}</span>
+        </div>
+        <template v-if="diskView">
+          <div class="storage-row">
+            <span>{{ t('home.storage.used', { size: formatBytes(diskView.used) || '—' }) }}</span>
+            <b>{{ diskPct }}%</b>
+          </div>
+          <div
+            class="storage-bar"
+            role="progressbar"
+            :aria-valuenow="diskPct"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            :aria-label="t('home.storage')"
+          >
+            <i :style="{ width: diskPct + '%' }"></i>
+          </div>
+        </template>
+        <div v-else class="info-empty">
+          <span>{{ t('home.disk.notAvailable') }}</span>
+        </div>
+        <div class="brick-row">
+          <div class="brick">
+            <span class="brick-lbl">{{ t('home.storage.models') }}</span>
+            <b class="brick-val" :title="ggufBrick">{{ ggufBrick }}</b>
+          </div>
+          <div class="brick">
+            <span class="brick-lbl">{{ t('home.storage.llamacpp') }}</span>
+            <b class="brick-val" :title="llamacppBrick">{{ llamacppBrick }}</b>
+          </div>
+        </div>
+      </section>
+
+      <!-- Resident model cards (frame ① mcard): one per loaded model, with
+           the same unload chain as TaskDock (unloadModel + nudgeDock). The
+           unload button is hidden on Android where direct-mode servers have
+           no unload route. -->
+      <section v-for="m in loadedModels" :key="m.id" class="island mcard">
+        <div class="tile">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2l8 4.5v9L12 20l-8-4.5v-9L12 2z"/><path d="M12 11L4.5 6.8M12 11l7.5-4.2M12 11v8.5"/>
+          </svg>
+        </div>
+        <div class="mcard-main">
+          <div class="mcard-name" :title="m.id">{{ m.id }}</div>
+          <div class="mcard-chips">
+            <i>{{ typeLabel(m.type) }}</i>
+            <i v-if="residentQuant(m)">{{ residentQuant(m) }}</i>
+            <i v-if="residentSize(m)">{{ residentSize(m) }}</i>
+          </div>
+          <div v-if="unloadErrors[m.id]" class="mcard-error">
+            {{ t('dock.unloadFailed', { msg: unloadErrors[m.id] }) }}
+          </div>
+        </div>
+        <button
+          v-if="canUnloadModels"
+          class="unload-btn"
+          :disabled="unloadingId === m.id"
+          @click="handleUnload(m.id)"
+        >
+          {{ unloadingId === m.id ? t('dock.unloading') : t('dock.unload') }}
+        </button>
+      </section>
+
       <!-- GPU Card: only on platforms with a real GPU probe (windows, linux,
            macOS on Apple Silicon). Android probes are unsupported (GPUs always
            empty) and macOS x64 ships the CPU-only release (no GPUs), so the
            card — including its empty state — would be pure noise there. -->
-      <section v-if="showGpuCard" class="info-section">
+      <section v-if="showGpuCard" class="island info-section">
         <h2 class="section-title">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
@@ -138,44 +297,10 @@
         </div>
       </section>
 
-      <!-- Memory Card -->
-      <section class="info-section">
-        <h2 class="section-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="10" x2="6" y2="14"/><line x1="10" y1="10" x2="10" y2="14"/><line x1="14" y1="10" x2="14" y2="14"/><line x1="18" y1="10" x2="18" y2="14"/>
-          </svg>
-          {{ t('home.memory') }}
-        </h2>
-        <div class="usage-block">
-          <div class="usage-row">
-            <span class="usage-name">{{ t('home.memory.used') }}</span>
-            <span class="usage-caption">{{ formatGB(memoryView.usedGb) }} / {{ formatGB(memoryView.totalGb) }}</span>
-            <span class="usage-pct">{{ t('home.usagePercent', { pct: memoryView.pct }) }}</span>
-          </div>
-          <div
-            class="usage-bar"
-            role="progressbar"
-            :aria-valuenow="memoryView.pct"
-            aria-valuemin="0"
-            aria-valuemax="100"
-            :aria-label="t('home.memory')"
-          >
-            <div class="usage-fill" :style="{ width: memoryView.pct + '%' }"></div>
-          </div>
-          <!-- Inside the block on purpose: keeps the bar→details gap at
-               .meta-row's own margin-top, matching the GPU blocks (an
-               outside placement would stack the block's bottom margin) -->
-          <div class="meta-row">
-            <span>{{ t('home.memory.total') }} {{ formatGB(memoryView.totalGb) }}</span>
-            <span>{{ t('home.memory.available') }} {{ formatGB(memoryView.freeGb) }}</span>
-          </div>
-        </div>
-      </section>
-
       <!-- CUDA Card: Windows only AND only with an NVIDIA GPU reporting a
            compute capability — Linux llama.cpp is Vulkan-only (CUDA compat is
            meaningless there), macOS is Metal, Android is CPU-only. -->
-      <section v-if="showCudaCard" class="info-section">
+      <section v-if="showCudaCard" class="island info-section">
         <h2 class="section-title">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5 12 2"/><line x1="12" y1="22" x2="12" y2="15.5"/><polyline points="22 8.5 12 15.5 2 8.5"/>
@@ -209,87 +334,8 @@
         </div>
       </section>
 
-      <!-- CPU Card -->
-      <section class="info-section">
-        <h2 class="section-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/>
-          </svg>
-          {{ t('home.cpu') }}
-        </h2>
-        <div class="info-grid">
-          <div class="info-item info-item-full">
-            <span class="info-label">{{ t('home.cpu.model') }}</span>
-            <span class="info-value">{{ info.cpu.model || 'N/A' }}</span>
-          </div>
-          <div class="info-item">
-            <span class="info-label">{{ t('home.cpu.cores') }}</span>
-            <span class="info-value">{{ t('home.cpu.coresValue', { n: info.cpu.cores }) }}</span>
-          </div>
-          <div class="info-item">
-            <span class="info-label">{{ t('home.cpu.threads') }}</span>
-            <span class="info-value">{{ t('home.cpu.threadsValue', { n: info.cpu.logicalCpus }) }}</span>
-          </div>
-        </div>
-        <template v-if="liveCpuPct !== null">
-          <div class="usage-block">
-            <div class="usage-row">
-              <span class="usage-name">{{ t('home.cpu.load') }}</span>
-              <span class="usage-pct">{{ t('home.usagePercent', { pct: liveCpuPct }) }}</span>
-            </div>
-            <div
-              class="usage-bar"
-              role="progressbar"
-              :aria-valuenow="liveCpuPct"
-              aria-valuemin="0"
-              aria-valuemax="100"
-              :aria-label="t('home.cpu.load')"
-            >
-              <div class="usage-fill" :style="{ width: liveCpuPct + '%' }"></div>
-            </div>
-          </div>
-        </template>
-      </section>
-
-      <!-- Disk Card -->
-      <section class="info-section">
-        <h2 class="section-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>
-          </svg>
-          {{ t('home.disk') }}
-        </h2>
-        <template v-if="diskView">
-          <div class="usage-block">
-            <div class="usage-row">
-              <span class="usage-name">{{ t('home.disk.used') }}</span>
-              <span class="usage-caption">{{ formatBytes(diskView.used) }} / {{ formatBytes(diskView.total) }}</span>
-              <span class="usage-pct">{{ t('home.usagePercent', { pct: diskPct }) }}</span>
-            </div>
-            <div
-              class="usage-bar"
-              role="progressbar"
-              :aria-valuenow="diskPct"
-              aria-valuemin="0"
-              aria-valuemax="100"
-              :aria-label="t('home.disk')"
-            >
-              <div class="usage-fill" :style="{ width: diskPct + '%' }"></div>
-            </div>
-            <!-- Inside the block: same bar→details gap as GPU/memory blocks -->
-            <div class="meta-row">
-              <span class="meta-path">{{ t('home.disk.path') }} {{ diskView.path }}</span>
-              <span>{{ t('home.disk.free') }} {{ formatBytes(diskView.total - diskView.used) }}</span>
-            </div>
-          </div>
-        </template>
-        <div v-else class="info-empty">
-          <span>{{ t('home.disk.notAvailable') }}</span>
-        </div>
-      </section>
-
       <!-- System Card -->
-      <section class="info-section">
+      <section class="island info-section">
         <h2 class="section-title">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="4" width="18" height="12" rx="2"/><line x1="2" y1="20" x2="22" y2="20"/>
@@ -316,15 +362,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { getCPU, getMemory, getGPU, getCUDA, getOS, getDisk, getLlamaCpp, getModels, getMonitorStatus, getAppVersion } from '../wails'
+import { getCPU, getMemory, getGPU, getCUDA, getOS, getDisk, getLlamaCpp, getModels, getMonitorStatus, getAppVersion, getLoadedModels, unloadModel, type LoadedModel } from '../wails'
 import { t } from '../lib/i18n'
-import { usagePercent, formatGB, formatMB, formatBytes } from '../lib/format'
+import { usagePercent, formatMB, formatBytes } from '../lib/format'
 import { aggregateVram, buildGpuDisplays, cudaCompatLevel, gpuHasVram, type GpuStaticInfo } from '../lib/sysinfo'
+import { guessQuant } from '../lib/modelFiles'
 import { buildOnboardingView, type OnboardingStepId } from '../lib/onboarding'
+import { nudgeDock } from '../lib/dockNudge'
 import type { MonitorStatus } from '../lib/monitor'
-import { showCudaCompat, showGpuCards, usePlatform } from '../lib/platform'
+import { accelBuildKey, showCudaCompat, showGpuCards, usePlatform } from '../lib/platform'
 import { appConfig, setOnboardingDismissed } from '../store'
 
 interface SystemInfo {
@@ -346,14 +394,29 @@ interface LiveSnapshot {
   gpus: MonitorStatus['gpus']
   disk: { path: string; used: number; total: number } | null
   serverRunning: boolean
+  /** Live generation decode speed (tokens/s); 0 when idle — the hero card degrades to a placeholder. */
+  decodeTps: number
 }
 
-// Quick-start checklist facts probed alongside the system info
+/** Local model entry as returned by GetModels (fields used by this tab). */
+interface ModelInfo {
+  name: string
+  sizeBytes: number
+  sizeHuman: string
+  quantization: string
+}
+
+// Quick-start checklist facts probed alongside the system info. The llama.cpp
+// probe also feeds the storage brick (version + acceleration build) and the
+// CUDA compat row via cudartVersion — it must stay unconditional (not gated
+// behind onboarding visibility).
 const runtimeInstalled = ref(false)
-const hasModels = ref(false)
-// CUDA major family of the installed cudart runtime ("" when unknown); also
-// feeds the three-state CUDA compat row below
+const runtimeVersion = ref('')
+const runtimeAccel = ref('')
 const cudartVersion = ref('')
+// Full local model list: feeds the checklist fact, the storage brick and the
+// resident-card quant/size chips
+const localModels = ref<ModelInfo[]>([])
 
 const router = useRouter()
 
@@ -377,6 +440,12 @@ const loading = ref(true)
 const refreshing = ref(false)
 const loadError = ref('')
 const lastUpdated = ref('')
+
+// Router models currently in memory (resident-model cards + hero identity)
+const loadedModels = ref<LoadedModel[]>([])
+// Unload state, mirroring TaskDock's per-row pending/error handling
+const unloadingId = ref('')
+const unloadErrors = reactive<Record<string, string>>({})
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
@@ -455,10 +524,157 @@ const cudaCompatText = computed(() => {
   }
 })
 
+// ─── Hero card (frame ①) ─────────────────────────────────────────
+
+const serviceRunning = computed(() => live.value?.serverRunning === true)
+
+/** First resident model: prefer one actually loaded, else any loading/sleeping entry. */
+const residentModel = computed<LoadedModel | null>(
+  () => loadedModels.value.find(m => m.status === 'loaded') ?? loadedModels.value[0] ?? null
+)
+
+const heroModel = computed(() => {
+  if (residentModel.value) return residentModel.value.id
+  if (serviceRunning.value) return t('home.hero.standby')
+  // Offline: show what the first chat would load (a real local model), or an
+  // honest empty state — never a fake "online" claim
+  return localModels.value[0]?.name || t('home.noModel')
+})
+
+const heroSub = computed(() => {
+  if (residentModel.value) return t('home.hero.subResident')
+  if (serviceRunning.value) return t('home.hero.subIdle')
+  return t('home.hero.subOffline')
+})
+
+// Live decode speed: only claimed while a measurement exists (> 0); the
+// placeholder "—" covers idle / stopped / no-data without inventing a number
+const heroTps = computed(() => {
+  const tps = live.value?.decodeTps
+  return tps && tps > 0 ? tps.toFixed(1) : '—'
+})
+
+// ─── Mini cards (frame ①) ────────────────────────────────────────
+
+const RING_RADIUS = 19
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS
+
+/** SVG stroke-dasharray for a 0..100 percent ring value (clamped). */
+function ringDash(pct: number): string {
+  const clamped = Math.max(0, Math.min(100, pct))
+  return `${((clamped / 100) * RING_CIRCUMFERENCE).toFixed(1)} ${RING_CIRCUMFERENCE.toFixed(1)}`
+}
+
+/** One-decimal GB for the mini values; '—' when the probe has no data. */
+function gbNum(v: number | undefined | null): string {
+  return v !== undefined && v !== null && v > 0 ? v.toFixed(1) : '—'
+}
+
+const memoryValUsed = computed(() => gbNum(memoryView.value.usedGb))
+const memoryValTotal = computed(() => gbNum(memoryView.value.totalGb))
+const memoryAux = computed(() =>
+  t('home.memory.aux', { pct: memoryView.value.pct, free: `${gbNum(memoryView.value.freeGb)} GB` })
+)
+
+const cpuVal = computed(() => (liveCpuPct.value === null ? '—' : String(liveCpuPct.value)))
+const cpuAux = computed(() =>
+  t('home.cpu.aux', { model: info.value.cpu.model || '—', n: info.value.cpu.cores })
+)
+
+// ─── Storage island (frame ①) ────────────────────────────────────
+
+const storageFree = computed(() => {
+  const d = diskView.value
+  if (!d) return ''
+  const free = d.total - d.used
+  return t('home.storage.free', { size: free > 0 ? formatBytes(free) : '0 B' })
+})
+
+const ggufBrick = computed(() => {
+  const n = localModels.value.length
+  if (n === 0) return t('home.noModel')
+  const total = localModels.value.reduce((s, m) => s + (m.sizeBytes || 0), 0)
+  return t('home.storage.modelsValue', { n, size: formatBytes(total) || '—' })
+})
+
+// Acceleration build label: same resolution as RuntimeSection — prefer the
+// backend's detected accel, fall back to the platform's llama.cpp build guess
+// (accelBuildKey), with Android keeping the arm64 CPU qualifier
+const accelKey = computed(() => {
+  const detected = runtimeAccel.value
+  if (detected === 'cuda' || detected === 'vulkan' || detected === 'metal' || detected === 'cpu') {
+    return detected
+  }
+  const fallback = accelBuildKey(platformState.value)
+  if (fallback === 'cpu' && platformState.value.isAndroid) {
+    return 'cpuArm64'
+  }
+  return fallback
+})
+
+const llamacppBrick = computed(() => {
+  if (!runtimeInstalled.value) return t('home.storage.notInstalled')
+  const version = runtimeVersion.value
+  const accel = t('runtime.accel.' + accelKey.value)
+  return version ? `${version} · ${accel}` : accel
+})
+
+// ─── Resident model cards (frame ①) ──────────────────────────────
+
+// In-memory unload is a router-mode (desktop) capability: direct-mode servers
+// (Android) always hold exactly one resident model that can only leave memory
+// by stopping the service — same gate as TaskDock.
+const canUnloadModels = computed(() => !platformState.value.isAndroid)
+
+/** Match a loaded router id back to the local model list (chat loads by model name). */
+function matchedLocal(id: string): ModelInfo | undefined {
+  return (
+    localModels.value.find(m => m.name === id) ??
+    localModels.value.find(m => id.includes(m.name))
+  )
+}
+
+/** Quantization chip: the local model's classification, else a filename guess. */
+function residentQuant(m: LoadedModel): string {
+  const local = matchedLocal(m.id)
+  if (local && local.quantization && local.quantization !== '-') return local.quantization
+  return guessQuant(m.id)
+}
+
+/** Size chip from the matched local model; '' hides the chip. */
+function residentSize(m: LoadedModel): string {
+  return matchedLocal(m.id)?.sizeHuman || ''
+}
+
+function typeLabel(type: string): string {
+  const map: Record<string, string> = {
+    chat: t('dock.modelType.chat'),
+    audio: t('dock.modelType.audio'),
+    image: t('dock.modelType.image'),
+    video: t('dock.modelType.video')
+  }
+  return map[type] || type
+}
+
+/** Unload chain identical to TaskDock: drop the row instantly, then nudge a poll that reconciles. */
+async function handleUnload(id: string) {
+  unloadingId.value = id
+  delete unloadErrors[id]
+  try {
+    await unloadModel(id)
+    loadedModels.value = loadedModels.value.filter(m => m.id !== id)
+    nudgeDock()
+  } catch (e) {
+    unloadErrors[id] = e instanceof Error ? e.message : String(e)
+  } finally {
+    unloadingId.value = ''
+  }
+}
+
 // Quick-start checklist: derives visibility/steps from probed facts + persisted dismissal
 const onboardingView = computed(() => buildOnboardingView({
   runtimeInstalled: runtimeInstalled.value,
-  hasModels: hasModels.value,
+  hasModels: localModels.value.length > 0,
   serviceRunning: live.value?.serverRunning === true,
   dismissed: appConfig.onboardingDismissed
 }))
@@ -502,18 +718,17 @@ async function fetchSystemInfo(manual = false) {
   getAppVersion()
     .then(v => { info.value.appVersion = v })
     .catch(() => {})
-  // Quick-start checklist facts: best-effort probes (cosmetic as well)
-  // The getLlamaCpp probe also feeds the CUDA compat row via cudartVersion —
-  // it must stay unconditional (not gated behind onboarding visibility) so the
-  // compat row has data even when the checklist is dismissed
+  // Quick-start / storage-brick facts: best-effort probes (cosmetic as well)
   getLlamaCpp()
     .then(d => {
       runtimeInstalled.value = d?.installed === true
+      runtimeVersion.value = typeof d?.version === 'string' ? d.version : ''
+      runtimeAccel.value = typeof d?.accel === 'string' ? d.accel : ''
       cudartVersion.value = typeof d?.cudartVersion === 'string' ? d.cudartVersion : ''
     })
     .catch(() => {})
   getModels()
-    .then(list => { hasModels.value = Array.isArray(list) && list.length > 0 })
+    .then(list => { localModels.value = Array.isArray(list) ? (list as ModelInfo[]) : [] })
     .catch(() => {})
 
   // Each probe applies its result with an explicit narrowing cast: the Wails
@@ -544,7 +759,7 @@ async function fetchSystemInfo(manual = false) {
   stampUpdated()
 }
 
-/** Poll live metrics (RAM / VRAM / utilization / disk) while the page is mounted. */
+/** Poll live metrics (RAM / VRAM / utilization / disk / decode speed) and the resident models while the page is mounted. */
 async function pollLive() {
   try {
     const s = await getMonitorStatus()
@@ -554,7 +769,17 @@ async function pollLive() {
       memTotalBytes: s.memTotal,
       gpus: Array.isArray(s.gpus) ? s.gpus : [],
       disk: s.disk ?? null,
-      serverRunning: s.serverRunning === true
+      serverRunning: s.serverRunning === true,
+      decodeTps: Number.isFinite(s.decodeTps) ? s.decodeTps : 0
+    }
+    if (s.serverRunning) {
+      try {
+        loadedModels.value = await getLoadedModels()
+      } catch {
+        // Transient router query failure: keep the previous list until next tick
+      }
+    } else {
+      loadedModels.value = []
     }
     stampUpdated()
   } catch {
@@ -582,11 +807,412 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* Tab panel root: no page chrome (the Home shell owns title, tabs and the
-   scroll band); min-width: 0 lets long unbreakable strings shrink instead of
-   blowing the panel past the viewport */
+/* Tab panel root: no page chrome (the Home shell owns the greeting, tabs and
+   the scroll band); min-width: 0 lets long unbreakable strings shrink instead
+   of blowing the panel past the viewport */
 .system-info-tab {
   min-width: 0;
+}
+
+/* ─── Cards grid: single floating-island column on phone/tablet; two equal
+       columns on desktop (>1099px, design frame ① adapted) where the .grid2
+       wrapper dissolves via display:contents so the two minis become regular
+       cells of the outer grid. Never three columns. ─── */
+.sys-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  align-content: start;
+}
+
+.sys-grid > .island {
+  padding: 20px;
+}
+
+/* ─── Gradient hero card (frame ① .hero): brand gradient + white text, the
+       decorative corner circles kept as pseudo-elements ─── */
+.hero-card {
+  position: relative;
+  overflow: hidden;
+  background: var(--grad);
+  border: none;
+  color: #fff;
+  box-shadow: 0 14px 34px rgba(124, 92, 246, 0.38);
+}
+
+.hero-card::after {
+  content: "";
+  position: absolute;
+  width: 190px;
+  height: 190px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  top: -70px;
+  right: -50px;
+  pointer-events: none;
+}
+
+.hero-card::before {
+  content: "";
+  position: absolute;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  bottom: -50px;
+  left: -30px;
+  pointer-events: none;
+}
+
+.hero-tag {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  padding: 5px 12px;
+  letter-spacing: 0.4px;
+}
+
+.tag-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #6ee7b7;
+  box-shadow: 0 0 8px #6ee7b7;
+}
+
+/* Offline: the glow dies, the dot goes neutral — status stays honest */
+.hero-tag.off .tag-dot {
+  background: rgba(255, 255, 255, 0.55);
+  box-shadow: none;
+}
+
+.hero-model {
+  position: relative;
+  z-index: 1;
+  font-size: 23px;
+  font-weight: 800;
+  margin: 13px 0 0;
+  letter-spacing: -0.3px;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hero-sub {
+  position: relative;
+  z-index: 1;
+  font-size: 12.5px;
+  opacity: 0.85;
+  margin: 5px 0 0;
+}
+
+.hero-row {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+.hero-num {
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.8px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.hero-lbl {
+  font-size: 11px;
+  opacity: 0.8;
+  margin-top: 4px;
+}
+
+.hero-cta {
+  background: rgba(255, 255, 255, 0.94);
+  color: #6d28d9;
+  font-size: 13px;
+  font-weight: 800;
+  border-radius: 999px;
+  padding: 11px 20px;
+  box-shadow: 0 6px 16px rgba(30, 20, 80, 0.25);
+  text-decoration: none;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  flex-shrink: 0;
+}
+
+.hero-cta:hover {
+  color: #5b21b6;
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(30, 20, 80, 0.32);
+}
+
+/* ─── Mini metric pair (frame ① .grid2 + .mini) ─── */
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.mini {
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+}
+
+.mini-lbl {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.mini-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  min-width: 0;
+}
+
+.mini-val {
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: -0.4px;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mini-val small {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.mini-trend {
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--text-dim);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Ring: design frame ① .ring — 46px box, r=19, gradient fg rotated -90° */
+.ring {
+  width: 46px;
+  height: 46px;
+  flex-shrink: 0;
+}
+
+.ring circle {
+  fill: none;
+  stroke-width: 6;
+  stroke-linecap: round;
+}
+
+.ring .bg {
+  stroke: var(--overlay-8);
+}
+
+.ring .fg {
+  stroke: url(#home-ring-grad);
+  transition: stroke-dasharray 0.6s ease;
+}
+
+/* ─── Storage island (frame ① .island + .bar.a) ─── */
+.island-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.island-head h4 {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: 0.3px;
+  margin: 0;
+}
+
+.head-more {
+  color: var(--accent-light);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.storage-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.storage-row b {
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+/* Amber disk-level fill per the design language (frame ⑥: amber = disk level) */
+.storage-bar {
+  height: 7px;
+  border-radius: 999px;
+  background: var(--overlay-8);
+  overflow: hidden;
+}
+
+.storage-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #fbbf24, #f59e0b);
+  transition: width 0.6s ease;
+}
+
+.brick-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.brick {
+  flex: 1;
+  min-width: 0;
+  background: var(--overlay-8);
+  border-radius: 14px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.brick-lbl {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.brick-val {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Resident model card (frame ① .mcard) ─── */
+.mcard {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 15px 16px;
+}
+
+.tile {
+  width: 48px;
+  height: 48px;
+  border-radius: 15px;
+  background: var(--grad-soft);
+  color: var(--accent-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.mcard-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.mcard-name {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mcard-chips {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.mcard-chips i {
+  font-style: normal;
+  background: var(--overlay-8);
+  border-radius: 6px;
+  padding: 2px 7px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: 11.5px;
+}
+
+.mcard-error {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--danger);
+}
+
+.unload-btn {
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 9px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  background: rgba(239, 68, 68, 0.08);
+  color: var(--danger);
+  font-size: 12px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.unload-btn:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.16);
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.unload-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+/* ─── Retained capability cards (GPU / CUDA / system): same island surface,
+       existing inner content untouched ─── */
+.info-section {
+  display: flex;
+  flex-direction: column;
 }
 
 .section-title {
@@ -717,7 +1343,7 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 
-/* ─── Info grid ─── */
+/* ─── Info grid (retained cards) ─── */
 .info-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -728,10 +1354,6 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 4px;
-}
-
-.info-item-full {
-  grid-column: 1 / -1;
 }
 
 .info-label {
@@ -752,7 +1374,7 @@ onUnmounted(() => {
   font-variant-numeric: tabular-nums;
 }
 
-/* ─── Usage bars (shared visual language: RAM / VRAM / disk / CPU) ─── */
+/* ─── Usage bars inside the GPU card (shared visual language) ─── */
 .usage-block {
   margin-bottom: 14px;
 }
@@ -818,14 +1440,9 @@ onUnmounted(() => {
   gap: 4px 16px;
   font-size: 12px;
   color: var(--text-dim);
-  /* Uniform breathing room below the usage bar in every card (GPU blocks
-     previously sat flush against it while memory/disk used a .spaced hack) */
+  /* Uniform breathing room below the usage bar in every card */
   margin-top: 10px;
   font-variant-numeric: tabular-nums;
-}
-
-.meta-path {
-  word-break: break-all;
 }
 
 .gpu-block {
@@ -851,7 +1468,7 @@ onUnmounted(() => {
   font-weight: 600;
 }
 
-/* ─── Status badge ─── */
+/* ─── Status badge (CUDA card) ─── */
 .status-badge {
   display: inline-flex;
   align-items: center;
@@ -884,7 +1501,11 @@ onUnmounted(() => {
 
 /* ─── Loading skeleton ─── */
 .skeleton-card {
-  min-height: 140px;
+  min-height: 120px;
+}
+
+.hero-skel {
+  min-height: 170px;
 }
 
 .skeleton-line {
@@ -909,35 +1530,6 @@ onUnmounted(() => {
   50% { opacity: 0.8; }
 }
 
-/* ─── Cards grid ─── */
-.cards-grid {
-  /* Fully elastic: tracks appear only while a 400px card fits, so the grid
-     collapses 2 → 1 columns on its own on narrow windows (no media queries).
-     auto-fill keeps every card the same width instead of letting the last
-     incomplete row stretch. */
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 400px), 1fr));
-  gap: 20px;
-  align-content: start;
-}
-
-/* min-width: 0 lets long unbreakable strings (GPU names, disk paths) shrink
-   inside the track instead of blowing the grid past the viewport */
-.info-section {
-  min-width: 0;
-  padding: 24px 28px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  transition: border-color 0.2s;
-  display: flex;
-  flex-direction: column;
-}
-
-.info-section:hover {
-  border-color: var(--overlay-10);
-}
-
 /* ─── Error ─── */
 .error-card {
   display: flex;
@@ -946,7 +1538,7 @@ onUnmounted(() => {
   padding: 56px 32px;
   background: rgba(239, 68, 68, 0.04);
   border: 1px solid rgba(239, 68, 68, 0.12);
-  border-radius: 16px;
+  border-radius: var(--r-lg);
   text-align: center;
 }
 
@@ -984,24 +1576,37 @@ onUnmounted(() => {
   background: var(--accent-glow);
 }
 
-/* ─── Phone (<=767px): the elastic cards grid already collapses to a single
-       full-width column (minmax(min(100%, 400px), 1fr)); only the card
-       density is adjusted here so full-width cards don't feel oversized.
-       Desktop (>=1100px) keeps the 3-4 column grid untouched. ─── */
+/* ─── Desktop (>1099px): the same card system in a two-column grid (design
+       adaptation — never three columns). The minis' wrapper dissolves so the
+       memory/CPU cards become regular cells; hero and onboarding stay
+       full-width statements. ─── */
+@media (min-width: 1100px) {
+  .sys-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+  }
+
+  .sys-grid > .island {
+    padding: 24px 28px;
+  }
+
+  .mini {
+    padding: 20px;
+  }
+
+  .grid2 {
+    display: contents;
+  }
+
+  .onboarding-card,
+  .hero-card {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ─── Phone (<=767px): checklist rows and the unload button grow to 44px
+       touch targets; the elastic grid is already single-column. ─── */
 @media (max-width: 767px) {
-  .cards-grid {
-    gap: 12px;
-  }
-
-  .info-section {
-    padding: 16px;
-  }
-
-  .section-title {
-    margin-bottom: 14px;
-  }
-
-  /* Checklist rows become 44px touch targets; the goto action grows to match */
   .onboarding-step {
     min-height: 44px;
   }
@@ -1017,9 +1622,12 @@ onUnmounted(() => {
   .retry-btn {
     min-height: 44px;
   }
+
+  .unload-btn {
+    min-height: 44px;
+  }
 }
 
-/* ─── Tablet (768..1099px): the sidebar collapses to a 64px rail (Sidebar.vue),
-       leaving ~2 columns of 400px cards — exactly the roomy two-pane feel,
-       so no extra rule is needed here. ─── */
+/* ─── Tablet (768..1099px): single column, same as the phone tier (the
+       desktop two-column grid only engages above 1099px). ─── */
 </style>

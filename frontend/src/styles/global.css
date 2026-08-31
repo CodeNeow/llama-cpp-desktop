@@ -290,3 +290,16 @@ html {
     padding-right: 16px;
   }
 }
+
+/* ─── Mobile redesign shared component: floating-island card ───
+   Lifted surface + 28px island radius + soft shadow (design/android-mockups.html
+   frame ①/.island). Surface-only on purpose: layout (margins / grid placement)
+   stays owned by the consuming component. Consumed by the Home redesign
+   (batch 2); later page migrations reuse the same class. */
+.island {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-island);
+  min-width: 0;
+}

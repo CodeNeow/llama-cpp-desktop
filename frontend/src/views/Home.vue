@@ -3,9 +3,25 @@
     <div class="sticky-top">
       <div class="page-header">
         <div class="page-header-row">
-          <div>
-            <h1 class="page-title">{{ t('home.title') }}</h1>
-            <p class="page-subtitle">{{ t('home.subtitle') }}</p>
+          <div class="greet-block">
+            <!-- Greeting header (design/android-mockups.html frame ①): a
+                 time-of-day greeting replaces the static page title, and the
+                 subline answers "is the AI usable right now" from the live
+                 service status + resident model — never hardcoded online. -->
+            <h1 class="greet-title">{{ t(greetKey) }}</h1>
+            <p class="greet-sub">
+              <template v-if="greetState === 'online'">
+                <span class="greet-live">
+                  <span class="greet-dot on"></span>
+                  <span class="greet-model" :title="greetModel">{{ greetLine }}</span>
+                </span>
+                <span class="greet-rest">· {{ t('home.greet.readySuffix') }}</span>
+              </template>
+              <template v-else>
+                <span class="greet-dot" :class="{ idle: greetState === 'idle' }"></span>
+                <span class="greet-text">{{ greetLine }}</span>
+              </template>
+            </p>
           </div>
         </div>
       </div>
@@ -64,12 +80,97 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { t } from '../lib/i18n'
+import { getServerStatus, getLoadedModels, type LoadedModel } from '../wails'
 
 const route = useRoute()
 const router = useRouter()
+
+// ─── Greeting header (frame ①) ──────────────────────────────────
+// Time-of-day greeting + honest service status. The shell polls the light
+// service status pair (getServerStatus + getLoadedModels) every 3s — the same
+// facts TaskDock displays, at the SystemInfoTab live-sample cadence. No data
+// is invented: before the first successful probe the subline shows a neutral
+// loading state, and a stopped service says so.
+
+const now = ref(new Date())
+const serverRunning = ref(false)
+const statusResolved = ref(false)
+const loadedModels = ref<LoadedModel[]>([])
+
+type GreetSlot = 'morning' | 'afternoon' | 'evening'
+
+/** Time-of-day bucket: morning before 12:00, afternoon 12:00–17:59, evening after. */
+function greetSlot(d: Date): GreetSlot {
+  const h = d.getHours()
+  if (h < 12) return 'morning'
+  if (h < 18) return 'afternoon'
+  return 'evening'
+}
+
+const greetKey = computed(() => `home.greet.${greetSlot(now.value)}`)
+
+/** First resident model: prefer one actually loaded, else any loading/sleeping entry. */
+const residentModel = computed<LoadedModel | null>(
+  () => loadedModels.value.find(m => m.status === 'loaded') ?? loadedModels.value[0] ?? null
+)
+
+const greetState = computed<'loading' | 'online' | 'idle' | 'off'>(() => {
+  if (!statusResolved.value) return 'loading'
+  if (!serverRunning.value) return 'off'
+  return residentModel.value ? 'online' : 'idle'
+})
+
+const greetModel = computed(() => residentModel.value?.id ?? '')
+
+const greetLine = computed(() => {
+  switch (greetState.value) {
+    case 'online':
+      return t('home.greet.online', { model: residentModel.value!.id })
+    case 'idle':
+      return t('home.greet.idle')
+    case 'off':
+      return t('home.greet.offline')
+    default:
+      return t('home.greet.loading')
+  }
+})
+
+let statusTimer: ReturnType<typeof setInterval> | null = null
+
+async function pollServiceStatus() {
+  try {
+    const s = await getServerStatus()
+    serverRunning.value = s.running
+    if (s.running) {
+      try {
+        loadedModels.value = await getLoadedModels()
+      } catch {
+        // Transient router query failure: keep the previous list until next tick
+      }
+    } else {
+      loadedModels.value = []
+    }
+    statusResolved.value = true
+    now.value = new Date()
+  } catch {
+    // Backend unavailable (e.g. standalone vite): keep the honest loading state
+  }
+}
+
+onMounted(() => {
+  pollServiceStatus()
+  statusTimer = setInterval(pollServiceStatus, 3000)
+})
+
+onUnmounted(() => {
+  if (statusTimer) {
+    clearInterval(statusTimer)
+    statusTimer = null
+  }
+})
 
 // Both tabs control the single panel region rendered by the nested router-view
 const panelId = 'home-panel'
@@ -135,19 +236,78 @@ const tabs = [
   padding-bottom: 20px;
 }
 
-.page-title {
-  font-size: 28px;
-  font-weight: 700;
+/* ─── Greeting header (frame ①): time-of-day greeting replaces the static
+       page title; the status subline keeps to one line with an ellipsized
+       model id so long router ids cannot push the header band wider ─── */
+.greet-block {
+  min-width: 0;
+}
+
+.greet-title {
+  font-size: 26px;
+  font-weight: 800;
   color: var(--text-primary);
-  margin: 0 0 4px;
-  letter-spacing: -0.5px;
+  margin: 0 0 6px;
+  letter-spacing: -0.4px;
   line-height: 1.2;
 }
 
-.page-subtitle {
-  font-size: 14px;
+.greet-sub {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
   color: var(--text-dim);
   margin: 0;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.greet-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--success);
+  font-weight: 700;
+  min-width: 0;
+}
+
+.greet-model {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.greet-rest {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.greet-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.greet-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  flex-shrink: 0;
+}
+
+/* Online/resident: glowing green dot (design frame ① .live) */
+.greet-dot.on {
+  background: var(--success);
+  box-shadow: 0 0 6px var(--success);
+}
+
+/* Service up but no resident model yet: green but unlit */
+.greet-dot.idle {
+  background: var(--success);
+  opacity: 0.55;
 }
 
 .page-header-row {
@@ -259,8 +419,17 @@ const tabs = [
 /* ─── Phone (<=767px): the tab row must never push the page wider than the
        viewport. Tabs scroll horizontally inside their own container (page
        overflow stays impossible); the refresh toolbar wraps onto its own row.
-       Tab buttons get 44px touch height. ─── */
+       Tab buttons get 44px touch height. The greeting scales down per the
+       design's 24px phone heading. ─── */
 @media (max-width: 767px) {
+  .greet-title {
+    font-size: 24px;
+  }
+
+  .greet-rest {
+    display: none;
+  }
+
   .env-tabs-row {
     flex-wrap: wrap;
     gap: 0 12px;
