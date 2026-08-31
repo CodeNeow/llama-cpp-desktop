@@ -98,6 +98,23 @@ export async function getOS(): Promise<{ os: string; arch: string }> {
   return app().GetOS()
 }
 
+// SafeArea mirrors the backend core.SafeArea: system-bar insets in physical
+// pixels (Android only — status-bar/cutout band on top, gesture/nav bar on
+// the bottom; all zeros elsewhere, where CSS env(safe-area-inset-*) already
+// covers window chrome). Consumed by lib/safeArea.ts.
+export interface SafeArea {
+  top: number
+  bottom: number
+  left: number
+  right: number
+}
+
+// getSafeArea reads the current Android system-bar insets; callers treat
+// failure as soft (lib/safeArea.ts catches and keeps the env() layer alone).
+export async function getSafeArea(): Promise<SafeArea> {
+  return app().GetSafeArea()
+}
+
 export async function getDisk(): Promise<{ path: string; used: number; total: number } | null> {
   return app().GetDisk()
 }

@@ -522,6 +522,9 @@ export const handlers: Record<string, (...args: any[]) => any> = {
   GetCUDA: () => ({ ...cuda }),
   GetLlamaCpp: () => ({ ...llamaCpp }),
   GetOS: () => ({ ...os }),
+  // Android system-bar insets: the mock preview has no native bars, so the
+  // safe-area bridge stays at the env() CSS baseline (all zeros).
+  GetSafeArea: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
   GetDisk: () => ({ ...disk }),
 
   // ── Monitor ──

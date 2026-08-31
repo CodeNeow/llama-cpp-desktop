@@ -1,15 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Night-config twin of values/themes.xml: resource config folders replace
+     (not merge), so every item must be restated. Only the material parent
+     palette differs implicitly; the system bars stay transparent in both
+     modes — the app paints its own surfaces edge-to-edge (see
+     MainActivity.setupEdgeToEdge). -->
 <resources>
     <style name="Theme.WailsApp" parent="Theme.MaterialComponents.DayNight.NoActionBar">
         <!-- Primary brand color. -->
         <item name="colorPrimary">@color/wails_blue</item>
         <item name="colorPrimaryVariant">@color/wails_blue_dark</item>
         <item name="colorOnPrimary">@android:color/white</item>
-        <!-- System bars transparent (edge-to-edge): MainActivity draws the
-             WebView behind them (setupEdgeToEdge) and the app's own painted
-             surfaces show through; bar icon contrast follows the system night
-             mode there. Keep values-night/themes.xml in sync (config folders
-             replace, not merge). -->
+        <!-- System bars transparent (edge-to-edge), same as day mode. -->
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <!-- Window background -->

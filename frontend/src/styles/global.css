@@ -208,10 +208,12 @@ code, pre {
 /* Outer wrapper for the page header (and action areas that must stay fixed
    with it): pins to the top of the content area while scrolling.
    display:flow-root contains child margin collapse so scrolled content cannot
-   show through a gap above the wrapper */
+   show through a gap above the wrapper. The stick offset rides the safe-area
+   inset so a scrolled header stays clear of an edge-to-edge Android status
+   bar (0 on desktop — no-op). */
 .sticky-top {
   position: sticky;
-  top: 0;
+  top: var(--safe-area-top, 0px);
   z-index: 20;
   background: var(--bg-primary);
   display: flow-root;
@@ -269,14 +271,22 @@ html {
      index.html): the OS status bar / display cutout height, 0 on desktop
      where env() resolves to 0. Consumed as top padding by .page-fixed and
      Chat.vue's .chat-page so a cutout cannot eat the page header. */
-  --safe-area-top: max(0px, env(safe-area-inset-top, 0px));
+  --safe-area-top: max(env(safe-area-inset-top, 0px), var(--safe-area-js-top, 0px));
+
+  /* Bottom safe-area inset: env() base layer composed with the Android
+     edge-to-edge bridge (lib/safeArea.ts publishes --safe-area-js-* from the
+     native insets — the Android WebView reports env(safe-area-inset-*) ≡ 0).
+     Carries the gesture/nav-bar band and, while the soft keyboard is up,
+     whatever part of it the browser viewport did not already absorb.
+     Consumed by --mobile-nav-height; desktop is a no-op (all sources 0). */
+  --safe-area-bottom: max(env(safe-area-inset-bottom, 0px), var(--safe-area-js-bottom, 0px));
 }
 
 /* mobile (<=767px): publish the real tab bar band (matches MobileNav.vue's
    floating glass bar: bottom 14px + height 68px). */
 @media (max-width: 767px) {
   :root {
-    --mobile-nav-height: calc(14px + 68px + env(safe-area-inset-bottom, 0px));
+    --mobile-nav-height: calc(14px + 68px + var(--safe-area-bottom, 0px));
   }
 }
 

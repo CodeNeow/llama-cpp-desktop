@@ -243,9 +243,22 @@ export function GetRemoteDoc(lang: string, sectionID: string, force: boolean): $
     });
 }
 
+/**
+ * GetSafeArea returns the current system-bar insets in physical pixels
+ * (Android only: status-bar/cutout band on top, gesture/nav bar on the
+ * bottom; zeros on every other platform). Feeds the frontend's safe-area CSS
+ * layer, which takes the max of this and the env(safe-area-inset-*) insets —
+ * a zero result stays a no-op on desktop.
+ */
+export function GetSafeArea(): $CancellablePromise<$models.SafeArea> {
+    return $Call.ByID(4054609944).then(($result: any) => {
+        return $$createType31($result);
+    });
+}
+
 export function GetServerConfig(): $CancellablePromise<$models.ServerConfig> {
     return $Call.ByID(922492437).then(($result: any) => {
-        return $$createType31($result);
+        return $$createType32($result);
     });
 }
 
@@ -258,7 +271,7 @@ export function GetServerConfig(): $CancellablePromise<$models.ServerConfig> {
  */
 export function GetServerLogsSince(since: number): $CancellablePromise<$models.ServerLogsPage> {
     return $Call.ByID(2272125646, since).then(($result: any) => {
-        return $$createType32($result);
+        return $$createType33($result);
     });
 }
 
@@ -270,7 +283,7 @@ export function GetServerStatus(): $CancellablePromise<{ [_ in string]?: any }> 
 
 export function GetSystemInfo(): $CancellablePromise<$models.SystemInfo | null> {
     return $Call.ByID(1207510045).then(($result: any) => {
-        return $$createType34($result);
+        return $$createType35($result);
     });
 }
 
@@ -280,7 +293,7 @@ export function GetSystemInfo(): $CancellablePromise<$models.SystemInfo | null> 
  */
 export function GetUpdateDownloadStatus(): $CancellablePromise<$models.UpdateDownloadState | null> {
     return $Call.ByID(1961990283).then(($result: any) => {
-        return $$createType36($result);
+        return $$createType37($result);
     });
 }
 
@@ -343,7 +356,7 @@ export function SaveServerConfig(cfg: $models.ServerConfig): $CancellablePromise
  */
 export function SearchDownloads(query: string, filter: string): $CancellablePromise<$models.HFSearchResult[]> {
     return $Call.ByID(3752716797, query, filter).then(($result: any) => {
-        return $$createType38($result);
+        return $$createType39($result);
     });
 }
 
@@ -561,11 +574,12 @@ const $$createType27 = $models.MonitorStatus.createFrom;
 const $$createType28 = $Create.Nullable($$createType27);
 const $$createType29 = $Create.Map($Create.Any, $Create.Any);
 const $$createType30 = $models.RemoteDocResult.createFrom;
-const $$createType31 = $models.ServerConfig.createFrom;
-const $$createType32 = $models.ServerLogsPage.createFrom;
-const $$createType33 = $models.SystemInfo.createFrom;
-const $$createType34 = $Create.Nullable($$createType33);
-const $$createType35 = $models.UpdateDownloadState.createFrom;
-const $$createType36 = $Create.Nullable($$createType35);
-const $$createType37 = $models.HFSearchResult.createFrom;
-const $$createType38 = $Create.Array($$createType37);
+const $$createType31 = $models.SafeArea.createFrom;
+const $$createType32 = $models.ServerConfig.createFrom;
+const $$createType33 = $models.ServerLogsPage.createFrom;
+const $$createType34 = $models.SystemInfo.createFrom;
+const $$createType35 = $Create.Nullable($$createType34);
+const $$createType36 = $models.UpdateDownloadState.createFrom;
+const $$createType37 = $Create.Nullable($$createType36);
+const $$createType38 = $models.HFSearchResult.createFrom;
+const $$createType39 = $Create.Array($$createType38);

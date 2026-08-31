@@ -18,10 +18,14 @@ import android.os.PowerManager;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Insets;
 import android.provider.MediaStore;
 import android.provider.OpenableColumns;
 import android.util.Base64;
 import android.util.Log;
+import android.view.View;
+import android.view.Window;
+import android.view.WindowInsets;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
@@ -31,6 +35,8 @@ import android.webkit.WebViewClient;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.FileProvider;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.webkit.WebViewAssetLoader;
 
 // BuildConfig and R are generated under the AGP namespace
@@ -90,6 +96,9 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // Edge-to-edge first (before setContentView): the WebView's first
+        // layout must already extend behind the transparent system bars.
+        setupEdgeToEdge();
         setContentView(R.layout.activity_main);
 
         // Initialize the native Go library
@@ -199,6 +208,9 @@ public class MainActivity extends AppCompatActivity {
                 // Now that JS listeners are mounted, push a snapshot of the
                 // current battery / network / theme so the UI starts populated.
                 emitSystemSnapshot();
+                // Same for the system-bar insets: a fresh push so the page
+                // starts padded behind the edge-to-edge bars.
+                emitSafeAreaSnapshot();
             }
         });
 
@@ -210,6 +222,95 @@ public class MainActivity extends AppCompatActivity {
         String url = WAILS_SCHEME + "://" + WAILS_HOST + "/";
         if (DEBUG) Log.d(TAG, "Loading URL: " + url);
         webView.loadUrl(url);
+    }
+
+    // ---- Edge-to-edge (system bars) ---------------------------------------
+    // The app draws behind the status and navigation bars (transparent bar
+    // colors in themes.xml + decor-fits disabled below); the WebView content
+    // pads itself from the "common:safearea" insets pushes, so page headers
+    // clear the status bar and the gesture/nav bar never covers the mobile
+    // tab bar. Theme.WailsApp must keep its transparent bar colors in sync.
+
+    /** Edge-to-edge setup: see the section comment above. */
+    private void setupEdgeToEdge() {
+        final Window window = getWindow();
+        // Let content lay out behind the system bars: the window-level
+        // setDecorFitsSystemWindows on API 30+, the LAYOUT_* system-UI flags
+        // on older versions (both handled by WindowCompat). adjustResize keeps
+        // resizing the window for the soft keyboard on API < 30; on API 30+
+        // the keyboard arrives as an IME inset instead (see the listener).
+        WindowCompat.setDecorFitsSystemWindows(window, false);
+
+        // Bar icon contrast follows the system night mode (dark icons on the
+        // light theme's bright background, light icons in dark theme) — same
+        // configuration read as emitTheme().
+        boolean nightMode = (getResources().getConfiguration().uiMode
+                & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+        WindowInsetsControllerCompat controller =
+                WindowCompat.getInsetsController(window, window.getDecorView());
+        controller.setAppearanceLightStatusBars(!nightMode);
+        controller.setAppearanceLightNavigationBars(!nightMode);
+
+        // Forward every insets pass to the frontend (status/nav bars + IME).
+        // Returning the insets unconsumed keeps the default dispatch for the
+        // WebView — same contract as WailsBridge's keyboard watcher.
+        window.getDecorView().setOnApplyWindowInsetsListener((v, insets) -> {
+            emitSafeArea(insets);
+            return insets;
+        });
+    }
+
+    /**
+     * Emit the current system-bar insets as "common:safearea"
+     * {"top","bottom","left","right","ime"} in physical px. bottom carries the
+     * status/navigation bars only; ime carries the soft keyboard (0 below
+     * API 30) so the frontend can pad whichever is taller — and skip the IME
+     * part when the browser viewport already resized for it.
+     */
+    private void emitSafeArea(WindowInsets insets) {
+        try {
+            int top = 0, bottom = 0, left = 0, right = 0, ime = 0;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                Insets bars = insets.getInsets(WindowInsets.Type.systemBars());
+                top = bars.top;
+                bottom = bars.bottom;
+                left = bars.left;
+                right = bars.right;
+                ime = insets.getInsets(WindowInsets.Type.ime()).bottom;
+            } else {
+                top = insets.getSystemWindowInsetTop();
+                bottom = insets.getSystemWindowInsetBottom();
+                left = insets.getSystemWindowInsetLeft();
+                right = insets.getSystemWindowInsetRight();
+            }
+            JSONObject o = new JSONObject();
+            o.put("top", top).put("bottom", bottom)
+                    .put("left", left).put("right", right).put("ime", ime);
+            if (bridge != null) bridge.emitEvent("common:safearea", o.toString());
+        } catch (Exception e) {
+            Log.e(TAG, "emitSafeArea failed", e);
+        }
+    }
+
+    /**
+     * Re-dispatch window insets so the listener pushes the current values to
+     * the freshly-loaded page — the one-shot at first layout fired long before
+     * the page's JS subscribed — then once more after a grace period to
+     * out-race the Vue app's late event mounting. Repeats are idempotent.
+     * Mirrors emitSystemSnapshot() in onPageFinished.
+     */
+    private void emitSafeAreaSnapshot() {
+        try {
+            View decor = getWindow().getDecorView();
+            decor.requestApplyInsets();
+            decor.postDelayed(() -> {
+                if (!isDestroyed()) {
+                    getWindow().getDecorView().requestApplyInsets();
+                }
+            }, 1000);
+        } catch (Exception e) {
+            Log.e(TAG, "emitSafeAreaSnapshot failed", e);
+        }
     }
 
     /**

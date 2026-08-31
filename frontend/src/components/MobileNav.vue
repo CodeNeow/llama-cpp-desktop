@@ -39,15 +39,16 @@ const route = useRoute()
 /* mobile (<=767px): floating glass tab bar (design/android-mockups.html frame
    ①): a 68px rounded island hovering 14px above the bottom edge with a
    blur+saturate backdrop; the active entry gets a gradient pill with a white
-   label. env(safe-area-inset-bottom) lifts the island clear of Android
-   gesture-nav insets; the occupied band (14px gap + 68px bar + inset) feeds
-   --mobile-nav-height in global.css (keep both in sync). */
+   label. --safe-area-bottom (env() composed with the Android edge-to-edge
+   bridge's JS inset, see styles/global.css) lifts the island clear of
+   Android gesture-nav insets; the occupied band (14px gap + 68px bar +
+   inset) feeds --mobile-nav-height in global.css (keep both in sync). */
 @media (max-width: 767px) {
   .mobile-nav {
     position: fixed;
     left: 14px;
     right: 14px;
-    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(14px + var(--safe-area-bottom, 0px));
     z-index: 40; /* under the TaskDock pill (50) and the update modal (1000) */
     display: flex;
     align-items: center;

@@ -12,6 +12,8 @@
  *   - src/App.vue                    → Application (Quit), Window (Minimise /
  *                                      ToggleMaximise / IsMaximised / Hide)
  *   - src/lib/linkHandler.ts, src/views/Docs.vue → Browser.OpenURL
+ *   - src/lib/safeArea.ts            → Events.On (never fires; no native
+ *                                      insets in the mock)
  *
  * Call.ByID dispatches through the numeric method-ID table (extracted from the
  * generated app.ts) to the handler table in mockData.ts. Unknown IDs and
@@ -69,6 +71,7 @@ const methodIds: Record<number, string> = {
   1406400820: 'GetMonitorStatus',
   1828890902: 'GetOS',
   2670577276: 'GetRemoteDoc',
+  4054609944: 'GetSafeArea',
   922492437: 'GetServerConfig',
   2272125646: 'GetServerLogsSince',
   2805866625: 'GetServerStatus',
@@ -189,6 +192,13 @@ export const Window = {
 
 export const Browser = {
   OpenURL: (_url: string | URL) => Promise.resolve(),
+}
+
+// Events shim for src/lib/safeArea.ts (the only Events consumer): On returns
+// an unsubscribe function and never fires — the mock has no native system-bar
+// insets to push, so safe area stays at the env() CSS baseline.
+export const Events = {
+  On: (_name: string, _callback: (ev: unknown) => void) => () => {},
 }
 
 // ─── fetch interception (chat page talks to llama-server directly) ──────────

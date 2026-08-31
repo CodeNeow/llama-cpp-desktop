@@ -74,6 +74,7 @@ import TaskDock from './components/TaskDock.vue'
 import MobileNav from './components/MobileNav.vue'
 import { updateState, checkForUpdate, shouldAutoCheck, closeUpdateModal } from './lib/update'
 import { dockReserve, dockWidth, dockSide } from './lib/dockSpace'
+import { initSafeArea } from './lib/safeArea'
 import { t } from './lib/i18n'
 import { appConfig } from './store'
 import { getOS } from './wails'
@@ -132,6 +133,11 @@ onUnmounted(() => window.removeEventListener('resize', syncPlatformState))
 
 // Detect the OS on startup; on failure silently keep the empty string (same style as existing getOS optional chaining)
 onMounted(async () => {
+  // Android edge-to-edge bridge: pull the native system-bar insets and start
+  // listening for pushes, publishing them as the --safe-area-js-* variables
+  // the composed --safe-area-top/--safe-area-bottom vars read (no-op on
+  // desktop, where every source is zero).
+  initSafeArea()
   try {
     const info = await getOS()
     platform.value = (info as { os?: string }).os ?? ''
@@ -310,6 +316,16 @@ async function closeWindow() {
   /* Smooth transition when the reserve changes (dock appears/disappears,
      0 <-> pill height + offset ~56px) so content doesn't jump. */
   transition: padding-bottom 0.2s ease;
+}
+
+/* Scrolled pages only: pad the top by the safe-area inset so page headers
+   clear an edge-to-edge Android status bar (the sticky headers keep the same
+   offset via .sticky-top in global.css). Fixed-viewport pages are excluded —
+   their shells (.page-fixed / Chat.vue) pad the inset inside their own
+   height, and the shared padding would shift their exact-fit geometry. 0px
+   on desktop: no visual change. */
+.content-area:not(.content-fixed) {
+  padding-top: var(--safe-area-top, 0px);
 }
 
 /* Fixed-viewport pages (route meta fixed: true): these pages own the full

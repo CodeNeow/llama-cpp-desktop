@@ -577,6 +577,15 @@ func (a *App) GetOS() map[string]string {
 	return map[string]string{"os": runtime.GOOS, "arch": runtime.GOARCH}
 }
 
+// GetSafeArea returns the current system-bar insets in physical pixels
+// (Android only: status-bar/cutout band on top, gesture/nav bar on the
+// bottom; zeros on every other platform). Feeds the frontend's safe-area CSS
+// layer, which takes the max of this and the env(safe-area-inset-*) insets —
+// a zero result stays a no-op on desktop.
+func (a *App) GetSafeArea() SafeArea {
+	return currentSafeArea()
+}
+
 func (a *App) GetDisk() *DiskUsage {
 	// sampleDiskUsage returns nil on failure, so this is safe.
 	return sampleDiskUsage()

@@ -10,6 +10,14 @@ export class CPUInfo {
     "cores": number;
     "logicalCpus": number;
 
+    /**
+     * PerfCores is the performance-cluster core count on big.LITTLE SoCs
+     * (Android): CPUs whose cpufreq cpuinfo_max_freq reaches 80% of the
+     * highest. 0 = unknown (desktop probes never populate it); the auto-tuner
+     * caps its Android thread pool at this count.
+     */
+    "perfCores"?: number;
+
     /** Creates a new CPUInfo instance. */
     constructor($$source: Partial<CPUInfo> = {}) {
         if (!("model" in $$source)) {
@@ -946,6 +954,45 @@ export class RemoteDocResult {
     static createFrom($$source: any = {}): RemoteDocResult {
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
         return new RemoteDocResult($$parsedSource as Partial<RemoteDocResult>);
+    }
+}
+
+/**
+ * SafeArea holds the system-bar insets in physical pixels: the status-bar /
+ * display-cutout band at the top, the gesture- or button-navigation band at
+ * the bottom, and the side cutouts. Populated on Android only (see
+ * safearea_android.go); every other platform reports zeros.
+ */
+export class SafeArea {
+    "top": number;
+    "bottom": number;
+    "left": number;
+    "right": number;
+
+    /** Creates a new SafeArea instance. */
+    constructor($$source: Partial<SafeArea> = {}) {
+        if (!("top" in $$source)) {
+            this["top"] = 0;
+        }
+        if (!("bottom" in $$source)) {
+            this["bottom"] = 0;
+        }
+        if (!("left" in $$source)) {
+            this["left"] = 0;
+        }
+        if (!("right" in $$source)) {
+            this["right"] = 0;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new SafeArea instance from a string or object.
+     */
+    static createFrom($$source: any = {}): SafeArea {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new SafeArea($$parsedSource as Partial<SafeArea>);
     }
 }
 

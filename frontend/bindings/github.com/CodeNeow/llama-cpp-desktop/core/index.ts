@@ -25,6 +25,7 @@ export {
     MonitorGPU,
     MonitorStatus,
     RemoteDocResult,
+    SafeArea,
     ServerConfig,
     ServerLogEntry,
     ServerLogsPage,
