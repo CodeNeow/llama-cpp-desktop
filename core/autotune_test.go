@@ -1056,3 +1056,72 @@ func TestTuneModelConfigMetal(t *testing.T) {
 		t.Errorf("darwin-amd64 plan must be plain CPU-only: %+v", cfg)
 	}
 }
+
+// ─── Android big.LITTLE awareness ────────────────────────────────
+
+// TestTuneModelConfigAndroidThreadCap verifies the big.LITTLE thread cap: on
+// Android with a known performance-core split the worker pool is capped to the
+// performance-cluster size; unknown splits, uniform topologies and desktop
+// platforms keep the prior rule byte-for-byte.
+func TestTuneModelConfigAndroidThreadCap(t *testing.T) {
+	tm := tuneModel{WeightsBytes: 2 << 30, Layers: 32, KVBytesPerTokPerLayerF16: 1024, TrainCtx: 32768}
+	base := tuneHardware{
+		GPUVendor:       vendorNone,
+		RAMTotalGB:      12,
+		RAMFreeGB:       6,
+		PhysicalCores:   8,
+		LogicalCPUs:     8,
+		AndroidPlatform: true,
+	}
+
+	// 8-core phone with a 4+4 split: GEMM workers stay on the big cluster.
+	hw := base
+	hw.PerfCores = 4
+	if got := tuneModelConfig(hw, tm).Threads; got != 4 {
+		t.Errorf("android 4+4 split: threads = %d, want 4", got)
+	}
+
+	// Unknown split (PerfCores 0): keeps the all-core behavior.
+	hw.PerfCores = 0
+	if got := tuneModelConfig(hw, tm).Threads; got != 8 {
+		t.Errorf("android unknown split: threads = %d, want 8", got)
+	}
+
+	// Uniform topology (PerfCores == Cores): unchanged.
+	hw.PerfCores = 8
+	if got := tuneModelConfig(hw, tm).Threads; got != 8 {
+		t.Errorf("android uniform: threads = %d, want 8", got)
+	}
+
+	// Desktop platforms never cap, whatever the cpufreq probe reported.
+	hw.PerfCores = 4
+	hw.AndroidPlatform = false
+	if got := tuneModelConfig(hw, tm).Threads; got != 8 {
+		t.Errorf("non-android: threads = %d, want 8", got)
+	}
+}
+
+// TestTuneNeedsRAMBandwidth verifies the calibration skip: the measured
+// bandwidth only gates the CUDA-centric cpu-moe flip, so Apple Silicon (Metal
+// plan) and Android (cpu-only plan) skip the benchmark while desktop GPU hosts
+// keep running it.
+func TestTuneNeedsRAMBandwidth(t *testing.T) {
+	if !tuneNeedsRAMBandwidth(vendorNvidia, "windows") {
+		t.Error("nvidia on windows should run the RAM bandwidth calibration")
+	}
+	if !tuneNeedsRAMBandwidth(vendorNvidia, "linux") {
+		t.Error("nvidia on linux should run the RAM bandwidth calibration")
+	}
+	if !tuneNeedsRAMBandwidth(vendorNone, "windows") {
+		t.Error("cpu-only desktop still runs the calibration (historical behavior)")
+	}
+	if tuneNeedsRAMBandwidth(vendorApple, "darwin") {
+		t.Error("apple should skip the RAM bandwidth calibration")
+	}
+	if tuneNeedsRAMBandwidth(vendorNone, "android") {
+		t.Error("android should skip the RAM bandwidth calibration")
+	}
+	if tuneNeedsRAMBandwidth(vendorNvidia, "android") {
+		t.Error("android should skip the RAM bandwidth calibration regardless of vendor")
+	}
+}

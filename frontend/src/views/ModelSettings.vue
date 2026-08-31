@@ -351,7 +351,7 @@ import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { getModelConfig, saveModelConfig, getServerStatus, tuneModelConfig, benchmarkModel } from '../wails'
 import { t } from '../lib/i18n'
-import { tunedSummaryParams } from '../lib/modelTune'
+import { tunedSummaryParams, tunedToastKey } from '../lib/modelTune'
 import { showGpuOffloadParam, showMultiGpuPanel, loadModeOptions as buildLoadModeOptions, usePlatform } from '../lib/platform'
 import ThemedSelect, { type SelectOption } from '../components/ThemedSelect.vue'
 
@@ -705,7 +705,7 @@ async function tune() {
     // same way save() does on success: isModified is false right after tuning.
     initialConfig.value = { ...merged }
     errors.value = new Set()
-    tuneMsg.value = t('models.tuned', tunedSummaryParams(merged))
+    tuneMsg.value = t(tunedToastKey(merged.gpuLayers), tunedSummaryParams(merged))
     tuneTimer = setTimeout(clearTuneFeedback, 5000)
   } catch (e) {
     tuneError.value = t('models.tuneError', { msg: e instanceof Error ? e.message : String(e) })

@@ -15,6 +15,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 )
@@ -510,6 +511,15 @@ type tuneHardware struct {
 	RAMFreeGB     float64
 	PhysicalCores int // CPUInfo.Cores
 	LogicalCPUs   int
+	// PerfCores is CPUInfo.PerfCores: the performance-cluster core count on
+	// big.LITTLE SoCs (0 = unknown). Feeds the Android thread cap in
+	// tuneModelConfig.
+	PerfCores int
+	// AndroidPlatform mirrors runtime.GOOS == "android". Kept as an explicit
+	// input (instead of reading the GOOS inside tuneModelConfig) so the
+	// sizing core stays free of globals and the cap stays unit-testable on
+	// desktop dev machines.
+	AndroidPlatform bool
 	// CPUModel is CPUInfo.Model, feeding the RAM-bandwidth cache
 	// fingerprint: the CPU package is the most identifying component of the
 	// memory subsystem (see hardwareFingerprint).
@@ -823,6 +833,15 @@ func tuneModelConfig(hw tuneHardware, m tuneModel) ModelConfig {
 	} else if hw.LogicalCPUs > 1 {
 		threads = hw.LogicalCPUs / 2
 	}
+	// Android big.LITTLE cap: phones report every online core as a physical
+	// core, but scheduling GEMM workers onto the LITTLE cluster degrades
+	// decode speed and drives SoC thermals, so pin the worker pool to the
+	// performance-cluster count when the cpufreq probe knows it and the SoC
+	// actually has a split (PerfCores < PhysicalCores). Every other platform
+	// — and uniform topologies — keep the rule above byte-for-byte.
+	if hw.AndroidPlatform && hw.PerfCores > 0 && hw.PerfCores < hw.PhysicalCores && threads > hw.PerfCores {
+		threads = hw.PerfCores
+	}
 
 	layers := m.Layers
 	if layers <= 0 {
@@ -1115,11 +1134,13 @@ func (a *App) tuneHardware() tuneHardware {
 	cuda := a.GetCUDA()
 
 	hw := tuneHardware{
-		RAMTotalGB:    mem.TotalGB,
-		RAMFreeGB:     mem.FreeGB,
-		PhysicalCores: cpu.Cores,
-		LogicalCPUs:   cpu.LogicalCPUs,
-		CPUModel:      cpu.Model,
+		RAMTotalGB:      mem.TotalGB,
+		RAMFreeGB:       mem.FreeGB,
+		PhysicalCores:   cpu.Cores,
+		LogicalCPUs:     cpu.LogicalCPUs,
+		CPUModel:        cpu.Model,
+		PerfCores:       cpu.PerfCores,
+		AndroidPlatform: runtime.GOOS == "android",
 	}
 
 	// Serving-GPU selection: read the persisted DeviceID under serverConfigMu
@@ -1142,15 +1163,25 @@ func (a *App) tuneHardware() tuneHardware {
 
 	// Measured RAM bandwidth calibration: cached per hardware fingerprint,
 	// single-flight across concurrent tune clicks; 0 on failure, which keeps
-	// the tuner on its static rules. Skipped for Apple Silicon: the calibrated
-	// value only gates the CUDA-centric cpu-moe flip inside tuneModelConfig,
-	// which the Metal plan never reaches — an all-core benchmark whose result
-	// the plan would ignore is wasted minutes on a first tune click.
-	if hw.GPUVendor == vendorApple {
+	// the tuner on its static rules. Skipped when no plan can ever consume
+	// the value (see tuneNeedsRAMBandwidth): running the all-core benchmark
+	// anyway would be wasted time — and on a phone an avoidable OOM/lmkd risk.
+	if !tuneNeedsRAMBandwidth(hw.GPUVendor, runtime.GOOS) {
 		return hw
 	}
 	hw.RAMBandwidthGBs, _ = getCalibratedRAMBandwidth(hw)
 	return hw
+}
+
+// tuneNeedsRAMBandwidth reports whether the measured RAM-bandwidth calibration
+// (getCalibratedRAMBandwidth in benchbw.go) must run for this tune: the value
+// only gates the CUDA-centric cpu-moe flip inside tuneModelConfig, which is
+// reached by neither the Metal plan (apple, unified memory) nor the Android
+// plan (cpu-only — the app sandbox has no GPU stack). Pure function, directly
+// unit-testable; goos is passed in so desktop machines can test the android
+// branch.
+func tuneNeedsRAMBandwidth(gpuVendor, goos string) bool {
+	return gpuVendor != vendorApple && goos != "android"
 }
 
 // tuneWeightsBytes returns the tuner's weight budget: the main GGUF size plus

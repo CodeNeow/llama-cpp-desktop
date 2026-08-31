@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { tunedSummaryParams } from '../lib/modelTune'
+import { tunedSummaryParams, tunedToastKey } from '../lib/modelTune'
 
 describe('tunedSummaryParams', () => {
   // Table: cacheTypeK is the only field with a fallback (empty = backend
@@ -32,5 +32,17 @@ describe('tunedSummaryParams', () => {
     expect(out.gpu).toBe('20')
     expect(out.ctx).toBe(8192)
     expect(out.threads).toBe(16)
+  })
+})
+
+describe('tunedToastKey', () => {
+  it('cpu-only plans (gpuLayers "0") use the cpu variant without the GPU segment', () => {
+    expect(tunedToastKey('0')).toBe('models.tunedCpu')
+  })
+
+  it('gpu plans keep the full key', () => {
+    expect(tunedToastKey('all')).toBe('models.tuned')
+    expect(tunedToastKey('20')).toBe('models.tuned')
+    expect(tunedToastKey('auto')).toBe('models.tuned')
   })
 })

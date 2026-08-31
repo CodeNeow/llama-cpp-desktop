@@ -1,10 +1,12 @@
 /**
- * Auto-tune summary helper: builds the interpolation params for the
- * t('models.tuned') success message shown after TuneModelConfig applies
- * the computed parameters to a model's persisted config.
+ * Auto-tune summary helpers: build the interpolation params for the
+ * tune-success toast shown after TuneModelConfig applies the computed
+ * parameters to a model's persisted config, and pick the toast key — CPU-only
+ * plans (GPULayers "0", e.g. the Android build) use the variant without the
+ * GPU segment so the message never renders "GPU layers 0".
  */
 
-/** Interpolation params for t('models.tuned'). */
+/** Interpolation params for t('models.tuned') / t('models.tunedCpu'). */
 // Type alias (not interface): t() takes Record<string, string | number> and
 // only object-literal type aliases get an implicit index signature.
 export type TuneSummaryParams = {
@@ -35,4 +37,13 @@ export function tunedSummaryParams(cfg: {
     cache: cfg.cacheTypeK || 'f16',
     threads: cfg.threads,
   }
+}
+
+/**
+ * Pick the tune-success i18n key from the tuned GPU layer setting: the literal
+ * "0" marks a CPU-only plan (no offload), whose toast drops the GPU segment;
+ * every other value ("all", a layer count, "auto") keeps the full key.
+ */
+export function tunedToastKey(gpuLayers: string): 'models.tuned' | 'models.tunedCpu' {
+  return gpuLayers === '0' ? 'models.tunedCpu' : 'models.tuned'
 }

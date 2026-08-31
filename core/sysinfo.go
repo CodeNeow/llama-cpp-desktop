@@ -3,6 +3,7 @@ package core
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"runtime"
 	"strconv"
 	"strings"
@@ -28,6 +29,11 @@ type CPUInfo struct {
 	Model       string `json:"model"`
 	Cores       int    `json:"cores"`
 	LogicalCPUs int    `json:"logicalCpus"`
+	// PerfCores is the performance-cluster core count on big.LITTLE SoCs
+	// (Android): CPUs whose cpufreq cpuinfo_max_freq reaches 80% of the
+	// highest. 0 = unknown (desktop probes never populate it); the auto-tuner
+	// caps its Android thread pool at this count.
+	PerfCores int `json:"perfCores,omitempty"`
 }
 
 type MemoryInfo struct {
@@ -131,8 +137,20 @@ func getCPUInfo() CPUInfo {
 		}
 	case "linux", "android":
 		// Android is Linux-kernel: /proc/cpuinfo exists and parses the same way
-		info.Model = parseLinuxCPUModel(runCmd("cat", "/proc/cpuinfo"))
-		info.Cores = countString(runCmd("cat", "/proc/cpuinfo"), "processor")
+		cpuinfo := runCmd("cat", "/proc/cpuinfo")
+		info.Model = parseLinuxCPUModel(cpuinfo)
+		info.Cores = countString(cpuinfo, "processor")
+		if info.Model == "" {
+			// No x86-style "model name" line (Android arm64, some ARM SBCs):
+			// fall back to the SoC identity lines Android devices expose.
+			// Desktop x86 boxes all carry "model name" and never pay for the
+			// extra reads; an empty result keeps the generic
+			// "(unknown model)" fallback below in charge.
+			info.Model = parseAndroidCPUModel(cpuinfo, runCmd("cat", "/system/build.prop"))
+			// Best-effort big.LITTLE detection via cpufreq max frequencies;
+			// any read failure leaves PerfCores 0 (= unknown, no capping).
+			info.PerfCores = countPerformanceCPUs(readCPUMaxFreqs())
+		}
 	case "darwin":
 		info.Model = runCmd("sysctl", "-n", "machdep.cpu.brand_string")
 		info.Cores = parseCoresDarwin(runCmd("sysctl", "-n", "machdep.cpu.core_count"))
@@ -545,6 +563,103 @@ func parseLinuxCPUModel(out string) string {
 		}
 	}
 	return ""
+}
+
+// parseAndroidCPUModel resolves the SoC identity for /proc/cpuinfo text that
+// lacks an x86 "model name" line (Android arm64 devices). Lookup order:
+//  1. the "Hardware :" line Android kernels append to /proc/cpuinfo
+//     (e.g. "Hardware\t: Qualcomm Technologies, Inc SM8550"), used as-is;
+//  2. "ro.soc.model" (+ "ro.soc.manufacturer") from /system/build.prop
+//     (Android 12+), combined "Qualcomm SM8550" style;
+//  3. "" — the caller keeps its generic "(unknown model)" fallback.
+//
+// Pure function, directly unit-testable.
+func parseAndroidCPUModel(cpuinfo, buildProp string) string {
+	for _, line := range strings.Split(cpuinfo, "\n") {
+		if !strings.HasPrefix(line, "Hardware") {
+			continue
+		}
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) == 2 {
+			if v := strings.TrimSpace(parts[1]); v != "" {
+				return v
+			}
+		}
+	}
+	var manufacturer, model string
+	for _, line := range strings.Split(buildProp, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		switch strings.TrimSpace(parts[0]) {
+		case "ro.soc.manufacturer":
+			manufacturer = strings.TrimSpace(parts[1])
+		case "ro.soc.model":
+			model = strings.TrimSpace(parts[1])
+		}
+	}
+	switch {
+	case manufacturer != "" && model != "":
+		return manufacturer + " " + model
+	case model != "":
+		return model
+	case manufacturer != "":
+		return manufacturer
+	}
+	return ""
+}
+
+// countPerformanceCPUs counts the CPUs whose maximum frequency reaches at
+// least 80% of the highest maximum frequency: on big.LITTLE SoCs the little
+// cluster clocks meaningfully lower, so this approximates the performance-core
+// count. maxFreqs holds per-CPU cpuinfo_max_freq values in kHz ordered by CPU
+// index. Returns 0 when the data is unavailable or degenerate (no positive
+// frequency at all), so callers treat 0 as "topology unknown".
+func countPerformanceCPUs(maxFreqs []int) int {
+	hi := 0
+	for _, f := range maxFreqs {
+		if f > hi {
+			hi = f
+		}
+	}
+	if hi <= 0 {
+		return 0
+	}
+	count := 0
+	for _, f := range maxFreqs {
+		// f >= 0.8*hi via integers (freqs are kHz; no overflow at *10).
+		if f*10 >= hi*8 {
+			count++
+		}
+	}
+	return count
+}
+
+// readCPUMaxFreqs reads the per-CPU maximum frequencies (kHz) from
+// /sys/devices/system/cpu/cpuN/cpufreq/cpuinfo_max_freq for N in 0..NumCPU-1,
+// ordered by CPU index. Offline/unreadable entries are skipped; a totally
+// unavailable sysfs yields nil (countPerformanceCPUs then reports 0).
+func readCPUMaxFreqs() []int {
+	n := runtime.NumCPU()
+	if n <= 0 {
+		return nil
+	}
+	freqs := make([]int, 0, n)
+	for i := 0; i < n; i++ {
+		data, err := os.ReadFile(fmt.Sprintf("/sys/devices/system/cpu/cpu%d/cpufreq/cpuinfo_max_freq", i))
+		if err != nil {
+			continue
+		}
+		if v, err := strconv.Atoi(strings.TrimSpace(string(data))); err == nil && v > 0 {
+			freqs = append(freqs, v)
+		}
+	}
+	return freqs
 }
 
 func parseCoresDarwin(out string) int {
