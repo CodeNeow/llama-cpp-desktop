@@ -37,6 +37,17 @@ func withTempCwd(t *testing.T) string {
 	defaultLlamaCppDir = func() string { return llamaCppDirName }
 	defaultModelsDir = func() string { return modelsDirName }
 	t.Cleanup(func() {
+		// Drain in-flight download goroutines FIRST, while cwd and the pinned
+		// state-file paths (configFile etc.) still point inside this test's
+		// temp dir: any trailing persistTasksNow write then lands in the
+		// directory that is about to be removed, instead of leaking into the
+		// real repo/user paths after the vars below are restored. The drain
+		// must also precede the framework's t.TempDir RemoveAll (cleanups run
+		// LIFO: TempDir registered first), so after it returns the RemoveAll
+		// can no longer race a write. Bounded and non-fatal: a WaitGroup
+		// counter of 0 returns immediately, so tests that never spawn download
+		// goroutines pay no cost.
+		waitDlGoroutinesForTestBounded(t, 5*time.Second)
 		configFile, handoverFile, benchCacheFile, docsCacheDir = oldConfig, oldHandover, oldBench, oldDocs
 		defaultLlamaCppDir, defaultModelsDir = oldLlamaDir, oldModelsDir
 		if err := os.Chdir(orig); err != nil {

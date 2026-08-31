@@ -244,7 +244,9 @@ func TestDownloadTaskRetriesTransientThenSucceeds(t *testing.T) {
 	dlTasksMu.Lock()
 	dlTasks = append(dlTasks, task)
 	dlTasksMu.Unlock()
-	go downloadTask(task)
+	// spawnDownloadTask registers the goroutine in dlTaskGoroutines, making it
+	// visible to withTempCwd's cleanup drain.
+	spawnDownloadTask(task)
 
 	if status := pollTask(t, task, "done"); status != "done" {
 		t.Fatalf("task status = %q, want done after transient retries", status)
@@ -291,7 +293,9 @@ func TestDownloadTaskFailsAfterRetriesExhausted(t *testing.T) {
 	dlTasksMu.Lock()
 	dlTasks = append(dlTasks, task)
 	dlTasksMu.Unlock()
-	go downloadTask(task)
+	// spawnDownloadTask registers the goroutine in dlTaskGoroutines, making it
+	// visible to withTempCwd's cleanup drain.
+	spawnDownloadTask(task)
 
 	if status := pollTask(t, task, "error"); status != "error" {
 		t.Fatalf("task status = %q, want error after exhausted retries", status)
@@ -339,7 +343,9 @@ func TestDownloadTaskPermanentStatusNotRetried(t *testing.T) {
 	dlTasksMu.Lock()
 	dlTasks = append(dlTasks, task)
 	dlTasksMu.Unlock()
-	go downloadTask(task)
+	// spawnDownloadTask registers the goroutine in dlTaskGoroutines, making it
+	// visible to withTempCwd's cleanup drain.
+	spawnDownloadTask(task)
 
 	if status := pollTask(t, task, "error"); status != "error" {
 		t.Fatalf("task status = %q, want error", status)

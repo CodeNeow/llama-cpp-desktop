@@ -121,18 +121,26 @@ func cancelAllTasks(t *testing.T) {
 	waitTasksTerminal(t, 5*time.Second)
 }
 
-// waitDlGoroutinesForTest waits (bounded) until every downloadTask goroutine
-// spawned through spawnDownloadTask has exited. A downloadTask's terminal
-// persistTasksNow write is its FINAL action, so goroutine exit — not terminal
-// task status — is the happens-before edge that proves the trailing config
-// write (temp file + fsync + rename inside atomicWriteFile) has completed.
-// Without this drain, t.TempDir cleanup can RemoveAll the directory while a
-// goroutine's trailing write is still in flight: the temp file then lands
-// after the cleanup scan ("directory is not empty") or its rename targets the
-// already-removed directory (observed as a flaky FAIL on Go 1.24+, where
-// TempDir cleanup errors fail the test). Call only after waitTasksTerminal /
-// cancelAllTasks: a paused (non-terminal) task's goroutine never exits.
-func waitDlGoroutinesForTest(t *testing.T) {
+// waitDlGoroutinesForTestBounded waits (bounded) until every downloadTask
+// goroutine spawned through spawnDownloadTask has exited. A downloadTask's
+// terminal persistTasksNow write is its FINAL action, so goroutine exit — not
+// terminal task status — is the happens-before edge that proves the trailing
+// config write (temp file + fsync + rename inside atomicWriteFile) has
+// completed. Without this drain, t.TempDir cleanup can RemoveAll the directory
+// while a goroutine's trailing write is still in flight: the temp file then
+// lands after the cleanup scan ("directory is not empty") or its rename
+// targets the already-removed directory (observed as a flaky FAIL on Go 1.24+,
+// where TempDir cleanup errors fail the test). Call only after
+// waitTasksTerminal / cancelAllTasks: a paused (non-terminal) task's goroutine
+// never exits.
+//
+// On timeout this reports via t.Errorf and returns instead of calling
+// t.Fatal: t.Fatal runtime.Goexits out of the current goroutine, so inside a
+// t.Cleanup closure it would skip the remaining cleanup body — including
+// withTempCwd's subsequent path-var restore and os.Chdir back to the original
+// directory — leaving the process cwd inside the already-removed temp dir and
+// poisoning every later test in the package.
+func waitDlGoroutinesForTestBounded(t *testing.T, timeout time.Duration) {
 	t.Helper()
 	done := make(chan struct{})
 	go func() {
@@ -141,9 +149,16 @@ func waitDlGoroutinesForTest(t *testing.T) {
 	}()
 	select {
 	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("download goroutines did not exit within 5s")
+	case <-time.After(timeout):
+		t.Errorf("download goroutines did not exit within %v", timeout)
 	}
+}
+
+// waitDlGoroutinesForTest drains the download goroutines with the default 5s
+// bound (thin wrapper over waitDlGoroutinesForTestBounded).
+func waitDlGoroutinesForTest(t *testing.T) {
+	t.Helper()
+	waitDlGoroutinesForTestBounded(t, 5*time.Second)
 }
 
 // TestStartHFDownloadNoDeadlock is a #B1 deadlock regression test: startHFDownload
