@@ -307,8 +307,21 @@ func modelDirectArgs(alias string, m ModelInfo, cfg ModelConfig) ([]string, erro
 	if err != nil {
 		return nil, err
 	}
+	// Android official builds are CPU-only (arm64, no GPU backend in the
+	// package): GPU-only flags from persisted desktop-era configs must never
+	// reach the direct-mode command line. The INI writer (desktop-only) stays
+	// byte-identical — the filter applies to this serializer only.
+	androidCPUOnly := platformGOOS == "android"
 	args := []string{"--alias", alias}
 	for _, kv := range kvs {
+		if androidCPUOnly {
+			switch kv.key {
+			case "flash-attn", "cpu-moe", "n-cpu-moe":
+				// GPU-only flags: the android build rejects them outright
+				// (llama-server: no GPU backend compiled in).
+				continue
+			}
+		}
 		switch kv.key {
 		case "model":
 			args = append(args, "-m", kv.value)

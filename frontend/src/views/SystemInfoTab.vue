@@ -66,10 +66,10 @@
         </ol>
       </section>
 
-      <!-- GPU Card: only on platforms with a real GPU probe (windows + linux).
-           Android probes are unsupported (GPUs always empty) and macOS has no
-           probe, so the card — including its empty state — would be pure
-           noise there and must not render at all. -->
+      <!-- GPU Card: only on platforms with a real GPU probe (windows, linux,
+           macOS on Apple Silicon). Android probes are unsupported (GPUs always
+           empty) and macOS x64 ships the CPU-only release (no GPUs), so the
+           card — including its empty state — would be pure noise there. -->
       <section v-if="showGpuCard" class="info-section">
         <h2 class="section-title">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -79,7 +79,8 @@
           <span v-if="multiGpu" class="title-chip">×{{ gpuViews.length }}</span>
         </h2>
         <div v-if="gpuViews.length > 0">
-          <!-- Aggregate VRAM across GPUs: the number that matters for model offloading -->
+          <!-- Aggregate VRAM across NVIDIA GPUs: the number that matters for model offloading
+               (non-NVIDIA vendors carry no sampled VRAM and are skipped) -->
           <div v-if="multiGpu && vramTotals" class="usage-block">
             <div class="usage-row">
               <span class="usage-name">{{ t('home.gpu.vramTotal') }}</span>
@@ -105,10 +106,15 @@
           >
             <div class="usage-row">
               <span class="usage-name gpu-name" :title="gpu.name">{{ gpu.name }}</span>
-              <span class="usage-caption">{{ formatMB(gpu.usedMb) }} / {{ formatMB(gpu.totalMb) }}</span>
-              <span class="usage-pct">{{ t('home.usagePercent', { pct: usagePercent(gpu.usedMb, gpu.totalMb) }) }}</span>
+              <!-- Apple Silicon: unified memory badge instead of a VRAM bar -->
+              <span v-if="gpu.vendor === 'apple'" class="title-chip">{{ t('home.gpu.metal') }}</span>
+              <template v-if="gpuHasVram(gpu)">
+                <span class="usage-caption">{{ formatMB(gpu.usedMb) }} / {{ formatMB(gpu.totalMb) }}</span>
+                <span class="usage-pct">{{ t('home.usagePercent', { pct: usagePercent(gpu.usedMb, gpu.totalMb) }) }}</span>
+              </template>
             </div>
             <div
+              v-if="gpuHasVram(gpu)"
               class="usage-bar"
               role="progressbar"
               :aria-valuenow="usagePercent(gpu.usedMb, gpu.totalMb)"
@@ -119,9 +125,10 @@
               <div class="usage-fill" :style="{ width: usagePercent(gpu.usedMb, gpu.totalMb) + '%' }"></div>
             </div>
             <div class="meta-row">
-              <span>{{ t('home.gpu.memory') }} {{ formatMB(gpu.totalMb) }}</span>
-              <span v-if="gpu.utilPercent !== null">{{ t('home.gpu.util') }} {{ t('home.usagePercent', { pct: gpu.utilPercent }) }}</span>
-              <span>{{ t('home.gpu.computeCap') }} {{ gpu.computeCapability > 0 ? gpu.computeCapability.toFixed(1) : 'N/A' }}</span>
+              <span v-if="gpuHasVram(gpu)">{{ t('home.gpu.memory') }} {{ formatMB(gpu.totalMb) }}</span>
+              <span v-if="gpuHasVram(gpu) && gpu.utilPercent !== null">{{ t('home.gpu.util') }} {{ t('home.usagePercent', { pct: gpu.utilPercent }) }}</span>
+              <!-- Compute capability is a CUDA concept: NVIDIA-only rows -->
+              <span v-if="gpu.vendor === 'nvidia'">{{ t('home.gpu.computeCap') }} {{ gpu.computeCapability > 0 ? gpu.computeCapability.toFixed(1) : 'N/A' }}</span>
               <span>{{ t('home.gpu.driver') }} {{ gpu.driverVersion || 'N/A' }}</span>
             </div>
           </div>
@@ -314,7 +321,7 @@ import { useRouter } from 'vue-router'
 import { getCPU, getMemory, getGPU, getCUDA, getOS, getDisk, getLlamaCpp, getModels, getMonitorStatus, getAppVersion } from '../wails'
 import { t } from '../lib/i18n'
 import { usagePercent, formatGB, formatMB, formatBytes } from '../lib/format'
-import { aggregateVram, buildGpuDisplays, cudaCompatLevel, type GpuStaticInfo } from '../lib/sysinfo'
+import { aggregateVram, buildGpuDisplays, cudaCompatLevel, gpuHasVram, type GpuStaticInfo } from '../lib/sysinfo'
 import { buildOnboardingView, type OnboardingStepId } from '../lib/onboarding'
 import type { MonitorStatus } from '../lib/monitor'
 import { showCudaCompat, showGpuCards, usePlatform } from '../lib/platform'
@@ -379,9 +386,10 @@ const gpuViews = computed(() => buildGpuDisplays(info.value.gpu, live.value?.gpu
 const multiGpu = computed(() => gpuViews.value.length > 1)
 const vramTotals = computed(() => aggregateVram(gpuViews.value))
 
-// Hardware-capability gates (OS-scoped, see lib/platform.ts): the GPU card
-// renders only where a probe exists (windows/linux); the CUDA compat card only
-// on Windows with an NVIDIA GPU reporting a compute capability.
+// Hardware-capability gates (OS/arch-scoped, see lib/platform.ts): the GPU
+// card renders where a probe exists (windows, linux, macOS on Apple Silicon);
+// the CUDA compat card only on Windows with an NVIDIA GPU reporting a compute
+// capability.
 const platformState = usePlatform()
 const showGpuCard = computed(() => showGpuCards(platformState.value))
 const showCudaCard = computed(() => showCudaCompat(platformState.value, info.value.gpu))
@@ -424,7 +432,8 @@ const osLabel = computed(() => {
   const labels: Record<string, string> = {
     windows: 'Windows',
     linux: 'Linux',
-    darwin: 'macOS'
+    darwin: 'macOS',
+    android: 'Android'
   }
   return labels[info.value.os] || info.value.os || 'N/A'
 })

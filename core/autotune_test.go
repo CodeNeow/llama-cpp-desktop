@@ -973,3 +973,86 @@ func TestTunePlanTarget(t *testing.T) {
 		t.Errorf("empty GPU list with CUDA = %+v, want 0 MB / nvidia", got)
 	}
 }
+
+// TestTunePlanTargetApple verifies the Apple Silicon classification: a GPU
+// carrying Vendor "apple" (the darwin probe's own classification) or an
+// Apple-named legacy entry plans a metal target with no VRAM budget (unified
+// memory has no discrete VRAM to report), and NVIDIA still wins the machine
+// vote when a CUDA card is present alongside.
+func TestTunePlanTargetApple(t *testing.T) {
+	// Vendor-field classification, auto fallback
+	got := tunePlanTarget([]GPUInfo{{Vendor: "apple", Name: "Apple M4 Pro"}}, false, "")
+	if got.Vendor != vendorApple || got.VRAMMB != 0 {
+		t.Errorf("apple vendor field = %+v, want apple / 0 MB", got)
+	}
+	// Legacy name-based fallback (no Vendor field)
+	got = tunePlanTarget([]GPUInfo{{Name: "Apple M2 Max"}}, false, "")
+	if got.Vendor != vendorApple {
+		t.Errorf("apple name fallback = %+v, want apple", got)
+	}
+	// NVIDIA outranks apple in the machine-wide vote
+	got = tunePlanTarget([]GPUInfo{
+		{Vendor: "apple", Name: "Apple M4 Pro"},
+		{Name: "NVIDIA GeForce RTX 3070", MemoryMB: 8192},
+	}, false, "")
+	if got.Vendor != vendorNvidia || got.VRAMMB != 8192 {
+		t.Errorf("nvidia + apple = %+v, want nvidia / 8192 MB", got)
+	}
+}
+
+// TestTuneModelConfigMetal pins the Apple Silicon plan: all layers offload
+// (GPULayers="all"), the context is sized by the usable-RAM budget (unified
+// memory), flash-attn stays off (no Metal benchmark path yet), the q8_0 cache
+// pair is never written, and a MoE model still gets the plain metal plan —
+// cpu-moe is a CUDA-centric split and must not appear (UsedCPUMoe=false, no
+// bench chain). A darwin-amd64 host (CPU-only release, vendor none) plans the
+// CPU-only branch even for a MoE model.
+func TestTuneModelConfigMetal(t *testing.T) {
+	// usableRAM = min(24, 32*0.90) * 0.85 GiB = 20.4 GiB = 20889.6 MiB
+	hwApple := tuneHardware{GPUVendor: vendorApple, RAMTotalGB: 32, RAMFreeGB: 24, PhysicalCores: 10, LogicalCPUs: 10}
+
+	// Dense 4B fixture: ctx 131072 needs 2765 + 18432 = 21197 MiB > 20889.6 →
+	// caps at 65536 (2765 + 9216 = 11981 MiB, fits).
+	tm4B := tuneModel{WeightsBytes: 2765 << 20, Layers: 36, KVBytesPerTokPerLayerF16: 4096, TrainCtx: 262144}
+	cfg := tuneModelConfig(hwApple, tm4B)
+	if cfg.GPULayers != "all" || cfg.CtxSize != 65536 {
+		t.Errorf("dense on apple = gpuLayers %q ctx %d, want all / 65536", cfg.GPULayers, cfg.CtxSize)
+	}
+	if cfg.FlashAttn {
+		t.Errorf("metal plan must keep flash-attn off (no benchmark path yet): %+v", cfg)
+	}
+	if cfg.CacheTypeK != "" || cfg.CacheTypeV != "" {
+		t.Errorf("metal plan keeps the f16 cache, got K=%q V=%q", cfg.CacheTypeK, cfg.CacheTypeV)
+	}
+	if cfg.CPUMoe || cfg.NCpuMoe != 0 {
+		t.Errorf("metal plan must not set cpu-moe flags: %+v", cfg)
+	}
+	if cfg.Threads != 10 {
+		t.Errorf("threads = %d, want physical cores 10", cfg.Threads)
+	}
+
+	// MoE fixture on apple: the metal branch fires before any cpu-moe step.
+	tmGLM := tuneModel{
+		WeightsBytes: 13435 << 20, Layers: 47, KVBytesPerTokPerLayerF16: 1152,
+		TrainCtx: 202752, ExpertBytes: 11995 << 20, DenseBytes: 1440 << 20,
+	}
+	// ctx 131072: 13435 + 6768 = 20203 MiB ≤ 20889.6 → fits.
+	cfg = tuneModelConfig(hwApple, tmGLM)
+	if cfg.GPULayers != "all" || cfg.CtxSize != 131072 {
+		t.Errorf("MoE on apple = gpuLayers %q ctx %d, want all / 131072", cfg.GPULayers, cfg.CtxSize)
+	}
+	if cfg.CPUMoe || cfg.NCpuMoe != 0 {
+		t.Errorf("MoE on apple must stay on the plain metal plan: %+v", cfg)
+	}
+
+	// darwin-amd64: the x64 release is CPU-only (no GPU entry at all → vendor
+	// none) — a MoE model plans CPU-only, no cpu-moe flags.
+	hwCPUOnly := tuneHardware{GPUVendor: vendorNone, RAMTotalGB: 32, RAMFreeGB: 24, PhysicalCores: 8, LogicalCPUs: 16}
+	cfg = tuneModelConfig(hwCPUOnly, tmGLM)
+	if cfg.GPULayers != "0" || cfg.CtxSize != 131072 {
+		t.Errorf("darwin-amd64 CPU-only = gpuLayers %q ctx %d, want 0 / 131072", cfg.GPULayers, cfg.CtxSize)
+	}
+	if cfg.FlashAttn || cfg.CPUMoe || cfg.NCpuMoe != 0 {
+		t.Errorf("darwin-amd64 plan must be plain CPU-only: %+v", cfg)
+	}
+}

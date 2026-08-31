@@ -15,6 +15,7 @@
 import { ref, readonly } from 'vue'
 import type { Ref } from 'vue'
 import { MOBILE_MAX, TABLET_MAX } from './layout'
+import { t } from './i18n'
 
 /** Operating system identifiers, aligned with the backend getOS() strings. */
 export type OsId = 'windows' | 'linux' | 'darwin' | 'android' | 'ios' | 'other'
@@ -37,9 +38,18 @@ export function parseOs(raw: string | null | undefined): OsId {
   }
 }
 
-/** Derived platform facts computed from an OS id and the viewport width. */
+/** Derived platform facts computed from an OS id, the viewport width and the backend arch. */
 export interface PlatformState {
   os: OsId
+  /**
+   * Backend architecture (Go runtime.GOARCH, e.g. 'amd64' / 'arm64'; ''
+   * when unknown — e.g. before the getOS() probe resolves). Gates the
+   * darwin Metal capability: only the macOS arm64 release embeds Metal,
+   * the x64 release is CPU-only. An unknown arch degrades to hiding
+   * Metal-gated UI (safe fallback — a capability that is not provable is
+   * not offered).
+   */
+  arch: string
   isMobile: boolean
   isTablet: boolean
   isDesktop: boolean
@@ -71,8 +81,12 @@ export interface PlatformState {
  * A desktop OS in a small window therefore lands in the mobile tier too;
  * whether the custom frameless title bar renders is a separate, OS-scoped
  * capability below (the tier only shapes layout, never window chrome).
+ *
+ * arch is the backend architecture string (Go runtime.GOARCH); it defaults to
+ * '' (unknown) and only gates the darwin Metal capability (see
+ * showGpuOffloadParam / showGpuCards).
  */
-export function buildPlatformState(os: OsId, viewportWidth: number): PlatformState {
+export function buildPlatformState(os: OsId, viewportWidth: number, arch = ''): PlatformState {
   const isAndroid = os === 'android'
   const isIOS = os === 'ios'
   const isMobile = viewportWidth <= MOBILE_MAX
@@ -80,6 +94,7 @@ export function buildPlatformState(os: OsId, viewportWidth: number): PlatformSta
   const isDesktop = !isMobile && !isTablet
   return {
     os,
+    arch,
     isMobile,
     isTablet,
     isDesktop,
@@ -170,15 +185,23 @@ export function updateSectionMode(state: PlatformState): UpdateSectionMode {
 // all (no empty states, no "N/A" cards). Like the setting gates above, these
 // are OS-scoped and constant across resizes. Backend facts they encode (see
 // core/sysinfo.go and the llama.cpp release asset matrix):
-//   - nvidia-smi probe: windows + linux only; android probes are unsupported
-//     (gpuProbesUnsupported → GPUs always empty); darwin has no GPU probe.
+//   - GPU probes: windows = nvidia-smi; linux = nvidia-smi + PCI display
+//     controllers (the vulkan build accelerates AMD/Intel too); darwin = one
+//     Apple GPU entry on arm64 (embedded Metal), none on the CPU-only x64
+//     release; android probes are unsupported (gpuProbesUnsupported → GPUs
+//     always empty).
 //   - llama.cpp assets: windows = CPU/CUDA builds + separate cudart runtime;
-//     linux = vulkan-only (no CUDA variant, no cudart step); macOS = Metal;
-//     android = CPU-only arm64.
+//     linux = vulkan-only (no CUDA variant, no cudart step); macOS = Metal
+//     (arm64) / CPU-only (x64); android = CPU-only arm64.
 
-/** Platforms where a real GPU probe exists and GPU cards are meaningful. */
+/** Platforms where a real GPU probe exists and GPU cards are meaningful.
+ * Windows (nvidia-smi) and Linux (nvidia-smi + PCI display controllers)
+ * always probe; macOS probes on Apple Silicon only (arch-gated — the x64
+ * release is CPU-only and reports no GPUs), with an unknown arch degrading
+ * to hiding the card (safe fallback). */
 export function showGpuCards(state: PlatformState): boolean {
-  return state.os === 'windows' || state.os === 'linux'
+  if (state.os === 'windows' || state.os === 'linux') return true
+  return state.os === 'darwin' && state.arch === 'arm64'
 }
 
 /** Minimal GPU shape the CUDA-compat gate needs (GpuStaticInfo satisfies it). */
@@ -229,12 +252,39 @@ export function showMultiGpuPanel(state: PlatformState): boolean {
 
 /**
  * GPU-offload parameter (gpu layers, -ngl): meaningful on every platform with
- * a possible GPU — Windows (CUDA), Linux (Vulkan), macOS (Metal). Hidden on
- * android/ios where only CPU inference exists (the backend tuner already
- * degrades to CPU-only there).
+ * a possible GPU — Windows (CUDA), Linux (Vulkan, NVIDIA/AMD/Intel alike) and
+ * macOS arm64 (embedded Metal). macOS x64 ships the CPU-only release and an
+ * unknown arch degrades to hiding (safe fallback); android/ios are CPU-only.
  */
 export function showGpuOffloadParam(state: PlatformState): boolean {
-  return (
-    state.os === 'windows' || state.os === 'linux' || state.os === 'darwin'
-  )
+  if (state.os === 'windows' || state.os === 'linux') return true
+  return state.os === 'darwin' && state.arch === 'arm64'
+}
+
+/** Minimal option shape (structurally compatible with ThemedSelect's SelectOption). */
+export interface ParamOption {
+  value: string
+  label: string
+}
+
+/**
+ * Load-mode option list for the per-model settings page: the full mmap /
+ * mlock / mmap+mlock / none / dio vocabulary, minus 'dio' on platforms where
+ * DirectIO is not a meaningful llama-server option (android and darwin —
+ * desktop macOS/Android sandboxes gain nothing from it). Values and labels
+ * are otherwise unchanged.
+ */
+export function loadModeOptions(state: PlatformState): ParamOption[] {
+  const options: ParamOption[] = [
+    { value: '', label: t('modelSettings.loadDefaultMmap') },
+    { value: 'mmap', label: t('modelSettings.loadMmap') },
+    { value: 'mlock', label: t('modelSettings.loadMlock') },
+    { value: 'mmap+mlock', label: t('modelSettings.loadMmapMlock') },
+    { value: 'none', label: t('modelSettings.loadNone') },
+    { value: 'dio', label: t('modelSettings.loadDio') },
+  ]
+  if (state.os === 'android' || state.os === 'darwin') {
+    return options.filter((o) => o.value !== 'dio')
+  }
+  return options
 }

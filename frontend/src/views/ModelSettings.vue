@@ -149,8 +149,13 @@
       <div id="tab-infer" role="tabpanel" aria-labelledby="tab-infer-tab" v-show="activeTab === 'tab-infer'">
         <div class="param-group">
           <h3 class="group-title">{{ t('modelSettings.groupInfer') }}</h3>
+          <!-- GPU-only params (flash-attn / cpu-moe / n-cpu-moe) share the same
+               showOffload gate as the gpu-layers selector: the android build
+               ships no GPU backend and the macOS x64 release is CPU-only, so
+               these options must not render where no GPU can take them (the
+               backend direct-args serializer drops them there as well) -->
           <div class="param-grid col-1">
-            <div class="param">
+            <div v-if="showOffload" class="param">
               <div class="toggle-row">
                 <span class="toggle-text">
                   Flash Attention
@@ -163,7 +168,7 @@
               </div>
               <p class="param-hint">{{ t('modelSettings.flashAttnHint') }}</p>
             </div>
-            <div class="param">
+            <div v-if="showOffload" class="param">
               <div class="toggle-row">
                 <span class="toggle-text">
                   cpu-moe
@@ -176,7 +181,7 @@
               </div>
               <p class="param-hint">{{ t('modelSettings.cpuMoeHint') }}</p>
             </div>
-            <div class="param">
+            <div v-if="showOffload" class="param">
               <label class="param-field">
                 <span class="param-label">{{ t('modelSettings.nCpuMoe') }}</span>
                 <input v-model.number="cfg.nCpuMoe" type="number" min="0" step="1" class="param-input" :placeholder="t('modelSettings.nCpuMoePlaceholder')" />
@@ -347,7 +352,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { getModelConfig, saveModelConfig, getServerStatus, tuneModelConfig, benchmarkModel } from '../wails'
 import { t } from '../lib/i18n'
 import { tunedSummaryParams } from '../lib/modelTune'
-import { showGpuOffloadParam, showMultiGpuPanel, usePlatform } from '../lib/platform'
+import { showGpuOffloadParam, showMultiGpuPanel, loadModeOptions as buildLoadModeOptions, usePlatform } from '../lib/platform'
 import ThemedSelect, { type SelectOption } from '../components/ThemedSelect.vue'
 
 // ─── ModelConfig interface (persisted per-model inference params shape) ───────
@@ -510,14 +515,9 @@ const cacheTypeOptions: SelectOption[] = [
   { value: 'q5_0', label: 'q5_0' },
   { value: 'q5_1', label: 'q5_1' },
 ]
-const loadModeOptions: SelectOption[] = [
-  { value: '', label: t('modelSettings.loadDefaultMmap') },
-  { value: 'mmap', label: t('modelSettings.loadMmap') },
-  { value: 'mlock', label: t('modelSettings.loadMlock') },
-  { value: 'mmap+mlock', label: t('modelSettings.loadMmapMlock') },
-  { value: 'none', label: t('modelSettings.loadNone') },
-  { value: 'dio', label: t('modelSettings.loadDio') },
-]
+// Load-mode options are platform-derived: 'dio' is excluded where DirectIO is
+// not meaningful (android / darwin); see lib/platform.ts loadModeOptions.
+const loadModeOptions = computed(() => buildLoadModeOptions(platformState.value))
 const splitModeOptions: SelectOption[] = [
   { value: '', label: t('modelSettings.splitDefaultLayer') },
   { value: 'layer', label: t('modelSettings.splitLayer') },

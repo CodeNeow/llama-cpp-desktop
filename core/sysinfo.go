@@ -37,10 +37,15 @@ type MemoryInfo struct {
 
 type GPUInfo struct {
 	Name string `json:"name"`
+	// Vendor classifies the GPU maker for platform-aware planning (asset
+	// selection, auto-tune Metal branch, VRAM display rules):
+	// "nvidia" | "intel" | "amd" | "apple" | "" (unknown/legacy probe paths).
+	Vendor string `json:"vendor"`
 	// UUID is the stable nvidia-smi device identifier ("GPU-xxxx-..."),
 	// invariant across reboots and driver index changes; it is the value the
 	// serving-GPU selection (ServerConfig.DeviceID / CUDA_VISIBLE_DEVICES) is
-	// keyed on. Empty when the probe could not read it.
+	// keyed on. Empty when the probe could not read it (always empty for
+	// non-NVIDIA entries: apple / PCI-classified cards carry no UUID).
 	UUID              string  `json:"uuid"`
 	MemoryMB          int     `json:"memoryMb"`
 	MemoryUsedMB      int     `json:"memoryUsedMb"`
@@ -265,11 +270,83 @@ func getGPUInfo() []GPUInfo {
 	if gpuProbesUnsupported() {
 		return nil
 	}
+	// macOS: the arm64 release embeds Metal (one Apple GPU entry), the x64
+	// release is CPU-only (no GPU entry at all).
+	if runtime.GOOS == "darwin" {
+		return probeDarwinGPUs()
+	}
 	out := runCmd("nvidia-smi",
 		"--query-gpu=name,uuid,memory.used,memory.total,driver_version,compute_cap",
 		"--format=csv,noheader,nounits",
 	)
-	return parseGPUInfoCSV(out)
+	gpus := parseGPUInfoCSV(out)
+	// Linux only: the release ships a single Vulkan tarball valid for NVIDIA,
+	// AMD and Intel alike, so non-NVIDIA PCI display controllers are appended
+	// after the nvidia-smi entries (no VRAM fields — sysfs offers none).
+	// Windows keeps its nvidia-only CUDA probe; Android short-circuited above.
+	if runtime.GOOS == "linux" {
+		for _, p := range probePciGpus() {
+			gpus = append(gpus, GPUInfo{Vendor: p.Vendor, Name: p.Name})
+		}
+	}
+	return gpus
+}
+
+// probeDarwinGPUs reports the integrated Apple Silicon GPU on darwin/arm64:
+// unified memory means there is no discrete VRAM to report (MemoryMB stays 0 —
+// the UI hides VRAM rows for unified-memory cards). darwin/amd64 release
+// builds are CPU-only (Metal OFF upstream), so no GPU entry exists there.
+func probeDarwinGPUs() []GPUInfo {
+	if runtime.GOARCH != "arm64" {
+		return nil
+	}
+	return []GPUInfo{{
+		Vendor: "apple",
+		Name:   probeAppleGPUName(),
+	}}
+}
+
+// probeAppleGPUName reads the chip name from the system_profiler displays
+// report (`system_profiler SPDisplaysDataType -json` → SPDisplaysDataType[]
+// .sppci_model, e.g. "Apple M4 Pro"); on any parse failure the static
+// "Apple Silicon (Metal)" fallback keeps the card identifiable. system_profiler
+// takes on the order of a second, so the result is cached for the process —
+// the chip does not change at runtime.
+var appleGPUNameOnce sync.Once
+var cachedAppleGPUName string
+
+func probeAppleGPUName() string {
+	appleGPUNameOnce.Do(func() {
+		cachedAppleGPUName = parseAppleGPUName(runCmd("system_profiler", "SPDisplaysDataType", "-json"))
+	})
+	return cachedAppleGPUName
+}
+
+// parseAppleGPUName extracts "sppci_model" from the system_profiler
+// SPDisplaysDataType JSON output. Pure function, directly unit-testable.
+// The report shape is {"SPDisplaysDataType":[{"spdisplays_ndrvs":[...],
+// "sppci_model":"Apple M4 Pro", ...}, ...]} — the first entry's sppci_model
+// wins; "" input or a missing field yields the "Apple Silicon (Metal)"
+// fallback.
+func parseAppleGPUName(out string) string {
+	fallback := "Apple Silicon (Metal)"
+	if strings.TrimSpace(out) == "" {
+		return fallback
+	}
+	var v struct {
+		GPUs []struct {
+			Model string `json:"sppci_model"`
+		} `json:"SPDisplaysDataType"`
+	}
+	if err := json.Unmarshal([]byte(out), &v); err != nil {
+		return fallback
+	}
+	for _, g := range v.GPUs {
+		if name := strings.TrimSpace(g.Model); name != "" {
+			return name
+		}
+	}
+	return fallback
 }
 
 // parseGPUInfoCSV parses the nvidia-smi CSV query output into GPUInfo entries.
@@ -316,6 +393,11 @@ func parseGPUInfoCSV(out string) []GPUInfo {
 		}
 
 		gpu := GPUInfo{
+			// nvidia-smi output is NVIDIA by definition: every entry this
+			// parser produces is a CUDA-capable NVIDIA card (the VRAM-sampled
+			// vendor — monitor sampling and the serving-GPU selection key on
+			// these entries only).
+			Vendor:        "nvidia",
 			Name:          name,
 			UUID:          uuid,
 			MemoryMB:      memMB,

@@ -14,6 +14,7 @@ import {
   accelBuildKey,
   showMultiGpuPanel,
   showGpuOffloadParam,
+  loadModeOptions,
   type OsId,
   type PlatformState,
 } from '../lib/platform'
@@ -126,20 +127,33 @@ describe('buildPlatformState capability matrix', () => {
   })
 })
 
+describe('buildPlatformState arch field', () => {
+  it('carries the backend arch when given and defaults to unknown ("")', () => {
+    expect(buildPlatformState('darwin', 1920, 'arm64').arch).toBe('arm64')
+    expect(buildPlatformState('windows', 1920, 'amd64').arch).toBe('amd64')
+    expect(buildPlatformState('linux', 1920).arch).toBe('')
+  })
+})
+
 describe('hardware-capability render gates', () => {
   // Backend facts these encode (core/sysinfo.go + release asset matrix):
-  // nvidia-smi probe = windows+linux; android probes unsupported (GPUs always
-  // empty); darwin has no GPU probe; cudart asset = windows-only; llama.cpp
-  // builds: windows CPU/CUDA, linux Vulkan, macOS Metal, android CPU arm64.
-  it.each<[OsId, boolean]>([
-    ['windows', true],
-    ['linux', true],
-    ['darwin', false], // no probe: the GPU card (even empty) must not render
-    ['android', false], // probes unsupported
-    ['ios', false],
-    ['other', false],
-  ])('showGpuCards: %s -> %s', (os, expected) => {
-    expect(showGpuCards(buildPlatformState(os, 1920))).toBe(expected)
+  // GPU probes: windows = nvidia-smi; linux = nvidia-smi + PCI display
+  // controllers (vulkan build accelerates AMD/Intel too); darwin = one Apple
+  // GPU entry on arm64 (embedded Metal), none on the CPU-only x64 release;
+  // android probes unsupported (GPUs always empty). cudart asset =
+  // windows-only; llama.cpp builds: windows CPU/CUDA, linux Vulkan, macOS
+  // Metal (arm64) / CPU-only (x64), android CPU arm64.
+  it.each<[OsId, string, boolean]>([
+    ['windows', '', true],
+    ['linux', '', true],
+    ['darwin', 'arm64', true], // Apple Silicon: one Apple GPU entry (Metal)
+    ['darwin', 'amd64', false], // x64 release is CPU-only: no probe results
+    ['darwin', '', false], // unknown arch degrades to hiding (safe fallback)
+    ['android', '', false], // probes unsupported
+    ['ios', '', false],
+    ['other', '', false],
+  ])('showGpuCards: %s arch=%j -> %s', (os, arch, expected) => {
+    expect(showGpuCards(buildPlatformState(os, 1920, arch))).toBe(expected)
   })
 
   it.each<[OsId, number[], boolean]>([
@@ -185,14 +199,38 @@ describe('hardware-capability render gates', () => {
     expect(showMultiGpuPanel(buildPlatformState(os, 1920))).toBe(expected)
   })
 
-  it.each<[OsId, boolean]>([
-    ['windows', true],
-    ['linux', true],
-    ['darwin', true], // Metal can still offload layers (-ngl)
-    ['android', false], // CPU-only: offload selector must not render
-    ['ios', false],
-  ])('showGpuOffloadParam: %s -> %s', (os, expected) => {
-    expect(showGpuOffloadParam(buildPlatformState(os, 1920))).toBe(expected)
+  it.each<[OsId, string, boolean]>([
+    ['windows', '', true],
+    ['windows', 'arm64', true],
+    ['linux', '', true],
+    ['darwin', 'arm64', true], // macOS arm64 release embeds Metal (-ngl works)
+    ['darwin', 'amd64', false], // macOS x64 release is CPU-only
+    ['darwin', '', false], // unknown arch degrades to hiding (safe fallback)
+    ['android', 'arm64', false], // CPU-only: offload selector must not render
+    ['ios', 'arm64', false],
+  ])('showGpuOffloadParam: %s arch=%j -> %s', (os, arch, expected) => {
+    expect(showGpuOffloadParam(buildPlatformState(os, 1920, arch))).toBe(expected)
+  })
+})
+
+describe('loadModeOptions', () => {
+  // Full vocabulary (default mmap / mmap / mlock / mmap+mlock / none / dio)
+  // everywhere, except 'dio' which is not a meaningful DirectIO option on
+  // android and darwin.
+  const allValues = ['', 'mmap', 'mlock', 'mmap+mlock', 'none', 'dio']
+
+  it.each<[OsId]>([['windows'], ['linux'], ['ios'], ['other']])(
+    '%s keeps the full load-mode list including dio',
+    (os) => {
+      const opts = loadModeOptions(buildPlatformState(os, 1920))
+      expect(opts.map((o) => o.value)).toEqual(allValues)
+    },
+  )
+
+  it.each<[OsId]>([['android'], ['darwin']])('%s excludes dio', (os) => {
+    const opts = loadModeOptions(buildPlatformState(os, 1920))
+    expect(opts.map((o) => o.value)).toEqual(allValues.filter((v) => v !== 'dio'))
+    expect(opts.every((o) => o.label.length > 0)).toBe(true)
   })
 })
 

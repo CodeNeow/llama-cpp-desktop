@@ -58,14 +58,16 @@ func trayMenuLabels() (show, quit string) {
 }
 
 // InitTray starts the GUI system tray on the Wails v3 built-in SystemTray
-// (Windows / Linux / macOS): sets the tray icon and tooltip ("Llama
-// Desktop"), with menu items "Show Main Window" and "Quit" (separator in
-// between). Menu click callbacks drive the Wails v3 runtime via the global
-// application handle (application.Get) — the named main window is
-// shown/restored for "Show Main Window"; quit ends the app for real (App.Quit
-// runs the full shutdown sequence → App.ServiceShutdown cleanup). The ctx
-// parameter is retained for call-site compatibility (it is the
-// ServiceStartup ctx from core/app.go) but the v3 runtime is ctx-free.
+// (mechanism available on Windows / Linux / macOS; the product gates in
+// core/app.go — ServiceStartup and SetTrayEnabled via trayPlatformSupported —
+// only invoke it on Windows and macOS, keeping Linux tray-free): sets the
+// tray icon and tooltip ("Llama Desktop"), with menu items "Show Main Window"
+// and "Quit" (separator in between). Menu click callbacks drive the Wails v3
+// runtime via the global application handle (application.Get) — the named
+// main window is shown/restored for "Show Main Window"; quit ends the app for
+// real (App.Quit runs the full shutdown sequence → App.ServiceShutdown
+// cleanup). The ctx parameter is retained for call-site compatibility (it is
+// the ServiceStartup ctx from core/app.go) but the v3 runtime is ctx-free.
 //
 // Icon selection: on Windows the .ico bytes passed by main.go are used
 // (w32.CreateSmallHIconFromImage accepts PNG and ICO); on Linux (DBus

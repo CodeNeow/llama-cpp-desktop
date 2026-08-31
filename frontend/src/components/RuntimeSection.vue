@@ -66,9 +66,10 @@
           <div class="comp-row">
             <span class="comp-name">
               {{ t('runtime.compMain') }}
-              <!-- Acceleration build of the installed main program, named per
-                   platform capability: Windows CPU/CUDA, Linux Vulkan,
-                   macOS Metal, Android/other CPU (see lib/platform.ts) -->
+              <!-- Acceleration build of the installed main program: prefers the
+                   backend's detected accel (from the backend libs next to the
+                   binary: CUDA / Vulkan / Metal / CPU), falling back to the
+                   platform-capability guess (see lib/platform.ts) -->
               <span class="comp-desc">{{ t('runtime.accel.' + accelKey) }}</span>
             </span>
             <span class="status-badge available">{{ t('runtime.llamacpp.installed') }}</span>
@@ -195,18 +196,33 @@ interface LlamaCppInfo {
   cudartInstalled: boolean
   /** CUDA major family of the installed cudart runtime ("13", "12"), "" when unknown */
   cudartVersion: string
+  /** Detected acceleration backend of the installed build:
+   * "cuda" | "vulkan" | "metal" | "cpu"; "" when not installed / unknown. */
+  accel: string
 }
 
-const info = ref<LlamaCppInfo>({ installed: false, path: '', version: '', cudartInstalled: false, cudartVersion: '' })
+const info = ref<LlamaCppInfo>({ installed: false, path: '', version: '', cudartInstalled: false, cudartVersion: '', accel: '' })
 const loading = ref(true)
 const error = ref('')
 
 // Capability gates from the shared platform state (OS-scoped): the cudart
 // component row renders on Windows only, and the acceleration label names the
-// platform's llama.cpp build (CPU/CUDA vs Vulkan vs Metal vs CPU-arm64).
+// actually installed backend when the probe answered, falling back to the
+// platform's llama.cpp build guess (CPU/CUDA vs Vulkan vs Metal vs CPU).
 const platformState = usePlatform()
 const showCudartRow = computed(() => showCudaRuntimeComponent(platformState.value))
-const accelKey = computed(() => accelBuildKey(platformState.value))
+const accelKey = computed(() => {
+  const detected = info.value.accel
+  if (detected === 'cuda' || detected === 'vulkan' || detected === 'metal' || detected === 'cpu') {
+    return detected
+  }
+  const fallback = accelBuildKey(platformState.value)
+  // Android keeps the arm64 qualifier on its CPU-only build label
+  if (fallback === 'cpu' && platformState.value.isAndroid) {
+    return 'cpuArm64'
+  }
+  return fallback
+})
 
 // Cudart component badge: append the detected CUDA major family (parsed from
 // the cudart64_*.dll file name) to the installed label when known

@@ -839,3 +839,96 @@ func TestDownloadLlamaCppStopWhilePaused(t *testing.T) {
 		t.Errorf("Error = %q after stop-from-paused, want empty", errMsg)
 	}
 }
+
+// TestDetectAccel verifies the acceleration-backend classification from the
+// directory holding the resolved llama-server binary: official builds are
+// GGML_BACKEND_DL, so the GPU support is whichever backend library sits next
+// to the binaries (windows ggml-cuda.dll / ggml-vulkan.dll; linux
+// libggml-vulkan.so or plain ggml-vulkan.so); darwin is arch-driven (arm64 =
+// embedded Metal, amd64 = CPU-only release), android is CPU-only, an empty
+// directory means "not installed", and unrecognized builds degrade to "cpu".
+func TestDetectAccel(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Not installed: empty dir argument
+	if got := detectAccel("", "windows", "amd64"); got != "" {
+		t.Errorf("detectAccel(empty) = %q, want empty", got)
+	}
+
+	// No recognized backend library → cpu (every platform)
+	if got := detectAccel(dir, "windows", "amd64"); got != "cpu" {
+		t.Errorf("bare dir on windows = %q, want cpu", got)
+	}
+
+	write("ggml-cuda.dll")
+	if got := detectAccel(dir, "windows", "amd64"); got != "cuda" {
+		t.Errorf("windows + ggml-cuda.dll = %q, want cuda", got)
+	}
+	// CUDA wins over vulkan when both are present (deterministic preference)
+	write("ggml-vulkan.dll")
+	if got := detectAccel(dir, "windows", "amd64"); got != "cuda" {
+		t.Errorf("windows + both backends = %q, want cuda", got)
+	}
+	if err := os.Remove(filepath.Join(dir, "ggml-cuda.dll")); err != nil {
+		t.Fatal(err)
+	}
+	if got := detectAccel(dir, "windows", "amd64"); got != "vulkan" {
+		t.Errorf("windows + ggml-vulkan.dll = %q, want vulkan", got)
+	}
+
+	if err := os.Remove(filepath.Join(dir, "ggml-vulkan.dll")); err != nil {
+		t.Fatal(err)
+	}
+	write("libggml-vulkan.so")
+	if got := detectAccel(dir, "linux", "amd64"); got != "vulkan" {
+		t.Errorf("linux + libggml-vulkan.so = %q, want vulkan", got)
+	}
+	if err := os.Remove(filepath.Join(dir, "libggml-vulkan.so")); err != nil {
+		t.Fatal(err)
+	}
+	write("ggml-vulkan.so")
+	if got := detectAccel(dir, "linux", "amd64"); got != "vulkan" {
+		t.Errorf("linux + ggml-vulkan.so = %q, want vulkan", got)
+	}
+	if got := detectAccel(dir, "linux", "amd64"); got == "cuda" {
+		t.Errorf("linux has no cuda backend lib form, got %q", got)
+	}
+
+	// darwin: arch-driven, no file needed
+	if got := detectAccel(dir, "darwin", "arm64"); got != "metal" {
+		t.Errorf("darwin arm64 = %q, want metal", got)
+	}
+	if got := detectAccel(dir, "darwin", "amd64"); got != "cpu" {
+		t.Errorf("darwin amd64 = %q, want cpu (x64 release is CPU-only)", got)
+	}
+
+	// android: CPU-only regardless of directory contents
+	if got := detectAccel(dir, "android", "arm64"); got != "cpu" {
+		t.Errorf("android = %q, want cpu", got)
+	}
+}
+
+// TestParseAppleGPUName verifies the system_profiler SPDisplaysDataType JSON
+// parsing: the first sppci_model wins, empty/garbage output and a report
+// without the field fall back to the static "Apple Silicon (Metal)" label.
+func TestParseAppleGPUName(t *testing.T) {
+	got := parseAppleGPUName(`{"SPDisplaysDataType":[{"sppci_model":"Apple M4 Pro","spdisplays_ndrvs":[]}]}`)
+	if got != "Apple M4 Pro" {
+		t.Errorf("parseAppleGPUName(chip) = %q, want Apple M4 Pro", got)
+	}
+	got = parseAppleGPUName(`{"SPDisplaysDataType":[{"sppci_model":""},{"sppci_model":"Apple M2 Max"}]}`)
+	if got != "Apple M2 Max" {
+		t.Errorf("parseAppleGPUName(second entry) = %q, want Apple M2 Max", got)
+	}
+	for _, out := range []string{"", "not json", `{"SPDisplaysDataType":[{}]}`, `{"SPDisplaysDataType":[]}`} {
+		if got := parseAppleGPUName(out); got != "Apple Silicon (Metal)" {
+			t.Errorf("parseAppleGPUName(%q) = %q, want fallback", out, got)
+		}
+	}
+}

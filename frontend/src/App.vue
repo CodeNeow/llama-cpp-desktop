@@ -119,8 +119,13 @@ const isMax = ref(false)  // Maximized state: query the Wails API when possible,
 // OS detection and every window resize (passive listener; no debounce needed —
 // buildPlatformState is a cheap pure classifier).
 const osId = ref<OsId>('windows')
+// Backend architecture (Go runtime.GOARCH, e.g. 'amd64' / 'arm64'); '' keeps
+// buildPlatformState's unknown-arch fallback (darwin Metal-gated UI hidden).
+// Feeds the third buildPlatformState argument so arch-scoped gates (macOS
+// arm64 GPU card / Metal offload selector) react to the real backend arch.
+const arch = ref('')
 function syncPlatformState() {
-  setPlatform(buildPlatformState(osId.value, window.innerWidth))
+  setPlatform(buildPlatformState(osId.value, window.innerWidth, arch.value))
 }
 window.addEventListener('resize', syncPlatformState, { passive: true })
 onUnmounted(() => window.removeEventListener('resize', syncPlatformState))
@@ -130,9 +135,11 @@ onMounted(async () => {
   try {
     const info = await getOS()
     platform.value = (info as { os?: string }).os ?? ''
-    // Publish the detected OS + current viewport tier into the shared platform
-    // state so platform-scoped UI gates (Settings visibility etc.) react.
+    // Publish the detected OS + arch + current viewport tier into the shared
+    // platform state so platform-scoped UI gates (Settings visibility etc.)
+    // react.
     osId.value = parseOs((info as { os?: string }).os)
+    arch.value = (info as { arch?: string }).arch ?? ''
     syncPlatformState()
   } catch {
     // Backend unavailable (standalone vite) or parse failure: keep the default empty string
@@ -175,6 +182,9 @@ async function closeWindow() {
   try {
     const info = await getOS()
     onWindows = info.os === 'windows'
+    // Keep the shared arch ref current for any later platform-state
+    // republish; no immediate state change here (closing quits or hides).
+    arch.value = (info as { arch?: string }).arch ?? ''
   } catch {
     // Backend unavailable (standalone vite): keep default behavior
   }

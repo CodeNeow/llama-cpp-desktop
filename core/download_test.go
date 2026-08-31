@@ -179,17 +179,18 @@ var b10453Assets = []GitHubAsset{
 //     compatibility), while a Blackwell floor (compute capability >= 12.0
 //     needs CUDA >= 12.8) hard-skips 12.4 and prefers the highest survivor;
 //     the toolkit exact match still wins on top, subject to the floor;
-//   - linux + NVIDIA picks ubuntu-vulkan (the only GPU-accelerated linux
-//     build; no ubuntu cuda variant exists);
+//   - linux + ANY GPU vendor picks ubuntu-vulkan (the only GPU-accelerated
+//     linux build; no ubuntu cuda variant exists — the vulkan tarball
+//     accelerates NVIDIA, AMD and Intel alike);
 //   - android matches the arm64 CPU-only android tarball and never a desktop
-//     build, even with an NVIDIA flag set (the GPU bonus only applies to
+//     build, even with a GPU flag set (the GPU bonus only applies to
 //     platform-matching assets).
 func TestPickBestAssetForB10453(t *testing.T) {
 	tests := []struct {
 		name     string
 		platform string
 		arch     string
-		hasCUDA  bool
+		hasGPU   bool
 		cudaVer  string
 		floor    float64
 		want     string
@@ -202,17 +203,22 @@ func TestPickBestAssetForB10453(t *testing.T) {
 		{"win arm64 no nvidia", "windows", "arm64", false, "", 0, "llama-b10453-bin-win-cpu-arm64.zip"},
 		{"linux x64 no GPU", "linux", "amd64", false, "", 0, "llama-b10453-bin-ubuntu-x64.tar.gz"},
 		{"linux x64 nvidia prefers vulkan", "linux", "amd64", true, "", 0, "llama-b10453-bin-ubuntu-vulkan-x64.tar.gz"},
+		// The linux vulkan bonus fires on any GPU vendor: an AMD-only box
+		// (no nvidia-smi hit, PCI probe sees the AMD card) must get the
+		// GPU-accelerated vulkan tarball too.
+		{"linux x64 amd prefers vulkan", "linux", "amd64", true, "", 0, "llama-b10453-bin-ubuntu-vulkan-x64.tar.gz"},
 		{"linux arm64 no GPU", "linux", "arm64", false, "", 0, "llama-b10453-bin-ubuntu-arm64.tar.gz"},
+		{"linux arm64 amd prefers vulkan", "linux", "arm64", true, "", 0, "llama-b10453-bin-ubuntu-vulkan-arm64.tar.gz"},
 		{"darwin x64", "darwin", "amd64", false, "", 0, "llama-b10453-bin-macos-x64.tar.gz"},
 		{"darwin arm64", "darwin", "arm64", false, "", 0, "llama-b10453-bin-macos-arm64.tar.gz"},
 		{"android arm64", "android", "arm64", false, "", 0, "llama-b10453-bin-android-arm64.tar.gz"},
-		// Android is CPU-only upstream: an NVIDIA flag must not drag the
+		// Android is CPU-only upstream: a GPU flag must not drag the
 		// (non-matching) ubuntu-vulkan GPU build in over the android tarball.
-		{"android arm64 ignores nvidia", "android", "arm64", true, "", 0, "llama-b10453-bin-android-arm64.tar.gz"},
+		{"android arm64 ignores gpu flag", "android", "arm64", true, "", 0, "llama-b10453-bin-android-arm64.tar.gz"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := pickBestAssetFor(b10453Assets, tt.platform, tt.arch, tt.hasCUDA, tt.cudaVer, tt.floor)
+			got := pickBestAssetFor(b10453Assets, tt.platform, tt.arch, tt.hasGPU, tt.cudaVer, tt.floor)
 			if got == nil || got.Name != tt.want {
 				t.Errorf("pickBestAssetFor(%s/%s) = %v, want %s", tt.platform, tt.arch, got, tt.want)
 			}

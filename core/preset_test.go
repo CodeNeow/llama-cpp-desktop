@@ -718,3 +718,29 @@ func TestModelDirectArgsRejectsInjection(t *testing.T) {
 		t.Error("illegal SpecType should return an error")
 	}
 }
+
+// TestModelDirectArgsAndroidSkipsGPUOnlyFlags verifies the CPU-only defense:
+// with the platformGOOS seam pinned to android, GPU-only flags from persisted
+// desktop-era configs (flash-attn / cpu-moe / n-cpu-moe) are dropped from the
+// direct-mode command line — the android build ships no GPU backend — while
+// neutral options (--ctx-size) survive untouched.
+func TestModelDirectArgsAndroidSkipsGPUOnlyFlags(t *testing.T) {
+	withPlatformGOOS(t, "android")
+	cfg := ModelConfig{
+		CtxSize: 8192, FlashAttn: true,
+		CPUMoe: true, NCpuMoe: 3,
+	}
+	args, err := modelDirectArgs("m", ModelInfo{Name: "m", Path: "/m.gguf"}, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(args, " ")
+	for _, forbidden := range []string{"flash-attn", "cpu-moe", "n-cpu-moe"} {
+		if strings.Contains(joined, forbidden) {
+			t.Errorf("android args must not carry %q: %v", forbidden, args)
+		}
+	}
+	if !strings.Contains(joined, "--ctx-size 8192") {
+		t.Errorf("android args must keep --ctx-size: %v", args)
+	}
+}

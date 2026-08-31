@@ -8,14 +8,14 @@
 - **版本**：已安装时显示探测到的版本号；
 - **安装路径 / 下载路径**：主程序所在目录和新下载内容的落点；
 - **组件列表**（已安装时显示）：
-  - `llama-server 主程序`：推理服务的本体；
+  - `llama-server 主程序`：推理服务的本体，旁注实际检测到的加速构建（CUDA / Vulkan / Metal / CPU）；
   - `CUDA 运行时 (cudart)`：仅在 Windows 上显示，标注检测到的 CUDA 大版本（如 `CUDA 12`）。它随 CUDA 构建的 llama.cpp 自动下载，没有它，NVIDIA 显卡加速无法工作。
 
 ## 下载 llama.cpp
 
 未安装时，这里提供两个入口：
 
-- **下载 llama.cpp**：自动从 GitHub Release 获取最新版本，一次下载两个包——主程序包和 CUDA 运行时包（Windows），分别显示进度条；
+- **下载 llama.cpp**：自动从 GitHub Release 获取最新版本，一次下载两个包——主程序包和 CUDA 运行时包（Windows），分别显示进度条。Linux 选择 Vulkan 构建（同时加速 NVIDIA / AMD / Intel 显卡），macOS 选择 Metal 构建（Apple Silicon）或 CPU 构建（Intel）；
 - **自定义**：浏览选择一个已有的 llama.cpp 目录，应用会改用它而不再下载。
 
 下载过程中可以随时**暂停**、**继续**（断点续传，不会从头开始）或**取消**。网络抖动导致的临时失败会自动重试（最多 3 次，每次间隔 3 秒）；彻底失败后这里会显示原因，并提供重试按钮。
@@ -40,3 +40,5 @@
 | 已满足 | Blackwell 显卡，且已安装的 CUDA 运行时确认满足 12.8 |
 
 为什么有「需 CUDA ≥12.8」这一档：Blackwell 显卡要求 CUDA 12.8 及以上，否则 llama-server 会报 `no kernel image` 无法启动。而 cudart 的版本号只能从动态库文件名解析出大版本（如 `12`），无法证明小版本达标，所以只要不能明确证明满足 12.8，就会保守地提示「需 CUDA ≥12.8」。遇到这个提示时，重新在「运行环境」标签下载最新版 llama.cpp（自带的 cudart 满足要求），或安装 CUDA 13 系列运行时即可。
+
+「系统信息」标签的显卡卡片本身也是按平台能力显示的：Windows / Linux 检测显卡（Linux 上 AMD / Intel 显卡也会列出，但不带显存采样），macOS Apple Silicon 显示 Apple GPU 并标注「Metal 统一内存」（无显存条），Android 不显示显卡卡片。

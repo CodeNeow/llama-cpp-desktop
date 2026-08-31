@@ -88,14 +88,19 @@ adb shell am start -W -n com.wails.app/com.wails.app.MainActivity
 - [ ] deb 安装,应用菜单出现图标,启动无缺库
 - [ ] 首页硬件卡片(无 CUDA 卡片,符合能力矩阵)
 - [ ] llama.cpp ubuntu-vulkan 下载后服务可启动、聊天可推理
+- [ ] AMD / Intel 显卡机器:下载同样选中 Vulkan 资产(`accel=vulkan`),首页显卡卡片显示对应卡(无显存行)
 - [ ] 模型下载 / 参数设置 / 主题切换
 - [ ] 无托盘与 API 路由设置项(符合能力矩阵)
 
-**macOS**
+**macOS(Apple Silicon,arm64)**
 - [ ] .app 拖入 Applications,右键打开一次通过 Gatekeeper
-- [ ] 首页硬件卡片(无 GPU/CUDA 卡片)、菜单栏托盘开关可用
-- [ ] llama.cpp macOS 下载后服务可启动、聊天可推理
+- [ ] 首页显卡卡片显示 Apple GPU 并带「Metal 统一内存」标注(无显存条);菜单栏托盘开关可用
+- [ ] llama.cpp macOS 下载后服务可启动、聊天可推理(加速标注为 Metal)
+- [ ] 一键调优产出 Metal 方案:GPU 层 `all`、Flash Attention 关、上下文按内存预算
 - [ ] 模型下载 / 设置项与能力矩阵一致
+
+**macOS(Intel,x64)**
+- [ ] 无显卡卡片(官方 x64 版为纯 CPU);加速标注为 CPU;GPU 卸载参数不显示
 
 **Android(真机,arm64)**
 - [ ] 侧载安装,启动器图标为品牌图,应用名正确
@@ -103,6 +108,7 @@ adb shell am start -W -n com.wails.app/com.wails.app.MainActivity
 - [ ] 运行环境:llama.cpp android-arm64 下载、可执行(llama-server 启动成功)
 - [ ] 模型:通过 HF 下载小模型到外部存储,列表可见
 - [ ] 聊天:加载模型 → 流式回复 → 停止服务释放内存
+- [ ] 模型参数设置页:不显示 Flash Attention / cpu-moe / n-cpu-moe / GPU 层数;加载方式无 `dio` 选项
 - [ ] 布局:手机单列无横向溢出;平板(如有)双列与侧边导航轨
 - [ ] 设置页:目录只读展示、无 Windows 专属项;深色模式
 - [ ] 后台切回、旋转屏幕、TaskDock 任务卡不遮挡输入框

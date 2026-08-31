@@ -94,3 +94,33 @@ func TestQuitTrayInvokesStopHook(t *testing.T) {
 		t.Errorf("QuitTray should invoke the stop hook once, got %d calls", calls)
 	}
 }
+
+// TestTrayPlatformSupported pins the product gate: the tray runs on Windows
+// (taskbar) and macOS (NSStatusItem) only — Linux (DE-dependent DBUS) and
+// Android never report tray support, so ServiceStartup / SetTrayEnabled skip
+// InitTray/QuitTray there.
+func TestTrayPlatformSupported(t *testing.T) {
+	// Swap in the production gate implementation (the var is an injection
+	// point) and restore it after the test.
+	orig := trayPlatformSupported
+	t.Cleanup(func() { trayPlatformSupported = orig })
+	trayPlatformSupported = func() bool {
+		return platformGOOS == "windows" || platformGOOS == "darwin"
+	}
+
+	cases := []struct {
+		goos string
+		want bool
+	}{
+		{"windows", true},
+		{"darwin", true},
+		{"linux", false},
+		{"android", false},
+	}
+	for _, c := range cases {
+		withPlatformGOOS(t, c.goos)
+		if got := trayPlatformSupported(); got != c.want {
+			t.Errorf("trayPlatformSupported(%s) = %v, want %v", c.goos, got, c.want)
+		}
+	}
+}

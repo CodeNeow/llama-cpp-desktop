@@ -23,6 +23,7 @@ import (
 const (
 	vendorNvidia = "nvidia"
 	vendorAMD    = "amd"
+	vendorApple  = "apple"
 	vendorNone   = "none"
 )
 
@@ -503,8 +504,8 @@ func kvCacheLayers(m modelMetrics) int {
 
 // tuneHardware is the hardware snapshot the tuner plans against.
 type tuneHardware struct {
-	GPUVendor     string // "nvidia" | "amd" | "none"
-	VRAMMB        int    // MemoryMB of the largest-VRAM GPU; 0 when no GPU
+	GPUVendor     string // "nvidia" | "amd" | "apple" | "none"
+	VRAMMB        int    // MemoryMB of the largest-VRAM GPU; 0 when no GPU or unified memory (apple)
 	RAMTotalGB    float64
 	RAMFreeGB     float64
 	PhysicalCores int // CPUInfo.Cores
@@ -848,19 +849,44 @@ func tuneModelConfig(hw tuneHardware, m tuneModel) ModelConfig {
 	cfg := defaultModelConfig()
 	cfg.Threads = threads
 
+	// ramCtxSize picks the largest ladder context whose f16 weights + KV fit
+	// in usable RAM, falling back to the smallest ladder entry. Shared by the
+	// CPU-only plan and the Metal plan (unified memory bounds both the same
+	// way).
+	ramCtxSize := func() int {
+		for _, ctx := range ladder {
+			if w+kvPerTok*float64(ctx) <= usableRAM {
+				return ctx
+			}
+		}
+		return ladder[len(ladder)-1]
+	}
+
 	// cpuOnlyPlan: no GPU offload; largest ladder context whose weights + KV
 	// fit in usable RAM, falling back to the smallest ladder entry.
 	cpuOnlyPlan := func() {
 		cfg.GPULayers = "0"
 		cfg.FlashAttn = false
 		cfg.CacheTypeK, cfg.CacheTypeV = "", ""
-		cfg.CtxSize = ladder[len(ladder)-1]
-		for _, ctx := range ladder {
-			if w+kvPerTok*float64(ctx) <= usableRAM {
-				cfg.CtxSize = ctx
-				break
-			}
-		}
+		cfg.CtxSize = ramCtxSize()
+	}
+
+	// Metal plan (Apple Silicon): unified memory puts every weight one
+	// GPU-visible allocation away, so all layers offload (GPULayers="all")
+	// while the context is bounded by the same usable-RAM budget as the
+	// CPU-only plan — GPU and CPU share one physical pool, there is no VRAM
+	// budget to merge against. FlashAttn stays off in v1: llama.cpp supports
+	// flash attention on Metal upstream, but this tuner has no Metal benchmark
+	// path yet, so the plan conservatively stays on the default path. cpu-moe
+	// is a CUDA-centric VRAM/RAM split (meaningless on unified memory), so
+	// CPUMoe/NCpuMoe stay off and the bench chain that calibrates the cpu-moe
+	// flip never runs for apple (UsedCPUMoe=false without a bench attempt).
+	if hw.GPUVendor == vendorApple {
+		cfg.GPULayers = "all"
+		cfg.FlashAttn = false
+		cfg.CacheTypeK, cfg.CacheTypeV = "", ""
+		cfg.CtxSize = ramCtxSize()
+		return cfg
 	}
 
 	if !gpuActive {
@@ -983,9 +1009,11 @@ func tuneModelConfig(hw tuneHardware, m tuneModel) ModelConfig {
 
 // ─── Hardware snapshot & weight budget ────────────────────────────
 
-// tuneVendorForName classifies a GPU display name for the tuner: "nvidia" or
-// "amd" when the name matches (case-insensitive), "" when unclassifiable
-// (callers keep their machine-wide classification as fallback).
+// tuneVendorForName classifies a GPU display name for the tuner: "nvidia",
+// "amd" or "apple" when the name matches (case-insensitive), "" when
+// unclassifiable (callers keep their machine-wide classification as fallback).
+// The GPUInfo.Vendor field is the primary classification; name matching is the
+// fallback for entries without one.
 func tuneVendorForName(name string) string {
 	lower := strings.ToLower(name)
 	switch {
@@ -993,6 +1021,8 @@ func tuneVendorForName(name string) string {
 		return vendorNvidia
 	case strings.Contains(lower, "amd") || strings.Contains(lower, "radeon"):
 		return vendorAMD
+	case strings.Contains(lower, vendorApple):
+		return vendorApple
 	}
 	return ""
 }
@@ -1016,19 +1046,27 @@ type tuneTarget struct {
 // An empty or unmatched deviceID falls back to the historical behavior: the
 // largest-VRAM GPU across the list decides VRAMMB, and the vendor is voted
 // machine-wide (any GPU named nvidia (case-insensitive) or an available CUDA
-// driver → nvidia; else any GPU named amd/radeon → amd; else none).
+// driver → nvidia; else any GPU named amd/radeon → amd; else any GPU carrying
+// (or named like) an Apple card → apple; else none).
 func tunePlanTarget(gpus []GPUInfo, cudaAvailable bool, deviceID string) tuneTarget {
 	vramMB := 0
-	hasNVIDIA, hasAMD := false, false
+	hasNVIDIA, hasAMD, hasApple := false, false, false
 	for _, g := range gpus {
 		if g.MemoryMB > vramMB {
 			vramMB = g.MemoryMB
+		}
+		// GPUInfo.Vendor is the probe's own classification; the name-based
+		// tuneVendorForName covers legacy entries without a Vendor field.
+		if g.Vendor == vendorApple {
+			hasApple = true
 		}
 		switch tuneVendorForName(g.Name) {
 		case vendorNvidia:
 			hasNVIDIA = true
 		case vendorAMD:
 			hasAMD = true
+		case vendorApple:
+			hasApple = true
 		}
 	}
 	target := tuneTarget{VRAMMB: vramMB, Vendor: vendorNone}
@@ -1037,6 +1075,8 @@ func tunePlanTarget(gpus []GPUInfo, cudaAvailable bool, deviceID string) tuneTar
 		target.Vendor = vendorNvidia
 	case hasAMD:
 		target.Vendor = vendorAMD
+	case hasApple:
+		target.Vendor = vendorApple
 	}
 	if deviceID != "" {
 		for _, g := range gpus {
@@ -1044,9 +1084,13 @@ func tunePlanTarget(gpus []GPUInfo, cudaAvailable bool, deviceID string) tuneTar
 				target.VRAMMB = g.MemoryMB
 				target.Name = g.Name
 				target.UUID = g.UUID
-				// The pinned card's own name decides its vendor; an
-				// unclassifiable name keeps the machine-wide vote above.
-				if v := tuneVendorForName(g.Name); v != "" {
+				// The pinned card's own identity decides its vendor: the
+				// probe's Vendor field first, the name classification as the
+				// legacy fallback; an unclassifiable card keeps the
+				// machine-wide vote above.
+				if g.Vendor != "" {
+					target.Vendor = g.Vendor
+				} else if v := tuneVendorForName(g.Name); v != "" {
 					target.Vendor = v
 				}
 				break
@@ -1090,13 +1134,21 @@ func (a *App) tuneHardware() tuneHardware {
 	hw.GPUVendor = target.Vendor
 	if target.Name != "" {
 		log.Printf("[INFO] tune: planning against GPU %s (uuid %.8s)", target.Name, target.UUID)
+	} else if target.Vendor == vendorApple {
+		log.Printf("[INFO] tune: planning against Apple Silicon (Metal, unified memory)")
 	} else if len(gpus) > 0 {
 		log.Printf("[INFO] tune: planning against largest-VRAM GPU (auto)")
 	}
 
 	// Measured RAM bandwidth calibration: cached per hardware fingerprint,
 	// single-flight across concurrent tune clicks; 0 on failure, which keeps
-	// the tuner on its static rules.
+	// the tuner on its static rules. Skipped for Apple Silicon: the calibrated
+	// value only gates the CUDA-centric cpu-moe flip inside tuneModelConfig,
+	// which the Metal plan never reaches — an all-core benchmark whose result
+	// the plan would ignore is wasted minutes on a first tune click.
+	if hw.GPUVendor == vendorApple {
+		return hw
+	}
 	hw.RAMBandwidthGBs, _ = getCalibratedRAMBandwidth(hw)
 	return hw
 }

@@ -106,7 +106,7 @@ type appConfig struct {
 	ServerConfig        ServerConfig           `json:"serverConfig"`
 	DownloadSource      string                 `json:"downloadSource"`
 	Language            string                 `json:"language"`         // language preference: zh / en / auto (empty or invalid falls back to auto)
-	TrayEnabled         bool                   `json:"trayEnabled"`      // Windows system tray toggle, default true
+	TrayEnabled         bool                   `json:"trayEnabled"`      // Windows/macOS system tray toggle, default true
 	SidebarCollapsed    bool                   `json:"sidebarCollapsed"` // sidebar collapsed state, default true (collapsed)
 	// OnboardingDismissed records that the user closed (or auto-completed) the
 	// Home page quick-start checklist. False is the Go zero value, so old

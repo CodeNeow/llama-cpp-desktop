@@ -124,8 +124,11 @@ func (a *App) ServiceStartup(ctx context.Context, options application.ServiceOpt
 	// Start system tray based on persisted config (unconditionally since
 	// 4aacac2; user can disable in settings). loadConfig defaults missing
 	// legacy fields to true. When enabled, the app starts with a tray icon;
-	// disabling the setting requires an app restart.
-	if TrayEnabled() {
+	// disabling the setting requires an app restart. Platform gate: the tray
+	// is a Windows (taskbar) / macOS (NSStatusItem) feature — Linux never
+	// auto-starts one (DBUS StatusNotifierItem depends on the desktop
+	// environment; see TraySupported).
+	if TrayEnabled() && trayPlatformSupported() {
 		InitTray(ctx, TrayIcon)
 	}
 	return nil
@@ -340,11 +343,21 @@ func (a *App) SetOnboardingDismissed(dismissed bool) {
 	saveConfig()
 }
 
-// SetTrayEnabled sets the Windows system tray toggle: persists the preference
-// to config; on Windows it starts/stops the tray according to the persisted
-// value, on other platforms it only persists (InitTray/QuitTray are no-op
-// stubs). Concurrency-safe (configMu and trayMu guard global state), called
-// by the frontend settings page system tray toggle.
+// trayPlatformSupported reports whether this platform runs the system tray:
+// Windows (taskbar) and macOS (NSStatusItem) only. Linux is excluded — DBUS
+// StatusNotifierItem support depends heavily on the desktop environment
+// (GNOME shows nothing by default), so the tray would promise something the
+// platform may not deliver. Seam var (platformGOOS) so tests can drive the
+// per-OS gate from a single test binary.
+var trayPlatformSupported = func() bool {
+	return platformGOOS == "windows" || platformGOOS == "darwin"
+}
+
+// SetTrayEnabled sets the system tray toggle: persists the preference to
+// config; on Windows and macOS it starts/stops the tray according to the
+// persisted value, on other platforms it only persists (the callers no-op —
+// see trayPlatformSupported). Concurrency-safe (configMu and trayMu guard
+// global state), called by the frontend settings page system tray toggle.
 //
 // Note: the tray is one-shot per process (the old fyne.io/systray had a
 // package-level quitOnce, and the v3 SystemTray tray deliberately keeps the
@@ -358,16 +371,14 @@ func (a *App) SetTrayEnabled(enabled bool) error {
 	trayEnabled = enabled
 	configMu.Unlock()
 
-	if enabled {
-		// Enable: systray cannot be Run twice in the same process; only start
-		// the tray if it has never been started (idempotent)
-		if runtime.GOOS == "windows" {
+	if trayPlatformSupported() {
+		if enabled {
+			// Enable: systray cannot be Run twice in the same process; only
+			// start the tray if it has never been started (idempotent)
 			InitTray(a.ctx, TrayIcon)
-		}
-	} else {
-		// Disable: remove the tray icon (systray.Quit is guaranteed to take
-		// effect only once via quitOnce)
-		if runtime.GOOS == "windows" {
+		} else {
+			// Disable: remove the tray icon (systray.Quit is guaranteed to
+			// take effect only once via quitOnce)
 			QuitTray()
 		}
 	}

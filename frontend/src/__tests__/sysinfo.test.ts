@@ -1,10 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { aggregateVram, buildGpuDisplays, cudaCompatLevel, cudartVersionSatisfiesFloor } from '../lib/sysinfo'
+import { aggregateVram, buildGpuDisplays, cudaCompatLevel, cudartVersionSatisfiesFloor, gpuHasVram } from '../lib/sysinfo'
 import type { GpuStaticInfo } from '../lib/sysinfo'
 import type { MonitorStatus } from '../lib/monitor'
 
 const staticGpu = (overrides: Partial<GpuStaticInfo> = {}): GpuStaticInfo => ({
   name: 'Test GPU',
+  vendor: 'nvidia',
   memoryMb: 8192,
   memoryUsedMb: 2048,
   driverVersion: '566.36',
@@ -17,24 +18,57 @@ describe('aggregateVram', () => {
     expect(aggregateVram([])).toBeNull()
   })
 
-  it('sums totals and used across GPUs', () => {
+  it('sums totals and used across NVIDIA GPUs', () => {
     const r = aggregateVram([
-      { totalMb: 8192, usedMb: 2048 },
-      { totalMb: 4096, usedMb: 1024 }
+      { vendor: 'nvidia', totalMb: 8192, usedMb: 2048 },
+      { vendor: 'nvidia', totalMb: 4096, usedMb: 1024 }
     ])
     expect(r).toEqual({ totalMb: 12288, usedMb: 3072 })
   })
 
   it('skips unknown (<=0) values so one mis-report cannot zero the sum', () => {
     const r = aggregateVram([
-      { totalMb: 8192, usedMb: 2048 },
-      { totalMb: 0, usedMb: -1 }
+      { vendor: 'nvidia', totalMb: 8192, usedMb: 2048 },
+      { vendor: 'nvidia', totalMb: 0, usedMb: -1 }
     ])
     expect(r).toEqual({ totalMb: 8192, usedMb: 2048 })
   })
 
   it('all-unknown list still returns zeroed totals (not null)', () => {
-    expect(aggregateVram([{ totalMb: 0, usedMb: 0 }])).toEqual({ totalMb: 0, usedMb: 0 })
+    expect(aggregateVram([{ vendor: 'nvidia', totalMb: 0, usedMb: 0 }])).toEqual({ totalMb: 0, usedMb: 0 })
+  })
+
+  it('skips non-NVIDIA vendors: NVIDIA is the only VRAM-sampled vendor', () => {
+    // Unified memory (apple) and PCI-classified cards (amd/intel/other)
+    // carry no sampled VRAM — they must not distort the offloading total.
+    expect(aggregateVram([{ vendor: 'apple', totalMb: 27648, usedMb: 0 }])).toBeNull()
+    expect(aggregateVram([{ vendor: 'amd', totalMb: 0, usedMb: 0 }])).toBeNull()
+  })
+
+  it('mixed NVIDIA + non-NVIDIA list aggregates the NVIDIA entries only', () => {
+    const r = aggregateVram([
+      { vendor: 'nvidia', totalMb: 8192, usedMb: 2048 },
+      { vendor: 'amd', totalMb: 99999, usedMb: 0 },
+      { vendor: 'apple', totalMb: 27648, usedMb: 0 }
+    ])
+    expect(r).toEqual({ totalMb: 8192, usedMb: 2048 })
+  })
+})
+
+describe('gpuHasVram', () => {
+  it('NVIDIA always reports VRAM (probe + monitor sample it)', () => {
+    expect(gpuHasVram({ vendor: 'nvidia', totalMb: 8192 })).toBe(true)
+    expect(gpuHasVram({ vendor: 'nvidia', totalMb: 0 })).toBe(true)
+  })
+
+  it('Apple Silicon never reports VRAM (unified memory)', () => {
+    expect(gpuHasVram({ vendor: 'apple', totalMb: 0 })).toBe(false)
+  })
+
+  it('other vendors report VRAM only when the probe found a positive total', () => {
+    expect(gpuHasVram({ vendor: 'amd', totalMb: 16384 })).toBe(true)
+    expect(gpuHasVram({ vendor: 'intel', totalMb: 0 })).toBe(false)
+    expect(gpuHasVram({ vendor: 'other', totalMb: 0 })).toBe(false)
   })
 })
 
@@ -88,6 +122,7 @@ describe('buildGpuDisplays', () => {
     expect(displays).toEqual([
       {
         name: 'Test GPU',
+        vendor: 'nvidia',
         driverVersion: '566.36',
         computeCapability: 8.9,
         totalMb: 8192,
@@ -134,5 +169,23 @@ describe('buildGpuDisplays', () => {
     const displays = buildGpuDisplays([staticGpu(), staticGpu({ name: 'GPU B' })], null)
     expect(displays).toHaveLength(2)
     expect(displays[1].name).toBe('GPU B')
+  })
+
+  it('carries the vendor through and never attaches monitor samples to non-NVIDIA cards', () => {
+    const monitorGpus: MonitorStatus['gpus'] = [
+      { index: 1, name: 'nvidia-smi sample', utilPercent: 42, memUsed: 1024 * 1024 * 1024, memTotal: 8192 * 1024 * 1024 }
+    ]
+    const displays = buildGpuDisplays(
+      [
+        staticGpu({ name: 'AMD GPU (03:00.0)', vendor: 'amd', memoryMb: 0, memoryUsedMb: 0, computeCapability: 0, driverVersion: '' }),
+        staticGpu({ name: 'Apple M4 Pro', vendor: 'apple', memoryMb: 0, memoryUsedMb: 0, computeCapability: 0, driverVersion: '' })
+      ],
+      monitorGpus
+    )
+    // AMD card sits at display position 0 where the sample index is 1 — but
+    // even a matching index must not leak nvidia-smi samples into a
+    // non-NVIDIA entry (vendor is the guard).
+    expect(displays[0]).toMatchObject({ vendor: 'amd', totalMb: 0, usedMb: 0, utilPercent: null })
+    expect(displays[1]).toMatchObject({ vendor: 'apple', totalMb: 0, usedMb: 0, utilPercent: null })
   })
 })

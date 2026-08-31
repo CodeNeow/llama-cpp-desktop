@@ -65,7 +65,10 @@ export const messages: Record<Locale, Record<string, string>> = {
     'home.gpu.util': '利用率',
     'home.gpu.computeCap': '计算能力',
     'home.gpu.driver': '驱动版本',
-    'home.gpu.none': '未检测到 NVIDIA 显卡',
+    // Apple Silicon badge: unified memory, no discrete VRAM bar
+    'home.gpu.metal': 'Metal 统一内存',
+    // Vendor-neutral: Linux AMD/Intel cards and macOS Apple GPUs are detected too
+    'home.gpu.none': '未检测到显卡',
     'home.cuda': 'CUDA',
     'home.cuda.status': '状态',
     'home.cuda.available': '可用',
@@ -115,12 +118,19 @@ export const messages: Record<Locale, Record<string, string>> = {
     'runtime.compMain': 'llama-server 主程序',
     'runtime.compCudart': 'CUDA 运行时 (cudart)',
     'runtime.compCudartDesc': '随 CUDA 构建自动下载',
-    // Acceleration build of the installed main program, per platform capability
-    // (suffix resolved by accelBuildKey in lib/platform.ts)
+    // Acceleration build of the installed main program: prefers the backend's
+    // detected accel (cuda/vulkan/metal/cpu keys below, see RuntimeSection),
+    // with the platform-capability keys (windows/linux/darwin) as fallback
+    // when the accel probe has no answer. cpuArm64 is the android-specific
+    // qualifier (accelBuildKey 'cpu' + isAndroid at the call site).
+    'runtime.accel.cuda': 'CUDA 构建',
+    'runtime.accel.vulkan': 'Vulkan 构建',
+    'runtime.accel.metal': 'Metal 构建',
+    'runtime.accel.cpu': 'CPU 构建',
+    'runtime.accel.cpuArm64': 'CPU 构建（arm64）',
     'runtime.accel.windows': 'CPU / CUDA 构建',
     'runtime.accel.linux': 'Vulkan 构建',
     'runtime.accel.darwin': 'Metal 构建',
-    'runtime.accel.cpu': 'CPU 构建（arm64）',
     'runtime.compNotDetected': '未检测到',
     'runtime.pkgMain': '主程序包',
     'runtime.pkgCudart': 'CUDA 运行时包',
@@ -387,7 +397,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'modelSettings.cacheTypeK': 'KV 缓存 K 类型',
     'modelSettings.defaultF16': '默认 (f16)',
     'modelSettings.q8Recommended': 'q8_0 ★ 推荐',
-    'modelSettings.cacheTypeKHint': 'q8_0 推荐(省显存几乎无损);f32/f16 精度高占显存;q4 系最省',
+    'modelSettings.cacheTypeKHint': 'q8_0 推荐(缓存体积几乎减半,CPU/GPU 皆可);f32/f16 精度高体积大;q4 系最省',
     'modelSettings.cacheTypeV': 'KV 缓存 V 类型',
     'modelSettings.cacheTypeVHint': '同 K 类型,一般跟随 K 保持一致',
     'modelSettings.loadMode': '加载方式',
@@ -567,7 +577,10 @@ export const messages: Record<Locale, Record<string, string>> = {
     'home.gpu.util': 'Utilization',
     'home.gpu.computeCap': 'Compute Cap',
     'home.gpu.driver': 'Driver Version',
-    'home.gpu.none': 'No NVIDIA GPU detected',
+    // Apple Silicon badge: unified memory, no discrete VRAM bar
+    'home.gpu.metal': 'Metal unified memory',
+    // Vendor-neutral: Linux AMD/Intel cards and macOS Apple GPUs are detected too
+    'home.gpu.none': 'No GPU detected',
     'home.cuda': 'CUDA',
     'home.cuda.status': 'Status',
     'home.cuda.available': 'Available',
@@ -617,12 +630,19 @@ export const messages: Record<Locale, Record<string, string>> = {
     'runtime.compMain': 'llama-server main program',
     'runtime.compCudart': 'CUDA runtime (cudart)',
     'runtime.compCudartDesc': 'Downloaded automatically alongside CUDA builds',
-    // Acceleration build of the installed main program, per platform capability
-    // (suffix resolved by accelBuildKey in lib/platform.ts)
+    // Acceleration build of the installed main program: prefers the backend's
+    // detected accel (cuda/vulkan/metal/cpu keys below, see RuntimeSection),
+    // with the platform-capability keys (windows/linux/darwin) as fallback
+    // when the accel probe has no answer. cpuArm64 is the android-specific
+    // qualifier (accelBuildKey 'cpu' + isAndroid at the call site).
+    'runtime.accel.cuda': 'CUDA build',
+    'runtime.accel.vulkan': 'Vulkan build',
+    'runtime.accel.metal': 'Metal build',
+    'runtime.accel.cpu': 'CPU build',
+    'runtime.accel.cpuArm64': 'CPU build (arm64)',
     'runtime.accel.windows': 'CPU / CUDA build',
     'runtime.accel.linux': 'Vulkan build',
     'runtime.accel.darwin': 'Metal build',
-    'runtime.accel.cpu': 'CPU build (arm64)',
     'runtime.compNotDetected': 'Not detected',
     'runtime.pkgMain': 'Main program package',
     'runtime.pkgCudart': 'CUDA runtime package',
@@ -889,7 +909,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'modelSettings.cacheTypeK': 'KV Cache K Type',
     'modelSettings.defaultF16': 'Default (f16)',
     'modelSettings.q8Recommended': 'q8_0 ★ Recommended',
-    'modelSettings.cacheTypeKHint': 'q8_0 recommended (nearly lossless, saves VRAM); f32/f16 higher precision; q4 most compact',
+    'modelSettings.cacheTypeKHint': 'q8_0 recommended (nearly half the cache size; works on CPU and GPU); f32/f16 higher precision, larger footprint; q4 most compact',
     'modelSettings.cacheTypeV': 'KV Cache V Type',
     'modelSettings.cacheTypeVHint': 'Same as the K type; usually follow K',
     'modelSettings.loadMode': 'Load Mode',

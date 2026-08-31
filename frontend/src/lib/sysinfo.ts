@@ -9,6 +9,8 @@ import type { MonitorStatus } from './monitor'
 /** Static per-GPU info as returned by the backend GetGPU binding (MB units). */
 export interface GpuStaticInfo {
   name: string
+  /** Vendor classification: 'nvidia' | 'intel' | 'amd' | 'apple' | '' (unknown). */
+  vendor: string
   memoryMb: number
   memoryUsedMb: number
   driverVersion: string
@@ -18,6 +20,7 @@ export interface GpuStaticInfo {
 /** Per-GPU view model rendered by the Home page: static identity + live metrics when available. */
 export interface GpuDisplay {
   name: string
+  vendor: string
   driverVersion: string
   computeCapability: number
   totalMb: number
@@ -26,24 +29,42 @@ export interface GpuDisplay {
   utilPercent: number | null
 }
 
-/** Summed VRAM across all GPUs (what matters for multi-GPU model offloading). */
+/** Summed VRAM across GPUs (what matters for multi-GPU model offloading). */
 export interface VramTotals {
   totalMb: number
   usedMb: number
 }
 
 /**
- * Aggregate VRAM across GPUs. Unknown values (<= 0) are skipped so one
+ * Whether a GPU reports discrete VRAM worth rendering: NVIDIA always (the
+ * nvidia-smi probe samples it), Apple Silicon never (unified memory — no
+ * VRAM bar), and every other vendor only when the probe returned a positive
+ * total (Linux PCI display controllers carry no VRAM fields).
+ */
+export function gpuHasVram(gpu: Pick<GpuDisplay, 'vendor' | 'totalMb'>): boolean {
+  if (gpu.vendor === 'apple') return false
+  if (gpu.vendor === 'nvidia') return true
+  return gpu.totalMb > 0
+}
+
+/**
+ * Aggregate VRAM across NVIDIA GPUs. Non-NVIDIA vendors are skipped: NVIDIA
+ * is the only vendor whose VRAM is sampled (monitor + probe), and mixing in
+ * unreported/zero values from PCI-classified or unified-memory cards would
+ * distort the offloading picture. Unknown values (<= 0) are skipped so one
  * mis-reporting card cannot zero out the sum; returns null for an empty list.
  */
-export function aggregateVram(items: Pick<GpuDisplay, 'totalMb' | 'usedMb'>[]): VramTotals | null {
-  if (items.length === 0) return null
+export function aggregateVram(items: Pick<GpuDisplay, 'vendor' | 'totalMb' | 'usedMb'>[]): VramTotals | null {
   let totalMb = 0
   let usedMb = 0
+  let counted = 0
   for (const item of items) {
+    if (item.vendor !== 'nvidia') continue
+    counted++
     if (item.totalMb > 0) totalMb += item.totalMb
     if (item.usedMb > 0) usedMb += item.usedMb
   }
+  if (counted === 0) return null
   return { totalMb, usedMb }
 }
 
@@ -105,9 +126,13 @@ export function buildGpuDisplays(
 ): GpuDisplay[] {
   const byIndex = new Map((monitorGpus ?? []).map(g => [g.index, g]))
   return statics.map((gpu, i) => {
-    const m = byIndex.get(i)
+    // Monitor samples exist only for NVIDIA (nvidia-smi is the sampler):
+    // never attach one to a non-NVIDIA entry, or a PCI/apple card could
+    // pick up an unrelated card's VRAM/utilization by index.
+    const m = gpu.vendor === 'nvidia' ? byIndex.get(i) : undefined
     return {
       name: gpu.name,
+      vendor: gpu.vendor,
       driverVersion: gpu.driverVersion,
       computeCapability: gpu.computeCapability,
       totalMb: m && m.memTotal > 0 ? Math.round(m.memTotal / (1024 * 1024)) : gpu.memoryMb,

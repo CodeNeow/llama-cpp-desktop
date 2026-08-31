@@ -225,10 +225,18 @@ export class GPUInfo {
     "name": string;
 
     /**
+     * Vendor classifies the GPU maker for platform-aware planning (asset
+     * selection, auto-tune Metal branch, VRAM display rules):
+     * "nvidia" | "intel" | "amd" | "apple" | "" (unknown/legacy probe paths).
+     */
+    "vendor": string;
+
+    /**
      * UUID is the stable nvidia-smi device identifier ("GPU-xxxx-..."),
      * invariant across reboots and driver index changes; it is the value the
      * serving-GPU selection (ServerConfig.DeviceID / CUDA_VISIBLE_DEVICES) is
-     * keyed on. Empty when the probe could not read it.
+     * keyed on. Empty when the probe could not read it (always empty for
+     * non-NVIDIA entries: apple / PCI-classified cards carry no UUID).
      */
     "uuid": string;
     "memoryMb": number;
@@ -241,6 +249,9 @@ export class GPUInfo {
     constructor($$source: Partial<GPUInfo> = {}) {
         if (!("name" in $$source)) {
             this["name"] = "";
+        }
+        if (!("vendor" in $$source)) {
+            this["vendor"] = "";
         }
         if (!("uuid" in $$source)) {
             this["uuid"] = "";
@@ -405,6 +416,17 @@ export class LlamaCppInfo {
      */
     "cudartVersion": string;
 
+    /**
+     * Accel names the acceleration backend of the installed build:
+     * "cuda" | "vulkan" | "metal" | "cpu". Official llama.cpp builds are
+     * GGML_BACKEND_DL everywhere, so the value is detected from the backend
+     * library sitting next to the resolved binary (windows ggml-cuda.dll /
+     * ggml-vulkan.dll, linux libggml-vulkan.so), from the arch on darwin
+     * (arm64 release embeds Metal; x64 release is CPU-only) or the platform
+     * default (android = CPU-only). Empty when llama.cpp is not installed.
+     */
+    "accel": string;
+
     /** Creates a new LlamaCppInfo instance. */
     constructor($$source: Partial<LlamaCppInfo> = {}) {
         if (!("installed" in $$source)) {
@@ -421,6 +443,9 @@ export class LlamaCppInfo {
         }
         if (!("cudartVersion" in $$source)) {
             this["cudartVersion"] = "";
+        }
+        if (!("accel" in $$source)) {
+            this["accel"] = "";
         }
 
         Object.assign(this, $$source);

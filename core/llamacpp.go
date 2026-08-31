@@ -54,6 +54,14 @@ type LlamaCppInfo struct {
 	// 12.8 Blackwell floor. Empty when not installed, unparsable, or
 	// non-Windows.
 	CudartVersion string `json:"cudartVersion"`
+	// Accel names the acceleration backend of the installed build:
+	// "cuda" | "vulkan" | "metal" | "cpu". Official llama.cpp builds are
+	// GGML_BACKEND_DL everywhere, so the value is detected from the backend
+	// library sitting next to the resolved binary (windows ggml-cuda.dll /
+	// ggml-vulkan.dll, linux libggml-vulkan.so), from the arch on darwin
+	// (arm64 release embeds Metal; x64 release is CPU-only) or the platform
+	// default (android = CPU-only). Empty when llama.cpp is not installed.
+	Accel string `json:"accel"`
 }
 
 var cachedLlamaCpp LlamaCppInfo
@@ -279,6 +287,7 @@ func getLlamaCppInfo() LlamaCppInfo {
 		info.Path = p
 		fillLlamaCppVersion(&info, p)
 		setCudartInfo(&info, filepath.Dir(p))
+		info.Accel = detectAccel(filepath.Dir(p), runtime.GOOS, runtime.GOARCH)
 		return info
 	}
 
@@ -301,12 +310,68 @@ func getLlamaCppInfo() LlamaCppInfo {
 				info.Path = p
 				fillLlamaCppVersion(&info, p)
 				setCudartInfo(&info, filepath.Dir(p))
+				info.Accel = detectAccel(filepath.Dir(p), runtime.GOOS, runtime.GOARCH)
 				return info
 			}
 		}
 	}
 
 	return info
+}
+
+// detectAccel classifies the acceleration backend of the llama.cpp build whose
+// binaries live in dir ("" means not installed → empty result). Official
+// llama.cpp builds are GGML_BACKEND_DL everywhere: the main programs ship
+// backend-agnostic and the GPU support comes from whichever backend library
+// sits next to them. windows: ggml-cuda.dll → "cuda", ggml-vulkan.dll →
+// "vulkan"; linux: libggml-vulkan.so (or plain ggml-vulkan.so) → "vulkan";
+// darwin: the arm64 release embeds Metal ("metal", no file to find) while the
+// x64 release is CPU-only; android: CPU-only arm64 packages → "cpu". A build
+// with no recognized GPU backend library falls back to "cpu". Pure over the
+// directory listing (no process spawns), directly unit-testable with a fixture
+// directory and explicit goos/goarch values.
+func detectAccel(dir, goos, goarch string) string {
+	if dir == "" {
+		return ""
+	}
+	switch goos {
+	case "windows":
+		if dirHasFileFold(dir, "ggml-cuda.dll") {
+			return "cuda"
+		}
+		if dirHasFileFold(dir, "ggml-vulkan.dll") {
+			return "vulkan"
+		}
+	case "linux":
+		if dirHasFileFold(dir, "libggml-vulkan.so") || dirHasFileFold(dir, "ggml-vulkan.so") {
+			return "vulkan"
+		}
+	case "darwin":
+		if goarch == "arm64" {
+			return "metal"
+		}
+		return "cpu"
+	case "android":
+		return "cpu"
+	}
+	return "cpu"
+}
+
+// dirHasFileFold reports whether dir contains a regular entry whose name
+// equals name case-insensitively (backend DLL/SO names are lowercase upstream,
+// but a user-imported install may carry different casing). Unreadable dirs
+// report false so the caller's fallback applies.
+func dirHasFileFold(dir, name string) bool {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if !e.IsDir() && strings.EqualFold(e.Name(), name) {
+			return true
+		}
+	}
+	return false
 }
 
 // detectCudartRuntime reports whether the CUDA runtime DLLs shipped by the
@@ -1093,8 +1158,11 @@ func cudaVerOf(name string) (float64, bool) {
 }
 
 // pickBestAssetFor scores release assets for a given platform/arch and returns
-// the best match. hasCUDA and cudaVer allow preferring matching CUDA builds on
-// Windows; cudaFloor is the minimum CUDA version the GPU can run (Blackwell
+// the best match. hasGPU and cudaVer allow preferring GPU-accelerated builds:
+// hasGPU means ANY GPU vendor visible to the probes (nvidia on the windows
+// CUDA paths — the windows GPU probe is nvidia-smi-only; any PCI GPU on the
+// linux vulkan path since that build accelerates AMD/Intel/NVIDIA alike);
+// cudaFloor is the minimum CUDA version the GPU can run (Blackwell
 // compute capability >= 12.0 needs >= 12.8; 0 means no constraint) — cuda
 // assets below the floor are skipped entirely because the hardware cannot run
 // them. Returns nil when no asset matches the platform.
@@ -1117,12 +1185,13 @@ func cudaVerOf(name string) (float64, bool) {
 //     (widest GPU compatibility — CUDA 13 dropped pre-Turing support), or the
 //     highest version >= floor when a floor is active (newest GPUs need the
 //     newest runtime).
-//   - Linux with an NVIDIA GPU: ubuntu-vulkan is the only GPU-accelerated
-//     Linux build (no ubuntu cuda variant exists) and wins decisively.
+//   - Linux with any GPU (NVIDIA, AMD or Intel — the ubuntu-vulkan tarball is
+//     the only GPU-accelerated Linux build, no ubuntu cuda variant exists):
+//     vulkan wins decisively.
 //
 // On Windows, cudart runtime assets are skipped (the main program and runtime
 // are downloaded separately; the runtime is matched by pickCudartAssetFor).
-func pickBestAssetFor(assets []GitHubAsset, platform, arch string, hasCUDA bool, cudaVer string, cudaFloor float64) *GitHubAsset {
+func pickBestAssetFor(assets []GitHubAsset, platform, arch string, hasGPU bool, cudaVer string, cudaFloor float64) *GitHubAsset {
 	if len(assets) == 0 {
 		return nil
 	}
@@ -1181,7 +1250,7 @@ func pickBestAssetFor(assets []GitHubAsset, platform, arch string, hasCUDA bool,
 	// highest when a floor is active (newest GPUs need the newest runtime).
 	var targetCuda float64
 	var hasTargetCuda bool
-	if platformKey == "win" && hasCUDA {
+	if platformKey == "win" && hasGPU {
 		for i := range assets {
 			name := strings.ToLower(assets[i].Name)
 			if !isMainCandidate(name) || !strings.Contains(name, "cuda") {
@@ -1216,8 +1285,9 @@ func pickBestAssetFor(assets []GitHubAsset, platform, arch string, hasCUDA bool,
 
 		score := 0
 
-		// Prefer CUDA builds on Windows when GPU is available
-		if platformKey == "win" && hasCUDA && strings.Contains(name, "cuda") {
+		// Prefer CUDA builds on Windows when an NVIDIA GPU is present (the
+		// windows GPU probe is nvidia-smi-only, so hasGPU == nvidia there)
+		if platformKey == "win" && hasGPU && strings.Contains(name, "cuda") {
 			v, hasVer := cudaVerOf(name)
 			if hasVer && cudaFloor > 0 && v < cudaFloor {
 				// Below the GPU's usable CUDA floor: hardware cannot run it
@@ -1265,9 +1335,10 @@ func pickBestAssetFor(assets []GitHubAsset, platform, arch string, hasCUDA bool,
 			if strings.Contains(name, "x64") || strings.Contains(name, "arm64") {
 				score += 5
 			}
-			// NVIDIA GPU present: ubuntu-vulkan is the only GPU-accelerated
-			// Linux build (no ubuntu cuda variant exists)
-			if hasCUDA && strings.Contains(name, "vulkan") {
+			// Any GPU vendor present: ubuntu-vulkan is the only GPU-accelerated
+			// Linux build (no ubuntu cuda variant exists) and accelerates
+			// NVIDIA, AMD and Intel alike
+			if hasGPU && strings.Contains(name, "vulkan") {
 				score += 80
 			}
 		}

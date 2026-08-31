@@ -21,7 +21,7 @@ The "Auto-tune" button sits at the top right of the settings page; you do not ne
 2. The result **fills the form in real time** — every field (GPU layers, context size, cache type, CPU threads, ...) updates immediately so you can review and hand-tweak anything before saving;
 3. Click "Save Settings" when satisfied.
 
-Tuning plans VRAM against the **inference GPU** chosen in Preferences: on multi-GPU machines, whichever card you picked is the one whose VRAM is budgeted. Possible plans include full GPU offload (fastest), cpu-moe for MoE models (experts stay in RAM, the rest goes to the GPU), partial offload (fallback when VRAM runs out) and CPU-only (no GPU), with the largest context that fits the budget.
+Tuning plans VRAM against the **inference GPU** chosen in Preferences: on multi-GPU machines, whichever card you picked is the one whose VRAM is budgeted. Possible plans include full GPU offload (fastest), cpu-moe for MoE models (experts stay in RAM, the rest goes to the GPU), partial offload (fallback when VRAM runs out) and CPU-only (no GPU), with the largest context that fits the budget. On Apple Silicon (macOS arm64) the Metal plan keeps every layer GPU-resident via unified memory and sizes the context from the RAM budget (Flash Attention stays off for now); on Linux, AMD / Intel GPUs are GPU-accelerated through the Vulkan build too.
 
 ## Quick parameter reference
 
@@ -35,6 +35,8 @@ Tuning plans VRAM against the **inference GPU** chosen in Preferences: on multi-
 | KV Cache Type | `q8_0` is nearly lossless and saves VRAM (recommended); default is f16 |
 | Load Mode | Default mmap loads fastest; mlock prevents swapping when RAM is ample |
 | Split Mode | `none` for a single GPU; `layer` is the stable default for multi-GPU |
+
+> Note: Android is a CPU-only build, so GPU-only parameters (GPU layers, Flash Attention, cpu-moe) are not shown there; the `dio` load mode is only offered on Windows / Linux. |
 
 ## Changing parameters while the service is running
 

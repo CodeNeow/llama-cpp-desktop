@@ -443,11 +443,11 @@ export function SetTheme(theme: string): $CancellablePromise<void> {
 }
 
 /**
- * SetTrayEnabled sets the Windows system tray toggle: persists the preference
- * to config; on Windows it starts/stops the tray according to the persisted
- * value, on other platforms it only persists (InitTray/QuitTray are no-op
- * stubs). Concurrency-safe (configMu and trayMu guard global state), called
- * by the frontend settings page system tray toggle.
+ * SetTrayEnabled sets the system tray toggle: persists the preference to
+ * config; on Windows and macOS it starts/stops the tray according to the
+ * persisted value, on other platforms it only persists (the callers no-op —
+ * see trayPlatformSupported). Concurrency-safe (configMu and trayMu guard
+ * global state), called by the frontend settings page system tray toggle.
  *
  * Note: the tray is one-shot per process (the old fyne.io/systray had a
  * package-level quitOnce, and the v3 SystemTray tray deliberately keeps the
