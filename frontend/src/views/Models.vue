@@ -149,4 +149,23 @@ const tabs = [
 .tab-btn .tab-icon {
   display: flex;
 }
+
+/* ─── Phone (<=767px): the tab row scrolls horizontally inside its own
+       container when long zh labels would clip (same treatment as
+       Settings.vue's tab row). ─── */
+@media (max-width: 767px) {
+  .models-tabs {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .models-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Buttons keep their natural width so the row actually scrolls */
+  .tab-btn {
+    flex-shrink: 0;
+  }
+}
 </style>

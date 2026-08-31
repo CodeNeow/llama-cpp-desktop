@@ -443,8 +443,10 @@ function selectSection(id: DocSectionId): void {
   color: var(--text-muted);
 }
 
-/* ─── Narrow windows: TOC collapses into a wrapping chip row above the content ─── */
-@media (max-width: 900px) {
+/* ─── Tablet tier (<=1099px): the 190px sticky TOC collapses into a wrapping
+       chip row above the content — same two-pane collapse breakpoint as
+       ModelDetail.vue and Api.vue. ─── */
+@media (max-width: 1099px) {
   .docs-layout {
     flex-direction: column;
   }
