@@ -172,11 +172,12 @@ export type UpdateSectionMode = 'native' | 'link'
 
 /**
  * Update section mode: 'native' renders the in-app check-for-updates action
- * (self-update installer is Windows-only); 'link' renders a hint pointing at
- * the GitHub Releases page instead.
+ * (self-update targets: Windows via the downloaded NSIS installer, Android via
+ * the system package installer); 'link' renders a hint pointing at the GitHub
+ * Releases page instead.
  */
 export function updateSectionMode(state: PlatformState): UpdateSectionMode {
-  return state.os === 'windows' ? 'native' : 'link'
+  return state.os === 'windows' || state.os === 'android' ? 'native' : 'link'
 }
 
 // ─── Hardware-capability render gates ────────────────────────────────────────

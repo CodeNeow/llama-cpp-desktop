@@ -104,9 +104,16 @@ const downloading = computed(() => download.value?.status === 'downloading')
 const installing = computed(() => updateState.installing)
 const installError = computed(() => updateState.installError)
 
-// Done-view tip: installer artifacts offer the install-now flow; others keep
-// the manual hint (setup: run the installer later; portable/legacy: replace exe)
+// Done-view tip: Android hands the APK to the system installer (dialog
+// confirms; cancellable and re-triggerable); other installer artifacts offer
+// the desktop install-now flow; the rest keep the manual hint (setup: run the
+// installer later; portable/legacy: replace exe)
 const installTip = computed(() => {
+  if (download.value?.kind === 'android') {
+    return updateState.androidInstallSubmitted
+      ? t('updateModal.installSubmitted')
+      : t('updateModal.installAskAndroid')
+  }
   if (download.value?.installer) return t('updateModal.installAsk')
   return download.value?.kind === 'setup' ? t('updateModal.doneTipSetup') : t('updateModal.doneTip')
 })

@@ -5,6 +5,8 @@ import {
   stopUpdateDownload as stopUpdateDownloadBackend,
   installUpdate as installUpdateBackend,
   getUpdateDownloadStatus,
+  installAndroidUpdateApk,
+  openAndroidInstallPermissionSettings,
 } from '../wails'
 import { t } from './i18n'
 
@@ -31,7 +33,7 @@ export interface UpdateDownloadState {
   version: string
   filePath: string
   error: string
-  kind: string // Install kind of the running app: setup (NSIS install) / portable
+  kind: string // Install kind of the running app: setup (NSIS install) / portable / android (apk via the system installer)
   installer: boolean // Whether the downloaded artifact is the setup installer (install-now flow)
 }
 
@@ -71,6 +73,9 @@ export const updateState = reactive({
   error: '',
   installing: false, // install-now confirmed and accepted by the backend; the app is exiting
   installError: '', // install-now launch failure shown in the modal (retry stays possible)
+  // Android: the APK was handed to the system installer (the dialog is
+  // cancellable, so the "install now" button stays usable for a re-trigger)
+  androidInstallSubmitted: false,
 })
 
 let downloadTimer: ReturnType<typeof setInterval> | null = null
@@ -175,6 +180,7 @@ export function closeUpdateModal(): void {
   // download starts from a clean slate
   updateState.installing = false
   updateState.installError = ''
+  updateState.androidInstallSubmitted = false
 }
 
 /**
@@ -194,18 +200,53 @@ export async function cancelUpdateDownload(): Promise<void> {
 }
 
 /**
- * User confirmed "install now": the backend launches the downloaded setup
- * installer and exits the app shortly after. On success `installing` stays
- * true (the window is about to close); on rejection it resets and the error
- * surfaces in the modal so the user can retry or update manually.
+ * User confirmed "install now": on desktop the backend launches the downloaded
+ * setup installer and exits the app shortly after; on Android the APK is handed
+ * to the system package installer through the Java bridge and the system
+ * confirmation dialog takes over (the app stays usable, the dialog is
+ * cancellable and can be re-triggered). On rejection the error surfaces in the
+ * modal so the user can retry or update manually.
  */
 export async function installUpdate(): Promise<void> {
-  updateState.installing = true
   updateState.installError = ''
+  if (updateState.download?.kind === 'android') {
+    await installUpdateAndroid()
+    return
+  }
+  updateState.installing = true
   try {
     await installUpdateBackend()
   } catch (e) {
     updateState.installing = false
     updateState.installError = t('updateModal.installFailed', { msg: e instanceof Error ? e.message : String(e) })
+  }
+}
+
+/**
+ * Android install-now: hand the downloaded APK to the system package installer
+ * via the Java bridge. When the "install unknown apps" grant is missing, the
+ * Settings screen is opened for the user and the modal shows the recovery
+ * hint; a successful commit flips the done-view tip to the submitted state
+ * (the system dialog is cancellable, so re-triggering stays possible).
+ */
+async function installUpdateAndroid(): Promise<void> {
+  const path = updateState.download?.filePath
+  if (!path) {
+    updateState.installError = t('updateModal.installFailed', { msg: 'apk path missing' })
+    return
+  }
+  try {
+    await installAndroidUpdateApk(path)
+    updateState.androidInstallSubmitted = true
+  } catch (e) {
+    const code = (e as Error & { code?: string }).code
+    if (code === 'needInstallPermission') {
+      await openAndroidInstallPermissionSettings()
+      updateState.installError = t('updateModal.needInstallPermission')
+    } else {
+      updateState.installError = t('updateModal.androidInstallFailed', {
+        msg: e instanceof Error ? e.message : String(e),
+      })
+    }
   }
 }

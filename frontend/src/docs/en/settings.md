@@ -35,5 +35,5 @@ These two paths decide where **new** content lands; to reuse model files already
 
 ## About
 
-- **Updates**: check manually; the app also auto-checks every two days. When a new version is found you can download it and replace the original executable to update. The in-app self-update action is Windows-only; other platforms show a link to GitHub Releases instead;
+- **Updates**: check manually; the app also auto-checks every two days. When a new version is found you can download it and replace the original executable to update. The in-app self-update is supported on Windows (the downloaded installer takes over) and Android (the downloaded APK goes through the system installer dialog; the first install asks for the "Install unknown apps" grant), other platforms show a link to GitHub Releases instead;
 - **Version / License / Repository**: the current version, the GPL-3.0 license and the repository URL.

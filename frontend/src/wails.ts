@@ -299,6 +299,47 @@ export async function installUpdate(): Promise<void> {
   return app().InstallUpdate()
 }
 
+// Android bridge capability types: window.wails is the WailsJSBridge injected
+// by the Wails Android runtime (absent under `vite` standalone, hence the
+// optional access).
+interface WailsAndroidBridge {
+  installUpdateApk?: (path: string) => string
+  openInstallPermissionSettings?: () => string
+}
+
+function androidBridge(): WailsAndroidBridge | undefined {
+  return (window as unknown as { wails?: WailsAndroidBridge }).wails
+}
+
+function parseBridgeResult(raw: string | undefined): { ok: boolean; error?: string; code?: string } {
+  if (!raw) return { ok: false, error: 'bridge unavailable' }
+  try {
+    const parsed = JSON.parse(raw) as { ok?: boolean; error?: string; code?: string }
+    return { ok: parsed.ok === true, error: parsed.error, code: parsed.code }
+  } catch {
+    return { ok: false, error: raw }
+  }
+}
+
+// Trigger the Android system package installer for a downloaded update APK
+// (Java PackageInstaller session); the system confirmation dialog owns the
+// rest of the flow. Rejects with `code: 'needInstallPermission'` when the
+// "install unknown apps" grant is missing.
+export async function installAndroidUpdateApk(path: string): Promise<void> {
+  const result = parseBridgeResult(androidBridge()?.installUpdateApk?.(path))
+  if (!result.ok) {
+    const err = new Error(result.error || 'install failed') as Error & { code?: string }
+    err.code = result.code
+    throw err
+  }
+}
+
+// Open the system Settings screen granting the "install unknown apps"
+// permission (recovery path for the needInstallPermission failure above).
+export async function openAndroidInstallPermissionSettings(): Promise<void> {
+  parseBridgeResult(androidBridge()?.openInstallPermissionSettings?.())
+}
+
 // ─── Downloads (HF Mirror) ───────────────────────────────────────
 
 export async function searchDownloads(query: string, filter: string): Promise<any[]> {

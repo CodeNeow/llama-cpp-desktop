@@ -142,6 +142,59 @@ func TestDetectInstallKind(t *testing.T) {
 	}
 }
 
+// TestPickUpdateAssetAndroid verifies the Android branch of asset selection:
+// the release's android .apk artifact is picked (arm64 preferred when several
+// ABIs are attached), desktop exe assets are never selected for the android
+// kind, and an empty asset list yields nil.
+func TestPickUpdateAssetAndroid(t *testing.T) {
+	assets := []GitHubAsset{
+		{Name: "llama-desktop-setup-v0.4.0-windows-amd64.exe"},
+		{Name: "llama-desktop-v0.4.0-android-armv7a-debug.apk"},
+		{Name: "llama-desktop-v0.4.0-android-arm64-debug.apk"},
+	}
+	got := pickUpdateAsset(assets, installKindAndroid)
+	if got == nil || got.Name != "llama-desktop-v0.4.0-android-arm64-debug.apk" {
+		t.Errorf("android pick = %+v, want the arm64 apk", got)
+	}
+
+	if got := pickUpdateAsset([]GitHubAsset{{Name: "llama-desktop-setup-v0.4.0-windows-amd64.exe"}}, installKindAndroid); got != nil {
+		t.Errorf("android pick with exe-only assets = %+v, want nil", got)
+	}
+
+	if got := pickUpdateAsset([]GitHubAsset{{Name: "llama-desktop-v0.4.0-android-arm64-debug.apk"}}, installKindAndroid); got == nil {
+		t.Error("android pick with a single apk = nil, want the apk")
+	}
+
+	if got := pickUpdateAsset(nil, installKindAndroid); got != nil {
+		t.Errorf("android pick with no assets = %+v, want nil", got)
+	}
+}
+
+// TestDetectInstallKindAndroid verifies the Android build always reports the
+// apk install kind without touching the exe filesystem probe (the runtime
+// lives on the read-only APK volume and never has an uninstall.exe sibling).
+func TestDetectInstallKindAndroid(t *testing.T) {
+	withPlatformGOOS(t, "android")
+	if got := detectInstallKind(); got != installKindAndroid {
+		t.Errorf("detectInstallKind on android = %q, want %q", got, installKindAndroid)
+	}
+}
+
+// TestInstallUpdateNowAndroidGuard verifies the desktop installer-launch flow
+// is rejected on Android: the APK install is triggered by the frontend through
+// the Java bridge (os/exec is unusable in the app sandbox), never by Go.
+func TestInstallUpdateNowAndroidGuard(t *testing.T) {
+	withPlatformGOOS(t, "android")
+	updateDownloadMu.Lock()
+	updateDownloadState.Status = "done"
+	updateDownloadState.Installer = true
+	updateDownloadState.FilePath = "llama-desktop-android-v9.9.9.apk"
+	updateDownloadMu.Unlock()
+	if err := installUpdateNow(func() {}); err == nil {
+		t.Error("installUpdateNow must be rejected on android, got nil error")
+	}
+}
+
 // TestCheckForUpdateNewer verifies hasUpdate is true when the remote version is newer
 // than the current version, carrying the version number and release notes.
 // Runs on the Windows branch: the update check is Windows-only (see the gate in

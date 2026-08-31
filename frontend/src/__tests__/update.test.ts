@@ -17,6 +17,8 @@ import {
   stopUpdateDownload as stopUpdateDownloadBackend,
   installUpdate as installUpdateBackend,
   getUpdateDownloadStatus,
+  installAndroidUpdateApk,
+  openAndroidInstallPermissionSettings,
 } from '../wails'
 
 // mock Wails bridge: window.go is injected by Wails runtime only, unavailable in test env
@@ -26,6 +28,8 @@ vi.mock('../wails', () => ({
   stopUpdateDownload: vi.fn(),
   installUpdate: vi.fn(),
   getUpdateDownloadStatus: vi.fn(),
+  installAndroidUpdateApk: vi.fn(),
+  openAndroidInstallPermissionSettings: vi.fn(),
 }))
 
 const mockCheckForUpdate = vi.mocked(checkForUpdateBackend)
@@ -33,6 +37,8 @@ const mockStartUpdateDownload = vi.mocked(startUpdateDownloadBackend)
 const mockStopUpdateDownload = vi.mocked(stopUpdateDownloadBackend)
 const mockInstallUpdate = vi.mocked(installUpdateBackend)
 const mockGetStatus = vi.mocked(getUpdateDownloadStatus)
+const mockInstallAndroidApk = vi.mocked(installAndroidUpdateApk)
+const mockOpenInstallSettings = vi.mocked(openAndroidInstallPermissionSettings)
 
 function resetState() {
   updateState.checking = false
@@ -42,6 +48,7 @@ function resetState() {
   updateState.error = ''
   updateState.installing = false
   updateState.installError = ''
+  updateState.androidInstallSubmitted = false
 }
 
 describe('lib/update', () => {
@@ -283,6 +290,55 @@ describe('lib/update', () => {
 
     expect(updateState.installing).toBe(false)
     expect(updateState.installError).toBe('启动安装器失败：no such file')
+  })
+
+  it('android kind hands the apk path to the Java bridge and marks the install submitted', async () => {
+    updateState.download = {
+      status: 'done', progress: 100, total: 100, downloaded: 100,
+      version: 'v0.2.0', filePath: '/data/data/com.codeneow.llamadesktop/files/llama-desktop-android-v0.2.0.apk',
+      error: '', kind: 'android', installer: true,
+    }
+    mockInstallAndroidApk.mockResolvedValue(undefined)
+
+    await installUpdate()
+
+    expect(mockInstallAndroidApk).toHaveBeenCalledWith(updateState.download?.filePath)
+    // the desktop Go installer flow must not be touched on android
+    expect(mockInstallUpdate).not.toHaveBeenCalled()
+    // the app does not exit: no installing state, the submitted tip shows instead
+    expect(updateState.installing).toBe(false)
+    expect(updateState.androidInstallSubmitted).toBe(true)
+    expect(updateState.installError).toBe('')
+  })
+
+  it('android needInstallPermission opens the Settings screen and surfaces the recovery hint', async () => {
+    updateState.download = {
+      status: 'done', progress: 100, total: 100, downloaded: 100,
+      version: 'v0.2.0', filePath: '/data/data/com.codeneow.llamadesktop/files/llama-desktop-android-v0.2.0.apk',
+      error: '', kind: 'android', installer: true,
+    }
+    mockInstallAndroidApk.mockRejectedValue(Object.assign(new Error('missing grant'), { code: 'needInstallPermission' }))
+    mockOpenInstallSettings.mockResolvedValue(undefined)
+
+    await installUpdate()
+
+    expect(mockOpenInstallSettings).toHaveBeenCalledTimes(1)
+    expect(updateState.androidInstallSubmitted).toBe(false)
+    expect(updateState.installError).toContain('安装未知应用')
+  })
+
+  it('android generic install failure surfaces the error without opening Settings', async () => {
+    updateState.download = {
+      status: 'done', progress: 100, total: 100, downloaded: 100,
+      version: 'v0.2.0', filePath: '/data/data/com.codeneow.llamadesktop/files/llama-desktop-android-v0.2.0.apk',
+      error: '', kind: 'android', installer: true,
+    }
+    mockInstallAndroidApk.mockRejectedValue(new Error('session commit failed'))
+
+    await installUpdate()
+
+    expect(mockOpenInstallSettings).not.toHaveBeenCalled()
+    expect(updateState.installError).toBe('安装失败：session commit failed')
   })
 })
 

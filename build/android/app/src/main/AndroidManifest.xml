@@ -5,6 +5,10 @@
     <!-- Internet permission for WebView -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- In-app self-update: hand the downloaded APK to the system package
+         installer (the user still confirms via the "install unknown apps"
+         grant and the system dialog) -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Observe network connectivity / type for android:NetworkChanged events -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />

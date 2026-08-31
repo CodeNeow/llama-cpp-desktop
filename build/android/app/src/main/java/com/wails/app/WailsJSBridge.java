@@ -97,6 +97,35 @@ public class WailsJSBridge {
     }
 
     /**
+     * Trigger the system package installer for a downloaded update APK. The
+     * Go sandbox cannot fire Android intents, so the frontend calls this
+     * after the Go backend finishes the update download.
+     * Called from JavaScript: wails.installUpdateApk(path)
+     *
+     * @param path Absolute path of the downloaded update APK
+     * @return JSON result: {"ok":true} on commit, or
+     *         {"ok":false,"error":...,"code":"needInstallPermission"} when
+     *         the "install unknown apps" grant is missing
+     */
+    @JavascriptInterface
+    public String installUpdateApk(String path) {
+        return bridge.installUpdateApk(path);
+    }
+
+    /**
+     * Open the system Settings screen granting this app the "install unknown
+     * apps" permission. Recovery action for installUpdateApk's
+     * needInstallPermission result.
+     * Called from JavaScript: wails.openInstallPermissionSettings()
+     *
+     * @return JSON result: {"ok":true} when the Settings screen was launched
+     */
+    @JavascriptInterface
+    public String openInstallPermissionSettings() {
+        return bridge.openInstallPermissionSettings();
+    }
+
+    /**
      * Get the platform name
      * Called from JavaScript: wails.platform()
      *

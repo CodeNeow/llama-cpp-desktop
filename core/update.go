@@ -91,13 +91,12 @@ type UpdateCheckResult struct {
 // compares versions. apiURL is injectable so tests can use httptest instead
 // of the real network.
 //
-// Windows-only gate: upstream releases ship Windows artifacts only (.exe
-// assets, NSIS installer / uninstall.exe detection, ShellExecute launch), so
-// on linux/macOS there is nothing to update to — the check short-circuits to
-// a "no update" result without touching the network. Revisit when
-// non-Windows release artifacts are published.
+// Platform gate: only targets with release artifacts ship updates — Windows
+// (NSIS installer assets) and Android (the arm64 debug APK attached to every
+// release). On linux/macOS there is nothing to update to — the check
+// short-circuits to a "no update" result without touching the network.
 func CheckForUpdateAt(apiURL string) (*UpdateCheckResult, error) {
-	if platformGOOS != "windows" {
+	if platformGOOS != "windows" && platformGOOS != "android" {
 		return &UpdateCheckResult{HasUpdate: false, Version: currentVersion}, nil
 	}
 	release, err := fetchLatestReleaseAt(context.Background(), apiURL)
@@ -155,18 +154,26 @@ var updateQuitDelay = 500 * time.Millisecond
 
 // Install-kind constants: setup is the NSIS installer build (downloads the
 // setup installer), portable is the portable build (downloads the portable
-// exe). Used for update artifact selection and distinguishing frontend hints.
+// exe), android is the Android app build (downloads the arm64 APK attached to
+// every release; the install itself goes through the Java bridge's
+// PackageInstaller flow, see WailsJSBridge.installUpdateApk). Used for update
+// artifact selection and distinguishing frontend hints.
 const (
 	installKindSetup    = "setup"
 	installKindPortable = "portable"
+	installKindAndroid  = "android"
 )
 
 // detectInstallKind detects the current install type: a setup install is done
 // by NSIS and the install directory always contains uninstall.exe; a portable
-// install is a green build with no uninstall.exe. Pure filesystem detection,
-// cross-platform. Reuses updateExePath (the os.Executable test injection point)
-// to stay testable.
+// install is a green build with no uninstall.exe; Android is always the apk
+// kind (the app ships as a single APK). Pure detection, cross-platform.
+// Reuses updateExePath (the os.Executable test injection point) to stay
+// testable.
 func detectInstallKind() string {
+	if platformGOOS == "android" {
+		return installKindAndroid
+	}
 	exePath, err := updateExePath()
 	if err != nil {
 		return installKindPortable
@@ -186,6 +193,11 @@ func detectInstallKind() string {
 //   - Oldest naming (v0.1.6): installer llama-gui-amd64-installer.exe,
 //     portable llama-gui.exe.
 //
+// Android (installKindAndroid) matches the release's APK artifact instead of
+// the exe family: a .apk asset whose name contains "android", preferring
+// arm64 (the only ABI the release pipeline publishes today, matching the
+// arm64-only abiFilters of the gradle project).
+//
 // setup returns the first installer asset (name contains installer or setup);
 // portable returns the first asset containing portable or any non-installer
 // exe (the oldest llama-gui.exe contains none of portable/installer/setup and
@@ -194,6 +206,26 @@ func detectInstallKind() string {
 // when no portable/non-installer exe matches, the portable branch falls back
 // to the first installer asset instead of failing.
 func pickUpdateAsset(assets []GitHubAsset, kind string) *GitHubAsset {
+	if kind == installKindAndroid {
+		var firstAPK, firstARM64 *GitHubAsset
+		for i := range assets {
+			a := &assets[i]
+			name := strings.ToLower(a.Name)
+			if !strings.HasSuffix(name, ".apk") || !strings.Contains(name, "android") {
+				continue
+			}
+			if firstAPK == nil {
+				firstAPK = a
+			}
+			if strings.Contains(name, "arm64") && firstARM64 == nil {
+				firstARM64 = a
+			}
+		}
+		if firstARM64 != nil {
+			return firstARM64
+		}
+		return firstAPK
+	}
 	var firstInstaller *GitHubAsset
 	for i := range assets {
 		a := &assets[i]
@@ -276,9 +308,15 @@ func downloadUpdateRelease(version string) {
 
 	// Whether the picked asset is the setup installer decides the saved
 	// filename (Step 2) and the Installer flag reported to the frontend (the
-	// install-now flow only applies to installer artifacts).
+	// install-now flow only applies to installer artifacts). Android APK
+	// artifacts are directly installable through the Java bridge's
+	// PackageInstaller flow, so the frontend install-now offer applies to
+	// them exactly like a desktop setup installer.
 	assetName := strings.ToLower(asset.Name)
 	isInstallerAsset := strings.Contains(assetName, "setup") || strings.Contains(assetName, "installer")
+	if kind == installKindAndroid {
+		isInstallerAsset = true
+	}
 
 	updateDownloadMu.Lock()
 	updateDownloadState.Total = asset.Size
@@ -298,7 +336,18 @@ func downloadUpdateRelease(version string) {
 	}
 	dir := filepath.Dir(exePath)
 	var fileName string
-	if isInstallerAsset {
+	if kind == installKindAndroid {
+		// The exe path lives on the read-only APK volume on Android: the
+		// downloaded update lands in the app-private files dir instead,
+		// where the Java installer bridge reads it for the PackageInstaller
+		// session.
+		dir = pathsAndroidFilesDir()
+		if dir == "" {
+			setUpdateDownloadError(tr("无法定位应用数据目录", "cannot resolve the app data directory"))
+			return
+		}
+		fileName = "llama-desktop-android-" + release.TagName + ".apk"
+	} else if isInstallerAsset {
 		fileName = "llama-desktop-setup-" + release.TagName + ".exe"
 	} else {
 		fileName = "llama-desktop-portable-" + release.TagName + ".exe"
@@ -353,7 +402,15 @@ func setUpdateDownloadError(msg string) {
 // which both tells the frontend the app is exiting and rejects a double click
 // (this function requires status done). A launch failure restores status
 // "done" so the user can retry from the update modal.
+//
+// Android never reaches the launch path: its APK install goes through the
+// Java bridge (WailsJSBridge.installUpdateApk → PackageInstaller), triggered
+// by the frontend directly — os/exec is unusable in the app sandbox and the
+// system confirmation dialog, not an app exit, owns the install UX.
 func installUpdateNow(quit func()) error {
+	if platformGOOS == "android" {
+		return errors.New(tr("请在前端触发的系统安装弹窗中完成安装", "the Android install runs through the frontend-triggered system installer dialog"))
+	}
 	updateDownloadMu.Lock()
 	status := updateDownloadState.Status
 	installer := updateDownloadState.Installer

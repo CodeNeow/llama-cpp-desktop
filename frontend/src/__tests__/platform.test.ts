@@ -236,14 +236,15 @@ describe('loadModeOptions', () => {
 
 describe('OS-scoped setting gates (Settings.vue visibility)', () => {
   // Gates follow each feature's own capability matrix: tray is windows+darwin
-  // (NSStatusItem; linux DBUS is too desktop-environment-dependent), while
-  // headless relaunch, CUDA device pinning and the self-update installer stay
-  // Windows-only. None are viewport-scoped.
+  // (NSStatusItem; linux DBUS is too desktop-environment-dependent), headless
+  // relaunch and CUDA device pinning stay Windows-only, and the self-update
+  // action targets windows (NSIS installer) + android (system package
+  // installer). None are viewport-scoped.
   it.each<[OsId, boolean, boolean, boolean, 'native' | 'link']>([
     ['windows', true, true, true, 'native'],
     ['darwin', true, false, false, 'link'],
     ['linux', false, false, false, 'link'],
-    ['android', false, false, false, 'link'],
+    ['android', false, false, false, 'native'],
     ['ios', false, false, false, 'link'],
     ['other', false, false, false, 'link'],
   ])(

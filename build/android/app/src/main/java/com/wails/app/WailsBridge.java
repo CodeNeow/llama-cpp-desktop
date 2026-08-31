@@ -1410,4 +1410,105 @@ public class WailsBridge {
     private void dialogCallback(int callbackID, int buttonIndex) {
         if (initialized) nativeDialogCallback(callbackID, buttonIndex);
     }
+
+    // ─── APK self-update install ──────────────────────────────────
+
+    /**
+     * Hand a downloaded update APK to the system package installer. The Go
+     * sandbox cannot fire Android intents (no exec, no JNI access from Go),
+     * so the frontend calls this through WailsJSBridge once the Go backend
+     * finishes the update download. The APK is read straight from the
+     * app-private files dir — a PackageInstaller session needs no
+     * FileProvider URI. The system's own confirmation dialog owns the rest
+     * of the UX; the app is replaced only after the user confirms.
+     *
+     * @param path Absolute path of the downloaded update APK
+     * @return JSON result for the JS caller: {"ok":true} on commit, or
+     *         {"ok":false,"error":"..."} plus "code":"needInstallPermission"
+     *         when the "install unknown apps" grant is missing (the user must
+     *         grant it in Settings first; see openInstallPermissionSettings).
+     */
+    public String installUpdateApk(String path) {
+        try {
+            java.io.File apk = new java.io.File(path);
+            if (!apk.exists() || apk.length() == 0) {
+                return installUpdateApkError("update apk file is missing", null);
+            }
+            if (Build.VERSION.SDK_INT >= 26
+                    && !activity.getPackageManager().canRequestPackageInstalls()) {
+                Log.w(TAG, "installUpdateApk: install-unknown-apps grant missing");
+                return installUpdateApkError("missing the install-unknown-apps grant",
+                        "needInstallPermission");
+            }
+            android.content.pm.PackageInstaller installer =
+                    activity.getPackageManager().getPackageInstaller();
+            android.content.pm.PackageInstaller.SessionParams params =
+                    new android.content.pm.PackageInstaller.SessionParams(
+                            android.content.pm.PackageInstaller.SessionParams.MODE_FULL_INSTALL);
+            int sessionId = installer.createSession(params);
+            android.content.pm.PackageInstaller.Session session = installer.openSession(sessionId);
+            try {
+                java.io.InputStream in = new java.io.FileInputStream(apk);
+                java.io.OutputStream out = session.openWrite("llama-desktop-update", 0, apk.length());
+                byte[] buf = new byte[65536];
+                int n;
+                while ((n = in.read(buf)) > 0) {
+                    out.write(buf, 0, n);
+                }
+                session.fsync(out);
+                out.close();
+                in.close();
+                // The system installer relaunches the app task when it finishes;
+                // FLAG_IMMUTABLE is the correct mutability on API 23+.
+                int flags = android.app.PendingIntent.FLAG_UPDATE_CURRENT;
+                if (Build.VERSION.SDK_INT >= 23) {
+                    flags |= android.app.PendingIntent.FLAG_IMMUTABLE;
+                }
+                android.app.PendingIntent statusIntent = android.app.PendingIntent.getActivity(
+                        activity, 0, new Intent(activity, MainActivity.class), flags);
+                session.commit(statusIntent.getIntentSender());
+            } finally {
+                session.close();
+            }
+            Log.i(TAG, "update apk committed to the package installer: " + path);
+            return "{\"ok\":true}";
+        } catch (Exception e) {
+            Log.e(TAG, "installUpdateApk failed", e);
+            return installUpdateApkError(e.getMessage() == null ? e.toString() : e.getMessage(), null);
+        }
+    }
+
+    /** JSON error builder for installUpdateApk (org.json handles escaping). */
+    private static String installUpdateApkError(String message, String code) {
+        try {
+            JSONObject o = new JSONObject();
+            o.put("ok", false);
+            o.put("error", message);
+            if (code != null) {
+                o.put("code", code);
+            }
+            return o.toString();
+        } catch (Exception e) {
+            return "{\"ok\":false,\"error\":\"apk install failed\"}";
+        }
+    }
+
+    /**
+     * Open the system Settings screen that grants this app the "install
+     * unknown apps" permission (API 26+; older versions carry no per-app
+     * grant). The frontend offers this as the recovery action when
+     * installUpdateApk reports needInstallPermission.
+     *
+     * @return JSON result: {"ok":true} when the Settings screen was launched.
+     */
+    public String openInstallPermissionSettings() {
+        if (Build.VERSION.SDK_INT < 26) {
+            return "{\"ok\":true}";
+        }
+        Intent intent = new Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                Uri.parse("package:" + activity.getPackageName()));
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        activity.startActivity(intent);
+        return "{\"ok\":true}";
+    }
 }
