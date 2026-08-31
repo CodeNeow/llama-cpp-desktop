@@ -646,7 +646,7 @@ func startHFDownload(modelID string, files []string) error {
 		}
 		task.ctx, task.cancel = context.WithCancel(context.Background())
 		dlTasks = append(dlTasks, task)
-		go downloadTask(task)
+		spawnDownloadTask(task)
 	}
 	// Unlock before persisting the queue (#B1): persistTasksNow → saveConfig
 	// acquires dlTasksMu again at the end to take a snapshot. If dlTasksMu is

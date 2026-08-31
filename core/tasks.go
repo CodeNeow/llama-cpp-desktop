@@ -100,6 +100,24 @@ func persistTasksThrottled() {
 	saveConfig()
 }
 
+// dlTaskGoroutines counts in-flight downloadTask goroutines. Every terminal
+// branch of downloadTask persists the queue (persistTasksNow) as its FINAL
+// action before returning, so a test that only waits for terminal task STATUS
+// can still race the trailing config write (the status flips before the write
+// completes; see TestStartHFDownloadNoDeadlock's TempDir-cleanup flake).
+// spawnDownloadTask is the single paired Add/Done registration point.
+var dlTaskGoroutines sync.WaitGroup
+
+// spawnDownloadTask starts the download goroutine for one task, registered in
+// dlTaskGoroutines so tests can drain it (waitDlGoroutinesForTest).
+func spawnDownloadTask(task *DlTask) {
+	dlTaskGoroutines.Add(1)
+	go func() {
+		defer dlTaskGoroutines.Done()
+		downloadTask(task)
+	}()
+}
+
 // retryDownloadTask rebuilds the task's download context and restarts the
 // download goroutine. Once a task reaches a terminal error/cancelled/done
 // state its ctx is already finished (the goroutine exited) and cannot be
@@ -118,7 +136,7 @@ func retryDownloadTask(task *DlTask) {
 	task.SizeHuman = ""
 	task.Speed = 0
 	task.Status = "queued"
-	go downloadTask(task)
+	spawnDownloadTask(task)
 }
 
 // idleReadTimeout is how long the download loop waits for the next body chunk

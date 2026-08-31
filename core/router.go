@@ -223,7 +223,14 @@ func fetchOpenAIModels(client *http.Client, base string) ([]LoadedModel, error) 
 	return out, nil
 }
 
-// unloadRouterModel sends a model unload request to llama-server.
+// unloadRouterModel sends a model unload request to llama-server. Measured
+// contract (real b10342 and the pinned b10695, router mode with a models
+// preset): POST /models/unload {"model":<id>} answers 200 {"success":true}
+// for a resident model; 400 with a structured error object when the model is
+// not running / unknown; 404 on direct-mode servers (-m, no preset — no
+// router routes at all), which surfaces the guided "stop the service instead"
+// message below. No newer alternative unload endpoint exists upstream at the
+// pin, so no dual-path attempt is made.
 func unloadRouterModel(port int, id string) error {
 	if id == "" {
 		return errors.New("unload router model: empty model id")
@@ -253,11 +260,11 @@ func unloadRouterModel(port int, id string) error {
 			return fmt.Errorf("unload router model: %s", tr("直连模式不支持卸载，请停止服务", "direct mode: unload not supported, stop the service instead"))
 		}
 		var errResp struct {
-			Error string `json:"error"`
+			Error json.RawMessage `json:"error"`
 		}
 		_ = json.NewDecoder(resp.Body).Decode(&errResp)
-		if errResp.Error != "" {
-			return fmt.Errorf("unload router model: %s (HTTP %d)", errResp.Error, resp.StatusCode)
+		if msg := unloadErrorMessage(errResp.Error); msg != "" {
+			return fmt.Errorf("unload router model: %s (HTTP %d)", msg, resp.StatusCode)
 		}
 		return fmt.Errorf("unload router model: HTTP %d", resp.StatusCode)
 	}
@@ -270,6 +277,31 @@ func unloadRouterModel(port int, id string) error {
 		return fmt.Errorf("unload router model: server returned success=false")
 	}
 	return nil
+}
+
+// unloadErrorMessage extracts the human-readable message from a llama-server
+// error body's "error" field, which has shipped in two shapes: a plain string
+// ("error":"not found") and a structured object
+// ("error":{"code":400,"message":"model is not running","type":...} — the
+// shape measured on real b10342 / b10695 router-mode servers, e.g. when the
+// target model is not resident or unknown). Empty input or an unrecognized
+// shape (number, array, garbage) yields "" so the caller can fall back to the
+// bare HTTP status.
+func unloadErrorMessage(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return s
+	}
+	var obj struct {
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(raw, &obj); err == nil {
+		return obj.Message
+	}
+	return ""
 }
 
 // getServerPort returns the currently recorded server port (0 means not

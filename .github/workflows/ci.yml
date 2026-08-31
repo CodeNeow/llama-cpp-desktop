@@ -97,6 +97,89 @@ jobs:
           fi
           test -f .e2e-cache/llamacpp/llama-server
           test -f .e2e-cache/stories260K.gguf
+      - name: llama.cpp API contract shape probe (informational only)
+        # Boots the e2e llama-server once in router mode (models preset, same
+        # start shape as the app's buildServerCommand) and logs three contract
+        # lines before the e2e steps, so a future pin bump surfaces HTTP
+        # contract drift explicitly in the job log. Deliberately NO `set -e` and
+        # `exit 0` at the end: the probe never affects the job outcome — the e2e
+        # assertions below remain the only pass conditions.
+        #
+        # Pin-bump checklist (verify against upstream tools/server sources when
+        # changing the cache key + download URLs in backend / build-windows /
+        # build-macos):
+        #   1. GET /models (router preset mode) still carries per-entry
+        #      status:{value,args} — core/router.go parseModelsBody's router
+        #      shape and the loaded/loading/sleeping filter depend on it.
+        #   2. POST /models/unload {"model":<id>} still unloads a loaded model
+        #      (200 {"success":true} at b10342/b10695). A 404 means the route
+        #      vanished/moved: core/router.go unloadRouterModel would then
+        #      misreport ROUTER mode as direct mode (guided "stop the service").
+        #   3. GET /v1/models still lists the served models (it is
+        #      fetchRouterModels' direct-mode 404 fallback target; router mode
+        #      currently answers it with the same listing as /models).
+        shell: bash
+        run: |
+          srv=""
+          for c in .e2e-cache/llamacpp/llama-server .e2e-cache/llamacpp/llama-server.exe; do
+            if [ -f "$c" ]; then srv="$c"; break; fi
+          done
+          if [ -z "$srv" ]; then
+            echo "[contract-probe] llama-server binary not found in .e2e-cache; skipping"
+            exit 0
+          fi
+          port=$((20000 + RANDOM % 20000))
+          gguf="$(pwd)/.e2e-cache/stories260K.gguf"
+          preset="$(pwd)/.e2e-cache/contract-probe.ini"
+          # Native llama-server on the Windows runner cannot read MSYS-style
+          # paths: convert to drive-letter form (forward slashes are fine).
+          # MUST run before the preset INI is written below — the INI embeds
+          # the model path verbatim.
+          if command -v cygpath >/dev/null 2>&1; then
+            gguf="$(cygpath -m "$gguf")"
+            preset="$(cygpath -m "$preset")"
+          fi
+          printf '[stories260K]\nmodel = %s\n\n' "$gguf" > "$preset"
+          "$srv" --version | head -1
+          "$srv" --host 127.0.0.1 --port "$port" --models-preset "$preset" --no-webui \
+            > .e2e-cache/contract-probe-server.log 2>&1 &
+          srvpid=$!
+          body=""
+          for i in $(seq 1 30); do
+            body="$(curl -s --max-time 2 "http://127.0.0.1:$port/models" || true)"
+            # Ready gate: the preset-registered id must be listed — the server
+            # can answer /models with an early non-listing body mid-startup.
+            if printf '%s' "$body" | grep -q 'stories260K'; then break; fi
+            body=""
+            sleep 1
+          done
+          if [ -n "$body" ]; then
+            # created-timestamps differ per server start: blank them so the
+            # hash reflects the response SHAPE, not the start time.
+            stable="$(printf '%s' "$body" | sed -E 's/"created":[0-9]+/"created":0/g')"
+            models_hash="$(printf '%s' "$stable" | { sha256sum 2>/dev/null || shasum -a 256; } | cut -c1-12)"
+            echo "[contract-probe] GET /models body sha256(first12) = $models_hash"
+            if printf '%s' "$body" | grep -q '"status"'; then
+              echo '[contract-probe] GET /models contains "status": true'
+            else
+              echo '[contract-probe] GET /models contains "status": false'
+            fi
+            # Prime the model into memory first, so the unload probe measures
+            # the real loaded-model contract (200 {"success":true} at the
+            # pinned builds; 400 "model is not running" when not loaded).
+            curl -s --max-time 60 -o /dev/null -X POST -H 'Content-Type: application/json' \
+              -d '{"model":"stories260K","messages":[{"role":"user","content":"hi"}],"max_tokens":1}' \
+              "http://127.0.0.1:$port/v1/chat/completions" || true
+            unload_code="$(curl -s --max-time 10 -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
+              -d '{"model":"stories260K"}' "http://127.0.0.1:$port/models/unload" || true)"
+            echo "[contract-probe] POST /models/unload (loaded model) status = $unload_code"
+          else
+            echo "[contract-probe] server did not answer /models within 30s; shape probes skipped"
+          fi
+          kill "$srvpid" 2>/dev/null || true
+          wait "$srvpid" 2>/dev/null || true
+          rm -f "$preset" .e2e-cache/contract-probe-server.log
+          exit 0
       - name: Service-chain E2E (real llama-server + tiny model)
         env:
           LLAMA_DESKTOP_E2E: "1"

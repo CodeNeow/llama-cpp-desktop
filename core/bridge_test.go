@@ -121,6 +121,31 @@ func cancelAllTasks(t *testing.T) {
 	waitTasksTerminal(t, 5*time.Second)
 }
 
+// waitDlGoroutinesForTest waits (bounded) until every downloadTask goroutine
+// spawned through spawnDownloadTask has exited. A downloadTask's terminal
+// persistTasksNow write is its FINAL action, so goroutine exit — not terminal
+// task status — is the happens-before edge that proves the trailing config
+// write (temp file + fsync + rename inside atomicWriteFile) has completed.
+// Without this drain, t.TempDir cleanup can RemoveAll the directory while a
+// goroutine's trailing write is still in flight: the temp file then lands
+// after the cleanup scan ("directory is not empty") or its rename targets the
+// already-removed directory (observed as a flaky FAIL on Go 1.24+, where
+// TempDir cleanup errors fail the test). Call only after waitTasksTerminal /
+// cancelAllTasks: a paused (non-terminal) task's goroutine never exits.
+func waitDlGoroutinesForTest(t *testing.T) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() {
+		dlTaskGoroutines.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("download goroutines did not exit within 5s")
+	}
+}
+
 // TestStartHFDownloadNoDeadlock is a #B1 deadlock regression test: startHFDownload
 // calls persistTasksNow → saveConfig after enqueue, and saveConfig re-acquires dlTasksMu
 // at its tail for snapshotting. If persistTasksNow is called while dlTasksMu is held
@@ -175,6 +200,11 @@ func TestStartHFDownloadNoDeadlock(t *testing.T) {
 
 	// Wait for goroutines to exit (404 fails fast to error state) to avoid leakage.
 	waitTasksTerminal(t, 5*time.Second)
+	// Drain the goroutines themselves: their terminal persistTasksNow is the
+	// last action before exit, so waiting only on status can still race the
+	// trailing config write into this test's temp cwd (the TempDir-cleanup
+	// flake this drain fixes).
+	waitDlGoroutinesForTest(t)
 }
 
 // TestStartHFDownloadQueue verifies batch file enqueue: IDs increment, URLs use

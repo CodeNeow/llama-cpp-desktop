@@ -460,3 +460,54 @@ func TestUnloadRouterModel404(t *testing.T) {
 		t.Errorf("error = %v, want the direct-mode guidance", err)
 	}
 }
+
+// TestUnloadRouterModelUpstreamErrorObject verifies the structured error
+// contract measured on real b10342 / pinned-b10695 router-mode servers: a 400
+// body whose "error" field is an OBJECT ("message" member, e.g. "model is not
+// running" for an unload of a non-resident model) surfaces that message
+// instead of the bare HTTP status — the pre-fix decoder only understood a
+// plain-string "error" and silently dropped the reason.
+func TestUnloadRouterModelUpstreamErrorObject(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"error":{"code":400,"message":"model is not running","type":"invalid_request_error"}}`))
+	}))
+	defer srv.Close()
+
+	orig := routerBaseURL
+	routerBaseURL = func(port int) string { return srv.URL }
+	defer func() { routerBaseURL = orig }()
+
+	err := unloadRouterModel(8080, "stories260K")
+	if err == nil {
+		t.Fatal("400 should return an error")
+	}
+	if !strings.Contains(err.Error(), "model is not running") {
+		t.Errorf("error = %v, want the server's structured message", err)
+	}
+}
+
+// TestUnloadErrorMessage pins the error-shape vocabulary: plain string (legacy
+// shape), structured object (measured on b10342/b10695), empty/missing field,
+// and unrecognized shapes (number / garbage) all resolve without surprises —
+// unknown shapes yield "" so callers fall back to the bare HTTP status.
+func TestUnloadErrorMessage(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{"plain string", `"not found"`, "not found"},
+		{"structured object", `{"code":400,"message":"model is not found","type":"invalid_request_error"}`, "model is not found"},
+		{"empty string", `""`, ""},
+		{"empty object", `{}`, ""},
+		{"missing field", ``, ""},
+		{"number shape", `42`, ""},
+		{"garbage", `not json`, ""},
+	}
+	for _, tt := range tests {
+		if got := unloadErrorMessage(json.RawMessage(tt.raw)); got != tt.want {
+			t.Errorf("%s: unloadErrorMessage(%s) = %q, want %q", tt.name, tt.raw, got, tt.want)
+		}
+	}
+}
