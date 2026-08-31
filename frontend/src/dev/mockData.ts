@@ -187,13 +187,16 @@ function startServerLogs(): void {
 }
 
 // ─── Monitor sample (jitters per call so the API page chart draws a curve) ───
+// memUsed/memTotal are BYTES (uint64 in core/monitor.go; the Home memory card
+// divides by GiB for display), so GB-scale magnitudes must be converted —
+// raw GB floats would render as "0.0 /0 GB".
 
 function monitorStatus(): Record<string, any> {
   if (!serverRunning) {
     return {
       cpuPercent: jitter(6, 4),
-      memUsed: jitter(3.1, 0.3),
-      memTotal: memory.totalGb,
+      memUsed: Math.round(jitter(3.1, 0.3) * GiB),
+      memTotal: memory.totalGb * GiB,
       gpus,
       serverRunning: false,
       promptTps: 0,
@@ -204,8 +207,8 @@ function monitorStatus(): Record<string, any> {
   }
   return {
     cpuPercent: Math.round(jitter(34, 12) * 10) / 10,
-    memUsed: Math.round(jitter(7.2, 0.7) * 100) / 100,
-    memTotal: memory.totalGb,
+    memUsed: Math.round(jitter(6.9, 0.4) * GiB),
+    memTotal: memory.totalGb * GiB,
     gpus,
     serverRunning: true,
     promptTps: Math.round(jitter(118, 35) * 10) / 10,

@@ -6,15 +6,18 @@
        original layout byte-for-byte. -->
   <div class="chat-page" :class="{ 'chat-page--dock-left': dockSide === 'left' && dockWidth > 0 }">
     <div class="sticky-top">
-      <div class="page-header">
-        <h1 class="page-title">{{ t('chat.title') }}</h1>
-        <p class="page-subtitle">{{ t('chat.subtitle') }}</p>
-      </div>
+      <!-- Design frame ②: the header slims down to a model capsule chip (the
+           gradient dot is the brand/status mark, the name + chevron open the
+           model picker). The big page title is gone on all tiers — the sidebar
+           / bottom nav already carry the page identity and the phone viewport
+           belongs to the conversation. -->
       <div class="chat-toolbar">
         <!-- Model picker: themed dropdown (popup list is rendered in-app, so it
              follows the theme — a native select's popup is OS-rendered).
              Options come from the local model scan, so picking works with the
-             service stopped; sending then auto-starts it. -->
+             service stopped; sending then auto-starts it. The chip look is a
+             scoped :deep() reskin of the toolbar variant; the trigger stays a
+             real button with the full WAI-ARIA select-only combobox wiring. -->
         <ThemedSelect
           variant="toolbar"
           class="chat-model-select"
@@ -27,20 +30,29 @@
           @update:model-value="pickModel"
         />
         <button
-          class="chat-clear-btn"
+          class="chat-icon-btn chat-clear-btn"
           @click="clearChat"
           :disabled="messages.length === 0 || streaming"
+          :aria-label="t('chat.clear')"
+          :title="t('chat.clear')"
+          type="button"
         >
-          {{ t('chat.clear') }}
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 6h18"/>
+            <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+            <path d="M10 11v6M14 11v6"/>
+          </svg>
         </button>
         <button
-          class="chat-settings-btn"
+          class="chat-icon-btn chat-settings-btn"
           @click.stop="showParams = !showParams"
           :aria-expanded="showParams"
+          :aria-label="t('chat.settings')"
           :title="t('chat.settings')"
           type="button"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"/>
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
           </svg>
@@ -94,7 +106,10 @@
           :class="msg.role === 'user' ? 'is-user' : 'is-assistant'"
         >
           <div class="message-bubble">
-            <span class="message-role">{{ msg.role === 'user' ? t('chat.you') : t('chat.assistant') }}</span>
+            <!-- Design frame ②: only assistant bubbles carry a small header —
+                 the answering model's display name (user bubbles are identified
+                 by position + the gradient skin) -->
+            <span v-if="msg.role === 'assistant'" class="message-role">{{ assistantLabel }}</span>
             <!-- Reasoning (thinking) block, assistant messages with thinking output only -->
             <div v-if="msg.reasoning" class="reasoning-block" :class="{ expanded: isReasoningExpanded(idx, msg) }">
               <button class="reasoning-header" type="button" @click="toggleReasoning(idx)">
@@ -124,6 +139,15 @@
               v-html="renderMarkdown(msg.content)"
             ></div>
             <p v-else class="message-content">{{ msg.content }}</p>
+            <!-- Streaming state (last assistant bubble only): breathing typing
+                 dots while no answer text has landed yet, then a small
+                 "Generating… · N tok/s" meta line fed by the live per-stream
+                 counters; the existing statsLine takes over once the stream
+                 ends. Rendering only — the stream wiring below is untouched. -->
+            <template v-if="idx === messages.length - 1 && streaming && msg.role === 'assistant'">
+              <div v-if="!msg.content" class="typing-dots" aria-hidden="true"><i /><i /><i /></div>
+              <div class="stream-meta">{{ streamMetaLine }}</div>
+            </template>
             <span v-if="idx === messages.length - 1 && streaming" class="streaming-cursor" />
             <!-- Per-phase token rates footer, present after streaming ends -->
             <div v-if="statsLine(msg)" class="message-stats">{{ statsLine(msg) }}</div>
@@ -191,16 +215,33 @@
           @input="onInputResize"
           @paste="onInputPaste"
         ></textarea>
+        <!-- Design frame ② composer: circular gradient send button that
+             flips to a red circular stop button while streaming — the state
+             must read at a glance, so the icons + aria-labels swap with it. -->
         <button
           v-if="!streaming"
           class="send-btn"
           :disabled="serviceStarting || !selectedModel"
+          :aria-label="t('chat.send')"
+          :title="t('chat.send')"
           @click="send"
+          type="button"
         >
-          {{ t('chat.send') }}
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M3 11.5L21 3l-8.5 18-2.3-7.2L3 11.5z"/>
+          </svg>
         </button>
-        <button v-else class="send-btn stop-btn" @click="stop">
-          {{ t('chat.stop') }}
+        <button
+          v-else
+          class="send-btn stop-btn"
+          :aria-label="t('chat.stop')"
+          :title="t('chat.stop')"
+          @click="stop"
+          type="button"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <rect x="5.5" y="5.5" width="13" height="13" rx="2.5"/>
+          </svg>
         </button>
       </div>
     </div>
@@ -208,7 +249,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick, watch, onUnmounted, type ComponentPublicInstance } from 'vue'
+import { ref, computed, onMounted, nextTick, watch, onUnmounted, type ComponentPublicInstance, type Ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { getServerStatus, getServerConfig, getModels, getLlamaCpp, startServerWithModel, unloadModel } from '../wails'
 import { chatReadiness, fetchRouterModels, modelsToUnload, streamChatCompletion, tokenRates, type ChatReadiness } from '../lib/chat'
@@ -267,6 +308,33 @@ const modelOptions = computed<SelectOption[]>(() => localModels.value.map((m) =>
 const inputPlaceholder = computed(() =>
   platform.value.isMobile ? t('chat.inputPlaceholderShort') : t('chat.inputPlaceholder')
 )
+
+/**
+ * Small header shown on assistant bubbles (design frame ②): the answering
+ * model's human-readable display label, falling back to the generic
+ * "Assistant" when the selection is missing from the scanned list.
+ */
+const assistantLabel = computed<string>(() => {
+  const opt = modelOptions.value.find((o) => o.value === selectedModel.value)
+  return opt?.label || t('chat.assistant')
+})
+
+// ─── Live streaming rate (display only) ──────────────────────────────────────
+// Per-stream token counters already lived in send(); these refs mirror them
+// into the "Generating… · N tok/s" meta line (design frame ②). Purely visual:
+// the SSE parsing / persistence contracts in lib/chat.ts are untouched.
+
+/** Live answer-phase tok/s while the stream runs; null outside streaming. */
+const liveAnswerTps = ref<number | null>(null)
+
+/** Live reasoning-phase tok/s shown until the first answer delta lands. */
+const liveReasoningTps = ref<number | null>(null)
+
+/** Streaming meta copy: "Generating…" plus the active phase's live tok/s. */
+const streamMetaLine = computed<string>(() => {
+  const tps = liveAnswerTps.value ?? liveReasoningTps.value
+  return tps !== null ? `${t('chat.generating')} · ${tps.toFixed(1)} tok/s` : t('chat.generating')
+})
 
 const messagesContainer = ref<HTMLDivElement | null>(null)
 const inputBox = ref<HTMLTextAreaElement | null>(null)
@@ -347,6 +415,12 @@ function statsLine(msg: ChatMessage): string {
   if (msg.stats.reasoningTps !== undefined) parts.push(t('chat.statsThinking', { v: msg.stats.reasoningTps.toFixed(1) }))
   if (msg.stats.answerTps !== undefined) parts.push(t('chat.statsAnswer', { v: msg.stats.answerTps.toFixed(1) }))
   return parts.join(' · ')
+}
+
+/** Mirror a phase's running tok/s into its live ref (tokens / elapsed seconds); guarded against a zero elapsed window. */
+function updateLiveTps(target: Ref<number | null>, tokens: number, startedAt: number): void {
+  const elapsed = (performance.now() - startedAt) / 1000
+  if (elapsed > 0) target.value = tokens / elapsed
 }
 
 /**
@@ -634,6 +708,8 @@ async function send() {
   let firstReasoningAt: number | null = null
   let firstAnswerAt: number | null = null
   let requestFailed = false
+  liveAnswerTps.value = null
+  liveReasoningTps.value = null
   try {
     await streamChatCompletion(
       (await getServerConfig()).port,
@@ -642,6 +718,7 @@ async function send() {
       (delta) => {
         if (firstAnswerAt === null) firstAnswerAt = performance.now()
         answerTokens++
+        updateLiveTps(liveAnswerTps, answerTokens, firstAnswerAt)
         const last = messages.value[messages.value.length - 1]
         if (last && last.role === 'assistant') {
           last.content += delta
@@ -651,6 +728,7 @@ async function send() {
       (reasoning) => {
         if (firstReasoningAt === null) firstReasoningAt = performance.now()
         reasoningTokens++
+        updateLiveTps(liveReasoningTps, reasoningTokens, firstReasoningAt)
         const last = messages.value[messages.value.length - 1]
         if (last && last.role === 'assistant') {
           last.reasoning = (last.reasoning || '') + reasoning
@@ -678,6 +756,9 @@ async function send() {
   } finally {
     streaming.value = false
     chatAbortController.current = null
+    // The live meta line hands over to the definitive statsLine footer
+    liveAnswerTps.value = null
+    liveReasoningTps.value = null
     // Per-phase tok/s: reasoning phase spans first reasoning delta → first content
     // delta (or stream end when there is no answer); answer phase first content
     // delta → stream end. Skipped on error (the bubble then shows an error message).
@@ -783,84 +864,102 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 
-.chat-page .page-title {
-  font-size: 28px;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin: 0 0 4px;
-  letter-spacing: -0.5px;
-  line-height: 1.2;
-  word-break: break-all;
-}
-
-.chat-page .page-subtitle {
-  font-size: 14px;
-  color: var(--text-dim);
-  margin: 0;
-}
-
-  /* Align with Downloads and other pages: unified spacing from top title to bottom content */
-.chat-page .page-header {
-  padding-bottom: 28px;
-}
-
+/* ─── Top bar: model capsule chip + round glass actions (design frame ②) ───
+   The page title is gone on all tiers; the sidebar / bottom tab bar already
+   carry the page identity. */
 .chat-toolbar {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding-bottom: 16px;
+  padding: 8px 2px 14px;
   position: relative; /* Anchor for params popover positioning */
 }
 
-.chat-clear-btn {
-  padding: 8px 14px;
-  background: var(--surface);
+/* Capsule chip: a scoped :deep() reskin of the ThemedSelect toolbar trigger —
+   the button keeps its full ARIA select-only combobox wiring, only the shell
+   changes (island surface, 999px radius, 700 weight). The component has no
+   icon slot, so the gradient "online" dot is injected via ::before. The chip
+   hugs its content and truncates long model names via the value span's
+   ellipsis instead of stretching. */
+.chat-model-select {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: min(420px, 62%);
+}
+
+.chat-model-select :deep(.themed-select__trigger) {
+  display: inline-flex;
+  width: auto;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 40px;
+  gap: 8px;
+  padding: 9px 14px 9px 16px;
+  background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--text-secondary);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-  margin-left: auto;
-}
-
-.chat-clear-btn:hover:not(:disabled) {
-  background: var(--hover-bg);
+  border-radius: 999px;
+  box-shadow: var(--shadow-island);
   color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 700;
 }
 
-.chat-clear-btn:disabled {
-  opacity: 0.35;
-  cursor: default;
+.chat-model-select :deep(.themed-select__trigger)::before {
+  content: '';
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--grad);
+  box-shadow: 0 0 6px rgba(139, 92, 246, 0.55);
 }
 
-.chat-settings-btn {
-  width: 36px;
-  height: 36px;
+.chat-model-select :deep(.themed-select__trigger:hover:not(:disabled)),
+.chat-model-select :deep(.themed-select__trigger[aria-expanded='true']) {
+  background: var(--bg-secondary);
+  border-color: var(--overlay-20);
+}
+
+/* Round glass action buttons (design .chat-top .rnd): 40px circles, island
+   surface + soft shadow; the phone tier floors them at the 44px touch target */
+.chat-icon-btn {
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--surface);
+  padding: 0;
+  background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 50%;
+  box-shadow: var(--shadow-island);
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.2s;
   flex-shrink: 0;
 }
 
-.chat-settings-btn:hover {
-  background: var(--hover-bg);
+.chat-icon-btn:hover:not(:disabled) {
   color: var(--text-primary);
+  border-color: var(--overlay-20);
+}
+
+.chat-icon-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.chat-clear-btn {
+  margin-left: auto;
 }
 
 .chat-settings-btn[aria-expanded='true'] {
-  background: var(--hover-bg);
-  color: var(--text-primary);
+  color: var(--accent-light);
+  border-color: rgba(99, 102, 241, 0.45);
 }
 
-/* ─── Params Popover ─── */
+/* ─── Params Popover (design frame ② skin: floating island + large radius;
+       layout / wiring unchanged) ─── */
 .params-popover {
   position: absolute;
   right: 0;
@@ -869,16 +968,17 @@ onUnmounted(() => {
   width: 320px;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-  padding: 16px;
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-island);
+  padding: 18px;
 }
 
 .params-header {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
 }
 
 .params-row {
@@ -902,10 +1002,10 @@ onUnmounted(() => {
 
 .params-input {
   width: 110px;
-  padding: 6px 8px;
-  background: var(--surface);
+  padding: 7px 10px;
+  background: var(--bg-primary);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 10px;
   color: var(--text-primary);
   font-size: 13px;
   outline: none;
@@ -917,10 +1017,10 @@ onUnmounted(() => {
 
 .params-textarea {
   width: 100%;
-  padding: 8px;
-  background: var(--surface);
+  padding: 8px 10px;
+  background: var(--bg-primary);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 12px;
   color: var(--text-primary);
   font-size: 13px;
   font-family: var(--font-sans);
@@ -944,10 +1044,10 @@ onUnmounted(() => {
 }
 
 .params-reset-btn {
-  padding: 6px 12px;
+  padding: 7px 14px;
   background: transparent;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 999px;
   color: var(--text-secondary);
   font-size: 12px;
   cursor: pointer;
@@ -957,20 +1057,23 @@ onUnmounted(() => {
 .params-reset-btn:hover {
   background: var(--hover-bg);
   color: var(--text-primary);
+  border-color: var(--overlay-20);
 }
 
-/* ─── Auto-start / model-switch notice ─── */
+/* ─── Auto-start / model-switch notice (glass pill above the composer) ─── */
 .start-notice {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 12px;
-  border-radius: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
   font-size: 12px;
   font-weight: 500;
   color: var(--text-secondary);
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--glass);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--glass-line);
 }
 
 /* Error variant: message + guided CTA sharing the .stop-btn color family
@@ -1037,6 +1140,11 @@ onUnmounted(() => {
   font-size: 14px;
 }
 
+/* ─── Message bubbles (design frame ②) ───
+   User: brand gradient, white text, small radius tucked at the sender corner
+   (22/22/6/22). Assistant: lifted island surface, mirrored radius
+   (22/22/22/6), small model-name header on top. Colors ride the theme tokens
+   so the dark mapping (lifted #161622 family) comes for free. */
 .message-row {
   display: flex;
   margin-bottom: 14px;
@@ -1052,31 +1160,39 @@ onUnmounted(() => {
 
 .message-bubble {
   max-width: 78%;
-  padding: 10px 14px;
-  border-radius: 12px;
+  padding: 12px 16px;
   /* No blanket pre-wrap: markdown output manages its own spacing (code must
      not wrap); plain-text spots scope pre-wrap individually */
-  font-size: 13px;
-  line-height: 1.6;
+  font-size: 13.5px;
+  line-height: 1.75;
+  font-weight: 400;
   word-break: break-word;
 }
 
 .is-user .message-bubble {
-  background: rgba(99, 102, 241, 0.18);
-  color: var(--text-primary);
+  background: var(--grad);
+  color: #fff;
+  border-radius: 22px 22px 6px 22px;
+  box-shadow: 0 8px 20px rgba(124, 92, 246, 0.3);
 }
 
 .is-assistant .message-bubble {
-  background: var(--surface);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 22px 22px 22px 6px;
+  box-shadow: var(--shadow-island);
   color: var(--text-primary);
 }
 
+/* Assistant-only header: the answering model's display name (design .who) */
 .message-role {
   display: block;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-dim);
-  margin-bottom: 2px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+  margin-bottom: 5px;
+  user-select: none;
 }
 
 .message-images {
@@ -1285,6 +1401,45 @@ onUnmounted(() => {
   user-select: none;
 }
 
+/* ─── Streaming typing indicator (design .typing) ───
+   Three breathing dots shown in the streaming bubble before the first answer
+   text lands; the meta line under it carries the live per-stream tok/s. */
+.typing-dots {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.typing-dots i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  animation: typing-breathe 1.2s infinite;
+}
+
+.typing-dots i:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-dots i:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes typing-breathe {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+
+/* Live "Generating… · N tok/s" line under the streaming bubble */
+.stream-meta {
+  margin-top: 7px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  user-select: none;
+}
+
 /* ─── Streaming cursor ─── */
 .streaming-cursor {
   display: inline-block;
@@ -1302,20 +1457,37 @@ onUnmounted(() => {
   50% { opacity: 0; }
 }
 
-/* ─── Input ─── */
+/* ─── Input: floating glass composer (design .composer) ───
+   The bar IS the .input-row inside the flex chain — the page's
+   height/100dvh chain (soft-keyboard adjustResize) and the --dock-width
+   lane paddings are untouched, so the send button's right edge (and with it
+   the TaskDock pill's 8px clearance) stays exactly where it was; the glass
+   shell is pure skin. */
 .input-area {
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: 12px 0 24px;
-  border-top: 1px solid var(--border);
   /* Stays fixed at the bottom: never compressed by the flex column */
   flex-shrink: 0;
 }
 
 .input-row {
   display: flex;
-  gap: 10px;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 10px;
+  background: var(--glass);
+  backdrop-filter: blur(22px) saturate(1.6);
+  -webkit-backdrop-filter: blur(22px) saturate(1.6);
+  border: 1px solid var(--glass-line);
+  border-radius: 28px;
+  box-shadow: var(--shadow-island);
+  transition: border-color 0.2s;
+}
+
+.input-row:focus-within {
+  border-color: rgba(99, 102, 241, 0.45);
 }
 
 .pending-bar {
@@ -1364,9 +1536,9 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  background: transparent;
+  border: none;
+  border-radius: 50%;
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.2s;
@@ -1385,62 +1557,67 @@ onUnmounted(() => {
 .chat-input {
   flex: 1;
   resize: none;
-  padding: 10px 14px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  padding: 10px 4px;
+  background: transparent;
+  border: none;
   color: var(--text-primary);
   font-size: 14px;
   font-weight: 500;
   font-family: var(--font-sans);
   line-height: 1.5;
   outline: none;
-  transition: border-color 0.2s;
-  /* Auto-resize 1-6 rows */
+  /* Auto-resize 1-6 rows; focus feedback lives on the glass bar
+     (.input-row:focus-within), not on the naked textarea */
   min-height: 42px;
   max-height: calc(1.5em * 6 + 20px);
   overflow-y: auto;
-}
-
-.chat-input:focus {
-  border-color: rgba(99, 102, 241, 0.4);
 }
 
 .chat-input::placeholder {
   color: var(--text-dim);
 }
 
+/* Circular gradient send button (design .composer .send): gradient = the one
+   actionable element. Desktop keeps the 42px band so the TaskDock pill's
+   vertical centering (dockSpace DOCK_BOTTOM_OFFSET 29px) is unchanged. */
 .send-btn {
-  padding: 0 22px;
+  width: 42px;
   height: 42px;
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(167, 139, 250, 0.15));
-  color: #a78bfa;
-  border: 1px solid rgba(99, 102, 241, 0.3);
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 600;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--grad);
+  color: #fff;
+  border: none;
+  border-radius: 50%;
   cursor: pointer;
   transition: all 0.2s;
   flex-shrink: 0;
+  box-shadow: 0 6px 14px rgba(124, 92, 246, 0.4);
 }
 
 .send-btn:hover:not(:disabled) {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(167, 139, 250, 0.25));
+  filter: brightness(1.08);
+  box-shadow: 0 8px 18px rgba(124, 92, 246, 0.5);
 }
 
 .send-btn:disabled {
   opacity: 0.35;
   cursor: default;
+  box-shadow: none;
 }
 
+/* Streaming state flips the same circle to danger red (design frame ⑥:
+   red is reserved for stop/unload) with a square stop glyph */
 .stop-btn {
-  background: rgba(239, 68, 68, 0.12);
-  color: #f87171;
-  border-color: rgba(239, 68, 68, 0.25);
+  background: var(--danger);
+  box-shadow: 0 6px 14px rgba(239, 68, 68, 0.35);
 }
 
-.stop-btn:hover {
-  background: rgba(239, 68, 68, 0.2);
+.stop-btn:hover:not(:disabled) {
+  filter: brightness(1.08);
+  box-shadow: 0 8px 18px rgba(239, 68, 68, 0.45);
 }
 
 /* ─── Mobile (<=767px): shell sizing + compact composer ───
@@ -1471,7 +1648,8 @@ onUnmounted(() => {
        content. The old hardcoded 64px assumed a single-segment ~40px phone
        pill and overflowed when both the download and model counters showed.
        Dock hidden → --dock-width is 0 and the lane collapses to the 24px
-       gutter. */
+       gutter. The glass composer spans this lane (it IS .input-row), so the
+       send button's right edge — the lane's anchor — is unchanged. */
     padding: var(--safe-area-top, 0px) calc(16px + var(--dock-width, 0px) + 8px) 0 16px;
   }
 
@@ -1482,45 +1660,25 @@ onUnmounted(() => {
     padding: var(--safe-area-top, 0px) 16px 0 calc(16px + var(--dock-width, 0px) + 8px);
   }
 
-  /* Compact the desktop-grade header: the 28px bottom pad + 28px title eat a
-     large slice of a short phone viewport */
-  .chat-page .page-header {
-    padding-bottom: 12px;
-  }
-
-  .chat-page .page-title {
-    font-size: 22px;
-  }
-
-  .chat-page .page-subtitle {
-    font-size: 12px;
-  }
-
-  /* Toolbar wraps: the model picker takes the main space (long names truncate
-     inside the select), clear/settings sit beside or below it */
+  /* Chip + two 44px round buttons on one row: the chip shrinks (ellipsis in
+     the value span) instead of wrapping; 44+44 buttons + two 8px gaps */
   .chat-toolbar {
-    flex-wrap: wrap;
     gap: 8px;
-    padding-bottom: 12px;
+    padding: 8px 0 12px;
   }
 
   .chat-model-select {
-    flex: 1 1 160px;
+    flex: 0 1 auto;
     min-width: 0;
+    max-width: calc(100% - 112px);
   }
 
   .chat-model-select :deep(.themed-select__trigger) {
-    min-width: 0;
-    max-width: 100%;
     min-height: 44px;
   }
 
-  .chat-clear-btn {
-    min-height: 44px;
-    padding: 8px 14px;
-  }
-
-  .chat-settings-btn {
+  /* 44px touch targets for the round glass buttons */
+  .chat-icon-btn {
     width: 44px;
     height: 44px;
   }
@@ -1559,8 +1717,13 @@ onUnmounted(() => {
   }
 
   .send-btn {
+    width: 44px;
     height: 44px;
-    padding: 0 18px;
+  }
+
+  .send-btn svg {
+    width: 20px;
+    height: 20px;
   }
 }
 
