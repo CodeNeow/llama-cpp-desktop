@@ -3,7 +3,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import TaskDock from '../components/TaskDock.vue'
-import { dockReserve, dockSide } from '../lib/dockSpace'
+import { dockReserve, dockSide, dockLane } from '../lib/dockSpace'
+import { nudgeDock } from '../lib/dockNudge'
 import { DOCK_POSITION_KEY } from '../lib/dockPosition'
 import { t } from '../lib/i18n'
 import { getDownloadTasks, getServerStatus } from '../wails'
@@ -90,9 +91,10 @@ afterEach(() => {
   document.body.innerHTML = ''
   vi.unstubAllGlobals()
   // dockSpace keeps module-level state (loaded once per file); drive it back to
-  // 0 / the default side so each test starts from a clean reserve.
+  // 0 / the default side / no lane so each test starts from a clean reserve.
   dockReserve.value = 0
   dockSide.value = 'right'
+  dockLane.value = 'none'
   localStorage.clear()
   vi.clearAllMocks()
 })
@@ -275,6 +277,8 @@ describe('TaskDock draggable capsule', () => {
       side: 'left',
       yNorm: expect.closeTo(expectedYNorm, 6),
     })
+    // Capsule parked mid-screen (upper half): the chat lane must retract.
+    expect(dockLane.value).toBe('none')
 
     // The drag-release compatibility click must NOT expand the card...
     pillEl.dispatchEvent(new MouseEvent('click', { bubbles: true }))
@@ -350,6 +354,38 @@ describe('TaskDock draggable capsule', () => {
       `translate(${16 - (vw - 16 - 48)}px, ${8 - (vh - 29 - 32)}px)`
     )
     expect(dockSide.value).toBe('left')
+    // Restored at the TOP of the band: the chat lane stays retracted.
+    expect(dockLane.value).toBe('none')
+    wrapper.unmount()
+  })
+
+  it('grants the chat lane only for a release inside the composer band', async () => {
+    vi.stubGlobal('ResizeObserver', MockResizeObserver)
+    const wrapper = await mountDock()
+    const dockEl = wrapper.find<HTMLElement>('.task-dock').element
+    stubPillBox(dockEl, 48, 32)
+    const pillEl = wrapper.find<HTMLElement>('.dock-pill').element
+
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+    // Drop on the left half, at the very floor of the safe band (bottom-right
+    // corner territory): the release clamps to maxTop = vh - 16 - 32, whose
+    // bottom edge (vh - 16) is well inside the composer band.
+    const dropX = Math.floor(vw * 0.25)
+    const dropY = vh - 40
+
+    firePointer(pillEl, 'pointerdown', vw - 100, vh - 100)
+    firePointer(pillEl, 'pointermove', dropX, dropY)
+    firePointer(pillEl, 'pointerup', dropX, dropY)
+    await nextTick()
+
+    expect(dockSide.value).toBe('left')
+    expect(JSON.parse(localStorage.getItem(DOCK_POSITION_KEY) ?? '{}')).toEqual({
+      side: 'left',
+      yNorm: 1,
+    })
+    // In-band release: the chat page reserves the capsule's side lane.
+    expect(dockLane.value).toBe('left')
     wrapper.unmount()
   })
 
@@ -361,6 +397,31 @@ describe('TaskDock draggable capsule', () => {
     await nextTick()
     expect(wrapper.find<HTMLElement>('.task-dock').element.style.transform).toBe('translate(0px, 0px)')
     expect(dockSide.value).toBe('right')
+    // The legacy bottom-right spot rides in the composer band: lane granted.
+    expect(dockLane.value).toBe('right')
+    // Unmount retracts the lane together with the side reset.
+    wrapper.unmount()
+    expect(dockLane.value).toBe('none')
+    expect(dockSide.value).toBe('right')
+  })
+
+  it('retracts the chat lane when the dock hides without unmounting', async () => {
+    vi.stubGlobal('ResizeObserver', MockResizeObserver)
+    const wrapper = await mountDock()
+    stubPillBox(wrapper.find<HTMLElement>('.task-dock').element, 48, 32)
+    window.dispatchEvent(new Event('resize'))
+    await nextTick()
+    expect(dockLane.value).toBe('right')
+
+    // Server stops (and nothing else is trackable): the dock hides while the
+    // component stays mounted — the lane must retract via the visible watcher.
+    vi.mocked(getServerStatus).mockImplementationOnce(() =>
+      Promise.resolve({ running: false, log: [] })
+    )
+    nudgeDock()
+    await flushPromises()
+    await nextTick()
+    expect(dockLane.value).toBe('none')
     wrapper.unmount()
   })
 })

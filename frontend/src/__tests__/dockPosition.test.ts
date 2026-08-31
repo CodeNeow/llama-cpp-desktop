@@ -11,8 +11,11 @@ import {
   normToTop,
   resolvePosition,
   translateForPosition,
+  laneFor,
   loadStoredPosition,
   saveStoredPosition,
+  CHAT_COMPOSER_BAND_DESKTOP,
+  CHAT_COMPOSER_BAND_MOBILE,
   DOCK_POSITION_KEY,
   type DockLayoutMetrics,
 } from '../lib/dockPosition'
@@ -91,6 +94,53 @@ describe('sideLeftX', () => {
   it('degrades to the left-edge spot for a degenerate pill box', () => {
     expect(sideLeftX('right', 1280, 0)).toBe(16)
     expect(sideLeftX('right', NaN, 48)).toBe(16)
+  })
+})
+
+// ─── Chat composer-band lane decision ────────────────────────────────────────
+
+describe('laneFor', () => {
+  const vh = 800
+
+  it('returns the capsule side while its bottom edge reaches the composer band', () => {
+    // Desktop band 130 on an 800px viewport: threshold = 800 - 130 = 670.
+    expect(laneFor('right', 800, vh, CHAT_COMPOSER_BAND_DESKTOP)).toBe('right')
+    expect(laneFor('right', 700, vh, CHAT_COMPOSER_BAND_DESKTOP)).toBe('right')
+    expect(laneFor('left', 690, vh, CHAT_COMPOSER_BAND_DESKTOP)).toBe('left')
+  })
+
+  it('is inclusive at the exact band threshold', () => {
+    expect(laneFor('right', vh - CHAT_COMPOSER_BAND_DESKTOP, vh, CHAT_COMPOSER_BAND_DESKTOP)).toBe('right')
+    expect(laneFor('left', vh - CHAT_COMPOSER_BAND_DESKTOP, vh, CHAT_COMPOSER_BAND_DESKTOP)).toBe('left')
+  })
+
+  it("returns 'none' once the capsule parks above the band", () => {
+    expect(laneFor('right', vh - CHAT_COMPOSER_BAND_DESKTOP - 0.01, vh, CHAT_COMPOSER_BAND_DESKTOP)).toBe('none')
+    expect(laneFor('right', 400, vh, CHAT_COMPOSER_BAND_DESKTOP)).toBe('none')
+    expect(laneFor('left', 0, vh, CHAT_COMPOSER_BAND_DESKTOP)).toBe('none')
+  })
+
+  it('honors the phone band constant (nav band + composer + margin)', () => {
+    const ph = 844
+    expect(laneFor('left', ph, ph, CHAT_COMPOSER_BAND_MOBILE)).toBe('left')
+    expect(laneFor('right', ph - CHAT_COMPOSER_BAND_MOBILE, ph, CHAT_COMPOSER_BAND_MOBILE)).toBe('right')
+    expect(laneFor('right', ph - CHAT_COMPOSER_BAND_MOBILE - 1, ph, CHAT_COMPOSER_BAND_MOBILE)).toBe('none')
+  })
+
+  it("degrades to 'none' for invalid numbers", () => {
+    expect(laneFor('right', NaN, vh, CHAT_COMPOSER_BAND_DESKTOP)).toBe('none')
+    expect(laneFor('right', Infinity, vh, CHAT_COMPOSER_BAND_DESKTOP)).toBe('none')
+    expect(laneFor('right', -Infinity, vh, CHAT_COMPOSER_BAND_DESKTOP)).toBe('none')
+    expect(laneFor('right', 700, 0, CHAT_COMPOSER_BAND_DESKTOP)).toBe('none')
+    expect(laneFor('right', 700, -800, CHAT_COMPOSER_BAND_DESKTOP)).toBe('none')
+    expect(laneFor('right', 700, vh, 0)).toBe('none')
+    expect(laneFor('right', 700, vh, -130)).toBe('none')
+    expect(laneFor('right', 700, vh, NaN)).toBe('none')
+  })
+
+  it("degrades to 'none' for an invalid side", () => {
+    expect(laneFor('top' as never, 800, vh, CHAT_COMPOSER_BAND_DESKTOP)).toBe('none')
+    expect(laneFor(undefined as never, 800, vh, CHAT_COMPOSER_BAND_DESKTOP)).toBe('none')
   })
 })
 

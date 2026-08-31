@@ -163,17 +163,20 @@ import {
 } from '../wails'
 import { activeLlamaCppDownload, activeModelTasks, activeUpdateDownload, shouldShowDock } from '../lib/dock'
 import { dockNudgeCounter, nudgeDock } from '../lib/dockNudge'
-import { dockSide, dockWidth, useDockReserve } from '../lib/dockSpace'
+import { dockLane, dockSide, dockWidth, useDockReserve } from '../lib/dockSpace'
 import {
   anchorTopLeft,
   clampTopPx,
   isBeyondDragThreshold,
+  laneFor,
   loadStoredPosition,
   nearestSide,
   normToTop,
   saveStoredPosition,
   topToNorm,
   translateForPosition,
+  CHAT_COMPOSER_BAND_DESKTOP,
+  CHAT_COMPOSER_BAND_MOBILE,
   DOCK_TOP_GAP,
   DOCK_BOTTOM_GAP_DESKTOP,
   DOCK_BOTTOM_GAP_MOBILE,
@@ -342,6 +345,24 @@ function applyStoredPosition(): void {
   dragTranslate.value = translateForPosition(stored, layout)
   dockSide.value = stored?.side ?? 'right'
   updateCardAnchor(layout)
+  publishLane(layout)
+}
+
+// Chat-page lane state (lib/dockSpace dockLane): 'left'/'right' only while
+// the capsule's viewport bottom edge reaches into the composer band at the
+// bottom of the window, 'none' while it parks mid-screen / up top. The bottom
+// edge is DERIVED from the anchor + current translate + pill height (the same
+// reference frame the transform itself is built on) rather than
+// getBoundingClientRect, which stays 0/undefined in unit-test DOMs and would
+// race the 0.2s snap transition right after a release. Called only at
+// settle/restore/resize points — the lane follows the RELEASED anchor, so a
+// mid-drag position never flaps the chat padding frame-by-frame.
+function publishLane(layout: DockLayoutMetrics): void {
+  if (layout.pillW <= 0 || layout.pillH <= 0) return // not laid out yet: republished on measure
+  const anchor = anchorTopLeft(layout)
+  const capsuleBottom = anchor.y + dragTranslate.value.y + layout.pillH
+  const band = platform.value.isMobile ? CHAT_COMPOSER_BAND_MOBILE : CHAT_COMPOSER_BAND_DESKTOP
+  dockLane.value = laneFor(dockSide.value, capsuleBottom, layout.viewportH, band)
 }
 
 // Flip the expand card to top-anchored growth when the capsule's (resolved)
@@ -444,6 +465,7 @@ function settleAfterDrag() {
   // glides the capsule from the release point onto the snapped spot.
   dragTranslate.value = translateForPosition(stored, layout)
   updateCardAnchor(layout)
+  publishLane(layout)
 }
 
 // Click toggle shared by pointer taps and keyboard activation (Enter/Space on
@@ -466,6 +488,9 @@ function onWindowResize() {
 
 watch(visible, (v) => {
   if (v) nextTick(applyStoredPosition)
+  // Dock hidden (no downloads / models): retract the chat lane immediately —
+  // the component itself stays mounted, so the unmount reset below never fires.
+  else dockLane.value = 'none'
 })
 
 // Self-healing re-fit: the resize event can race the media-query relayout (a
@@ -663,6 +688,7 @@ onUnmounted(() => {
   // Same reset pattern as the dock-space reserve: a fresh mount starts from
   // the default side until a stored/dragged position republishes it.
   dockSide.value = 'right'
+  dockLane.value = 'none'
 })
 </script>
 

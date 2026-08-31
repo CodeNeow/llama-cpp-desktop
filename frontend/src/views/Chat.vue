@@ -1,10 +1,18 @@
 <template>
-  <!-- Lane mirroring: the dock capsule can hug either window edge, so when it
-       is snapped LEFT (and actually visible, --dock-width > 0) the measured
-       reserve lane moves to the LEFT padding and the right gutter returns to
-       its base value; the default (right side / dock hidden) keeps the
-       original layout byte-for-byte. -->
-  <div class="chat-page" :class="{ 'chat-page--dock-left': dockSide === 'left' && dockWidth > 0 }">
+  <!-- Lane mirroring, three-state (dockLane from lib/dockSpace): the measured
+       reserve lane exists only while the capsule actually rides in the
+       composer band at the bottom of the window — 'left' moves the lane to the
+       LEFT padding, 'right' keeps the original right lane, and 'none' (capsule
+       parked mid-screen / up top, or dock hidden: dockWidth = 0) retracts the
+       lane so the composer spans the base gutters again. The docked-in-band
+       default reproduces the historical layout byte-for-byte. -->
+  <div
+    class="chat-page"
+    :class="{
+      'chat-page--dock-left': dockLane === 'left' && dockWidth > 0,
+      'chat-page--dock-right': dockLane === 'right' && dockWidth > 0,
+    }"
+  >
     <div class="sticky-top">
       <!-- Design frame ②: the header slims down to a model capsule chip (the
            gradient dot is the brand/status mark, the name + chevron open the
@@ -255,7 +263,7 @@ import { getServerStatus, getServerConfig, getModels, getLlamaCpp, startServerWi
 import { chatReadiness, fetchRouterModels, modelsToUnload, streamChatCompletion, tokenRates, type ChatReadiness } from '../lib/chat'
 import { messages, selectedModel, streaming, chatAbortController, persistChat, reconcileSelectedModel, chatParams, persistChatParams, type ChatMessage, type ChatParams } from '../lib/chatState'
 import { nudgeDock } from '../lib/dockNudge'
-import { dockSide, dockWidth } from '../lib/dockSpace'
+import { dockLane, dockWidth } from '../lib/dockSpace'
 import { t } from '../lib/i18n'
 import { renderMarkdown } from '../lib/markdown'
 import { handleLinkClick } from '../lib/linkHandler'
@@ -828,33 +836,49 @@ onUnmounted(() => {
 <style scoped>
 .chat-page {
   /* No bottom reserve for the task dock: the pill sits in the input row's
-     right gap (see padding-right) and shares the send button's vertical band,
-     so the page layout simply fills the viewport below the titlebar. */
+     right gap (see the lane paddings below) and shares the send button's
+     vertical band, so the page layout simply fills the viewport below the
+     titlebar. */
   height: calc(100vh - 36px);
   /* dvh twin: progressive override for mobile browsers reporting a dynamic
      viewport (soft keyboard / browser chrome); no-op where dvh is unsupported */
   height: calc(100dvh - 36px);
   display: flex;
   flex-direction: column;
-  /* Right lane reserves room for the floating TaskDock pill: the input row
-     (send button) and the messages scrollbar stop left of the pill, keeping
-     the pill vertically aligned with the send button. The lane follows the
-     pill's MEASURED width (--dock-width, published by lib/dockSpace): 16
-     right offset + pill width + 8 gap. max() floors it at the original 72px
-     band (sized for a single-segment ~48px desktop pill) so the dock-hidden
-     layout is unchanged; the old fixed 72px overflowed when both the download
-     and model counters showed (~80px pill overlapping the send button). Top
-     padding rides the --safe-area-top inset (0 on desktop) so an
-     edge-to-edge status bar cannot eat the header. */
-  padding: var(--safe-area-top, 0px) max(72px, calc(16px + var(--dock-width, 0px) + 8px)) 0 48px;
+  /* Base gutters, lane retracted (dockLane 'none': capsule parked away from
+     the composer band, or dock hidden): symmetric 48px gutters on desktop.
+     .chat-page--dock-right (capsule docked in-band right) reserves room for
+     the floating TaskDock pill: the input row (send button) and the messages
+     scrollbar stop left of the pill, keeping the pill vertically aligned with
+     the send button. The lane follows the pill's MEASURED width (--dock-width,
+     published by lib/dockSpace): 16 right offset + pill width + 8 gap, floored
+     at the original 72px band (sized for a single-segment ~48px desktop pill)
+     so the docked layout is unchanged; the old fixed 72px overflowed when both
+     the download and model counters showed (~80px pill overlapping the send
+     button). .chat-page--dock-left mirrors the lane to the left padding. The
+     0.2s padding transition smooths lane attach/retract (same pattern as
+     App.vue's --dock-reserve padding transition). Top padding rides the
+     --safe-area-top inset (0 on desktop) so an edge-to-edge status bar cannot
+     eat the header. */
+  padding: var(--safe-area-top, 0px) 48px 0 48px;
+  transition: padding 0.2s ease;
   /* Chat page does not scroll with page: layout fills remaining viewport height, messages area scrolls independently */
 }
 
-/* Capsule hugging the LEFT edge: mirror the reserve lane — the measured-width
-   lane (same max(72px, …) floor as the right lane) moves to the LEFT padding
-   so the attach button / message scrollbar stay clear of the pill, and the
-   right gutter returns to its original 48px. Bound via .chat-page--dock-left
-   (a CSS string variable cannot branch a calc). */
+/* Capsule docked in the composer band, hugging the RIGHT edge (default spot):
+   the historical right lane. The max(72px, …) floor applies ONLY while a lane
+   is actually reserved — the retracted ('none') state uses the plain 48px
+   gutters above. */
+.chat-page--dock-right {
+  padding: var(--safe-area-top, 0px) max(72px, calc(16px + var(--dock-width, 0px) + 8px)) 0 48px;
+}
+
+/* Capsule docked in the composer band, hugging the LEFT edge: mirror the
+   reserve lane — the measured-width lane (same max(72px, …) floor as the right
+   lane) moves to the LEFT padding so the attach button / message scrollbar
+   stay clear of the pill, and the right gutter returns to its original 48px.
+   Bound via .chat-page--dock-left (a CSS string variable cannot branch a
+   calc). */
 .chat-page--dock-left {
   padding: var(--safe-area-top, 0px) 48px 0 max(72px, calc(16px + var(--dock-width, 0px) + 8px));
 }
@@ -1641,21 +1665,29 @@ onUnmounted(() => {
 
 @media (max-width: 767px) {
   .chat-page {
-    /* Right lane follows the TaskDock pill's MEASURED width (--dock-width,
+    /* Base gutters, lane retracted (dockLane 'none'): symmetric 16px phone
+       gutters. .chat-page--dock-right (capsule docked in the composer band,
+       right edge) follows the TaskDock pill's MEASURED width (--dock-width,
        published by lib/dockSpace from the same ResizeObserver as
        --dock-reserve): 16 pill right offset + pill width + 8 gap keeps the
        send button 8px clear of the pill's left edge whatever the counter
        content. The old hardcoded 64px assumed a single-segment ~40px phone
        pill and overflowed when both the download and model counters showed.
-       Dock hidden → --dock-width is 0 and the lane collapses to the 24px
-       gutter. The glass composer spans this lane (it IS .input-row), so the
-       send button's right edge — the lane's anchor — is unchanged. */
+       .chat-page--dock-left mirrors the lane to the left padding. The glass
+       composer spans this lane (it IS .input-row), so the send button's right
+       edge — the lane's anchor — is unchanged. */
+    padding: var(--safe-area-top, 0px) 16px 0 16px;
+  }
+
+  /* Capsule docked in the composer band, hugging the RIGHT edge: the original
+     measured-width lane. */
+  .chat-page--dock-right {
     padding: var(--safe-area-top, 0px) calc(16px + var(--dock-width, 0px) + 8px) 0 16px;
   }
 
-  /* Capsule hugging the LEFT edge (phone tier): mirrored lane — measured-width
-     reserve moves to the left padding, right gutter back to the 16px phone
-     gutter. */
+  /* Capsule docked in the composer band, hugging the LEFT edge (phone tier):
+     mirrored lane — measured-width reserve moves to the left padding, right
+     gutter back to the 16px phone gutter. */
   .chat-page--dock-left {
     padding: var(--safe-area-top, 0px) 16px 0 calc(16px + var(--dock-width, 0px) + 8px);
   }

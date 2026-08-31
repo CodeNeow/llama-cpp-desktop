@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { defineComponent, ref, nextTick } from 'vue'
-import { dockReserve, dockReservePx, dockWidth, dockWidthPx, dockSide, useDockReserve } from '../lib/dockSpace'
+import { dockReserve, dockReservePx, dockWidth, dockWidthPx, dockSide, dockLane, useDockReserve } from '../lib/dockSpace'
 
 // Mock the Wails bridge (window.go is injected only by the Wails runtime).
 // Update-related exports are included because lib/update imports the same
@@ -72,10 +72,11 @@ afterEach(() => {
   document.body.innerHTML = ''
   vi.unstubAllGlobals()
   // dockSpace keeps module-level state (loaded once per file); drive it back to
-  // 0 / the default side so each test starts from a clean reserve.
+  // 0 / the default side / no lane so each test starts from a clean reserve.
   dockReserve.value = 0
   dockWidth.value = 0
   dockSide.value = 'right'
+  dockLane.value = 'none'
 })
 
 // ─── dockReservePx (pure) ────────────────────────────────────────────────────
@@ -117,6 +118,14 @@ describe('dockWidthPx', () => {
     expect(dockWidthPx(true, -5)).toBe(0)
     expect(dockWidthPx(true, NaN)).toBe(0)
     expect(dockWidthPx(true, Infinity)).toBe(0)
+  })
+})
+
+// ─── dockLane (chat composer-band lane, written by TaskDock) ─────────────────
+
+describe('dockLane', () => {
+  it("starts retracted ('none') — no lane until a docked capsule claims one", () => {
+    expect(dockLane.value).toBe('none')
   })
 })
 

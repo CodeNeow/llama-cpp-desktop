@@ -26,9 +26,14 @@
  * chat page mirrors its reserve lane to the pill's side via this ref, and
  * App.vue binds it globally as the `--dock-side` CSS variable. Default
  * 'right' = the legacy fixed spot.
+ *
+ * Because the capsule can also park AWAY from the composer (mid-screen, top),
+ * the module publishes `dockLane` ('left' | 'right' | 'none'): the side lane
+ * exists only while the capsule rides in the composer band at the bottom of
+ * the window, and 'none' retracts it (Chat.vue back to its base gutters).
  */
 import { ref, watchEffect, onScopeDispose, type Ref } from 'vue'
-import type { DockSide } from './dockPosition'
+import type { DockLane, DockSide } from './dockPosition'
 
 // Bottom offset of the fixed dock pill: the vertical centering offset on the
 // chat page's input row band. DESKTOP-ONLY value: input-area bottom padding
@@ -59,6 +64,15 @@ export const dockWidth = ref(0)
 // release, resize re-fit) and resets it to 'right' on unmount, mirroring the
 // reserve-reset pattern below.
 export const dockSide = ref<DockSide>('right')
+
+// Whether the chat page currently needs a reserve lane at all: 'left'/'right'
+// only while the capsule (vertically) rides in the composer band at the bottom
+// of the window, 'none' while it is parked elsewhere or hidden. TaskDock.vue
+// recomputes it via dockPosition.laneFor at the same points where it republish
+// the side (restore, drag release, resize re-fit) and resets it to 'none' when
+// the dock hides or unmounts. Consumers (Chat.vue) import this ref directly —
+// no global CSS variable needed, the lane only feeds one page's paddings.
+export const dockLane = ref<DockLane>('none')
 
 /**
  * Pure helper: the px value to reserve for a dock with the given visibility

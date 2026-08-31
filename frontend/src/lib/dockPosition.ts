@@ -51,6 +51,20 @@ export const DOCK_ANCHOR_BOTTOM_MOBILE = 10
 // beyond it the gesture is a drag and the release must not expand the card.
 export const DOCK_DRAG_THRESHOLD = 6
 
+// Vertical extent of the Chat composer's interaction band, measured UP from
+// the viewport floor: a capsule whose bottom edge sits inside this band
+// vertically overlaps the chat page's input row, so Chat.vue keeps reserving
+// its side lane (see laneFor). Sized generous on purpose — an undersized band
+// would leave the pill covering the send button with no lane reserved.
+//   Desktop (130): input-area bottom padding 24 + input row 42 = 66px real
+//     composer band, + ~42px for the optional auto-start notice pill that
+//     rides above the row + ~22px margin ≈ 130.
+//   Phone (170): bottom nav band 82 (14 + 68 + safe-area, --mobile-nav-height)
+//     + composer (input-area padding 8 + row 44 + padding-bottom 10 = 62)
+//     = 144px real band, + notice/margin ≈ 170.
+export const CHAT_COMPOSER_BAND_DESKTOP = 130
+export const CHAT_COMPOSER_BAND_MOBILE = 170
+
 // localStorage key: same `llama-desktop-*` style as the theme/sidebar caches
 // in store.ts (pure UI preference, deliberately NOT part of the backend
 // config stream).
@@ -58,6 +72,13 @@ export const DOCK_POSITION_KEY = 'llama-desktop-dock-position'
 
 /** Which window edge the capsule hugs after snapping. */
 export type DockSide = 'left' | 'right'
+
+/**
+ * Which side lane the chat page reserves for the capsule: the capsule's side
+ * while it rides in the composer band, else 'none' (capsule parked elsewhere
+ * or hidden — the composer reclaims the full width).
+ */
+export type DockLane = 'left' | 'right' | 'none'
 
 /** Persisted position: snapped side + band-relative vertical fraction. */
 export interface DockStoredPosition {
@@ -114,6 +135,27 @@ export function isBeyondDragThreshold(dx: number, dy: number): boolean {
 export function nearestSide(centerX: number, viewportW: number): DockSide {
   if (!isFiniteNumber(centerX) || !isFiniteNumber(viewportW) || viewportW <= 0) return 'right'
   return centerX * 2 < viewportW ? 'left' : 'right'
+}
+
+/**
+ * Lane decision for the chat page: the capsule's side only while its bottom
+ * edge (viewport px) reaches into the composer band at the bottom of the
+ * window (`capsuleBottom >= viewportH - bandHeight`, inclusive), else 'none'
+ * — a capsule parked mid-screen / up top must not keep the composer narrowed.
+ * Any invalid input (unknown side, non-finite numbers, non-positive viewport
+ * or band) degrades to 'none': no lane is the safe default (worst case is a
+ * cosmetic overlap, never a permanently reserved phantom lane).
+ */
+export function laneFor(
+  side: DockSide,
+  capsuleBottom: number,
+  viewportH: number,
+  bandHeight: number
+): DockLane {
+  if (side !== 'left' && side !== 'right') return 'none'
+  if (!isFiniteNumber(capsuleBottom) || !isFiniteNumber(viewportH) || viewportH <= 0) return 'none'
+  if (!isFiniteNumber(bandHeight) || bandHeight <= 0) return 'none'
+  return capsuleBottom >= viewportH - bandHeight ? side : 'none'
 }
 
 /**
