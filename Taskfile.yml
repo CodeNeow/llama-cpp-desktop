@@ -113,9 +113,12 @@ tasks:
   # android:build:go: CI downloads the frontend-dist artifact, locally run
   # `wails3 task build:frontend` first.
   #
-  # Product is a debug-signed arm64 APK (gradle assembleDebug → debug keystore
-  # signature, no release-keystore secrets in CI); the Go side is still built
-  # with `-tags production,android` so the app code is production-parity.
+  # Product is a release-variant arm64 APK (gradle assembleRelease), signed
+  # with the stable release keystore when ANDROID_KEYSTORE_* sources exist
+  # (CI secrets, or a gitignored build/android/keystore.properties locally),
+  # else the per-machine debug keystore so builds stay installable. The Go
+  # side is still built with `-tags production,android` so the app code is
+  # production-parity.
   # ---------------------------------------------------------------------------
 
   android:build:go:
@@ -186,7 +189,7 @@ tasks:
         echo "libwails.so built for android/{{.ABI}}"
 
   android:build:
-    summary: Build the debug-signed Android APK (android:build:go + gradle assembleDebug)
+    summary: Build the Android APK (android:build:go + gradle assembleRelease; stable-keystore-signed when signing config is present, debug-signed otherwise)
     deps:
       - task: android:build:go
     preconditions:
@@ -194,28 +197,49 @@ tasks:
         msg: "Java not found. Install a JDK 17 and/or set JAVA_HOME (Gradle 9 / AGP 8.7 requirement)."
     cmds:
       - |
-        # Debug APK: signed with the auto-generated debug keystore (no
-        # signing secrets in CI; installable for sideload testing). Only
-        # arm64-v8a is packaged (abiFilters in build/android/app/build.gradle).
+        # Release APK: signed with the stable release keystore when provided
+        # via ANDROID_KEYSTORE_* env vars (CI secrets) or a gitignored
+        # build/android/keystore.properties (local); otherwise falls back to
+        # the auto-generated debug keystore so builds stay installable for
+        # local testing. Only arm64-v8a is packaged (abiFilters in
+        # build.gradle).
+        #
+        # versionName/versionCode come from core/VERSION: versionName strips
+        # the "v" tag prefix; versionCode = major*10000 + minor*100 + patch
+        # keeps every release a valid PackageInstaller upgrade over the
+        # previous one (Android refuses versionCode <= installed).
+        VER="$(cat core/VERSION)"
+        VNAME="${VER#v}"
+        MA="$(printf '%s' "$VNAME" | cut -d. -f1 | tr -cd '0-9')"
+        MI="$(printf '%s' "$VNAME" | cut -d. -f2 | tr -cd '0-9')"
+        PA="$(printf '%s' "$VNAME" | cut -d. -f3 | tr -cd '0-9')"
+        VCODE=$(( ${MA:-0} * 10000 + ${MI:-0} * 100 + ${PA:-0} ))
         cd build/android
         # Restore the wrapper's exec bit — checkouts/artifacts may drop mode
         # bits (same guard as the v3 template's assemble tasks).
         chmod +x ./gradlew
-        ./gradlew assembleDebug
-        ls -la app/build/outputs/apk/debug/app-debug.apk
-        echo "Debug APK assembled: build/android/app/build/outputs/apk/debug/app-debug.apk"
+        # `bash ./gradlew` (not `./gradlew`): the extension-less wrapper is
+        # not directly executable on a Windows host — the shell interp ends
+        # up handing the forward-slash path to cmd, which cannot parse it.
+        # bash is present on every host this task supports (CI runners,
+        # Git Bash locally) and just interprets the wrapper script.
+        bash ./gradlew -PversionName="$VNAME" -PversionCode="$VCODE" assembleRelease
+        ls -la app/build/outputs/apk/release/app-release.apk
+        echo "APK assembled: app-release.apk (versionName $VNAME, versionCode $VCODE)"
 
   android:package:
-    summary: Copy the debug APK to build/bin under its versioned release-asset name
+    summary: Copy the APK to build/bin under its versioned release-asset name
     deps:
       - task: android:build
     cmds:
       - |
         # VER = core/VERSION as-is ("v" prefix kept, matching the windows/macos
         # artifact naming). Tag builds run after CI's "Sync version file from
-        # tag" step, so VER equals the release tag (e.g. v0.3.9).
+        # tag" step, so VER equals the release tag (e.g. v0.3.9). No "-debug"
+        # suffix: released APKs are stable-keystore-signed (self-update needs
+        # the shared signature), not debug-signed.
         VER="$(cat core/VERSION)"
         mkdir -p build/bin
-        cp build/android/app/build/outputs/apk/debug/app-debug.apk \
-           "build/bin/llama-desktop-${VER}-android-arm64-debug.apk"
-        echo "Packaged: build/bin/llama-desktop-${VER}-android-arm64-debug.apk"
+        cp build/android/app/build/outputs/apk/release/app-release.apk \
+           "build/bin/llama-desktop-${VER}-android-arm64.apk"
+        echo "Packaged: build/bin/llama-desktop-${VER}-android-arm64.apk"

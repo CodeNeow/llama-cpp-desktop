@@ -9,7 +9,8 @@
 //     MainActivity / WailsBridge / WailsJSBridge / WailsPathHandler and the
 //     fully-qualified component names in AndroidManifest.xml).
 //   - targetSdk 28 (see the comment in defaultConfig below).
-//   - versionName / versionCode pinned to core/VERSION (0.3.9 / 1).
+//   - versionName / versionCode injected from core/VERSION via -P
+//     properties (fallback 0.3.9 / 1 for bare gradlew runs).
 //   - arm64-v8a only (CI ships a single arm64 APK).
 plugins {
     id 'com.android.application'
@@ -40,11 +41,15 @@ android {
         // project's distribution model. Revisit only if a bundled-engine
         // (non-exec-from-data) build mode is ever added.
         targetSdk 28
-        // TODO: versionName/versionCode are static; bump them by hand per
-        // release (keep versionName in sync with core/VERSION without the
-        // leading "v"). CI may sed this from the tag later — kept simple.
-        versionCode 1
-        versionName "0.3.9"
+        // versionName/versionCode are injected from core/VERSION by the
+        // Taskfile android:build task (-PversionName / -PversionCode;
+        // versionCode = major*10000 + minor*100 + patch, so each release
+        // outranks the previous one — Android refuses update installs whose
+        // versionCode is not higher). The static values below are only a
+        // fallback for bare `gradlew` runs.
+        versionName (project.findProperty('versionName') ?: "0.3.9")
+        versionCode (project.hasProperty('versionCode')
+            ? (project.property('versionCode') as String).toInteger() : 1)
 
         // ABI selection: defaults to arm64-v8a (the release APK for real
         // devices). CI's emulator smoke passes -PtargetAbi=x86_64 to package
@@ -59,19 +64,36 @@ android {
         }
     }
 
-    def keystoreFile = System.getenv("ANDROID_KEYSTORE_FILE")
+    // Stable release signing sources, in priority order: ANDROID_KEYSTORE_*
+    // environment variables (CI: GitHub Actions secrets) then a gitignored
+    // keystore.properties at the gradle project root (build/android/,
+    // local builds, same key names).
+    // Without either, release builds fall back to the auto-generated debug
+    // keystore so they stay installable for testing — but Android only lets
+    // an APK replace an installed one with the SAME signature, so released
+    // APKs must always come from the stable keystore for the in-app
+    // self-update to work.
+    def ksProps = new Properties()
+    // Resolved from the gradle PROJECT ROOT (build/android/, next to gradlew),
+    // not the app module dir.
+    def ksPropsFile = rootProject.file('keystore.properties')
+    if (ksPropsFile.exists()) {
+        ksPropsFile.withInputStream { ksProps.load(it) }
+    }
+    def signingEnv = { String name ->
+        def v = System.getenv(name)
+        (v != null && !v.trim().isEmpty()) ? v : ksProps.getProperty(name)
+    }
+    def keystoreFile = signingEnv('ANDROID_KEYSTORE_FILE')
     def hasKeystore = keystoreFile != null && !keystoreFile.trim().isEmpty()
 
     signingConfigs {
-        // A real keystore can be provided via environment variables; without
-        // one, release builds are signed with the debug keystore so they can
-        // be installed for testing (not suitable for Play Store uploads).
         release {
             if (hasKeystore) {
                 storeFile file(keystoreFile)
-                storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
-                keyAlias System.getenv("ANDROID_KEY_ALIAS")
-                keyPassword System.getenv("ANDROID_KEY_PASSWORD")
+                storePassword signingEnv('ANDROID_KEYSTORE_PASSWORD')
+                keyAlias signingEnv('ANDROID_KEY_ALIAS')
+                keyPassword signingEnv('ANDROID_KEY_PASSWORD')
             }
         }
     }
@@ -85,6 +107,14 @@ android {
         debug {
             debuggable true
         }
+    }
+
+    lint {
+        // Release builds run lintVital; ExpiredTargetSdkVersion fires on the
+        // deliberate targetSdk 28 (see defaultConfig above: exec() W^X
+        // exemption for the runtime-downloaded llama-server; this APK is
+        // sideload-only, never Play-distributed).
+        disable 'ExpiredTargetSdkVersion'
     }
 
     compileOptions {

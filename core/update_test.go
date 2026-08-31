@@ -149,11 +149,11 @@ func TestDetectInstallKind(t *testing.T) {
 func TestPickUpdateAssetAndroid(t *testing.T) {
 	assets := []GitHubAsset{
 		{Name: "llama-desktop-setup-v0.4.0-windows-amd64.exe"},
-		{Name: "llama-desktop-v0.4.0-android-armv7a-debug.apk"},
-		{Name: "llama-desktop-v0.4.0-android-arm64-debug.apk"},
+		{Name: "llama-desktop-v0.4.0-android-armv7a.apk"},
+		{Name: "llama-desktop-v0.4.0-android-arm64.apk"},
 	}
 	got := pickUpdateAsset(assets, installKindAndroid)
-	if got == nil || got.Name != "llama-desktop-v0.4.0-android-arm64-debug.apk" {
+	if got == nil || got.Name != "llama-desktop-v0.4.0-android-arm64.apk" {
 		t.Errorf("android pick = %+v, want the arm64 apk", got)
 	}
 
@@ -161,7 +161,7 @@ func TestPickUpdateAssetAndroid(t *testing.T) {
 		t.Errorf("android pick with exe-only assets = %+v, want nil", got)
 	}
 
-	if got := pickUpdateAsset([]GitHubAsset{{Name: "llama-desktop-v0.4.0-android-arm64-debug.apk"}}, installKindAndroid); got == nil {
+	if got := pickUpdateAsset([]GitHubAsset{{Name: "llama-desktop-v0.4.0-android-arm64.apk"}}, installKindAndroid); got == nil {
 		t.Error("android pick with a single apk = nil, want the apk")
 	}
 

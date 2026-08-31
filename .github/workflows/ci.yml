@@ -611,13 +611,17 @@ jobs:
           path: build/bin/llama-desktop-macos-*.zip
 
   build-android:
-    # Debug-signed arm64 APK via the Wails v3 Android gradle project in
-    # build/android (go shared lib -> jniLibs -> gradle assembleDebug).
+    # arm64 APK via the Wails v3 Android gradle project in build/android
+    # (go shared lib -> jniLibs -> gradle assembleRelease), signed with the
+    # STABLE release keystore restored from Actions secrets (restore step
+    # below): Android only lets an APK replace an installed one with the same
+    # signature, so the in-app self-update (PackageInstaller) needs every
+    # release APK to share one stable signature. Without the secrets (fork
+    # PRs) the build degrades to the per-runner debug keystore with a warning.
     # Sideload / GitHub-release distribution only: targetSdk is deliberately 28
     # (see build/android/app/build.gradle) so the app may exec the
     # runtime-downloaded llama-server binary, while Play requires targetSdk
-    # >= 34. The APK is signed with the auto-generated debug keystore (no
-    # signing secrets in CI).
+    # >= 34.
     runs-on: ubuntu-latest
     needs: frontend
     steps:
@@ -651,16 +655,42 @@ jobs:
           SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           yes | "$SDKM" --licenses >/dev/null 2>&1 || true
           "$SDKM" "ndk;26.3.11579264" "platforms;android-35" "build-tools;35.0.0"
+      - name: Restore stable release keystore from Actions secrets
+        # ANDROID_KEYSTORE_BASE64 (the keystore file, base64) plus
+        # ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS / ANDROID_KEY_PASSWORD
+        # make every released APK share one stable signature, which the
+        # Android in-app self-update requires (same-signature install check).
+        # The build.gradle picks the vars up via ANDROID_KEYSTORE_* env;
+        # base64 round-trips the binary keystore through the secret store.
+        # Secrets are unavailable to fork PRs: warn and fall back to the
+        # per-runner debug keystore (install-once APK, not in-app-updatable).
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "::warning::ANDROID_KEYSTORE_BASE64 secret not set - the arm64 APK falls back to the per-runner debug keystore (not in-app-updatable)"
+            exit 0
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/llama-desktop-release.keystore"
+          {
+            echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/llama-desktop-release.keystore"
+            echo "ANDROID_KEYSTORE_PASSWORD=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
+            echo "ANDROID_KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS }}"
+            echo "ANDROID_KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}"
+          } >> "$GITHUB_ENV"
       - name: Sync version file from tag
         # Same logic as windows/linux/macos jobs: release version uses git tag
         # as sole source; non-tag build uses repo default. android:package
-        # reads core/VERSION for the artifact filename.
+        # reads core/VERSION for the artifact filename (and gradle
+        # versionName/versionCode injection happens inside the Taskfile task).
         if: startsWith(github.ref, 'refs/tags/v')
         run: echo "$GITHUB_REF_NAME" > core/VERSION
-      - name: Build Android APK (go shared lib + gradle assembleDebug)
+      - name: Build Android APK (go shared lib + gradle assembleRelease)
         # android:package deps android:build deps android:build:go: NDK clang
         # c-shared build of libwails.so into jniLibs/arm64-v8a, then gradle
-        # assembleDebug (SDK resolved from the runner's ANDROID_HOME).
+        # assembleRelease (SDK resolved from the runner's ANDROID_HOME;
+        # signing from the stable keystore restored above, versionName /
+        # versionCode derived from core/VERSION inside the task).
         run: wails3 task android:package
       - name: Build x86_64 smoke APK (CI-emulator only, not released)
         # CI's Android emulator is x86_64 and cannot run arm64 native libs, so
@@ -687,7 +717,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: llama-desktop-android
-          path: build/bin/llama-desktop-*-android-arm64-debug.apk
+          path: build/bin/llama-desktop-*-android-arm64.apk
 
   smoke-android:
     # Emulator smoke for the APK: boots the x86_64 debug build on an API 30
@@ -737,7 +767,7 @@ jobs:
     # jobs competing to create the same Release. Tag push publishes a formal Release, workflow_dispatch
     # publishes a draft preview. Expected release artifacts: 1 windows exe installer
     # + 2 ubuntu debs (22.04 / 24.04; 20.04 dropped, see build-linux) + 1 macos
-    # universal zip + 1 android arm64 debug apk = 5.
+    # universal zip + 1 android arm64 apk = 5.
     runs-on: ubuntu-latest
     needs: [build-windows, build-linux, build-macos, build-android]
     permissions:
@@ -787,7 +817,7 @@ jobs:
         run: |
           set -euo pipefail
           # Validate artifact count must be 5 (windows 1 exe; linux 2 deb: ubuntu 22.04
-          # + 24.04; macos 1 universal zip; android 1 arm64 debug apk), fail if missing
+          # + 24.04; macos 1 universal zip; android 1 arm64 apk), fail if missing
           # to avoid incomplete Release
           shopt -s nullglob
           files=(artifacts/*)
