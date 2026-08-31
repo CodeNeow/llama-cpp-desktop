@@ -36,7 +36,7 @@
 | 加载方式 | 默认 mmap 加载最快；内存充裕可选 mlock 防换页 |
 | 切分方式 | 单卡选 `none`；多卡默认 `layer` 稳定 |
 
-> 注：Android 为纯 CPU 构建，页面不显示 GPU 层数、Flash Attention、cpu-moe 等 GPU 专属参数；「加载方式」中的 `dio` 仅 Windows / Linux 提供。
+> 注：Android 为纯 CPU 构建，页面不显示 GPU 层数、Flash Attention、cpu-moe 等 GPU 专属参数；「加载方式」中的 `dio` 仅 Windows / Linux 提供。Android 会自动识别 SoC 型号（如骁龙 / 天玑，来自系统属性）；「一键调优」在安卓上线程数上限为性能核数量（big.LITTLE 小核不参与推理线程），且纯 CPU 方案的调优结果提示不再显示 GPU 层字段。
 
 ## 服务运行中修改参数
 
