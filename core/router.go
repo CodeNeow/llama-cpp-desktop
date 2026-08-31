@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 )
@@ -23,16 +24,19 @@ type LoadedModel struct {
 	Status string `json:"status"` // loaded | loading | sleeping
 }
 
-// routerModelsResponse mirrors the llama-server GET /models JSON structure.
+// routerModelsResponse mirrors the llama-server GET /models router-shape JSON
+// structure. Status is a pointer so a missing / null status field (the native
+// OpenAI shape served by newer direct-mode builds) is distinguishable from a
+// present one.
 type routerModelsResponse struct {
 	Data []routerModelItem `json:"data"`
 }
 
 type routerModelItem struct {
-	ID           string            `json:"id"`
-	Path         string            `json:"path"`
-	Status       routerModelStatus `json:"status"`
-	Architecture routerModelArch   `json:"architecture"`
+	ID           string             `json:"id"`
+	Path         string             `json:"path"`
+	Status       *routerModelStatus `json:"status"`
+	Architecture routerModelArch    `json:"architecture"`
 }
 
 type routerModelStatus struct {
@@ -87,9 +91,10 @@ func classifyModelType(outputModalities []string) string {
 
 // fetchRouterModels queries the llama-server router for the model list,
 // filters to loaded / loading / sleeping entries, and maps them to a
-// LoadedModel slice. A 404 from GET /models (direct-mode llama-server has no
-// router route) falls back to the OpenAI-compatible /v1/models listing, where
-// every served model is by definition loaded.
+// LoadedModel slice. GET /models is parsed tolerantly across two response
+// shapes (parseModelsBody); a 404 (direct-mode builds without any router
+// route) falls back to the OpenAI-compatible /v1/models listing, where every
+// served model is by definition loaded.
 func fetchRouterModels(port int) ([]LoadedModel, error) {
 	base := routerBaseURL(port)
 	url := base + "/models"
@@ -111,23 +116,81 @@ func fetchRouterModels(port int) ([]LoadedModel, error) {
 		return nil, fmt.Errorf("fetch router models: HTTP %d", resp.StatusCode)
 	}
 
-	var raw routerModelsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
 		return nil, fmt.Errorf("fetch router models: %w", err)
 	}
+	return parseModelsBody(body)
+}
 
-	out := make([]LoadedModel, 0, len(raw.Data))
-	for _, item := range raw.Data {
-		switch item.Status.Value {
-		case "loaded", "loading", "sleeping":
-			out = append(out, LoadedModel{
-				ID:     item.ID,
-				Type:   classifyModelType(item.Architecture.OutputModalities),
-				Status: item.Status.Value,
-			})
+// parseModelsBody decodes a GET /models 200 body that may come in either of
+// two shapes:
+//
+//   - router shape: data[] entries with id + status{value} + architecture
+//     (router-mode llama-server);
+//   - native OpenAI shape: data[] entries with id only, plus object:"model"
+//     style fields — how newer llama.cpp builds answer /models directly even
+//     when started with a single -m model (the 404 signal no longer holds).
+//
+// Router entries keep the loaded / loading / sleeping filter, so a router
+// response with nothing resident still yields an empty list. Entries without
+// a usable status (native listing, missing / null status, or a future
+// upstream status-shape change) are treated leniently as resident chat
+// models — a 200 with data entries always means the models are served and
+// hence in memory. When an entry's status fails to decode as an object (e.g.
+// a plain string), the router-shape pass errors and the same body is re-read
+// with the native shape. Only a genuinely empty / absent data array, from
+// both passes, yields an empty result.
+func parseModelsBody(body []byte) ([]LoadedModel, error) {
+	// First pass: router shape.
+	var routerRaw routerModelsResponse
+	routerErr := json.Unmarshal(body, &routerRaw)
+	if routerErr == nil && len(routerRaw.Data) > 0 {
+		out := make([]LoadedModel, 0, len(routerRaw.Data))
+		for _, item := range routerRaw.Data {
+			status := ""
+			if item.Status != nil {
+				status = item.Status.Value
+			}
+			if status == "" {
+				// Native listing or status shape change: resident.
+				out = append(out, LoadedModel{ID: item.ID, Type: "chat", Status: "loaded"})
+				continue
+			}
+			switch status {
+			case "loaded", "loading", "sleeping":
+				out = append(out, LoadedModel{
+					ID:     item.ID,
+					Type:   classifyModelType(item.Architecture.OutputModalities),
+					Status: status,
+				})
+			}
 		}
+		return out, nil
 	}
-	return out, nil
+
+	// Second pass: native OpenAI shape — reached when the router shape failed
+	// to decode (e.g. status is not an object) or data was empty / absent.
+	var nativeRaw struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	nativeErr := json.Unmarshal(body, &nativeRaw)
+	if nativeErr == nil && len(nativeRaw.Data) > 0 {
+		out := make([]LoadedModel, 0, len(nativeRaw.Data))
+		for _, item := range nativeRaw.Data {
+			out = append(out, LoadedModel{ID: item.ID, Type: "chat", Status: "loaded"})
+		}
+		return out, nil
+	}
+
+	// Both passes failed to decode: surface the decode error (garbage body).
+	// Otherwise both saw an empty data array: router mode with nothing loaded.
+	if routerErr != nil && nativeErr != nil {
+		return nil, fmt.Errorf("fetch router models: %w", routerErr)
+	}
+	return []LoadedModel{}, nil
 }
 
 // fetchOpenAIModels maps GET /v1/models data[].id entries to LoadedModel

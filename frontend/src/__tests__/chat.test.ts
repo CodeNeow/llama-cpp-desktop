@@ -355,6 +355,51 @@ describe('fetchRouterModels', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
+  it('maps the native OpenAI /models shape to loaded without /v1/models fallback', async () => {
+    // Newer llama.cpp direct-mode builds answer /models natively with the
+    // OpenAI shape (data[].id, object:"model", no per-entry status): the
+    // entries are resident by definition, so they map to 'loaded'.
+    const fetchMock = vi.fn((url: string) => {
+      expect(url).toBe('http://127.0.0.1:8080/models')
+      return Promise.resolve(jsonResponse(200, {
+        object: 'list',
+        data: [{ id: 'stories260K', object: 'model', created: 1750000000, owned_by: 'llama.cpp' }],
+      }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(fetchRouterModels(8080)).resolves.toEqual([
+      { id: 'stories260K', status: 'loaded' },
+    ])
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns an empty list when /models answers 200 with no entries', async () => {
+    // Both shapes empty (router mode with nothing loaded) must stay empty —
+    // no /v1/models fallback, no synthesized loaded entries.
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      expect(url).toBe('http://127.0.0.1:8080/models')
+      return Promise.resolve(jsonResponse(200, { object: 'list', data: [] }))
+    }))
+    await expect(fetchRouterModels(8080)).resolves.toEqual([])
+  })
+
+  it('keeps non-loaded router statuses as-is instead of remapping them to loaded', async () => {
+    // Router-shape entries carry real statuses: pass-through (minus failed).
+    // Remapping these to 'loaded' would break unload bookkeeping upstream.
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      expect(url).toBe('http://127.0.0.1:8080/models')
+      return Promise.resolve(jsonResponse(200, {
+        data: [
+          { id: 'm1', status: { value: 'unloaded' } },
+          { id: 'm2', status: { value: 'failed' } },
+        ],
+      }))
+    }))
+    await expect(fetchRouterModels(8080)).resolves.toEqual([
+      { id: 'm1', status: 'unloaded' },
+    ])
+  })
+
   it('propagates an error when both /models and /v1/models fail', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(jsonResponse(404, {}))))
     await expect(fetchRouterModels(8080)).rejects.toThrow('GET /v1/models failed: 404')

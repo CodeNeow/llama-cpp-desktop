@@ -280,6 +280,163 @@ func TestFetchRouterModelsDirectFallback404(t *testing.T) {
 	}
 }
 
+// TestFetchRouterModelsNativeShape verifies the dual-shape parse: a newer
+// llama.cpp direct-mode server answers GET /models with HTTP 200 and the
+// native OpenAI listing (data[].id + object:"model", no per-entry status).
+// The body must map to a resident chat model without a /v1/models fallback.
+func TestFetchRouterModelsNativeShape(t *testing.T) {
+	var v1Hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/models":
+			w.Write([]byte(`{"object":"list","data":[{"id":"stories260K","object":"model","created":1750000000,"owned_by":"llama.cpp"}]}`))
+		case "/v1/models":
+			v1Hits++
+			w.Write([]byte(`{"data":[{"id":"stories260K"}]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	orig := routerBaseURL
+	routerBaseURL = func(port int) string { return srv.URL }
+	defer func() { routerBaseURL = orig }()
+
+	models, err := fetchRouterModels(8080)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if v1Hits != 0 {
+		t.Errorf("native /models hit must not fall back to /v1/models (%d hits)", v1Hits)
+	}
+	want := []LoadedModel{{ID: "stories260K", Type: "chat", Status: "loaded"}}
+	if len(models) != 1 || models[0] != want[0] {
+		t.Errorf("native listing = %+v, want %+v", models, want)
+	}
+}
+
+// TestFetchRouterModelsRouterShapeNothingLoaded verifies the router-shape
+// empty semantics survive the dual-shape parse: entries present but none in
+// loaded/loading/sleeping must still yield an empty list — without a
+// /v1/models fallback that would resurrect them as loaded.
+func TestFetchRouterModelsRouterShapeNothingLoaded(t *testing.T) {
+	var v1Hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/models":
+			w.Write([]byte(`{"data":[{"id":"m1","status":{"value":"unloaded"},"architecture":{}},{"id":"m2","status":{"value":"failed"},"architecture":{}}]}`))
+		case "/v1/models":
+			v1Hits++
+			w.Write([]byte(`{"data":[{"id":"m1"},{"id":"m2"}]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	orig := routerBaseURL
+	routerBaseURL = func(port int) string { return srv.URL }
+	defer func() { routerBaseURL = orig }()
+
+	models, err := fetchRouterModels(8080)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(models) != 0 {
+		t.Errorf("router shape with nothing loaded = %+v, want empty", models)
+	}
+	if v1Hits != 0 {
+		t.Errorf("router shape must not fall back to /v1/models (%d hits)", v1Hits)
+	}
+}
+
+// TestFetchRouterModelsEmptyData verifies a 200 with an empty or absent data
+// array (both shapes empty) yields an empty list without an error.
+func TestFetchRouterModelsEmptyData(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"empty array", `{"data":[]}`},
+		{"missing data", `{}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(tt.body))
+			}))
+			defer srv.Close()
+
+			orig := routerBaseURL
+			routerBaseURL = func(port int) string { return srv.URL }
+			defer func() { routerBaseURL = orig }()
+
+			models, err := fetchRouterModels(8080)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if len(models) != 0 {
+				t.Errorf("models = %+v, want empty", models)
+			}
+		})
+	}
+}
+
+// TestFetchRouterModelsLenientStatusShapes verifies the status leniency
+// contract: entries with a missing / null / empty status, and bodies whose
+// status fails to decode as an object (plain string — upstream shape drift),
+// still map to resident loaded chat models instead of erroring out.
+func TestFetchRouterModelsLenientStatusShapes(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"data":[{"id":"a","status":"loaded"},{"id":"b","status":null},{"id":"c"},{"id":"d","status":{}}]}`))
+	}))
+	defer srv.Close()
+
+	orig := routerBaseURL
+	routerBaseURL = func(port int) string { return srv.URL }
+	defer func() { routerBaseURL = orig }()
+
+	models, err := fetchRouterModels(8080)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []LoadedModel{
+		{ID: "a", Type: "chat", Status: "loaded"},
+		{ID: "b", Type: "chat", Status: "loaded"},
+		{ID: "c", Type: "chat", Status: "loaded"},
+		{ID: "d", Type: "chat", Status: "loaded"},
+	}
+	if len(models) != len(want) {
+		t.Fatalf("models = %+v, want %d entries", models, len(want))
+	}
+	for i, w := range want {
+		if models[i] != w {
+			t.Errorf("models[%d] = %+v, want %+v", i, models[i], w)
+		}
+	}
+}
+
+// TestFetchRouterModelsGarbageBody verifies a non-JSON body still errors.
+func TestFetchRouterModelsGarbageBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("not json at all"))
+	}))
+	defer srv.Close()
+
+	orig := routerBaseURL
+	routerBaseURL = func(port int) string { return srv.URL }
+	defer func() { routerBaseURL = orig }()
+
+	if _, err := fetchRouterModels(8080); err == nil {
+		t.Error("garbage body should return an error")
+	}
+}
+
 // TestUnloadRouterModel404 verifies the direct-mode unload behavior: a 404
 // from /models/unload surfaces the guided "stop the service instead" error
 // (asserted in English by pinning the UI language — tr() follows the machine

@@ -50,9 +50,11 @@ func TestServiceChainE2E(t *testing.T) {
 // a models preset — the mode the official Android release build REQUIRES,
 // since it ships without LLAMA_SUBPROCESS and the router-models subsystem
 // aborts startup ("subprocess is not enabled on this build"). Also exercises
-// the direct-mode contract end to end: the router /models route answers 404
-// and fetchRouterModels falls back to /v1/models. Same env gates as the
-// router variant plus LLAMA_DESKTOP_E2E_MODE=direct.
+// the direct-mode contract end to end: fetchRouterModels reports the single
+// resident as loaded, whether via the native /models listing (newer builds
+// answer 200 with the OpenAI shape) or the /v1/models fallback (older builds
+// answer 404). Same env gates as the router variant plus
+// LLAMA_DESKTOP_E2E_MODE=direct.
 func TestServiceChainE2EDirect(t *testing.T) {
 	if os.Getenv("LLAMA_DESKTOP_E2E_MODE") != "direct" {
 		t.Skip("LLAMA_DESKTOP_E2E_MODE=direct not set; direct-mode e2e runs only on demand")
@@ -192,9 +194,9 @@ func runServiceChainE2E(t *testing.T, direct bool) {
 	}, e2eRequestTimeout)
 
 	// Direct-mode contract: the resident model is served under its sanitized
-	// display name (--alias), the router /models route is absent (404) and
-	// fetchRouterModels degrades to the OpenAI listing, reporting the single
-	// resident as loaded.
+	// display name (--alias) and fetchRouterModels reports it as loaded — via
+	// the native /models listing on newer builds (OpenAI shape, no status) or
+	// the /v1/models fallback on older builds (router /models absent, 404).
 	if direct {
 		if want := sanitizeAlias(scanned[0].Name); modelID != want {
 			t.Errorf("direct mode model id = %q, want the sanitized alias %q", modelID, want)

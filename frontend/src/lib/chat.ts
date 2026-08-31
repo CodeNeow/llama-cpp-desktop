@@ -188,9 +188,15 @@ export function buildMessageContent(text: string, images?: string[]): string | A
 /**
  * Fetch the router's currently available model list (excluding failed entries).
  *
- * A 404 from GET /models means the server was started in direct mode (Android:
- * single resident model, no router routes) — fall back to the OpenAI-compatible
+ * A 404 from GET /models means the server was started in direct mode (older
+ * builds: no router routes at all) — fall back to the OpenAI-compatible
  * /v1/models listing, where every served model is by definition loaded.
+ * Newer llama.cpp builds also answer /models natively in direct mode with the
+ * OpenAI shape (data[].id, object:"model", no per-entry status): such entries
+ * have no status field and map to status 'loaded' — a 200 with entries always
+ * means resident models. Non-loaded router statuses pass through untouched
+ * (modelsToUnload only acts on 'loaded'), and only a genuinely empty data
+ * array yields an empty list (router mode with nothing loaded).
  */
 export async function fetchRouterModels(port: number): Promise<RouterModel[]> {
   const res = await fetch(`http://127.0.0.1:${port}/models`)
@@ -205,7 +211,7 @@ export async function fetchRouterModels(port: number): Promise<RouterModel[]> {
   const list = Array.isArray(json?.data) ? json.data : []
   return list
     .filter((m: any) => m?.status?.value !== 'failed')
-    .map((m: any) => ({ id: m.id, status: m.status?.value ?? 'unknown' }))
+    .map((m: any) => ({ id: m.id, status: m.status?.value ?? 'loaded' }))
 }
 
 /**
