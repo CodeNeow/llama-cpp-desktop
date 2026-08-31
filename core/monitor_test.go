@@ -418,6 +418,37 @@ func TestDiskUsageForPath(t *testing.T) {
 	}
 }
 
+// ─── existingAncestor ─────────────────────────────────────────────
+
+// TestExistingAncestor verifies the statfs-target resolution for the storage
+// card: the path itself when it exists, the deepest existing ancestor when
+// intermediate directories are missing, and the filesystem root when nothing
+// along the chain exists. Cross-platform runnable (temp dir + separators).
+func TestExistingAncestor(t *testing.T) {
+	base := t.TempDir()
+
+	// Existing leaf returns as-is.
+	if got := existingAncestor(base); got != filepath.Clean(base) {
+		t.Errorf("existing path: got %q, want %q", got, filepath.Clean(base))
+	}
+
+	// Missing leaf falls back to its existing parent.
+	missing := filepath.Join(base, "not-created-yet")
+	if got := existingAncestor(missing); got != filepath.Clean(base) {
+		t.Errorf("missing leaf: got %q, want %q", got, filepath.Clean(base))
+	}
+
+	// Deep missing chain terminates at the root without looping.
+	deep := filepath.Join(base, "a", "b", "c", "d")
+	if got := existingAncestor(deep); got == "" {
+		t.Error("deep missing chain: got empty result, want a non-empty root")
+	}
+	root := string(filepath.Separator)
+	if got := existingAncestor(root); got != root {
+		t.Errorf("root: got %q, want %q", got, root)
+	}
+}
+
 // ─── procStatCPUTicks / serviceCPUPercentFromDeltas ───────────────
 
 // TestProcStatCPUTicks verifies utime+stime extraction from /proc/<pid>/stat

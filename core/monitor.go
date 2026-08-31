@@ -275,10 +275,13 @@ func sampleMonitor() {
 // sampleDiskUsage samples the disk usage of the volume containing the model
 // download directory: the target volume is the root of the absolute path of
 // effectiveModelDownloadDir (read under modelDownloadDirMu). On non-Windows
-// platforms where filepath.VolumeName is empty, it falls back to the volume
-// root of the current working directory. Used = Total - Free is computed
-// inside the platform-specific diskUsageForPath. Returns nil on sampling
-// failure, without blocking other sampling metrics.
+// platforms, where filepath.VolumeName is empty, the measured volume is the
+// closest existing ancestor of the model dir — statfs requires an existing
+// path, and resolving through the process cwd would be wrong wherever the
+// cwd is meaningless (Android's cwd is the read-only "/" and would otherwise
+// report the system partition instead of the data volume hosting the models).
+// Used = Total - Free is computed inside diskUsageForPath. Returns nil on
+// sampling failure, without blocking other sampling metrics.
 func sampleDiskUsage() *DiskUsage {
 	dir := effectiveModelDownloadDir()
 	abs, err := filepath.Abs(dir)
@@ -287,14 +290,7 @@ func sampleDiskUsage() *DiskUsage {
 	}
 	root := filepath.VolumeName(abs)
 	if root == "" {
-		wd, err := os.Getwd()
-		if err != nil {
-			return nil
-		}
-		root = filepath.VolumeName(wd)
-		if root == "" {
-			root = string(filepath.Separator)
-		}
+		root = existingAncestor(abs)
 	} else {
 		// On Windows, volume names look like "C:"; append the separator to get
 		// "C:\", which points to the volume root.
@@ -305,6 +301,24 @@ func sampleDiskUsage() *DiskUsage {
 		return nil
 	}
 	return d
+}
+
+// existingAncestor returns the closest existing ancestor of path, including
+// path itself, stopping at the filesystem root when nothing along the way
+// exists (statfs can only be called on an existing path). Pure filesystem
+// walk, no allocation-heavy work; suited to the 1s sampling cadence.
+func existingAncestor(path string) string {
+	p := filepath.Clean(path)
+	for {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+		parent := filepath.Dir(p)
+		if parent == p {
+			return p
+		}
+		p = parent
+	}
 }
 
 // ─── CPU Sampling ─────────────────────────────────────────────────
