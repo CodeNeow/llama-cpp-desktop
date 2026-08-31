@@ -987,6 +987,14 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
     flex-wrap: wrap;
   }
 
+  /* Task-manager modal tab row stops sticking on the phone tier (same policy
+     as the page headers in global.css: the whole sheet scrolls). Position
+     only — the negative-margin/padding geometry is position-independent, so
+     the row keeps its exact placement at the top of the task panel. */
+  .task-tabs {
+    position: static;
+  }
+
   /* The tasks/history modal keeps an inner scroll; trim the outer padding so
      the panel gets maximal room on small screens */
   .modal-overlay {

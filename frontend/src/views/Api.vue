@@ -1073,6 +1073,13 @@ function clearLog() {
        square; the log console scrolls inside its own bounded band (12px mono).
        Server params popover must never exceed the viewport. ─── */
 @media (max-width: 767px) {
+  /* Phone heading = the design's 24px phone tier (same as Home's .greet-title
+     phone rule, same 1.2 line-height), so every page header block reads the
+     same height as the greeting */
+  .page-title {
+    font-size: 24px;
+  }
+
   .api-hero {
     padding: 14px 16px;
   }

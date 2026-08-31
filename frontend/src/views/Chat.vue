@@ -1692,6 +1692,16 @@ onUnmounted(() => {
     padding: var(--safe-area-top, 0px) 16px 0 calc(16px + var(--dock-width, 0px) + 8px);
   }
 
+  /* Carve-out from the global phone-tier unstick (global.css .sticky-top
+     static): the chat header band is fixed-viewport chrome — .page-fixed's
+     flex-shrink:0 band holding the model chip — and .chat-page never scrolls,
+     so sticky never engaged here anyway. Re-pin it as position:relative so
+     the band occupies the exact same box and still honors the shared
+     z-index:20 stacking above the messages band, pixel-identical to before. */
+  .chat-page .sticky-top {
+    position: relative;
+  }
+
   /* Chip + two 44px round buttons on one row: the chip shrinks (ellipsis in
      the value span) instead of wrapping; 44+44 buttons + two 8px gaps */
   .chat-toolbar {

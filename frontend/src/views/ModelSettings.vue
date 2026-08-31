@@ -1157,8 +1157,11 @@ onUnmounted(() => {
     margin-bottom: 8px;
   }
 
+  /* Phone heading = the design's 24px phone tier (same as Home's .greet-title
+     phone rule, same 1.2 line-height): every page header block reads the same
+     height as the greeting. Long model names stay safe via word-break below. */
   .page-title {
-    font-size: 20px;
+    font-size: 24px;
   }
 
   .settings-tabs {

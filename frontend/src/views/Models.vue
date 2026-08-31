@@ -155,5 +155,12 @@ const tabs = [
   .models-seg {
     width: 100%;
   }
+
+  /* Phone heading = the design's 24px phone tier (same as Home's .greet-title
+     phone rule, same 1.2 line-height), so every page header block reads the
+     same height as the greeting */
+  .page-title {
+    font-size: 24px;
+  }
 }
 </style>

@@ -219,6 +219,27 @@ code, pre {
   display: flow-root;
 }
 
+/* Status-bar scrim (edge-to-edge Android follow-up): on device, scrolled
+   content slides up behind the transparent status bar — .content-area's
+   padding-top only reserves the band at scroll 0, it does not clip scrolled
+   content. This fixed band paints the inset strip in the app background so
+   content disappears under the system bar. Height rides --safe-area-top:
+   zero-height no-op on desktop and in the browser preview. Layering: above
+   the mobile tab bar (40) and page content, below the TaskDock pill (50) and
+   the update modal (1000); the chat page pads the same band with the same
+   var(--bg-primary), so the overlay is invisible there too. */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--safe-area-top, 0px);
+  background: var(--bg-primary);
+  z-index: 45;
+  pointer-events: none;
+}
+
 /* ─── Global scrollbar styling ───
    One thin-scrollbar rule set for every scrollable region (content area,
    console, monitor cards, select dropdowns, chat messages) instead of
@@ -310,6 +331,20 @@ html {
 @media (max-width: 767px) {
   .page-header {
     padding-top: 8px;
+  }
+}
+
+/* mobile (<=767px): headers stop sticking. On the phone tier every page
+   scrolls as one sheet — the pinned header band reads as glued chrome and
+   eats vertical space, so 偏好设置/模型管理/帮助文档 etc. scroll away with
+   their page like any phone app. Position only: the band keeps its
+   flow-root margin containment and its page-colored background, so scrolled
+   content cannot show through the header's own padding while it departs.
+   Chat.vue's band is fixed-viewport chrome and re-pins itself (position:
+   relative carve-out there); desktop/tablet keep the sticky pinning. */
+@media (max-width: 767px) {
+  .sticky-top {
+    position: static;
   }
 }
 
