@@ -229,6 +229,11 @@ export const messages: Record<Locale, Record<string, string>> = {
     'api.tokenSpeed': 'Token 速度',
     'api.settings': '参数设置',
     'api.cfgLockedHint': '服务运行中，停止后可修改',
+    'api.speedLabel': '生成速度 · 近 60 秒',
+    'api.copyAddress': '复制服务地址',
+    'api.addressCopied': '已复制',
+    'api.modelsHeading': '可用模型',
+    'api.modelsMore': '{n} 个',
 
     // ─── Downloads page (Downloads.vue, the /models/download tab) ───
     'downloads.searchPlaceholder': '搜索模型...（如 Qwen3.8-27B, Qwen3.6-35B-A3B）',
@@ -267,6 +272,9 @@ export const messages: Record<Locale, Record<string, string>> = {
     'downloads.selectedCount': '已选 {n} 个文件',
     'downloads.viewDetail': '查看详情',
     'downloads.fileCount': '{n} 个文件',
+    'downloads.inProgress': '进行中下载',
+    'downloads.etaSeconds': '剩余约 {n} 秒',
+    'downloads.etaMinutes': '剩余约 {n} 分钟',
 
     // ─── Chat page (Chat.vue) ───
     'chat.title': '本地聊天',
@@ -772,6 +780,11 @@ export const messages: Record<Locale, Record<string, string>> = {
     'api.tokenSpeed': 'Token Speed',
     'api.settings': 'Settings',
     'api.cfgLockedHint': 'Server is running. Stop it to modify.',
+    'api.speedLabel': 'Generation speed · last 60s',
+    'api.copyAddress': 'Copy server address',
+    'api.addressCopied': 'Copied',
+    'api.modelsHeading': 'Available Models',
+    'api.modelsMore': '{n} in total',
 
     // ─── Downloads (Downloads.vue, the /models/download tab) ───
     'downloads.searchPlaceholder': 'Search models... (e.g. Qwen3.8-27B, Qwen3.6-35B-A3B)',
@@ -810,6 +823,9 @@ export const messages: Record<Locale, Record<string, string>> = {
     'downloads.selectedCount': '{n} files selected',
     'downloads.viewDetail': 'View detail',
     'downloads.fileCount': '{n} files',
+    'downloads.inProgress': 'In-Progress Downloads',
+    'downloads.etaSeconds': '~{n}s left',
+    'downloads.etaMinutes': '~{n} min left',
 
     // ─── Chat page (Chat.vue) ───
     'chat.title': 'Local Chat',

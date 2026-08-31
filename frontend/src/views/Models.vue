@@ -6,23 +6,23 @@
         <p class="page-subtitle">{{ t('models.subtitle') }}</p>
       </div>
 
-      <!-- Tabs row: same pattern as Settings.vue (icon + label buttons with an
-           underline active state). Unlike Settings, the active tab is derived
-           from the route and clicks push the child route, so deep links and
-           back/forward navigation stay correct. -->
-      <div class="models-tabs" role="tablist" :aria-label="t('models.title')">
+      <!-- Segmented control (design/android-mockups.html frame ③ .seg): a pill
+           track with the active segment lifted on a surface chip. Same tab
+           semantics as before — the active tab is derived from the route and
+           clicks push the child route, so deep links and back/forward
+           navigation stay correct. -->
+      <div class="models-seg" role="tablist" :aria-label="t('models.title')">
         <button
           v-for="tab in tabs"
           :key="tab.id"
           :id="`${tab.id}-tab`"
-          class="tab-btn"
+          class="seg-btn"
           :class="{ active: activeTabId === tab.id }"
           role="tab"
           :aria-selected="activeTabId === tab.id"
           :aria-controls="panelId"
           @click="router.push(tab.route)"
         >
-          <span class="tab-icon" v-html="tab.icon"></span>
           {{ tab.label() }}
         </button>
       </div>
@@ -57,20 +57,18 @@ const panelId = 'models-panel'
 // else under /models (including /models/download) shows the download tab
 const activeTabId = computed(() => (route.path.startsWith('/models/local') ? 'tab-local' : 'tab-download'))
 
-// Tab definitions (download first: it is the default landing tab; icons are
-// inline stroke SVGs, mirroring Settings.vue)
+// Tab definitions (download first: it is the default landing tab; the
+// segmented control renders text-only labels per design frame ③)
 const tabs = [
   {
     id: 'tab-download',
     route: '/models/download',
     label: () => t('models.tabDownload'),
-    icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
   },
   {
     id: 'tab-local',
     route: '/models/local',
     label: () => t('models.tabLocal'),
-    icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>`,
   },
 ]
 </script>
@@ -102,70 +100,60 @@ const tabs = [
   margin: 0;
 }
 
-/* ─── Tabs (same pattern as Settings.vue) ─── */
-.models-tabs {
+/* ─── Segmented control (design frame ③ .seg): pill track, active segment on a
+       lifted surface chip ─── */
+.models-seg {
   display: flex;
-  gap: 4px;
-  padding: 0;
-  border-bottom: 1px solid var(--border);
+  gap: 0;
+  padding: 4px;
+  background: rgba(120, 124, 160, 0.12);
+  border-radius: 999px;
+  /* Capped so the control reads as a compact switch on wide desktop windows
+     instead of a stretched full-width bar (frame ③ proportions) */
+  width: min(100%, 340px);
   flex-shrink: 0;
 }
 
-/* The 20px gap under the tabs lives here as sticky-top padding instead of a
-   margin on .models-tabs: the sticky background never paints a child's margin,
+.seg-btn {
+  flex: 1;
+  padding: 9px 0;
+  background: none;
+  border: none;
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: color 0.15s, background 0.2s, box-shadow 0.2s;
+  white-space: nowrap;
+}
+
+.seg-btn:hover {
+  color: var(--text-secondary);
+}
+
+/* Active segment: lifted white/surface chip with a soft island shadow
+   (design .seg span.on) */
+.seg-btn.active {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  box-shadow: 0 3px 10px rgba(80, 84, 140, 0.16);
+}
+
+/* The 20px gap under the control lives here as sticky-top padding instead of a
+   margin on .models-seg: the sticky background never paints a child's margin,
    so the old margin left a transparent 20px band where scrolled content showed
    through above the sticky header. */
 .sticky-top {
   padding-bottom: 20px;
 }
 
-.tab-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 14px;
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  color: var(--text-muted);
-  font-size: 13px;
-  font-weight: 500;
-  font-family: inherit;
-  cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
-}
-
-.tab-btn:hover {
-  color: var(--text-secondary);
-}
-
-.tab-btn.active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
-  font-weight: 600;
-}
-
-.tab-btn .tab-icon {
-  display: flex;
-}
-
-/* ─── Phone (<=767px): the tab row scrolls horizontally inside its own
-       container when long zh labels would clip (same treatment as
-       Settings.vue's tab row). ─── */
+/* ─── Phone (<=767px): the control spans the full content width so both
+       segments get tap-equal halves (frame ③). ─── */
 @media (max-width: 767px) {
-  .models-tabs {
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-
-  .models-tabs::-webkit-scrollbar {
-    display: none;
-  }
-
-  /* Buttons keep their natural width so the row actually scrolls */
-  .tab-btn {
-    flex-shrink: 0;
+  .models-seg {
+    width: 100%;
   }
 }
 </style>

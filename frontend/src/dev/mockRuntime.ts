@@ -201,8 +201,11 @@ const json = (body: unknown, status = 200): Response =>
     headers: { 'Content-Type': 'application/json' },
   })
 
-/** OpenAI-compatible SSE stream with a visibly paced typing effect. */
-function chatCompletionResponse(): Response {
+/** OpenAI-compatible SSE stream with a visibly paced typing effect.
+ * Honors the request's AbortSignal: the chat page's stop button aborts the
+ * fetch, so the stream must stop enqueueing and error the controller (mirrors
+ * a real fetch, whose body reader rejects with the abort reason). */
+function chatCompletionResponse(signal?: AbortSignal | null): Response {
   const encoder = new TextEncoder()
   const reply = mockChatReply()
   // 2-character slices ≈ one CJK token per chunk, 30ms apart.
@@ -210,14 +213,33 @@ function chatCompletionResponse(): Response {
   for (let i = 0; i < reply.length; i += 2) pieces.push(reply.slice(i, i + 2))
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {
-      for (const piece of pieces) {
-        await sleep(30)
-        controller.enqueue(
-          encoder.encode('data: ' + JSON.stringify({ choices: [{ delta: { content: piece } }] }) + '\n\n'),
-        )
+      // Abort mid-stream: surface the abort reason to the body reader so the
+      // chat page's catch sees the same AbortError a real server would cause.
+      const onAbort = () => {
+        try {
+          controller.error(signal?.reason ?? new DOMException('The user aborted a request.', 'AbortError'))
+        } catch {
+          // Stream already closed or errored (abort raced the completion) — nothing to abort.
+        }
       }
-      controller.enqueue(encoder.encode('data: [DONE]\n\n'))
-      controller.close()
+      if (signal?.aborted) {
+        onAbort()
+        return
+      }
+      signal?.addEventListener('abort', onAbort, { once: true })
+      try {
+        for (const piece of pieces) {
+          await sleep(30)
+          if (signal?.aborted) return // listener already errored the controller
+          controller.enqueue(
+            encoder.encode('data: ' + JSON.stringify({ choices: [{ delta: { content: piece } }] }) + '\n\n'),
+          )
+        }
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+        controller.close()
+      } finally {
+        signal?.removeEventListener('abort', onAbort)
+      }
     },
   })
   return new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
@@ -248,7 +270,7 @@ async function handleMockServerRequest(url: URL, init: RequestInit | undefined):
       return json({ error: { message: 'llama-server is not running (mock)' } }, 503)
     }
     mockAddServerLog('srv  update_slots: all slots are busy')
-    return chatCompletionResponse()
+    return chatCompletionResponse(init?.signal)
   }
   if (method === 'POST' && path === '/models/unload') {
     mockAddServerLog('[INFO] router: model unload request accepted (mock)')

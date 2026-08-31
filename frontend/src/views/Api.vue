@@ -6,38 +6,109 @@
         <p class="page-subtitle">{{ t('api.subtitle') }}</p>
       </div>
 
-      <!-- Top action bar: status light + status text + URL + button group + params popover + available models -->
-      <section class="status-card toolbar">
-        <div class="toolbar-row">
-          <div class="status-indicator">
-            <span class="status-dot" :class="serverRunning ? 'running' : 'stopped'"></span>
-            <span class="status-text">{{ serverRunning ? t('api.running') : t('api.stopped') }}</span>
-            <span v-if="serverRunning" class="status-url">http://{{ cfg.host }}:{{ cfg.port }}</span>
-            <span v-if="serverRunning && status.uptimeSeconds > 0" class="toolbar-uptime">
-              <span class="uptime-value">{{ formatUptime(status.uptimeSeconds, locale) }}</span>
-              <span class="uptime-label">{{ t('monitor.uptimeLabel') }}</span>
-            </span>
-          </div>
-          <div class="btn-group">
-            <button class="server-btn btn-start" :disabled="serverRunning || busy" @click="doStart">
-              {{ t('api.startServer') }}
-            </button>
-            <button class="server-btn btn-stop" :disabled="!serverRunning || busy" @click="doStop">
-              {{ t('api.stopServer') }}
-            </button>
-            <button class="server-btn btn-restart" :disabled="!serverRunning || busy" @click="doRestart">
-              {{ t('api.restart') }}
-            </button>
-            <button class="icon-btn" @click.stop="showCfg = !showCfg" :aria-expanded="showCfg" :title="t('api.settings')" type="button">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="3"/>
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-              </svg>
-            </button>
-          </div>
+      <!-- Status hero (design frame ④ .api-hero island): running status light
+           with a pulse ring + state text + uptime pill, the mono address chip
+           with a copy affordance, and the generation-speed gradient area chart
+           embedded in the same card. Platform-related visibility untouched. -->
+      <section class="api-hero">
+        <div class="hero-status-row">
+          <span class="pulse-dot" :class="{ on: serverRunning }"></span>
+          <span class="hero-status-text">{{ serverRunning ? t('api.running') : t('api.stopped') }}</span>
+          <span v-if="serverRunning && status.uptimeSeconds > 0" class="hero-uptime">
+            {{ formatUptime(status.uptimeSeconds, locale) }}
+            <span class="hero-uptime-label">{{ t('monitor.uptimeLabel') }}</span>
+          </span>
         </div>
 
-        <!-- Server parameters popover -->
+        <!-- Address chip: monospace URL + copy button (transient confirmation) -->
+        <button
+          v-if="serverRunning"
+          class="hero-address"
+          type="button"
+          :title="copied ? t('api.addressCopied') : t('api.copyAddress')"
+          @click.stop="copyAddress"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="address-lock-icon">
+            <rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/>
+          </svg>
+          <span class="address-text">http://{{ cfg.host }}:{{ cfg.port }}</span>
+          <span v-if="copied" class="address-copied">{{ t('api.addressCopied') }}</span>
+          <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="address-copy-icon">
+            <rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+          </svg>
+        </button>
+
+        <!-- Generation speed: gradient area chart (frame ④ chart-wrap) fed by
+             the existing 60s decode sampling chain. Stopped state ghosts the
+             data (visibility, not display) so the card height never shifts. -->
+        <div class="hero-speed">
+          <div class="speed-head">
+            <span class="speed-label">{{ t('api.speedLabel') }}</span>
+            <span class="speed-value" :class="{ 'tps-ghost': !status.serverRunning }" :aria-hidden="!status.serverRunning">
+              {{ decodeTpsText }} <small>tok/s</small>
+            </span>
+          </div>
+          <div class="speed-chart" :class="{ 'tps-ghost': !status.serverRunning }" :aria-hidden="!status.serverRunning">
+            <svg :viewBox="`-6 -6 ${chartWidth + 12} ${chartHeight + 12}`">
+              <defs>
+                <linearGradient id="apiSpeedFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.34"/>
+                  <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0"/>
+                </linearGradient>
+                <linearGradient id="apiSpeedLine" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%" stop-color="#6366f1"/>
+                  <stop offset="100%" stop-color="#a855f7"/>
+                </linearGradient>
+              </defs>
+              <path class="speed-area" :d="decodeAreaPath" />
+              <path class="speed-line" :d="decodeLinePath" />
+              <circle v-if="decodeEndDot" class="speed-dot" :cx="decodeEndDot.x" :cy="decodeEndDot.y" r="4" />
+            </svg>
+          </div>
+          <div class="speed-meta" :class="{ 'tps-ghost': !status.serverRunning }" :aria-hidden="!status.serverRunning">
+            <span>{{ t('monitor.promptSpeed') }} {{ promptTpsText }} tok/s</span>
+            <span>{{ t('monitor.chartLabel', { n: decodeHistory.length }) }}</span>
+          </div>
+          <div v-if="!status.serverRunning" class="speed-placeholder">{{ t('monitor.uptimePlaceholder') }}</div>
+        </div>
+      </section>
+
+      <!-- Single primary action (frame ④ .btnrow): running = one danger-tinted
+           "stop" button while restart is demoted to an icon button; stopped =
+           one gradient "start" button. The start/stop/restart bindings, the
+           graceful-stop chain and the busy-disable semantics are unchanged —
+           only the layout is regrouped. -->
+      <div class="action-row">
+        <button v-if="serverRunning" class="primary-btn danger" :disabled="busy" @click="doStop">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+            <rect x="5" y="5" width="14" height="14" rx="2"/>
+          </svg>
+          {{ t('api.stopServer') }}
+        </button>
+        <button v-else class="primary-btn start" :disabled="busy" @click="doStart">
+          {{ t('api.startServer') }}
+        </button>
+        <button
+          v-if="serverRunning"
+          class="ghost-icon"
+          type="button"
+          :disabled="busy"
+          :title="t('api.restart')"
+          :aria-label="t('api.restart')"
+          @click="doRestart"
+        >
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12a9 9 0 11-2.6-6.4M21 3v6h-6"/>
+          </svg>
+        </button>
+        <button class="ghost-icon" type="button" @click.stop="showCfg = !showCfg" :aria-expanded="showCfg" :title="t('api.settings')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
+
+        <!-- Server parameters popover (anchored to the action row) -->
         <div v-if="showCfg" class="cfg-popover" @click.stop>
           <div class="cfg-popover-title">{{ t('api.settings') }}</div>
           <div class="cfg-item">
@@ -54,26 +125,29 @@
           </div>
           <div v-if="serverRunning" class="cfg-locked-hint">{{ t('api.cfgLockedHint') }}</div>
         </div>
-
-        <!-- Available models (second row) -->
-        <div class="toolbar-models">
-          <span class="toolbar-models-title">{{ t('api.modelsTitle', { n: modelCount }) }}</span>
-          <div class="model-tags">
-            <span v-for="m in availableModels" :key="m" class="model-tag">{{ m }}</span>
-          </div>
-          <span v-if="modelCount === 0" class="empty-hint">
-            {{ t('api.emptyHint') }}
-            <button class="empty-cta" @click="goDownloads">{{ t('action.gotoDownloads') }}</button>
-          </span>
-        </div>
-      </section>
+      </div>
     </div>
 
-    <!-- Main area: scrollable band wrapping the monitor grid — stretches to
-         fill tall windows, scrolls once the window is too short -->
+    <!-- Main area: scrollable band with the available-models island (frame ④)
+         above the terminal-style log console -->
     <div class="page-scroll">
-      <div class="monitor-grid">
-      <!-- Left column: service log console (dark console look in both themes) -->
+      <!-- Available models (frame ④ island): static chips on a neutral surface -->
+      <section class="models-island">
+        <div class="island-head">
+          <span class="island-title">{{ t('api.modelsHeading') }}</span>
+          <span class="island-more">{{ t('api.modelsMore', { n: modelCount }) }}</span>
+        </div>
+        <div v-if="modelCount > 0" class="model-chips">
+          <span v-for="m in availableModels" :key="m" class="model-chip">{{ m }}</span>
+        </div>
+        <span v-else class="empty-hint">
+          {{ t('api.emptyHint') }}
+          <button class="empty-cta" @click="goDownloads">{{ t('action.gotoDownloads') }}</button>
+        </span>
+      </section>
+
+      <!-- Service log: terminal-dark console (unchanged) inside a floating
+           island; the clear button stays as the log-toolbar equivalent -->
       <section class="log-panel">
         <div class="panel-header">
           <span class="panel-title">{{ t('api.logTitle') }}</span>
@@ -84,64 +158,6 @@
         </div>
         <div v-else class="console-empty">{{ t('api.logEmpty') }}</div>
       </section>
-
-      <!-- Right column: token speed card -->
-      <div class="monitor-side">
-        <!-- Token speed -->
-        <section class="info-section monitor-card">
-          <div class="token-card-head">
-            <h2 class="section-title">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>
-              </svg>
-              {{ t('api.tokenSpeed') }}
-            </h2>
-            <div class="token-uptime" :class="{ 'tps-ghost': !status.serverRunning }" :aria-hidden="!status.serverRunning">
-              <span class="uptime-value">{{ formatUptime(status.uptimeSeconds, locale) }}</span>
-              <span class="uptime-label">{{ t('monitor.uptimeLabel') }}</span>
-            </div>
-          </div>
-          <div class="tps-body">
-            <!-- Both states render the same content: the stopped state keeps the
-                 metrics invisible (visibility, not display) so card heights never
-                 shift when the service starts or stops; the placeholder overlays -->
-            <div class="tps-cards" :class="{ 'tps-ghost': !status.serverRunning }" :aria-hidden="!status.serverRunning">
-              <div class="tps-card">
-                <div class="tps-card-info">
-                  <span class="tps-card-name">{{ t('monitor.promptSpeed') }}</span>
-                  <span class="tps-card-sub">{{ t('monitor.promptSub') }}</span>
-                </div>
-                <div class="tps-card-value">
-                  <span class="tps-value">{{ promptTpsText }}</span>
-                  <span class="tps-label">tokens/s</span>
-                </div>
-              </div>
-              <div class="tps-card">
-                <div class="tps-card-info">
-                  <span class="tps-card-name">{{ t('monitor.decodeSpeed') }}</span>
-                  <span class="tps-card-sub">{{ t('monitor.decodeSub') }}</span>
-                </div>
-                <div class="tps-card-value">
-                  <span class="tps-value">{{ decodeTpsText }}</span>
-                  <span class="tps-label">tokens/s</span>
-                </div>
-              </div>
-            </div>
-            <div class="tps-chart" :class="{ 'tps-ghost': !status.serverRunning }" :aria-hidden="!status.serverRunning">
-              <svg :viewBox="`0 0 ${chartWidth} ${chartHeight}`" preserveAspectRatio="none">
-                <line class="tps-axis" x1="0" :y1="chartHeight - 2" :x2="chartWidth" :y2="chartHeight - 2" />
-                <polyline :points="decodePoints" />
-              </svg>
-              <div class="tps-chart-meta">
-                <span class="tps-chart-label">{{ t('monitor.chartLabel', { n: decodeHistory.length }) }}</span>
-              </div>
-            </div>
-            <p class="tps-footnote" :class="{ 'tps-ghost': !status.serverRunning }" :aria-hidden="!status.serverRunning">{{ t('monitor.footnote') }}</p>
-            <div v-if="!status.serverRunning" class="tps-placeholder">{{ t('monitor.uptimePlaceholder') }}</div>
-          </div>
-        </section>
-      </div>
-      </div>
     </div>
   </div>
 </template>
@@ -199,10 +215,11 @@ const status = ref<MonitorStatus>({
   uptimeSeconds: 0,
 })
 
-// Decode speed line chart history: appended on 1s polling, keeps latest 60 samples (appendHistory default cap=60)
+// Decode speed history: appended on 1s polling, keeps latest 60 samples
+// (appendHistory default cap=60); rendered as the frame ④ gradient area chart
 const decodeHistory = ref<number[]>([])
 const chartWidth = 560
-const chartHeight = 120
+const chartHeight = 96
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
@@ -211,6 +228,45 @@ const promptTpsText = computed(() => formatPromptTps(status.value.promptTps))
 const decodeTpsText = computed(() => status.value.decodeTps.toFixed(1))
 
 const decodePoints = computed(() => chartPoints(decodeHistory.value, chartWidth, chartHeight))
+
+// Frame ④ area chart: the sampled polyline (chartPoints) is re-expressed as
+// SVG paths — a gradient stroke line, a gradient-filled area closed down to
+// the baseline, and a dot marking the newest sample.
+const decodeLinePath = computed(() => {
+  const pts = decodePoints.value
+  return pts ? 'M' + pts.split(' ').join(' L ') : ''
+})
+
+const decodeAreaPath = computed(() => {
+  const line = decodeLinePath.value
+  return line ? `${line} L ${chartWidth},${chartHeight} L 0,${chartHeight} Z` : ''
+})
+
+const decodeEndDot = computed<{ x: number; y: number } | null>(() => {
+  const pts = decodePoints.value
+  if (!pts) return null
+  const last = pts.split(' ').pop()!.split(',')
+  return { x: Number(last[0]), y: Number(last[1]) }
+})
+
+// ─── Address chip copy affordance (frame ④): best-effort clipboard write with
+// a transient "copied" confirmation; failures keep the chip usable ───
+const copied = ref(false)
+let copiedTimer: ReturnType<typeof setTimeout> | null = null
+
+async function copyAddress() {
+  try {
+    await navigator.clipboard.writeText(`http://${cfg.host}:${cfg.port}`)
+    copied.value = true
+    if (copiedTimer) clearTimeout(copiedTimer)
+    copiedTimer = setTimeout(() => {
+      copied.value = false
+    }, 1600)
+  } catch {
+    // Clipboard unavailable (permissions / non-secure context): the URL stays
+    // selectable text, no error surface needed.
+  }
+}
 
 async function fetchMonitorStatus() {
   try {
@@ -273,6 +329,7 @@ function onDocClick() {
 
 onUnmounted(() => {
   if (saveTimer) clearTimeout(saveTimer)
+  if (copiedTimer) clearTimeout(copiedTimer)
   stopPolling()
   document.removeEventListener('click', onDocClick)
 })
@@ -451,134 +508,297 @@ function clearLog() {
   margin: 0;
 }
 
-/* ─── Top action bar ─── */
-.toolbar {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  padding: 16px 24px;
-  margin-bottom: 20px;
-  background: var(--surface);
+/* ─── Status hero (frame ④ .api-hero): one island holding state light +
+       address chip + speed chart ─── */
+.api-hero {
+  background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 14px;
-  position: relative; /* Positioning context for the params popover */
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-island);
+  padding: 16px 20px;
+  margin-bottom: 12px;
 }
 
-.toolbar-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  /* Elastic: status text / URL / buttons reflow onto extra rows on narrow
-     windows instead of squeezing or clipping */
-  flex-wrap: wrap;
-}
-
-.status-indicator {
+.hero-status-row {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
+  flex-wrap: wrap;
+  row-gap: 6px;
 }
 
-.status-dot {
-  width: 10px;
-  height: 10px;
+/* Running status light: glowing dot with an expanding pulse ring (design .pulse) */
+.pulse-dot {
+  position: relative;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
+  background: var(--text-dim);
   flex-shrink: 0;
 }
 
-.status-dot.running {
-  background: #22c55e;
+.pulse-dot.on {
+  background: var(--success);
   box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
-  animation: pulse 2s infinite;
 }
 
-.status-dot.stopped {
-  background: rgba(255,255,255,0.2);
+.pulse-dot.on::before {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+  border: 2px solid var(--success);
+  opacity: 0.4;
+  animation: status-pulse 1.8s infinite;
 }
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+@keyframes status-pulse {
+  0% { transform: scale(0.7); opacity: 0.6; }
+  100% { transform: scale(1.35); opacity: 0; }
 }
 
-.status-text {
-  font-size: 15px;
-  font-weight: 600;
+.hero-status-text {
+  font-size: 17px;
+  font-weight: 800;
   color: var(--text-primary);
+  letter-spacing: -0.2px;
 }
 
-.status-url {
-  font-size: 12px;
-  color: var(--accent-light);
-  font-family: var(--font-mono);
-  background: var(--active-bg);
-  padding: 2px 8px;
-  border-radius: 4px;
+.hero-uptime {
+  margin-left: auto;
+  font-size: 11.5px;
+  background: var(--hover-bg);
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
-/* Uptime moved into the top status bar (so info survives the removal of the old "Inference Service" block) */
-.toolbar-uptime {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
+.hero-uptime-label {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  font-weight: 600;
   margin-left: 4px;
 }
 
-.btn-group {
+/* Address chip: monospace URL row with a copy affordance */
+.hero-address {
   display: flex;
-  gap: 10px;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 12px;
+  background: var(--hover-bg);
+  border: 1px solid var(--border-light);
+  border-radius: 14px;
+  padding: 10px 14px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.2s, color 0.2s;
 }
 
-.server-btn {
-  padding: 10px 24px;
-  border: none;
-  border-radius: 10px;
-  font-size: 14px;
+.hero-address:hover {
+  border-color: var(--overlay-10);
+  color: var(--text-primary);
+}
+
+.address-lock-icon,
+.address-copy-icon {
+  flex-shrink: 0;
+}
+
+.address-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.address-copied {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--success);
+  flex-shrink: 0;
+}
+
+/* ─── Generation speed area chart (frame ④ chart-wrap, inside the hero) ─── */
+.hero-speed {
+  position: relative;
+  margin-top: 14px;
+}
+
+.speed-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.speed-label {
+  font-size: 12px;
+  color: var(--text-muted);
   font-weight: 600;
+}
+
+.speed-value {
+  font-size: 19px;
+  font-weight: 800;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.speed-value small {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.speed-chart {
+  margin-top: 8px;
+}
+
+/* Uniform viewBox scaling (no preserveAspectRatio=none): stroke width and the
+   end dot stay undistorted at every card width; the -6..+6 viewBox margin
+   keeps the end dot from clipping at the edges; aspect-ratio pins the box so
+   the stopped-state ghost reserves the exact same space */
+.speed-chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 572 / 108;
+}
+
+.speed-area {
+  fill: url(#apiSpeedFill);
+  stroke: none;
+}
+
+.speed-line {
+  fill: none;
+  stroke: url(#apiSpeedLine);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.speed-dot {
+  fill: #8b5cf6;
+}
+
+.speed-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+/* visibility (not display) keeps the stopped state reserving exactly the
+   running state's space, so the hero height never shifts on start/stop */
+.tps-ghost {
+  visibility: hidden;
+}
+
+.speed-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+/* ─── Single primary action (frame ④ .btnrow): one big action button + icon
+       buttons ─── */
+.action-row {
+  position: relative; /* Anchor for the server params popover */
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.primary-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 15px 0;
+  border: none;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 800;
+  font-family: inherit;
   cursor: pointer;
-  transition: opacity 0.15s;
   color: #fff;
+  transition: filter 0.2s, opacity 0.15s;
+}
+
+.primary-btn:hover:not(:disabled) {
+  filter: brightness(1.06);
 }
 
 /* Disabled state follows the cfg-input dimming convention; the desaturation
-   filter keeps the colored start/stop/restart buttons recognizably disabled */
-.server-btn:disabled {
+   filter keeps the colored buttons recognizably disabled */
+.primary-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
   filter: grayscale(0.6) brightness(0.92);
 }
 
-.btn-start { background: #22c55e; }
-.btn-start:hover:not(:disabled) { opacity: 0.85; }
-.btn-stop { background: #ef4444; }
-.btn-stop:hover:not(:disabled) { opacity: 0.85; }
-.btn-restart { background: var(--accent); }
-.btn-restart:hover:not(:disabled) { opacity: 0.85; }
+/* Stopped → the one executable action rides the brand gradient (frame ⑥) */
+.primary-btn.start {
+  background: var(--grad);
+  box-shadow: 0 8px 20px rgba(124, 92, 246, 0.35);
+}
 
-.icon-btn {
-  width: 40px;
-  height: 40px;
+/* Running → the one primary action is the danger-tinted stop */
+.primary-btn.danger {
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--danger);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+/* Ghost icon buttons: restart (demoted from a full button) + server params */
+.ghost-icon {
+  flex: 0 0 54px;
+  width: 54px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--surface);
+  background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 20px;
+  box-shadow: var(--shadow-island);
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all 0.2s;
-  flex-shrink: 0;
+  transition: color 0.2s, background 0.2s, opacity 0.15s;
 }
 
-.icon-btn:hover {
-  background: var(--hover-bg);
+.ghost-icon:hover:not(:disabled) {
   color: var(--text-primary);
+  background: var(--hover-bg);
 }
 
-.icon-btn[aria-expanded='true'] {
-  background: var(--hover-bg);
+.ghost-icon:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ghost-icon[aria-expanded='true'] {
   color: var(--text-primary);
+  background: var(--hover-bg);
 }
 
 /* ─── Server parameters popover ─── */
@@ -642,41 +862,7 @@ function clearLog() {
   text-align: center;
 }
 
-/* ─── Available models (toolbar second row) ─── */
-.toolbar-models {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--border-light);
-}
-
-.toolbar-models-title {
-  font-size: 12px;
-  color: var(--text-dim);
-  font-weight: 500;
-  flex-shrink: 0;
-  margin-top: 3px;
-}
-
-.toolbar-models .model-tags {
-  flex-wrap: wrap;
-  gap: 4px;
-  max-height: 64px;
-  overflow-y: auto;
-}
-
-.toolbar-models .model-tag {
-  font-size: 11px;
-  padding: 2px 10px;
-}
-
-.toolbar-models .empty-hint {
-  font-size: 12px;
-}
-
-/* ─── Scrollable content band ─── */
+/* ─── Scrollable content band: available-models island above the log island ─── */
 .page-scroll {
   flex: 1;
   min-height: 0;
@@ -688,37 +874,94 @@ function clearLog() {
   padding-bottom: calc(24px + var(--dock-reserve, 0px));
 }
 
-/* ─── Main area two-column: left log console + right inference-monitor card ─── */
-.monitor-grid {
-  display: grid;
-  /* minmax(0, Nfr): floor the tracks at 0 (not auto) so long unbreakable
-     strings cannot widen a column past its share; the narrow-viewport block
-     at the end of this style sheet collapses the grid to one column */
-  grid-template-columns: minmax(0, 6fr) minmax(0, 4fr);
-  /* Rows share the track height exactly: startup log lines are unbounded, so
-     minmax(0, 1fr) plus min-height: 0 on children locks the row height and
-     excess logs scroll inside the console */
-  grid-template-rows: minmax(0, 1fr);
-  gap: 16px;
-  /* Stretch to fill the scroll band on tall windows, but never shrink below
-     MIN-HEIGHT: smaller windows scroll the band instead of clipping panels */
-  flex: 1;
-  min-height: 460px;
+/* ─── Available models (frame ④ island): static chips on a neutral surface ─── */
+.models-island {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-island);
+  padding: 16px 18px;
+  margin-bottom: 14px;
 }
 
-/* ─── Left column: log panel ─── */
+.island-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.island-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.3px;
+}
+
+.island-more {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent-light);
+}
+
+.model-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-height: 96px;
+  overflow-y: auto;
+}
+
+.model-chip {
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--hover-bg);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: 999px;
+  padding: 7px 13px;
+}
+
+.empty-hint {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+/* Inline CTA next to the empty-models hint */
+.empty-cta {
+  margin-left: 8px;
+  padding: 2px 10px;
+  background: var(--active-bg);
+  color: var(--accent-light);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.empty-cta:hover {
+  background: var(--accent-glow);
+}
+
+/* ─── Log island: terminal-dark console inside a floating island ─── */
 .log-panel {
-  height: 100%;
-  /* Release the grid child default min sizes so oversized content shrinks
-     and scrolls internally instead of blowing out the track */
-  min-height: 0;
+  /* Fills the remaining band height on tall windows; the band scrolls once
+     the window is too short */
+  flex: 1 1 auto;
+  min-height: 380px;
+  /* Release the flex child default min sizes so oversized content shrinks
+     and scrolls internally instead of blowing out the band */
   min-width: 0;
   display: flex;
   flex-direction: column;
-  padding: 18px 20px;
-  background: var(--surface);
+  padding: 16px 20px;
+  background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-island);
 }
 
 .panel-header {
@@ -783,242 +1026,6 @@ function clearLog() {
   font-size: 12px;
 }
 
-/* ─── Right column: token speed card ─── */
-.monitor-side {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  height: 100%;
-  min-height: 0;
-  min-width: 0;
-  /* Fixed, scroll-free column: the card stretches to fill the column height,
-     so no scrollbar appears while the window stays above the grid's floor */
-}
-
-.monitor-card {
-  margin-bottom: 0;
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  padding: 16px 20px;
-}
-
-.monitor-card .section-title {
-  flex-shrink: 0;
-}
-
-/* ─── Models ─── */
-.model-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.model-tag {
-  padding: 4px 12px;
-  background: var(--active-bg);
-  color: var(--accent-light);
-  border: 1px solid rgba(99,102,241,0.2);
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.empty-hint {
-  font-size: 13px;
-  color: var(--text-dim);
-}
-
-/* Inline CTA next to the empty-models hint */
-.empty-cta {
-  margin-left: 8px;
-  padding: 2px 10px;
-  background: var(--active-bg);
-  color: var(--accent-light);
-  border: none;
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.empty-cta:hover {
-  background: var(--accent-glow);
-}
-
-/* ─── Monitor block (ported from Monitor.vue) ─── */
-
-/* ─── Info section card ─── */
-.info-section {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  transition: border-color 0.2s;
-}
-
-.info-section:hover {
-  border-color: var(--overlay-10);
-}
-
-/* ─── Token card header (includes uptime subtext) ─── */
-.token-card-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 14px;
-  flex-shrink: 0;
-}
-
-.token-card-head .section-title {
-  margin: 0;
-}
-
-.token-uptime {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  flex-shrink: 0;
-}
-
-.uptime-value {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-
-.uptime-label,
-.tps-label {
-  font-size: 11px;
-  color: var(--text-dim);
-}
-
-.tps-body {
-  position: relative;
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-}
-
-/* visibility (not display) keeps the stopped state reserving exactly the
-   running state's space, so card heights never shift on service start/stop */
-.tps-ghost {
-  visibility: hidden;
-}
-
-.tps-placeholder {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 13px;
-  color: var(--text-dim);
-}
-
-/* ─── TPS metric cards ─── */
-.tps-cards {
-  /* Elastic pair: the two mini-cards sit side by side while both fit, and the
-     second wraps under the first on narrow columns (auto-fit, no media query).
-     Natural height (flex: 0 0 auto) + top alignment so the cards never get
-     forced into an equal-height slice that cramps/clips on short windows */
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
-  gap: 16px;
-  flex: 0 0 auto;
-  min-height: 0;
-  align-content: start;
-}
-
-.tps-card {
-  display: flex;
-  flex-direction: column;
-  padding: 16px;
-  background: var(--surface);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-md);
-}
-
-.tps-card-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-
-/* Name + subtitle grouped so tall windows can lay them out beside the value */
-.tps-card-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.tps-card-sub {
-  font-size: 11px;
-  color: var(--text-dim);
-}
-
-.tps-card-value {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.tps-value {
-  font-size: 28px;
-  font-weight: 700;
-  color: var(--accent-light);
-  line-height: 1.1;
-}
-
-.tps-footnote {
-  flex-shrink: 0;
-  margin: 12px 0 0;
-  font-size: 12px;
-  color: var(--text-dim);
-}
-
-/* ─── TPS chart ─── */
-.tps-chart {
-  margin-top: 16px;
-}
-
-.tps-chart svg {
-  display: block;
-  width: 100%;
-  height: 90px;
-}
-
-.tps-chart polyline {
-  fill: none;
-  stroke: var(--accent);
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.tps-axis {
-  stroke: var(--text-muted);
-  stroke-width: 1;
-  stroke-dasharray: 3 3;
-}
-
-.tps-chart-meta {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 4px;
-}
-
-.tps-chart-label {
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
 /* ─── Compact mode (viewport height <= 799px): keep the fixed, scroll-free
    layout but compress secondary elements so everything fits without clipping
    down to the 900x600 minimum window. Fixed values only — nothing scales
@@ -1026,105 +1033,66 @@ function clearLog() {
 @media (max-height: 799px) {
   .page-subtitle { display: none; }
   .page-header { padding-bottom: 14px; }
-  .toolbar { padding: 10px 16px; margin-bottom: 12px; }
-  .toolbar-models { margin-top: 6px; padding-top: 6px; }
-  .monitor-grid { gap: 12px; }
-  .monitor-side { gap: 8px; }
-  .monitor-card { padding: 10px 14px; }
-  .token-card-head { margin-bottom: 8px; }
-  .tps-card { padding: 10px 12px; }
-  .tps-card-sub { display: none; }
-  .tps-card-value { margin-top: 6px; }
-  .tps-footnote { display: none; }
-  .tps-chart { display: none; }
+  .api-hero { padding: 10px 16px; }
+  .hero-address { margin-top: 8px; padding: 8px 12px; }
+  .hero-speed { margin-top: 10px; }
+  /* The chart yields on short windows (same tradeoff as the former monitor
+     card): the big speed value in the head keeps the metric readable */
+  .speed-chart { display: none; }
+  .speed-meta { display: none; }
+  .action-row { margin-bottom: 10px; }
+  .primary-btn { padding: 12px 0; }
+  .ghost-icon { flex: 0 0 48px; }
+  .models-island { padding: 10px 14px; margin-bottom: 10px; }
+  .log-panel { padding: 10px 14px; min-height: 300px; }
 }
 
-/* ─── Narrow viewports (< 1100px): collapse to a single column ──────────────
-   Keeping both panels side by side would cram them into unusable slivers.
-   The log console takes a bounded proportional band, the monitor card flows
-   below it, and the shared .page-scroll band owns scrolling + dock clearance. */
-@media (max-width: 1099px) {
-  .monitor-grid {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: none;
-    align-content: start;
-    /* Content-driven height: the band scrolls, the grid does not stretch */
-    flex: none;
-    min-height: 0;
-  }
-
-  /* Auto-sized rows cannot resolve height:100% — give the console an
-     explicit proportional band so its internal log scroll still engages */
-  .log-panel {
-    height: clamp(200px, 40vh, 380px);
-  }
-
-  /* Content-driven column: cards stack and size to their content */
-  .monitor-side {
-    height: auto;
-  }
-}
-
-/* ─── Phone (<=767px): the single-column collapse above already stacks log +
-       monitor; these rules make the controls thumb-friendly and keep the page
-       overflow-free. Start/stop/restart become prominent full-width 44px
-       buttons; the log console scrolls inside its own band (12px mono). ─── */
+/* ─── Phone (<=767px): the hero and the single primary action adapt to the
+       thumb — the big button spans the row at 44px+ and the icon buttons stay
+       square; the log console scrolls inside its own bounded band (12px mono).
+       Server params popover must never exceed the viewport. ─── */
 @media (max-width: 767px) {
-  .toolbar {
-    padding: 12px 16px;
+  .api-hero {
+    padding: 14px 16px;
   }
 
-  .toolbar-row {
-    gap: 10px;
+  .hero-address {
+    font-size: 12px;
   }
 
-  .status-indicator {
-    flex-wrap: wrap;
-    row-gap: 4px;
+  .action-row {
+    gap: 8px;
   }
 
-  .btn-group {
-    flex: 1 1 100%;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-
-  /* Even 44px controls spanning the row; nowrap keeps the zh labels intact
-     (they would otherwise wrap mid-word in the squeezed third) */
-  .server-btn {
-    flex: 1;
+  /* The big action spans the row; nowrap keeps the zh labels intact */
+  .primary-btn {
     min-height: 44px;
-    min-width: 0;
-    padding: 10px 8px;
     white-space: nowrap;
   }
 
-  .icon-btn {
+  .ghost-icon {
+    flex: 0 0 44px;
     width: 44px;
-    height: 44px;
-    flex-shrink: 0;
+    border-radius: 16px;
   }
 
-  /* Server params popover must never exceed the viewport */
   .cfg-popover {
     width: min(300px, calc(100vw - 32px));
   }
 
-  .toolbar-models {
-    flex-wrap: wrap;
+  .models-island {
+    padding: 14px 16px;
   }
 
   .log-panel {
-    height: clamp(180px, 36vh, 320px);
+    flex: none;
+    height: clamp(200px, 36vh, 320px);
+    min-height: 0;
     padding: 14px;
   }
 
   .console-log {
     font-size: 12px;
-  }
-
-  .monitor-card {
-    padding: 14px 16px;
   }
 
   .empty-cta {

@@ -185,7 +185,7 @@ onMounted(() => {
   min-width: 0;
 }
 
-/* ─── Models directory bar ─── */
+/* ─── Models directory bar (frame ③ language: floating-island skin) ─── */
 .dir-bar {
   /* Bottom spacing before the list: this bar is the first content block */
   margin-bottom: 24px;
@@ -193,10 +193,11 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 16px;
-  background: var(--surface);
+  padding: 14px 18px;
+  background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-island);
 }
 
 .dir-sources {
@@ -303,39 +304,40 @@ onMounted(() => {
   to { transform: rotate(360deg); }
 }
 
-/* ─── Model list ─── */
+/* ─── Model list (frame ③ .mcard: island cards with gradient icon bricks) ─── */
 .model-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .model-card {
   display: flex;
   align-items: flex-start;
-  gap: 18px;
-  padding: 20px 24px;
-  background: var(--surface);
+  gap: 16px;
+  padding: 16px 18px;
+  background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 14px;
-  transition: all 0.2s ease;
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-island);
+  transition: border-color 0.2s ease;
 }
 
 .model-card:hover {
-  background: var(--border-light);
   border-color: var(--overlay-10);
-  transform: translateX(4px);
 }
 
+/* 48px gradient icon brick (frame ③ .tile): soft brand-gradient wash with the
+   cube glyph in the accent color */
 .model-icon {
   width: 48px;
   height: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(99, 102, 241, 0.12);
-  border-radius: 12px;
-  color: #a78bfa;
+  background: var(--grad-soft);
+  border-radius: 15px;
+  color: var(--accent-light);
   flex-shrink: 0;
   margin-top: 2px;
 }
@@ -391,8 +393,8 @@ onMounted(() => {
 
 .model-name {
   font-size: 16px;
-  font-weight: 600;
-  color: var(--text-secondary);
+  font-weight: 700;
+  color: var(--text-primary);
   margin: 0;
   word-break: break-word;
   line-height: 1.4;
@@ -553,9 +555,10 @@ onMounted(() => {
 
 .skeleton-card {
   padding: 24px 28px;
-  background: var(--surface);
+  background: var(--bg-secondary);
   border: 1px solid var(--skeleton-bg);
-  border-radius: 14px;
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-island);
 }
 
 .skeleton-line {
@@ -656,10 +659,6 @@ onMounted(() => {
 
   .model-card {
     padding: 14px 16px;
-  }
-
-  .model-card:hover {
-    transform: none;
   }
 
   .model-header {

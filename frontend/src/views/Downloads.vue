@@ -1,6 +1,8 @@
 <template>
   <div class="downloads-tab">
-    <!-- Search bar (non-sticky: the merged page shell owns the sticky header) -->
+    <!-- Search bar (non-sticky: the merged page shell owns the sticky header).
+         Frame ③: the input becomes a floating pill capsule; the search action
+         rides the brand gradient, the task-manager entry stays a ghost pill. -->
     <div class="search-bar">
       <div class="search-input-wrap">
         <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -13,12 +15,32 @@
           @keydown.enter="doSearch"
         />
       </div>
-      <button class="search-btn" @click="doSearch" :disabled="searching || !searchQuery">
+      <button class="pill-btn" @click="doSearch" :disabled="searching || !searchQuery">
         {{ searching ? t('downloads.searching') : t('downloads.search') }}
       </button>
-      <button class="search-btn download-btn" @click="showTasksModal = true" :title="t('downloads.downloadTitle')">
+      <button class="pill-btn ghost" @click="showTasksModal = true" :title="t('downloads.downloadTitle')">
         {{ t('downloads.download') }}
         <span v-if="activeTaskCount > 0" class="task-badge">{{ activeTaskCount }}</span>
+      </button>
+    </div>
+
+    <!-- In-flight downloads pinned on top as progress cards (frame ③ .dlcard):
+         data rides the existing getDownloadTasks polling unchanged; tapping a
+         card opens the task manager modal where pause/resume/cancel live. -->
+    <div v-if="activeTaskList.length > 0" class="dl-pinned" role="region" :aria-label="t('downloads.inProgress')">
+      <button v-for="task in activeTaskList" :key="task.id" class="dl-card" @click="showTasksModal = true" :title="t('downloads.downloadTitle')">
+        <span class="dl-card-top">
+          <span class="dl-name">{{ task.fileName }}</span>
+          <span class="dl-pct">{{ task.progress }}%</span>
+        </span>
+        <span class="dl-bar">
+          <span class="dl-fill" :class="taskBarClass(task.status)" :style="{ width: task.progress + '%' }"></span>
+        </span>
+        <span class="dl-card-meta">
+          <span v-if="task.sizeHuman && task.sizeHuman !== '0 B'" class="dl-size">{{ task.sizeHuman }}</span>
+          <span v-if="etaText(task)" class="dl-eta">{{ etaText(task) }}</span>
+          <span class="dl-status" :class="'status-' + task.status">{{ statusMap[task.status] || task.status }}</span>
+        </span>
       </button>
     </div>
 
@@ -34,19 +56,28 @@
           :title="t('downloads.viewDetail')"
         >
           <div class="result-main">
+            <!-- Gradient icon brick (frame ③ .tile): 48px rounded tile on the
+                 soft brand gradient wash, cube glyph in the accent color -->
+            <div class="result-tile">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2l8 4.5v9L12 20l-8-4.5v-9L12 2z"/><path d="M12 11L4.5 6.8M12 11l7.5-4.2M12 11v8.5"/>
+              </svg>
+            </div>
             <div class="result-info">
               <h3 class="result-name">{{ r.modelId }}</h3>
               <div class="result-meta">
-                <span v-if="r.author" class="result-meta-item">{{ r.author }}</span>
-                <span v-if="r.pipelineTag" class="result-meta-item">{{ r.pipelineTag }}</span>
-                <span v-if="modelSizes[r.modelId]" class="result-meta-item">{{ formatBytes(modelSizes[r.modelId]) }}</span>
+                <span v-if="r.author" class="result-chip">{{ r.author }}</span>
+                <span v-if="r.pipelineTag" class="result-chip">{{ r.pipelineTag }}</span>
+                <span v-if="modelSizes[r.modelId]" class="result-chip">{{ formatBytes(modelSizes[r.modelId]) }}</span>
               </div>
             </div>
-            <span class="result-arrow">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="9 18 15 12 9 6"/>
+            <!-- Round gradient download button (frame ③ .dlbtn): entry to the
+                 existing download flow (model detail page) -->
+            <button class="dl-round" :title="t('downloads.viewDetail')" @click.stop="goToDetail(r.modelId)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 4v12M6 12l6 6 6-6"/>
               </svg>
-            </span>
+            </button>
           </div>
         </div>
       </div>
@@ -198,6 +229,18 @@ function taskBarClass(status: string): string {
   return ''
 }
 
+// Remaining-time estimate for the pinned progress cards: remaining bytes over
+// the live speed, humanized to seconds/minutes (frame ③ "剩余约 6 分钟").
+// Empty unless actively downloading with a measurable speed.
+function etaText(task: DlTask): string {
+  if (task.status !== 'downloading' || !(task.speed > 0)) return ''
+  const remaining = Math.max(0, task.total - task.downloaded)
+  if (remaining <= 0) return ''
+  const secs = Math.round(remaining / task.speed)
+  if (secs < 60) return t('downloads.etaSeconds', { n: secs })
+  return t('downloads.etaMinutes', { n: Math.max(1, Math.round(secs / 60)) })
+}
+
 function goToDetail(modelId: string) {
   router.push('/models/model/' + encodeURIComponent(modelId))
 }
@@ -301,21 +344,31 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
   min-width: 0;
 }
 
-/* ─── Search ─── */
+/* ─── Search (frame ③ .search): floating pill capsule ─── */
 .search-bar {
   display: flex;
   gap: 10px;
-  margin-bottom: 32px;
+  margin-bottom: 24px;
 }
 
 .search-input-wrap {
   flex: 1;
   position: relative;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: var(--shadow-island);
+  transition: border-color 0.2s;
+  min-width: 0;
+}
+
+.search-input-wrap:focus-within {
+  border-color: rgba(99, 102, 241, 0.4);
 }
 
 .search-icon {
   position: absolute;
-  left: 14px;
+  left: 16px;
   top: 50%;
   transform: translateY(-50%);
   color: var(--text-dim);
@@ -324,43 +377,53 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
 
 .search-input {
   width: 100%;
-  padding: 10px 14px 10px 42px;
-  background: var(--border-light);
-  border: 1px solid var(--overlay-8);
-  border-radius: 10px;
+  padding: 12px 18px 12px 44px;
+  background: none;
+  border: none;
+  border-radius: 999px;
   color: var(--text-secondary);
   font-size: 14px;
   outline: none;
-  transition: border-color 0.2s;
 }
 
-.search-input:focus {
-  border-color: rgba(99, 102, 241, 0.4);
-}
-
-.search-btn {
-  padding: 10px 24px;
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(167, 139, 250, 0.15));
-  color: #a78bfa;
-  border: 1px solid rgba(99, 102, 241, 0.3);
-  border-radius: 10px;
+/* Pill action buttons: search rides the brand gradient (frame ⑥ "gradient =
+   executable"), the task-manager entry stays a neutral ghost pill */
+.pill-btn {
+  position: relative;
+  padding: 0 22px;
+  min-height: 44px;
+  background: var(--grad);
+  color: #fff;
+  border: none;
+  border-radius: 999px;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
+  font-family: inherit;
   cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 6px 14px rgba(124, 92, 246, 0.35);
   transition: all 0.2s;
 }
 
-.search-btn:hover:not(:disabled) {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(167, 139, 250, 0.25));
+.pill-btn:hover:not(:disabled) {
+  filter: brightness(1.06);
 }
 
-.search-btn:disabled {
+.pill-btn:disabled {
   opacity: 0.4;
   cursor: default;
+  box-shadow: none;
 }
 
-.download-btn {
-  position: relative;
+.pill-btn.ghost {
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-island);
+}
+
+.pill-btn.ghost:hover:not(:disabled) {
+  color: var(--text-primary);
 }
 
 .task-badge {
@@ -371,7 +434,7 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
   height: 18px;
   padding: 0 5px;
   border-radius: 9px;
-  background: #ef4444;
+  background: var(--danger);
   color: #fff;
   font-size: 11px;
   font-weight: 700;
@@ -379,6 +442,105 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
   text-align: center;
   box-sizing: border-box;
 }
+
+/* ─── In-flight download progress cards (frame ③ .dlcard, pinned on top) ─── */
+.dl-pinned {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.dl-card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-island);
+  padding: 16px 18px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.dl-card:hover {
+  border-color: var(--overlay-10);
+}
+
+.dl-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.dl-name {
+  color: var(--text-primary);
+  word-break: break-all;
+  min-width: 0;
+}
+
+.dl-pct {
+  color: var(--accent-light);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.dl-bar {
+  display: block;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--hover-bg);
+  overflow: hidden;
+  margin: 10px 0;
+}
+
+.dl-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--grad);
+  transition: width 0.3s;
+}
+
+.dl-fill.paused {
+  background: linear-gradient(90deg, #fbbf24, #f59e0b);
+}
+
+.dl-fill.error-fill {
+  background: rgba(239, 68, 68, 0.6);
+}
+
+.dl-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.dl-eta {
+  font-weight: 600;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.dl-status {
+  margin-left: auto;
+  font-weight: 600;
+}
+
+.status-done { color: var(--success); }
+.status-downloading { color: var(--accent-light); }
+.status-paused { color: #fbbf24; }
+.status-queued { color: var(--text-dim); }
+.status-error { color: var(--danger); }
+.status-cancelled { color: var(--overlay-20); }
 
 /* ─── Section heading ─── */
 .section-heading {
@@ -388,21 +550,22 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
   margin: 0 0 14px;
 }
 
-/* ─── Results ─── */
+/* ─── Results (frame ③ .mcard: island cards with a gradient icon brick) ─── */
 .results-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
+  gap: 12px;
   margin-bottom: 36px;
 }
 
 .result-card {
-  background: var(--surface);
+  background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-island);
   cursor: pointer;
-  transition: all 0.2s;
-  padding: 12px 16px;
+  transition: border-color 0.2s;
+  padding: 14px 16px;
 }
 
 .result-card:hover {
@@ -412,7 +575,21 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
 .result-main {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
+}
+
+/* 48px gradient icon brick (frame ③ .tile): soft brand-gradient wash with the
+   cube glyph in the accent color */
+.result-tile {
+  width: 48px;
+  height: 48px;
+  border-radius: 15px;
+  background: var(--grad-soft);
+  color: var(--accent-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .result-info {
@@ -421,40 +598,52 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
 }
 
 .result-name {
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 700;
   color: var(--text-primary);
-  margin: 0 0 4px;
+  margin: 0 0 6px;
+  line-height: 1.35;
   /* Wrap at word boundaries; model names like "...uncensored-GGUF" must not be cut mid-word */
   overflow-wrap: break-word;
-  line-height: 1.35;
 }
 
 .result-meta {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 0;
-  font-size: 12px;
-  color: var(--text-dim);
+  gap: 6px;
 }
 
-.result-meta-item + .result-meta-item::before {
-  content: '·';
-  margin: 0 6px;
+/* Small neutral chips (frame ③ .mt i): static info stays off the action color */
+.result-chip {
+  font-style: normal;
+  background: var(--hover-bg);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-muted);
 }
 
-.result-arrow {
+/* Round gradient download button (frame ③ .dlbtn): 38px circle, the one
+   glanceable action on the card; opens the existing download flow (detail page) */
+.dl-round {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--grad);
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-dim);
+  border: none;
+  cursor: pointer;
   flex-shrink: 0;
-  transition: color 0.2s;
+  box-shadow: 0 6px 14px rgba(124, 92, 246, 0.4);
+  transition: filter 0.2s;
 }
 
-.result-card:hover .result-arrow {
-  color: var(--text-secondary);
+.dl-round:hover {
+  filter: brightness(1.08);
 }
 
 /* ─── Tasks ─── */
@@ -539,13 +728,6 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
 .task-status {
   font-weight: 500;
 }
-
-.status-done { color: #22c55e; }
-.status-downloading { color: #a78bfa; }
-.status-paused { color: #fbbf24; }
-.status-queued { color: var(--text-dim); }
-.status-error { color: #ef4444; }
-.status-cancelled { color: var(--overlay-20); }
 
 .task-size {
   color: var(--text-dim);
@@ -767,10 +949,18 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
     min-height: 44px;
   }
 
-  .search-btn {
+  .pill-btn {
     flex: 1;
     min-height: 44px;
-    padding: 10px 16px;
+    padding: 0 16px;
+  }
+
+  .dl-pinned {
+    margin-bottom: 20px;
+  }
+
+  .dl-card {
+    padding: 14px 16px;
   }
 
   /* Full-width result cards; the whole card is the tap target */
@@ -780,8 +970,7 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
   }
 
   .result-card {
-    min-height: 52px;
-    padding: 14px 16px;
+    min-height: 76px;
   }
 
   .section-heading {
