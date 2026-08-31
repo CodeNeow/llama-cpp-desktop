@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">
+  <!-- Mono variant: pure-white glyph on a transparent canvas, for dark
+       surfaces (system tray) and tiny sizes. No background plate — the
+       glyph alone carries the mark. -->
+  <path d="M28 16 h17 v45 h30 v17 H28 Z" fill="#fff"/>
+  <path d="M69 12 l4 10 10 4 -10 4 -4 10 -4 -10 -10 -4 10 -4 Z" fill="#fff" opacity=".95"/>
+</svg>

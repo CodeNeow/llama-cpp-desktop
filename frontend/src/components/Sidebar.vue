@@ -2,16 +2,19 @@
   <aside class="sidebar" :class="{ collapsed: appConfig.sidebarCollapsed }">
     <div class="sidebar-header">
       <div class="logo">
-        <svg viewBox="0 0 32 32" class="logo-icon">
+        <!-- Concept-C brand mark: brand-gradient rounded plate + white L
+             glyph + AI sparkle (same geometry as build/appicon.svg) -->
+        <svg viewBox="0 0 96 96" class="logo-icon" aria-hidden="true">
           <defs>
-            <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stop-color="#a78bfa" />
-              <stop offset="100%" stop-color="#6366f1" />
+            <linearGradient id="logoGrad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#6366F1" />
+              <stop offset="55%" stop-color="#8B5CF6" />
+              <stop offset="100%" stop-color="#A855F7" />
             </linearGradient>
           </defs>
-          <rect x="2" y="2" width="28" height="28" rx="8" fill="url(#logoGrad)" />
-          <path d="M10 20 L16 8 L22 20" stroke="white" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round" />
-          <circle cx="16" cy="22" r="2" fill="white" />
+          <rect width="96" height="96" rx="22" fill="url(#logoGrad)" />
+          <path d="M28 16 h17 v45 h30 v17 H28 Z" fill="#fff" />
+          <path d="M69 12 l4 10 10 4 -10 4 -4 10 -4 -10 -10 -4 10 -4 Z" fill="#fff" opacity=".95" />
         </svg>
         <span class="logo-text">Llama Desktop</span>
       </div>
@@ -158,7 +161,7 @@ function isActive(path: string): boolean {
 .logo-text {
   font-size: 16px;
   font-weight: 700;
-  background: linear-gradient(135deg, #a78bfa 0%, #6366f1 100%);
+  background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;

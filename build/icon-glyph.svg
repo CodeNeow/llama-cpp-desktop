@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">
+  <!-- Glyph variant: brand-gradient glyph on a transparent canvas, for dark
+       sidebars and avatar fallbacks. Defs are inlined per file — never
+       reference gradients across icon files. -->
+  <defs>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#6366F1"/><stop offset="55%" stop-color="#8B5CF6"/><stop offset="100%" stop-color="#A855F7"/>
+    </linearGradient>
+  </defs>
+  <path d="M28 16 h17 v45 h30 v17 H28 Z" fill="url(#brand)"/>
+  <path d="M69 12 l4 10 10 4 -10 4 -4 10 -4 -10 -10 -4 10 -4 Z" fill="url(#brand)" opacity=".95"/>
+</svg>

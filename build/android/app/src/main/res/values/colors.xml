@@ -5,7 +5,4 @@
     <color name="wails_background">#1B2636</color>
     <color name="white">#FFFFFFFF</color>
     <color name="black">#FF000000</color>
-    <!-- Adaptive launcher-icon background: average of the brand art
-         (scripts/gen_android_icons.py output). -->
-    <color name="ic_launcher_background">#9287F6</color>
 </resources>
