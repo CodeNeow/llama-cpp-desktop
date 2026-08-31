@@ -12,6 +12,10 @@ build/android/app/build/
 build/android/app/src/main/jniLibs/
 build/android/local.properties
 build/android/overlay.json
+# Local stable-release-keystore reference + passwords for release builds
+# (the keystore file itself lives outside the repo, e.g. D:\Android\keystore;
+# CI receives the same material via Actions secrets). Never commit.
+build/android/keystore.properties
 build/android/captures/
 build/windows/installer/*
 !build/windows/installer/project.nsi
@@ -43,3 +47,7 @@ llama-gui-config.json
 # Local staging area for the service-chain e2e assets (pinned llama.cpp
 # build + tiny GGUF), mirrored by the CI actions/cache of the same name.
 .e2e-cache/
+
+# Local design drafts (Android mockups / branding explorations) are kept on the
+# author's machine only, never committed; the dir also holds the tracked icon.png.
+docs/branding/*.html
