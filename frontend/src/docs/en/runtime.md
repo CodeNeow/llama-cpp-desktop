@@ -27,7 +27,7 @@ After picking a directory via "Custom", the app immediately re-probes it:
 - The directory must contain the llama-server binary; CUDA builds additionally need the matching cudart library in the same directory (or on the system PATH).
 - The choice is persisted and used on every subsequent start.
 
-The download path itself can be changed under "Preferences → Directories" to decide where new llama.cpp installs land.
+The download path itself can be changed via the "llama.cpp Download Path" row on the Preferences page to decide where new llama.cpp installs land.
 
 ## The three-state CUDA compatibility display
 

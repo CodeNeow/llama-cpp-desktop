@@ -2,7 +2,7 @@
 
 ## Turning it on and off
 
-- **Enable**: flip the switch under "Preferences → API Route Mode". The app relaunches itself into headless mode and the window closes;
+- **Enable**: flip the "API Route Mode" switch on the Preferences page. The app relaunches itself into headless mode and the window closes;
 - **Return to the GUI**: right-click the tray icon → "Show Main Window"; the app relaunches once more, this time back into the full interface.
 
 Prerequisites:

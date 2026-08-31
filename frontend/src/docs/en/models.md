@@ -36,7 +36,7 @@ Tuning plans VRAM against the **inference GPU** chosen in Preferences: on multi-
 | Load Mode | Default mmap loads fastest; mlock prevents swapping when RAM is ample |
 | Split Mode | `none` for a single GPU; `layer` is the stable default for multi-GPU |
 
-> Note: Android is a CPU-only build, so GPU-only parameters (GPU layers, Flash Attention, cpu-moe) are not shown there; the `dio` load mode is only offered on Windows / Linux. |
+> Note: Android is a CPU-only build, so GPU-only parameters (GPU layers, Flash Attention, cpu-moe) are not shown there; the `dio` load mode is only offered on Windows / Linux.
 
 ## Changing parameters while the service is running
 

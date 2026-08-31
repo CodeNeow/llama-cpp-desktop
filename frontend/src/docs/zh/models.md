@@ -36,7 +36,7 @@
 | 加载方式 | 默认 mmap 加载最快；内存充裕可选 mlock 防换页 |
 | 切分方式 | 单卡选 `none`；多卡默认 `layer` 稳定 |
 
-> 注：Android 为纯 CPU 构建，页面不显示 GPU 层数、Flash Attention、cpu-moe 等 GPU 专属参数；「加载方式」中的 `dio` 仅 Windows / Linux 提供。 |
+> 注：Android 为纯 CPU 构建，页面不显示 GPU 层数、Flash Attention、cpu-moe 等 GPU 专属参数；「加载方式」中的 `dio` 仅 Windows / Linux 提供。
 
 ## 服务运行中修改参数
 

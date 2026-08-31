@@ -5,31 +5,12 @@
         <h1 class="page-title">{{ t('settings.title') }}</h1>
         <p class="page-subtitle">{{ t('settings.subtitle') }}</p>
       </div>
-
-      <!-- Tabs row: same pattern as ModelSettings (icon + label buttons with an
-           underline active state); activeTab is plain view state, never persisted -->
-      <div class="settings-tabs" role="tablist" :aria-label="t('settings.title')">
-        <button
-          v-for="(tab, i) in tabs"
-          :key="tab.id"
-          :id="`${tab.id}-tab`"
-          class="tab-btn"
-          :class="{ active: activeTab === i }"
-          role="tab"
-          :aria-selected="activeTab === i"
-          :aria-controls="tab.id"
-          @click="activeTab = i"
-        >
-          <span class="tab-icon" v-html="tab.icon"></span>
-          {{ tab.label() }}
-        </button>
-      </div>
     </div>
 
     <!-- Help & tutorial entry: the former sixth navigation destination moved
          here from the nav bars (mobile redesign IA, design/android-mockups.html
-         frame ⑤). The /docs route itself is unchanged; the card sits outside
-         the tab panels so it is reachable from every tab. -->
+         frame ⑤). The /docs route itself is unchanged; the card sits above the
+         setting groups so it is reachable from every scroll position. -->
     <router-link to="/docs" class="docs-entry">
       <span class="docs-entry-icon" v-html="DOCS_ICON"></span>
       <span class="docs-entry-text">
@@ -39,223 +20,183 @@
       <svg class="docs-entry-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
     </router-link>
 
-    <!-- Tab panels (v-show keeps per-tab input state alive across switches) -->
-    <!-- Appearance: theme mode + interface language -->
-    <div id="tab-appearance" role="tabpanel" aria-labelledby="tab-appearance-tab" v-show="activeTab === 0">
-      <!-- UI Style -->
-      <section class="settings-section">
-        <h2 class="section-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
-          </svg>
-          {{ t('settings.uiStyle') }}
-        </h2>
-        <div class="setting-row">
-          <div class="setting-info">
-            <span class="setting-label">{{ t('settings.themeMode') }}</span>
-            <span class="setting-desc">{{ t('settings.themeDesc') }}</span>
+    <!-- Device island (frame ⑤): OS · arch · llama-server acceleration build ·
+           app version, all read from existing bindings. Shown on desktop and
+           mobile alike — it is a capability summary, not a phone-only widget. -->
+    <section class="device-card" :aria-label="t('settings.device')">
+      <div class="device-label">{{ t('settings.device') }}</div>
+      <div class="device-chips">
+        <span class="device-chip">{{ osName }}</span>
+        <span v-if="archLabel" class="device-chip">{{ archLabel }}</span>
+        <span class="device-chip">{{ accelLabel }}</span>
+        <span class="device-chip">{{ versionChip }}</span>
+      </div>
+    </section>
+
+    <!-- ─── Group: appearance & preferences (frame ⑤ group 1) ───
+         Theme toggle + language + download source. Same handlers and guard
+         semantics as before; only the containers changed (rows in a rounded
+         group instead of tabbed sections). -->
+    <section class="settings-group" :aria-label="t('settings.groupAppearance')">
+      <!-- Theme mode -->
+      <div class="group-item">
+        <div class="group-row">
+          <span class="row-ic ic-indigo" v-html="ICON_MOON"></span>
+          <div class="row-text">
+            <span class="row-title">{{ t('settings.themeMode') }}</span>
+            <span class="row-sub">{{ t('settings.themeDesc') }}</span>
           </div>
-          <div class="theme-toggle" @click="currentTheme = currentTheme === 'dark' ? 'light' : 'dark'">
-            <div class="toggle-track" :class="{ light: currentTheme === 'light' }">
-              <div class="toggle-thumb">
-                <svg v-if="currentTheme === 'dark'" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-                </svg>
-                <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
-                </svg>
-              </div>
+          <div class="row-tail">
+            <div
+              class="switch"
+              :class="{ on: currentTheme === 'dark' }"
+              role="switch"
+              :aria-checked="currentTheme === 'dark'"
+              :aria-label="t('settings.themeMode')"
+              tabindex="0"
+              @click="toggleTheme"
+              @keydown.enter="toggleTheme"
+            >
             </div>
-            <span class="toggle-label">{{ currentTheme === 'dark' ? t('settings.dark') : t('settings.light') }}</span>
           </div>
         </div>
-      </section>
+      </div>
 
-      <!-- Interface Language -->
-      <section class="settings-section">
-        <h2 class="section-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
-          </svg>
-          {{ t('settings.language') }}
-        </h2>
-        <div class="source-grid source-grid-col3">
-          <div
-            class="source-card"
-            :class="{ active: appConfig.language === 'auto' }"
-            role="radio"
-            :aria-checked="appConfig.language === 'auto'"
-            tabindex="0"
-            @click="setLanguagePref('auto')"
-            @keydown.enter="setLanguagePref('auto')"
-          >
-            <span class="source-name">{{ t('settings.languageAuto') }}</span>
-            <span v-if="appConfig.language === 'auto'" class="source-check">✓</span>
+      <!-- Interface language -->
+      <div class="group-item">
+        <div class="group-row">
+          <span class="row-ic ic-emerald" v-html="ICON_GLOBE"></span>
+          <div class="row-text">
+            <span class="row-title">{{ t('settings.language') }}</span>
+            <span class="row-sub">{{ languageCurrentLabel }}</span>
           </div>
-          <div
-            class="source-card"
-            :class="{ active: appConfig.language === 'zh' }"
-            role="radio"
-            :aria-checked="appConfig.language === 'zh'"
-            tabindex="0"
-            @click="setLanguagePref('zh')"
-            @keydown.enter="setLanguagePref('zh')"
-          >
-            <span class="source-name">{{ t('settings.languageZh') }}</span>
-            <span v-if="appConfig.language === 'zh'" class="source-check">✓</span>
-          </div>
-          <div
-            class="source-card"
-            :class="{ active: appConfig.language === 'en' }"
-            role="radio"
-            :aria-checked="appConfig.language === 'en'"
-            tabindex="0"
-            @click="setLanguagePref('en')"
-            @keydown.enter="setLanguagePref('en')"
-          >
-            <span class="source-name">{{ t('settings.languageEn') }}</span>
-            <span v-if="appConfig.language === 'en'" class="source-check">✓</span>
+          <div class="row-tail">
+            <div class="row-seg" role="radiogroup" :aria-label="t('settings.language')">
+              <button
+                v-for="opt in languageOptions"
+                :key="opt.value"
+                type="button"
+                class="row-seg-btn"
+                role="radio"
+                :class="{ active: appConfig.language === opt.value }"
+                :aria-checked="appConfig.language === opt.value"
+                tabindex="0"
+                @click="setLanguagePref(opt.value)"
+                @keydown.enter="setLanguagePref(opt.value)"
+              >{{ opt.label }}</button>
+            </div>
           </div>
         </div>
-        <p class="source-hint">{{ t('settings.languageDesc') }}</p>
-        <p v-if="languageError" class="source-error">{{ languageError }}</p>
-      </section>
-    </div>
+        <p v-if="languageError" class="row-error">{{ languageError }}</p>
+      </div>
 
-    <!-- Downloads & directories: download paths for new installs/downloads (imported dirs
-         for reuse stay on the Home and Models pages) -->
-    <div id="tab-downloads" role="tabpanel" aria-labelledby="tab-downloads-tab" v-show="activeTab === 1">
-      <!-- Downloads -->
-      <section class="settings-section">
-        <h2 class="section-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-          </svg>
-          {{ t('settings.downloadSource') }}
-        </h2>
-        <div class="source-grid">
-          <div
-            class="source-card"
-            :class="{ active: downloadSource === 'hf' }"
-            role="radio"
-            :aria-checked="downloadSource === 'hf'"
-            tabindex="0"
-            @click="setSource('hf')"
-            @keydown.enter="setSource('hf')"
-          >
-            <span class="source-name">{{ t('settings.sourceHf') }}</span>
-            <span v-if="downloadSource === 'hf'" class="source-check">✓</span>
+      <!-- Model download source -->
+      <div class="group-item">
+        <div class="group-row">
+          <span class="row-ic ic-amber" v-html="ICON_DOWNLOAD"></span>
+          <div class="row-text">
+            <span class="row-title">{{ t('settings.downloadSource') }}</span>
+            <span class="row-sub">{{ sourceCurrentLabel }}</span>
           </div>
-          <div
-            class="source-card"
-            :class="{ active: downloadSource === 'modelscope' }"
-            role="radio"
-            :aria-checked="downloadSource === 'modelscope'"
-            tabindex="0"
-            @click="setSource('modelscope')"
-            @keydown.enter="setSource('modelscope')"
-          >
-            <span class="source-name">{{ t('settings.sourceModelScope') }}</span>
-            <span v-if="downloadSource === 'modelscope'" class="source-check">✓</span>
-          </div>
-          <div
-            class="source-card"
-            :class="{ active: downloadSource === 'huggingface' }"
-            role="radio"
-            :aria-checked="downloadSource === 'huggingface'"
-            tabindex="0"
-            @click="setSource('huggingface')"
-            @keydown.enter="setSource('huggingface')"
-          >
-            <span class="source-name">{{ t('settings.sourceHuggingFace') }}</span>
-            <span v-if="downloadSource === 'huggingface'" class="source-check">✓</span>
+          <div class="row-tail">
+            <div class="row-seg" role="radiogroup" :aria-label="t('settings.downloadSource')">
+              <button
+                v-for="opt in sourceOptions"
+                :key="opt.value"
+                type="button"
+                class="row-seg-btn"
+                role="radio"
+                :class="{ active: downloadSource === opt.value }"
+                :aria-checked="downloadSource === opt.value"
+                tabindex="0"
+                @click="setSource(opt.value)"
+                @keydown.enter="setSource(opt.value)"
+              >{{ opt.label }}</button>
+            </div>
           </div>
         </div>
-        <p class="source-hint">{{ t('settings.sourceHint') }}</p>
-        <p v-if="sourceError" class="source-error">{{ sourceError }}</p>
-      </section>
+        <p class="row-foot">{{ t('settings.sourceHint') }}</p>
+        <p v-if="sourceError" class="row-error">{{ sourceError }}</p>
+      </div>
+    </section>
 
-      <!-- Directories -->
-      <section class="settings-section">
-        <h2 class="section-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-          </svg>
-          {{ t('settings.directories') }}
-        </h2>
-        <div class="dir-row">
-          <div class="setting-info">
-            <span class="setting-label">{{ t('settings.llamaCppDownloadDir') }}</span>
-            <span class="setting-desc">{{ t('settings.llamaCppDownloadDirDesc') }}</span>
-          </div>
-          <div class="dir-path-row">
-            <div class="dir-path">{{ appConfig.llamaCppDownloadDir }}</div>
-            <!-- Android has no native directory picker (the Browse* bindings error
-                 there): the browse buttons are hidden, paths stay read-only -->
-            <button v-if="!isAndroid" class="dir-btn" type="button" @click="chooseLlamaCppDownloadDir">{{ t('settings.choose') }}</button>
+    <!-- ─── Group: directories & services (frame ⑤ group 2) ───
+         Download paths + service access scope + API key + serving GPU +
+         Windows-only tray / API-route toggles. Platform gates are unchanged:
+         showTray / showApiRoute / showGpu stay OS-scoped helpers. -->
+    <section class="settings-group" :aria-label="t('settings.groupService')">
+      <!-- llama.cpp download path -->
+      <div class="group-item" :aria-label="t('settings.directories')">
+        <div class="group-row">
+          <span class="row-ic ic-violet" v-html="ICON_FOLDER"></span>
+          <div class="row-text">
+            <span class="row-title">{{ t('settings.llamaCppDownloadDir') }}</span>
+            <span class="row-sub">{{ t('settings.llamaCppDownloadDirDesc') }}</span>
           </div>
         </div>
-        <div class="dir-row">
-          <div class="setting-info">
-            <span class="setting-label">{{ t('settings.modelDownloadDir') }}</span>
-            <span class="setting-desc">{{ t('settings.modelDownloadDirDesc') }}</span>
+        <div class="dir-path-row">
+          <div class="dir-path">{{ appConfig.llamaCppDownloadDir }}</div>
+          <!-- Android has no native directory picker (the Browse* bindings error
+               there): the browse buttons are hidden, paths stay read-only -->
+          <button v-if="!isAndroid" class="dir-btn" type="button" @click="chooseLlamaCppDownloadDir">{{ t('settings.choose') }}</button>
+        </div>
+      </div>
+
+      <!-- Model download path -->
+      <div class="group-item">
+        <div class="group-row">
+          <span class="row-ic ic-violet" v-html="ICON_FOLDER"></span>
+          <div class="row-text">
+            <span class="row-title">{{ t('settings.modelDownloadDir') }}</span>
+            <span class="row-sub">{{ t('settings.modelDownloadDirDesc') }}</span>
           </div>
-          <div class="dir-path-row">
-            <div class="dir-path">{{ appConfig.modelDownloadDir }}</div>
-            <button v-if="!isAndroid" class="dir-btn" type="button" @click="chooseModelDownloadDir">{{ t('settings.choose') }}</button>
-          </div>
+        </div>
+        <div class="dir-path-row">
+          <div class="dir-path">{{ appConfig.modelDownloadDir }}</div>
+          <button v-if="!isAndroid" class="dir-btn" type="button" @click="chooseModelDownloadDir">{{ t('settings.choose') }}</button>
         </div>
         <!-- Android: no system folder picker; both paths are app-managed and
              read-only, so the rows stay informational with an explicit hint -->
-        <p v-if="isAndroid" class="source-hint">{{ t('settings.dirsAndroidHint') }}</p>
-        <p class="source-hint">{{ t('settings.directoriesHint') }}</p>
-      </section>
-    </div>
+        <p v-if="isAndroid" class="row-foot">{{ t('settings.dirsAndroidHint') }}</p>
+        <p class="row-foot">{{ t('settings.directoriesHint') }}</p>
+      </div>
 
-    <!-- Server: access scope + API key + inference GPU -->
-    <div id="tab-server" role="tabpanel" aria-labelledby="tab-server-tab" v-show="activeTab === 2">
       <!-- Server access scope -->
-      <section class="settings-section">
-        <h2 class="section-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
-          </svg>
-          {{ t('settings.accessScope') }}
-        </h2>
-        <div class="source-grid">
-          <div
-            class="source-card"
-            :class="{ active: appConfig.serverAccessMode === 'local' }"
-            role="radio"
-            :aria-checked="appConfig.serverAccessMode === 'local'"
-            tabindex="0"
-            @click="setAccessScope('local')"
-            @keydown.enter="setAccessScope('local')"
-          >
-            <span class="source-name">{{ t('settings.accessLocal') }}</span>
-            <span v-if="appConfig.serverAccessMode === 'local'" class="source-check">✓</span>
+      <div class="group-item">
+        <div class="group-row">
+          <span class="row-ic ic-sky" v-html="ICON_ACCESS"></span>
+          <div class="row-text">
+            <span class="row-title">{{ t('settings.accessScope') }}</span>
+            <span class="row-sub">{{ t('settings.accessDesc') }}</span>
           </div>
-          <div
-            class="source-card"
-            :class="{ active: appConfig.serverAccessMode === 'lan' }"
-            role="radio"
-            :aria-checked="appConfig.serverAccessMode === 'lan'"
-            tabindex="0"
-            @click="setAccessScope('lan')"
-            @keydown.enter="setAccessScope('lan')"
-          >
-            <span class="source-name">{{ t('settings.accessLan') }}</span>
-            <span v-if="appConfig.serverAccessMode === 'lan'" class="source-check">✓</span>
+          <div class="row-tail">
+            <div class="row-seg" role="radiogroup" :aria-label="t('settings.accessScope')">
+              <button
+                v-for="opt in accessOptions"
+                :key="opt.value"
+                type="button"
+                class="row-seg-btn"
+                role="radio"
+                :class="{ active: appConfig.serverAccessMode === opt.value }"
+                :aria-checked="appConfig.serverAccessMode === opt.value"
+                tabindex="0"
+                @click="setAccessScope(opt.value)"
+                @keydown.enter="setAccessScope(opt.value)"
+              >{{ opt.label }}</button>
+            </div>
           </div>
         </div>
-        <p class="source-hint">{{ t('settings.accessDesc') }}</p>
-        <p v-if="accessError" class="source-error">{{ accessError }}</p>
-        <!-- API key always visible: it also protects the inference API in local mode,
-             not only when the service is exposed to the LAN -->
-        <div class="setting-row api-key-row">
-          <div class="setting-info">
-            <span class="setting-label">{{ t('settings.apiKey') }}</span>
-            <span class="setting-desc">{{ t('settings.apiKeyDesc') }}</span>
+        <p v-if="accessError" class="row-error">{{ accessError }}</p>
+      </div>
+
+      <!-- API key: always visible — it also protects the inference API in
+           local mode, not only when the service is exposed to the LAN -->
+      <div class="group-item">
+        <div class="group-row">
+          <span class="row-ic ic-rose" v-html="ICON_KEY"></span>
+          <div class="row-text">
+            <span class="row-title">{{ t('settings.apiKey') }}</span>
+            <span class="row-sub">{{ t('settings.apiKeyDesc') }}</span>
           </div>
           <input
             v-model="apiKeyInput"
@@ -264,19 +205,24 @@
             autocomplete="off"
             spellcheck="false"
             :disabled="apiKeySwitching"
+            aria-label="API Key"
             @change="saveApiKey"
           />
         </div>
-        <p v-if="apiKeyError" class="source-error">{{ apiKeyError }}</p>
-        <!-- Inference GPU selection: pins the llama-server child to the chosen
-             CUDA device via CUDA_VISIBLE_DEVICES (empty = auto, default device).
-             Persisted through the same whole-serverConfig round-trip as the key.
-             Windows-only: the backend device pinning no-ops on other platforms. -->
-        <template v-if="showGpu">
-          <div class="setting-row gpu-row">
-            <div class="setting-info">
-              <span class="setting-label">{{ t('settings.gpu.label') }}</span>
-              <span class="setting-desc">{{ t('settings.gpu.desc') }}</span>
+        <p v-if="apiKeyError" class="row-error">{{ apiKeyError }}</p>
+      </div>
+
+      <!-- Inference GPU selection: pins the llama-server child to the chosen
+           CUDA device via CUDA_VISIBLE_DEVICES (empty = auto, default device).
+           Persisted through the same whole-serverConfig round-trip as the key.
+           Windows-only: the backend device pinning no-ops on other platforms. -->
+      <template v-if="showGpu">
+        <div class="group-item">
+          <div class="group-row">
+            <span class="row-ic ic-teal" v-html="ICON_GPU"></span>
+            <div class="row-text">
+              <span class="row-title">{{ t('settings.gpu.label') }}</span>
+              <span class="row-sub">{{ t('settings.gpu.desc') }}</span>
             </div>
             <ThemedSelect
               class="gpu-select"
@@ -289,141 +235,126 @@
               @update:model-value="onGpuSelected"
             />
           </div>
-          <p v-if="!gpuDetected" class="source-hint">{{ t('settings.gpu.none') }}</p>
-          <p v-else class="source-hint">{{ t('settings.gpu.hint') }}</p>
-          <p v-if="gpuError" class="source-error">{{ gpuError }}</p>
-        </template>
-      </section>
-    </div>
+          <p v-if="!gpuDetected" class="row-foot">{{ t('settings.gpu.none') }}</p>
+          <p v-else class="row-foot">{{ t('settings.gpu.hint') }}</p>
+          <p v-if="gpuError" class="row-error">{{ gpuError }}</p>
+        </div>
+      </template>
 
-    <!-- App & updates: tray + API route mode + updates + about -->
-    <div id="tab-app" role="tabpanel" aria-labelledby="tab-app-tab" v-show="activeTab === 3">
-      <!-- System tray (Windows only; other platforms exit directly on close) -->
-      <section v-if="showTray" class="settings-section">
-        <h2 class="section-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
-          </svg>
-          {{ t('settings.tray') }}
-        </h2>
-        <div class="setting-row">
-          <div class="setting-info">
-            <span class="setting-label">{{ t('settings.tray') }}</span>
-            <span class="setting-desc">{{ t('settings.trayDesc') }}</span>
-          </div>
-          <div class="theme-toggle" @click="toggleTray">
-            <div class="toggle-track" :class="{ light: appConfig.trayEnabled }">
-              <div class="toggle-thumb">
-                <svg v-if="appConfig.trayEnabled" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="20 6 9 17 4 12"/>
-                </svg>
-                <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
+      <!-- System tray (Windows / macOS only; other platforms exit directly on close) -->
+      <template v-if="showTray">
+        <div class="group-item">
+          <div class="group-row">
+            <span class="row-ic ic-slate" v-html="ICON_TRAY"></span>
+            <div class="row-text">
+              <span class="row-title">{{ t('settings.tray') }}</span>
+              <span class="row-sub">{{ t('settings.trayDesc') }}</span>
+            </div>
+            <div class="row-tail">
+              <div
+                class="switch"
+                :class="{ on: appConfig.trayEnabled }"
+                role="switch"
+                :aria-checked="appConfig.trayEnabled"
+                :aria-label="t('settings.tray')"
+                tabindex="0"
+                @click="toggleTray"
+                @keydown.enter="toggleTray"
+              >
               </div>
             </div>
-            <span class="toggle-label">{{ appConfig.trayEnabled ? t('settings.on') : t('settings.off') }}</span>
           </div>
+          <!-- systray cannot restart in same process: after disabling, re-enable requires app restart -->
+          <p class="row-foot">{{ t('settings.trayHint') }}</p>
+          <p v-if="trayError" class="row-error">{{ trayError }}</p>
         </div>
-        <!-- systray cannot restart in same process: after disabling, re-enable requires app restart -->
-        <p class="source-hint">{{ t('settings.trayHint') }}</p>
-        <p v-if="trayError" class="source-error">{{ trayError }}</p>
-      </section>
+      </template>
 
       <!-- API route mode (Windows only): restart into headless tray+server mode -->
-      <section v-if="showApiRoute" class="settings-section">
-        <h2 class="section-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
-          </svg>
-          {{ t('settings.apiRouteMode') }}
-        </h2>
-        <div class="setting-row">
-          <div class="setting-info">
-            <span class="setting-label">{{ t('settings.apiRouteMode') }}</span>
-            <span class="setting-desc">{{ t('settings.apiRouteModeDesc') }}</span>
-          </div>
-          <div class="theme-toggle" :class="{ disabled: !appConfig.trayEnabled || apiRouteDevBlocked }" @click="toggleApiRouteMode">
-            <div class="toggle-track" :class="{ light: appConfig.apiRouteMode }">
-              <div class="toggle-thumb">
-                <svg v-if="appConfig.apiRouteMode" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="20 6 9 17 4 12"/>
-                </svg>
-                <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
+      <template v-if="showApiRoute">
+        <div class="group-item">
+          <div class="group-row">
+            <span class="row-ic ic-fuchsia" v-html="ICON_SHARE"></span>
+            <div class="row-text">
+              <span class="row-title">{{ t('settings.apiRouteMode') }}</span>
+              <span class="row-sub">{{ t('settings.apiRouteModeDesc') }}</span>
+            </div>
+            <div class="row-tail">
+              <div
+                class="switch"
+                :class="{ on: appConfig.apiRouteMode, disabled: !appConfig.trayEnabled || apiRouteDevBlocked }"
+                role="switch"
+                :aria-checked="appConfig.apiRouteMode"
+                :aria-disabled="!appConfig.trayEnabled || apiRouteDevBlocked"
+                :aria-label="t('settings.apiRouteMode')"
+                tabindex="0"
+                @click="toggleApiRouteMode"
+                @keydown.enter="toggleApiRouteMode"
+              >
               </div>
             </div>
-            <span class="toggle-label">{{ appConfig.apiRouteMode ? t('settings.on') : t('settings.off') }}</span>
           </div>
+          <!-- dev builds refuse the relaunch-based switch entirely: it escapes the wails dev supervisor -->
+          <p v-if="apiRouteDevBlocked" class="row-foot">{{ t('settings.apiRouteModeDevBlocked') }}</p>
+          <!-- headless mode returns to the GUI via the tray menu only: gate the toggle on the tray setting -->
+          <p v-else-if="!appConfig.trayEnabled" class="row-foot">{{ t('settings.apiRouteModeRequiresTray') }}</p>
+          <p v-if="apiRouteError" class="row-error">{{ apiRouteError }}</p>
         </div>
-        <!-- dev builds refuse the relaunch-based switch entirely: it escapes the wails dev supervisor -->
-        <p v-if="apiRouteDevBlocked" class="source-hint">{{ t('settings.apiRouteModeDevBlocked') }}</p>
-        <!-- headless mode returns to the GUI via the tray menu only: gate the toggle on the tray setting -->
-        <p v-else-if="!appConfig.trayEnabled" class="source-hint">{{ t('settings.apiRouteModeRequiresTray') }}</p>
-        <p v-if="apiRouteError" class="source-error">{{ apiRouteError }}</p>
-      </section>
+      </template>
+    </section>
 
-      <!-- Updates: visible on every platform; the in-app self-update action is
-           Windows-only, other platforms get a hint + GitHub Releases link -->
-      <section class="settings-section">
-        <h2 class="section-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M20 6 9 17l-5-5"/>
-          </svg>
-          {{ t('settings.update') }}
-        </h2>
-        <div class="setting-row">
-          <div class="setting-info">
-            <span class="setting-label">{{ t('settings.checkUpdate') }}</span>
-            <span class="setting-desc">{{ t('settings.updateDesc', { version: appVersion }) }}</span>
+    <!-- ─── Group: about (frame ⑤ group 3) ───
+         Updates: visible on every platform; the in-app self-update action is
+         Windows-only ('native'), other platforms get the link mode (hint +
+         GitHub Releases link) — same updateSectionMode gate, reskin only. -->
+    <section class="settings-group" :aria-label="t('settings.about')">
+      <div class="group-item">
+        <div class="group-row">
+          <span class="row-ic ic-blue" v-html="ICON_REFRESH"></span>
+          <div class="row-text">
+            <span class="row-title">{{ t('settings.update') }}</span>
+            <span class="row-sub">{{ t('settings.updateDesc', { version: appVersion }) }}</span>
           </div>
           <!-- Windows: native check-for-updates / self-update action -->
-          <div v-if="updatesNative" class="update-actions">
-            <span v-if="checkError" class="update-error">{{ checkError }}</span>
+          <div v-if="updatesNative" class="row-tail update-actions">
+            <span v-if="checkError" class="row-error">{{ checkError }}</span>
             <span v-else-if="checkResult && !checkResult.hasUpdate" class="update-latest">{{ t('settings.latest') }}</span>
             <button class="btn-check" :disabled="checking" @click="manualCheck">
               {{ checking ? t('settings.checking') : t('settings.checkUpdate') }}
             </button>
           </div>
-          <!-- Other platforms: hint instead of the action; the Releases link
-               goes through the shared external-link handler (system browser,
-               never an in-WebView navigation) -->
-          <p v-else class="source-hint update-hint">
-            {{ t('settings.updateNotSupported') }}
-            <a
-              class="hint-link"
-              href="https://github.com/CodeNeow/llama-cpp-desktop/releases"
-              @click="handleLinkClick"
-            >{{ t('settings.updateReleasesLink') }}</a>
-          </p>
         </div>
-      </section>
+        <!-- Other platforms: hint instead of the action; the Releases link
+             goes through the shared external-link handler (system browser,
+             never an in-WebView navigation) -->
+        <p v-if="!updatesNative" class="row-foot update-hint">
+          {{ t('settings.updateNotSupported') }}
+          <a
+            class="hint-link"
+            href="https://github.com/CodeNeow/llama-cpp-desktop/releases"
+            @click="handleLinkClick"
+          >{{ t('settings.updateReleasesLink') }}</a>
+        </p>
+      </div>
 
       <!-- About: version / license / repository. The repo URL is plain
            selectable text, NOT an <a> link: clicking a link would navigate the
            WebView away from the app. -->
-      <section class="settings-section">
-        <h2 class="section-title">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
-          </svg>
-          {{ t('settings.about') }}
-        </h2>
+      <div class="group-item">
         <div class="about-row">
-          <span class="setting-label">{{ t('settings.version') }}</span>
+          <span class="about-label">{{ t('settings.version') }}</span>
           <span class="about-value">{{ appVersion || '—' }}</span>
         </div>
         <div class="about-row">
-          <span class="setting-label">{{ t('settings.license') }}</span>
+          <span class="about-label">{{ t('settings.license') }}</span>
           <span class="about-value">GPL-3.0</span>
         </div>
         <div class="about-row">
-          <span class="setting-label">{{ t('settings.repo') }}</span>
+          <span class="about-label">{{ t('settings.repo') }}</span>
           <span class="about-value about-mono">https://github.com/CodeNeow/llama-cpp-desktop</span>
         </div>
-      </section>
-    </div>
+      </div>
+    </section>
   </div>
 </template>
 
@@ -431,49 +362,125 @@
 import { computed, onMounted, ref } from 'vue'
 import { appConfig, setTheme, loadConfig, setDownloadSource as applyDownloadSource, setLanguage as applyLanguage, setServerAccessMode as applyServerAccessMode, setApiKey as applyApiKey, setTrayEnabled as applyTrayEnabled } from '../store'
 import { updateState, checkForUpdate } from '../lib/update'
-import { getAppVersion, getSystemInfo, getServerConfig, saveServerConfig, browseLlamaCppDownloadDir, browseModelDownloadDir, setApiRouteMode } from '../wails'
-import { showTraySetting, showApiRouteSetting, showServingGpuSetting, updateSectionMode, usePlatform } from '../lib/platform'
+import { getAppVersion, getLlamaCpp, getSystemInfo, getServerConfig, saveServerConfig, browseLlamaCppDownloadDir, browseModelDownloadDir, setApiRouteMode } from '../wails'
+import { accelBuildKey, showTraySetting, showApiRouteSetting, showServingGpuSetting, updateSectionMode, usePlatform } from '../lib/platform'
 import { handleLinkClick } from '../lib/linkHandler'
 import { DOCS_ICON } from '../lib/navigation'
 import ThemedSelect, { type SelectOption } from '../components/ThemedSelect.vue'
 import { formatMB } from '../lib/format'
 import { t } from '../lib/i18n'
 
-// ─── Tabs ─────────────────────────────────────────────────────────────────────
-// Index of the currently active tab. Plain view state: it resets to the first
-// tab on reload and is intentionally not persisted or encoded in the route.
-const activeTab = ref(0)
+// ─── Row icons (inline stroke SVGs, mirroring the former section titles) ─────
+const ICON_MOON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`
+const ICON_GLOBE = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`
+const ICON_DOWNLOAD = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`
+const ICON_FOLDER = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`
+const ICON_ACCESS = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/></svg>`
+const ICON_KEY = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>`
+const ICON_GPU = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>`
+const ICON_TRAY = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>`
+const ICON_SHARE = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>`
+const ICON_REFRESH = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>`
 
-// Tab definitions (4 groups; icons are inline stroke SVGs, mirroring ModelSettings)
-const tabs = [
-  {
-    id: 'tab-appearance',
-    label: () => t('settings.tabAppearance'),
-    icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`,
-  },
-  {
-    id: 'tab-downloads',
-    label: () => t('settings.tabDownloads'),
-    icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
-  },
-  {
-    id: 'tab-server',
-    label: () => t('settings.tabServer'),
-    icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>`,
-  },
-  {
-    id: 'tab-app',
-    label: () => t('settings.tabApp'),
-    icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
-  },
-]
+// ─── Device island (frame ⑤) ─────────────────────────────────────────────────
+// OS + arch come from the shared platform state (App.vue wires it from the
+// backend getOS() binding); the acceleration label mirrors RuntimeSection:
+// prefer the actually detected llama.cpp build (getLlamaCpp().accel), fall
+// back to the platform capability guess (accelBuildKey), and keep the
+// android arm64 qualifier on the CPU-only label. Version via getAppVersion().
+const platform = usePlatform()
 
+const osName = computed(() => {
+  switch (platform.value.os) {
+    case 'windows':
+      return t('settings.os.windows')
+    case 'linux':
+      return t('settings.os.linux')
+    case 'darwin':
+      return t('settings.os.darwin')
+    case 'android':
+      return t('settings.os.android')
+    case 'ios':
+      return t('settings.os.ios')
+    default:
+      return t('settings.os.other')
+  }
+})
+
+// Raw GOARCH string (arm64 / amd64 / ...); hidden entirely while unknown.
+const archLabel = computed(() => platform.value.arch)
+
+const llamacppAccel = ref('')
+
+const accelLabel = computed(() => {
+  const detected = llamacppAccel.value
+  if (detected === 'cuda') return t('runtime.accel.cuda')
+  if (detected === 'vulkan') return t('runtime.accel.vulkan')
+  if (detected === 'metal') return t('runtime.accel.metal')
+  if (detected === 'cpu') return platform.value.isAndroid ? t('runtime.accel.cpuArm64') : t('runtime.accel.cpu')
+  const fallback = accelBuildKey(platform.value)
+  if (fallback === 'cpu' && platform.value.isAndroid) return t('runtime.accel.cpuArm64')
+  return t(`runtime.accel.${fallback}`)
+})
+
+const versionChip = computed(() => appVersion.value || '—')
+
+// ─── Theme ───────────────────────────────────────────────────────────────────
 const currentTheme = computed({
   get: () => appConfig.theme,
   set: (v) => setTheme(v)
 })
 
+function toggleTheme() {
+  currentTheme.value = currentTheme.value === 'dark' ? 'light' : 'dark'
+}
+
+// ─── Interface language ──────────────────────────────────────────────────────
+// Compact segment labels for the row tail; the row sub-line carries the full
+// current value (languageAuto / languageZh / languageEn).
+const languageOptions = computed(() => [
+  { value: 'auto', label: t('settings.languageAutoShort') },
+  { value: 'zh', label: t('settings.languageZh') },
+  { value: 'en', label: t('settings.languageEn') },
+])
+
+const languageCurrentLabel = computed(() => {
+  if (appConfig.language === 'zh') return t('settings.languageZh')
+  if (appConfig.language === 'en') return t('settings.languageEn')
+  return t('settings.languageAuto')
+})
+
+const languageError = ref('')
+const languageSwitching = ref(false)
+
+async function setLanguagePref(lang: string) {
+  if (lang === appConfig.language || languageSwitching.value) return
+  languageSwitching.value = true
+  languageError.value = ''
+  try {
+    await applyLanguage(lang)
+  } catch {
+    languageError.value = t('settings.languageError')
+  } finally {
+    languageSwitching.value = false
+  }
+}
+
+// ─── Model download source ───────────────────────────────────────────────────
 const downloadSource = computed(() => appConfig.downloadSource)
+
+const sourceOptions = computed(() => [
+  { value: 'hf', label: t('settings.sourceHfShort') },
+  { value: 'modelscope', label: t('settings.sourceMsShort') },
+  { value: 'huggingface', label: t('settings.sourceOfficialShort') },
+])
+
+const sourceCurrentLabel = computed(() => {
+  if (downloadSource.value === 'modelscope') return t('settings.sourceModelScope')
+  if (downloadSource.value === 'huggingface') return t('settings.sourceHuggingFace')
+  return t('settings.sourceHf')
+})
+
 const sourceError = ref('')
 const sourceSwitching = ref(false)
 
@@ -505,24 +512,20 @@ async function chooseModelDownloadDir() {
   if (dir) appConfig.modelDownloadDir = dir
 }
 
-const languageError = ref('')
-const languageSwitching = ref(false)
+// OS-scoped gate for the directory browse buttons: Android has no native
+// directory picker (the Browse* bindings error there), so on android the path
+// rows stay readable but the pick buttons are hidden.
+const isAndroid = computed(() => platform.value.isAndroid)
 
-async function setLanguagePref(lang: string) {
-  if (lang === appConfig.language || languageSwitching.value) return
-  languageSwitching.value = true
-  languageError.value = ''
-  try {
-    await applyLanguage(lang)
-  } catch {
-    languageError.value = t('settings.languageError')
-  } finally {
-    languageSwitching.value = false
-  }
-}
+// ─── Server access scope ─────────────────────────────────────────────────────
+// (listen address, see backend SaveServerConfig): refreshed from backend on
+// mount to stay in sync with persisted values from the API page and other
+// sources. Compact segment labels; full names on the sub-line.
+const accessOptions = computed(() => [
+  { value: 'local', label: t('settings.accessLocalShort') },
+  { value: 'lan', label: t('settings.accessLanShort') },
+])
 
-// Server access scope (listen address, see backend SaveServerConfig): refreshed from backend on mount
-// to stay in sync with persisted values from the API page and other sources.
 const accessError = ref('')
 const accessSwitching = ref(false)
 
@@ -605,20 +608,15 @@ async function onGpuSelected(value: string) {
   }
 }
 
-// OS-scoped setting gates: driven by the shared platform state (App.vue wires
-// it from the backend getOS() binding), not by viewport tiers. All helpers are
-// Windows-only today; see lib/platform.ts for the per-feature rationale.
-const platform = usePlatform()
+// OS-scoped setting gates: driven by the shared platform state, not by
+// viewport tiers. All helpers except tray are Windows-only today; see
+// lib/platform.ts for the per-feature rationale.
 const showTray = computed(() => showTraySetting(platform.value))
 const showApiRoute = computed(() => showApiRouteSetting(platform.value))
 const showGpu = computed(() => showServingGpuSetting(platform.value))
 const updatesNative = computed(() => updateSectionMode(platform.value) === 'native')
-// OS-scoped gate for the directory browse buttons: Android has no native
-// directory picker (the Browse* bindings error there), so on android the path
-// rows stay readable but the pick buttons are hidden.
-const isAndroid = computed(() => platform.value.isAndroid)
 
-// System tray toggle: rendered on Windows only. Disabling takes effect immediately (backend removes icon and
+// System tray toggle: rendered on Windows/macOS only. Disabling takes effect immediately (backend removes icon and
 // persists); systray cannot restart in same process, so re-enabling requires app restart (hint shown below toggle).
 const trayError = ref('')
 const traySwitching = ref(false)
@@ -683,6 +681,11 @@ onMounted(async () => {
   getSystemInfo()
     .then((info: { gpu?: GpuEntry[] }) => { gpuSnapshot.value = info.gpu ?? [] })
     .catch(() => { gpuSnapshot.value = [] })
+  // Acceleration build for the device island: probe failures degrade to the
+  // platform capability guess (accelBuildKey) computed in accelLabel.
+  getLlamaCpp()
+    .then((info: { accel?: string }) => { llamacppAccel.value = info?.accel ?? '' })
+    .catch(() => { llamacppAccel.value = '' })
   getAppVersion().then((v) => { appVersion.value = v }).catch(() => {})
 })
 
@@ -698,8 +701,7 @@ async function manualCheck() {
 }
 
 .page-header {
-  /* Use padding instead of margin: header background covers this gap so content scrolls without leaving a seam.
-     Tighter than the old single-column layout: the tab row below completes the sticky block (same as ModelSettings) */
+  /* Use padding instead of margin: header background covers this gap so content scrolls without leaving a seam */
   padding-bottom: 20px;
 }
 
@@ -719,9 +721,8 @@ async function manualCheck() {
 }
 
 /* ─── Docs entry card (design/android-mockups.html frame ⑤) ───
-   Brand-gradient hero row linking to the /docs tutorial: white text, icon
-   tile and trailing chevron. Replaces the docs entry removed from the
-   navigation bars (Sidebar / MobileNav). */
+   Brand-gradient hero row linking to the /docs tutorial: white text, 36px
+   icon tile, rgba-white sub line and trailing chevron. */
 .docs-entry {
   display: flex;
   align-items: center;
@@ -780,242 +781,241 @@ async function manualCheck() {
   flex-shrink: 0;
 }
 
-/* ─── Tabs (same pattern as ModelSettings.vue) ─── */
-.settings-tabs {
-  display: flex;
-  gap: 4px;
-  padding: 0;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-
-/* The 20px gap under the tabs lives here as sticky-top padding instead of a
-   margin on .settings-tabs: the sticky background never paints a child's
-   margin, so the old margin left a transparent 20px band where scrolled
-   content showed through above the sticky header. */
-.sticky-top {
-  padding-bottom: 20px;
-}
-
-.tab-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 14px;
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  color: var(--text-muted);
-  font-size: 13px;
-  font-weight: 500;
-  font-family: inherit;
-  cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
-}
-
-.tab-btn:hover {
-  color: var(--text-secondary);
-}
-
-.tab-btn.active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
-  font-weight: 600;
-}
-
-.tab-btn .tab-icon {
-  display: flex;
-}
-
-/* ─── Section ─── */
-.settings-section {
-  padding: 24px 28px;
+/* ─── Device island (frame ⑤ "设备") ─── */
+.device-card {
   background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-island);
+  padding: 18px;
   margin-bottom: 16px;
 }
 
-.section-title {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  margin: 0 0 20px;
-}
-
-.section-title svg {
-  color: var(--accent-light);
-  flex-shrink: 0;
-}
-
-/* ─── Setting row ─── */
-.setting-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.setting-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.setting-label {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-secondary);
-}
-
-.setting-desc {
+.device-label {
   font-size: 12px;
+  font-weight: 700;
   color: var(--text-dim);
+  margin-bottom: 10px;
 }
 
-/* ─── Theme toggle ─── */
-.theme-toggle {
+.device-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.device-chip {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+
+/* ─── Rounded group list (frame ⑤ .group): one floating island per group,
+       rows separated by hairlines ─── */
+.settings-group {
+  background: var(--bg-card);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-island);
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.group-item {
+  padding: 6px 18px;
+}
+
+.group-item + .group-item {
+  border-top: 1px solid var(--border-light);
+}
+
+.group-row {
   display: flex;
   align-items: center;
-  gap: 12px;
-  cursor: pointer;
-  user-select: none;
+  gap: 14px;
+  padding: 9px 0;
 }
 
-.theme-toggle.disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
-}
-
-.toggle-track {
-  width: 52px;
-  height: 28px;
-  background: var(--overlay-20);
-  border-radius: 14px;
-  position: relative;
-  transition: background 0.3s ease;
-}
-
-.toggle-track.light {
-  background: #6366f1;
-}
-
-.toggle-thumb {
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 22px;
-  height: 22px;
-  background: #fff;
-  border-radius: 50%;
+/* 36px colored icon brick (frame ⑤ .row .ic) */
+.row-ic {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.3s ease;
-  color: var(--text-primary);
-}
-
-.toggle-track.light .toggle-thumb {
-  transform: translateX(24px);
-  color: var(--accent);
-}
-
-.toggle-thumb svg {
-  display: block;
-}
-
-.toggle-label {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-muted);
-  min-width: 28px;
-}
-
-/* ─── Model download source ─── */
-.source-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.source-grid-col3 {
-  grid-template-columns: repeat(3, 1fr);
-}
-
-.source-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 14px 16px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  cursor: pointer;
-  transition: all 0.2s;
-  user-select: none;
-}
-
-.source-card:hover {
-  border-color: var(--overlay-20);
-}
-
-.source-card.active {
-  border-color: rgba(99, 102, 241, 0.5);
-  background: rgba(99, 102, 241, 0.08);
-}
-
-.source-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-
-.source-card.active .source-name {
-  color: var(--accent-light);
-}
-
-.source-check {
-  color: var(--accent-light);
-  font-weight: 700;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
   flex-shrink: 0;
 }
 
-.source-hint {
-  font-size: 12px;
-  color: var(--text-dim);
-  margin: 0;
+/* Per-row accent tints: translucent hues read on both light and dark cards */
+.ic-indigo {
+  background: rgba(99, 102, 241, 0.14);
+  color: #6366f1;
 }
 
-.source-error {
-  margin: 10px 0 0;
+.ic-emerald {
+  background: rgba(16, 185, 129, 0.14);
+  color: #10b981;
+}
+
+.ic-amber {
+  background: rgba(245, 158, 11, 0.16);
+  color: #f59e0b;
+}
+
+.ic-violet {
+  background: rgba(139, 92, 246, 0.14);
+  color: #8b5cf6;
+}
+
+.ic-sky {
+  background: rgba(14, 165, 233, 0.14);
+  color: #0ea5e9;
+}
+
+.ic-rose {
+  background: rgba(244, 63, 94, 0.12);
+  color: #f43f5e;
+}
+
+.ic-teal {
+  background: rgba(20, 184, 166, 0.14);
+  color: #14b8a6;
+}
+
+.ic-slate {
+  background: rgba(100, 116, 139, 0.16);
+  color: #64748b;
+}
+
+.ic-fuchsia {
+  background: rgba(168, 85, 247, 0.14);
+  color: #a855f7;
+}
+
+.ic-blue {
+  background: rgba(59, 130, 246, 0.14);
+  color: #3b82f6;
+}
+
+/* Main / sub two-line copy (frame ⑤ .row main + .sub) */
+.row-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.row-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.35;
+}
+
+.row-sub {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  font-weight: 500;
+  margin-top: 3px;
+}
+
+.row-tail {
+  margin-left: auto;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+/* Footnote / error lines under a row */
+.row-foot {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  margin: 0;
+  padding: 0 0 9px 50px;
+}
+
+.row-error {
+  margin: 0;
+  padding: 0 0 9px 50px;
   font-size: 12px;
   color: #ef4444;
 }
 
-/* ─── API key input (inside the access-scope section) ─── */
-.api-key-row {
-  margin-top: 16px;
-  align-items: flex-start;
-}
-
-/* Inference GPU selector: fixed-width trigger so the row label keeps its width */
-.gpu-row {
-  margin-top: 16px;
-  align-items: flex-start;
-}
-
-.gpu-select {
-  width: 340px;
+/* ─── Gradient capsule switch (frame ⑤ .sw): gradient = on ─── */
+.switch {
+  width: 46px;
+  height: 27px;
+  border-radius: 999px;
+  background: var(--overlay-20);
+  position: relative;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.25s ease;
   flex-shrink: 0;
 }
 
+.switch::after {
+  content: "";
+  position: absolute;
+  width: 23px;
+  height: 23px;
+  border-radius: 50%;
+  background: #fff;
+  top: 2px;
+  left: 2px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  transition: transform 0.25s ease;
+}
+
+.switch.on {
+  background: var(--grad, linear-gradient(135deg, #6366f1 0%, #8b5cf6 55%, #a855f7 100%));
+}
+
+.switch.on::after {
+  transform: translateX(19px);
+}
+
+.switch.disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+/* ─── Compact segmented control in a row tail (models-seg pattern) ─── */
+.row-seg {
+  display: flex;
+  padding: 3px;
+  background: rgba(120, 124, 160, 0.12);
+  border-radius: 999px;
+}
+
+.row-seg-btn {
+  padding: 6px 12px;
+  background: none;
+  border: none;
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: color 0.15s, background 0.2s, box-shadow 0.2s;
+  white-space: nowrap;
+}
+
+.row-seg-btn:hover {
+  color: var(--text-secondary);
+}
+
+.row-seg-btn.active {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  box-shadow: 0 2px 8px rgba(80, 84, 140, 0.16);
+}
+
+/* ─── API key input (row tail) ─── */
 .api-key-input {
-  width: 260px;
+  width: 240px;
   padding: 8px 12px;
   background: var(--bg-primary);
   border: 1px solid var(--border);
@@ -1025,6 +1025,7 @@ async function manualCheck() {
   font-family: var(--font-mono);
   outline: none;
   transition: border-color 0.15s;
+  flex-shrink: 0;
 }
 
 .api-key-input:focus {
@@ -1036,22 +1037,20 @@ async function manualCheck() {
   cursor: not-allowed;
 }
 
+/* Inference GPU selector: fixed-width trigger so the row label keeps its width */
+.gpu-select {
+  width: 340px;
+  flex-shrink: 0;
+}
+
 /* ─── Directories ─── */
-.dir-row {
-  padding: 10px 0;
-}
-
-.dir-row + .dir-row {
-  border-top: 1px solid var(--border-light);
-}
-
 /* Full path on its own line under the label/desc, button vertically centered
    beside it (same row), so long Windows paths stay fully readable */
 .dir-path-row {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-top: 8px;
+  padding: 4px 0 10px 50px;
 }
 
 .dir-path {
@@ -1088,16 +1087,12 @@ async function manualCheck() {
 
 /* ─── Updates ─── */
 .update-actions {
-  display: flex;
-  align-items: center;
   gap: 12px;
 }
 
-/* Non-Windows updates hint: replaces the check action in the same row;
-   right-aligned to line up under the action column */
+/* Non-Windows updates hint (link mode): full-width footnote under the row */
 .update-hint {
-  max-width: 420px;
-  text-align: right;
+  text-align: left;
 }
 
 .hint-link {
@@ -1110,15 +1105,11 @@ async function manualCheck() {
   text-decoration: underline;
 }
 
-.update-error {
-  font-size: 12px;
-  color: #ef4444;
-}
-
 .update-latest {
   font-size: 13px;
   font-weight: 600;
   color: var(--success);
+  white-space: nowrap;
 }
 
 .btn-check {
@@ -1131,6 +1122,7 @@ async function manualCheck() {
   font-weight: 600;
   cursor: pointer;
   transition: opacity 0.15s;
+  white-space: nowrap;
 }
 
 .btn-check:hover:not(:disabled) {
@@ -1142,20 +1134,29 @@ async function manualCheck() {
   cursor: not-allowed;
 }
 
-/* ─── About ─── */
+/* The native update action's inline error sits inside the tail: no foot indent */
+.update-actions .row-error {
+  padding: 0;
+}
+
+/* ─── About rows (inside the about group) ─── */
 .about-row {
   display: flex;
   align-items: baseline;
   gap: 16px;
-  padding: 9px 0;
+  padding: 8px 0;
 }
 
 .about-row + .about-row {
   border-top: 1px solid var(--border-light);
 }
 
-.about-row .setting-label {
+.about-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
   min-width: 72px;
+  flex-shrink: 0;
 }
 
 .about-value {
@@ -1171,40 +1172,48 @@ async function manualCheck() {
   user-select: text;
 }
 
-/* ─── Phone (<=767px): setting groups stay stacked full-width cards (as on
-       desktop) but every row becomes thumb-friendly: the four-tab row scrolls
-       inside its own container, label/control rows wrap so selects and inputs
-       go full-width, and long directory paths wrap instead of pushing the row
-       wide. ─── */
+/* ─── Phone (<=767px): rows keep their island cards but every control becomes
+       thumb-friendly — tails wrap under the labels at full width, segments and
+       inputs go full-width, and long directory paths wrap. ─── */
 @media (max-width: 767px) {
-  .settings-section {
-    padding: 16px;
+  .page {
+    padding: 0 18px 60px;
   }
 
-  .settings-tabs {
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-
-  .settings-tabs::-webkit-scrollbar {
-    display: none;
-  }
-
-  .tab-btn {
-    flex-shrink: 0;
-    padding: 12px 14px;
-  }
-
-  .setting-row {
+  .group-row {
     flex-wrap: wrap;
-    gap: 12px;
+    gap: 10px;
+  }
+
+  /* The text column takes the space beside the brick and wraps internally,
+     so a long sub line cannot push the whole column under the icon */
+  .row-text {
+    flex: 1 1 120px;
+  }
+
+  .row-tail {
+    width: 100%;
+    justify-content: flex-end;
   }
 
   /* Controls drop under their labels at full width */
+  .row-seg {
+    width: 100%;
+  }
+
+  .row-seg-btn {
+    flex: 1;
+    min-height: 36px;
+  }
+
   .gpu-select,
   .api-key-input {
     width: 100%;
     flex-shrink: 1;
+  }
+
+  .gpu-select {
+    margin-left: 0;
   }
 
   .gpu-select :deep(.themed-select__trigger) {
@@ -1215,24 +1224,33 @@ async function manualCheck() {
     min-height: 44px;
   }
 
-  /* Choice cards: single column, 44px+ touch rows */
-  .source-grid,
-  .source-grid-col3 {
-    grid-template-columns: 1fr;
-    gap: 8px;
+  .switch {
+    width: 52px;
+    height: 30px;
   }
 
-  .source-card {
-    min-height: 48px;
+  .switch::after {
+    width: 26px;
+    height: 26px;
+  }
+
+  .switch.on::after {
+    transform: translateX(22px);
   }
 
   .dir-path-row {
     flex-wrap: wrap;
+    padding-left: 0;
   }
 
   .dir-btn {
     min-height: 44px;
     padding: 10px 16px;
+  }
+
+  .row-foot,
+  .row-error {
+    padding-left: 0;
   }
 
   .update-actions {
@@ -1241,10 +1259,6 @@ async function manualCheck() {
 
   .btn-check {
     min-height: 44px;
-  }
-
-  .update-hint {
-    text-align: left;
   }
 }
 </style>

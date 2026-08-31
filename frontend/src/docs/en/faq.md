@@ -5,7 +5,7 @@ A quick troubleshooting handbook. Try the simplest fix first.
 Before starting, the app scans the model directories (the model download path plus the external path imported on the "My Models" tab of the Models page) and generates presets; the error appears when neither contains any GGUF file. Any one of these fixes it:
 
 - Download at least one model on the "Download" tab of the Models page;
-- Or point the model download path at your existing model folder under "Preferences → Directories";
+- Or point the "Model Download Path" row on the Preferences page at your existing model folder;
 - Or import an existing model directory with "Choose Folder" on the "My Models" tab of the Models page (imported models are recognized by the service too).
 
 ## Port already in use

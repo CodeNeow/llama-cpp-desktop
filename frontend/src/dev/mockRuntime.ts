@@ -231,12 +231,23 @@ function chatCompletionResponse(signal?: AbortSignal | null): Response {
         for (const piece of pieces) {
           await sleep(30)
           if (signal?.aborted) return // listener already errored the controller
-          controller.enqueue(
-            encoder.encode('data: ' + JSON.stringify({ choices: [{ delta: { content: piece } }] }) + '\n\n'),
-          )
+          try {
+            controller.enqueue(
+              encoder.encode('data: ' + JSON.stringify({ choices: [{ delta: { content: piece } }] }) + '\n\n'),
+            )
+          } catch {
+            // Abort raced the enqueue (flag read just before the listener fired):
+            // the controller is already errored, so stop feeding it silently.
+            return
+          }
         }
-        controller.enqueue(encoder.encode('data: [DONE]\n\n'))
-        controller.close()
+        try {
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+          controller.close()
+        } catch {
+          // Same abort race on the closing chunk: the reader already got the
+          // abort reason, closing a dead controller is a no-op.
+        }
       } finally {
         signal?.removeEventListener('abort', onAbort)
       }

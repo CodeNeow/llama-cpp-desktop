@@ -94,9 +94,38 @@ describe('lib/i18n', () => {
     expect(t('settings.docsEntrySub')).toContain('guide')
   })
 
+  it('settings device-island keys render in both locales (frame ⑤ redesign)', () => {
+    setLocale('zh')
+    expect(t('settings.device')).toBe('设备')
+    expect(t('settings.os.android')).toBe('Android')
+    expect(t('settings.os.windows')).toBe('Windows')
+    expect(t('settings.os.darwin')).toBe('macOS')
+    expect(t('settings.os.other')).not.toBe('settings.os.other')
+    expect(t('settings.groupAppearance')).toContain('外观')
+    expect(t('settings.groupService')).toContain('目录')
+    expect(t('settings.languageAutoShort')).toBe('自动')
+    expect(t('settings.accessLocalShort')).toBe('本地')
+    expect(t('settings.accessLanShort')).toBe('局域网')
+    expect(t('settings.sourceHfShort')).toContain('HF')
+    expect(t('settings.sourceMsShort')).toBe('魔搭')
+    setLocale('en')
+    expect(t('settings.device')).toBe('Device')
+    expect(t('settings.os.android')).toBe('Android')
+    expect(t('settings.os.windows')).toBe('Windows')
+    expect(t('settings.os.darwin')).toBe('macOS')
+    expect(t('settings.os.other')).not.toBe('settings.os.other')
+    expect(t('settings.groupAppearance')).toContain('Appearance')
+    expect(t('settings.groupService')).toContain('Directories')
+    expect(t('settings.languageAutoShort')).toBe('Auto')
+    expect(t('settings.accessLocalShort')).toBe('Local')
+    expect(t('settings.accessLanShort')).toBe('LAN')
+    expect(t('settings.sourceHfShort')).toBe('HF Mirror')
+    expect(t('settings.sourceMsShort')).toBe('ModelScope')
+  })
+
   it('t supports {name} placeholder interpolation', () => {
-    expect(t('home.cpu.coresValue', { n: 8 })).toBe('8 核')
-    expect(t('models.saveFailed', { msg: 'boom' })).toBe('保存失败: boom')
+    expect(t('downloads.selectedCount', { n: 3 })).toBe('已选 3 个文件')
+    expect(t('api.saveFailed', { msg: 'boom' })).toBe('配置保存失败: boom')
   })
 
   it('models tune keys render in both locales with interpolated tune results', () => {
@@ -150,7 +179,7 @@ describe('lib/i18n', () => {
     expect(t('nav.home')).toBe('System')
     expect(t('settings.themeMode')).toBe('Theme Mode')
     // English interpolation
-    expect(t('home.cpu.coresValue', { n: 8 })).toBe('8 cores')
+    expect(t('downloads.selectedCount', { n: 3 })).toBe('3 files selected')
   })
 
   it('locale defaults to zh, setLocale updates locale.value', () => {

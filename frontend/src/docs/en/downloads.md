@@ -1,8 +1,8 @@
-The "Download" tab of the Models page searches online model hubs and fetches `.gguf` model files. Downloaded and imported models all show up together on the same page's "My Models" tab.
+The Models page uses a segmented control at the top to switch between its "Download" and "My Models" tabs; the "Download" tab searches online model hubs and fetches `.gguf` model files. Downloaded and imported models all show up together on the "My Models" tab.
 
 ## Three download sources
 
-The app supports three model sources, switched under "Preferences → Model Download Source"; the setting applies to both search and download:
+The app supports three model sources, switched via the "Model Download Source" row on the Preferences page; the setting applies to both search and download:
 
 | Source | Notes |
 | --- | --- |
@@ -12,15 +12,15 @@ The app supports three model sources, switched under "Preferences → Model Down
 
 ## Searching and downloading
 
-1. Type a model name or keywords into the search box and press Enter or click "Search".
+1. Type a model name or keywords into the pill-shaped search box and press Enter or click "Search".
 2. Click a result card to open the **model detail** page:
    - **File list**: every file in the repo, sorted by size with guessed quantization; tick the `.gguf` files you want (multimodal models also need the `mmproj` vision file), then click "Download Selected";
    - **Description**: the repo's README to help you judge the model.
-3. The download task starts immediately and progress updates live.
+3. The download task starts immediately and progress updates live — in-progress downloads are pinned to the top of the page as progress cards, and clicking one also opens the download manager.
 
 ## Managing download tasks
 
-Click the "Downloads" button next to the search box to open the download manager, which has two tabs:
+Click the "Downloads" pill button next to the search box to open the download manager, which has two tabs:
 
 - **Download Tasks**: active and queued tasks, with pause, resume, retry and cancel;
 - **Download History**: finished, failed and cancelled records.

@@ -2,15 +2,17 @@ The "API Router" page starts, stops and monitors the llama-server service (token
 
 ## Start, stop, restart
 
+The page follows a "single primary action" layout: while stopped, the main button is "Start Server"; while running it flips to a red "Stop Server", with a restart icon button beside it.
+
 - **Start Server**: scans the model directories, generates presets from each model's parameters, then launches llama-server. Starting fails with an error when the model directories contain no GGUF files at all — download a model first;
 - **Stop Server**: terminates the llama-server process, freeing VRAM and memory;
 - **Restart**: apply new model parameters or server configuration by restarting.
 
-The status light shows the service address (default `http://127.0.0.1:8080`) and uptime. "Available Models" below lists the models recognized in the model directories.
+The status card at the top shows the running state, an uptime badge and the service address (default `http://127.0.0.1:8080` — click it to copy). "Available Models" below lists the models recognized in the model directories.
 
 ## Server parameters
 
-Click the gear icon to open the parameter panel:
+Click the gear icon at the top right to open the parameter panel:
 
 | Parameter | Default | Meaning |
 | --- | --- | --- |
@@ -22,10 +24,8 @@ The panel is locked while the server is running ("stop it to modify") so configu
 
 ## Monitoring metrics
 
-The lower half of the page refreshes every second:
-
-- **Server Log**: llama-server's raw output — the first place to look when troubleshooting;
-- **Token Speed**: prompt processing speed (prefill — how fast your input is ingested) and generation speed (decode — how fast the model writes); thinking and answering both count as decode. A decode-speed trend chart for the last 60s sits below.
+- **Generation speed**: the status card embeds a gradient area chart of the decode speed (how fast the model writes) over the last 60 seconds, refreshed every second; thinking and answering both count as decode. While running, the prompt processing speed (prefill — how fast your input is ingested) is shown alongside;
+- **Server Log**: the log panel at the bottom shows llama-server's raw output live — the first place to look when troubleshooting.
 
 ## Calling the service from code
 

@@ -2,10 +2,10 @@ The "Local Chat" page is a ready-to-use chat interface talking straight to your 
 
 ## Starting a chat
 
-1. Pick a model in the dropdown at the top (the list comes from the models recognized on this machine — the service does not need to be running yet);
-2. Type a message in the input box — **Enter sends, Shift+Enter makes a new line**;
+1. Pick a model in the capsule at the top (clicking it opens the list of models recognized on this machine — the service does not need to be running yet);
+2. Type a message into the floating input bar — **Enter sends, Shift+Enter makes a new line** — or hit the round gradient send button;
 3. If the service is not running yet, sending **starts it automatically** and loads the selected model on demand before streaming begins — no trip to the "API Router" page needed (that page still offers manual start/stop and monitoring);
-4. Replies stream in token by token; when a reply finishes, its generation speed (tok/s) is shown under the message.
+4. Replies stream in token by token; while generating, the send button turns into a red stop button you can hit to interrupt; when a reply finishes, its generation speed (tok/s) is shown under the message.
 
 Before the auto-start, a guided check runs: with no usable models you are pointed to the Models page to download or import one; if the llama.cpp runtime is missing you are pointed to the "Runtime Environment" tab of the System Environment page. Fill the gap and you are ready to chat.
 
@@ -13,11 +13,11 @@ Sending a message first unloads every OTHER loaded model so the selected one is 
 
 > Android note: the official Android llama-server runs in **direct mode** — one service process hosts exactly one model. Switching the chat model automatically restarts the service to load the new one (first launch is slower on phone storage, please be patient); in-memory models cannot be unloaded manually (the task dock shows no unload button) — stop the service to free resources. Desktop platforms keep router mode with on-demand loading and unloading of multiple models, unchanged.
 
-Multimodal models (with an mmproj file) can also take images: use the paperclip button next to the input box to attach one and let the model describe it.
+Multimodal models (with an mmproj file) can also take images: use the paperclip button next to the input bar to attach one and let the model describe it.
 
 ## Tuning chat parameters
 
-Click the gear icon in the toolbar to open the parameter panel:
+Click the gear icon at the right end of the top toolbar to open the parameter panel:
 
 - **Temperature**: higher is more creative, lower is more deterministic;
 - **Top P / Top K**: how wide the sampling pool is;
