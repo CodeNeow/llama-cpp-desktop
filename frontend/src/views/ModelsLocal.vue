@@ -661,15 +661,27 @@ onMounted(() => {
     padding: 14px 16px;
   }
 
+  /* Balanced card row: the name owns the header line (flex:1, wraps freely
+     inside its own box) and the gear pins to the top-right corner. Without
+     flex:1 a long name used to push the gear onto its own wrapped line,
+     stranding it mid-card with dead space beside the tag rows below. The
+     mmproj badge (when present) keeps its spot between name and gear. */
   .model-header {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    align-items: flex-start;
+  }
+
+  .model-name {
+    flex: 1 1 auto;
+    min-width: 0;
   }
 
   .model-settings-btn {
     width: 44px;
     height: 44px;
     /* 44px touch target without growing the header row: negative margins
-       keep the card's visual rhythm (28px layout box around a 44px button) */
+       keep the card's visual rhythm (28px layout box around a 44px button);
+       with the top-aligned header the glyph lands on the name's first line */
     margin: -8px;
     opacity: 0.7;
   }

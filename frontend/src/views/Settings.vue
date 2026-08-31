@@ -46,7 +46,7 @@
             <span class="row-title">{{ t('settings.themeMode') }}</span>
             <span class="row-sub">{{ t('settings.themeDesc') }}</span>
           </div>
-          <div class="row-tail">
+          <div class="row-tail row-tail-switch">
             <div
               class="switch"
               :class="{ on: currentTheme === 'dark' }"
@@ -250,7 +250,7 @@
               <span class="row-title">{{ t('settings.tray') }}</span>
               <span class="row-sub">{{ t('settings.trayDesc') }}</span>
             </div>
-            <div class="row-tail">
+            <div class="row-tail row-tail-switch">
               <div
                 class="switch"
                 :class="{ on: appConfig.trayEnabled }"
@@ -279,7 +279,7 @@
               <span class="row-title">{{ t('settings.apiRouteMode') }}</span>
               <span class="row-sub">{{ t('settings.apiRouteModeDesc') }}</span>
             </div>
-            <div class="row-tail">
+            <div class="row-tail row-tail-switch">
               <div
                 class="switch"
                 :class="{ on: appConfig.apiRouteMode, disabled: !appConfig.trayEnabled || apiRouteDevBlocked }"
@@ -1194,6 +1194,15 @@ async function manualCheck() {
   .row-tail {
     width: 100%;
     justify-content: flex-end;
+  }
+
+  /* Switch rows keep the control beside the label: the capsule is compact
+     enough to fit the line, so it stays vertically centered against the
+     label block (group-row align-items: center) instead of dropping to the
+     row's bottom edge like the full-width tails below. Only wide controls
+     (segments / inputs / buttons) need the wrap-to-full-width treatment. */
+  .row-tail.row-tail-switch {
+    width: auto;
   }
 
   /* Controls drop under their labels at full width */

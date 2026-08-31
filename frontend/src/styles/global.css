@@ -301,6 +301,18 @@ html {
   }
 }
 
+/* mobile (<=767px): breathing room above the page title. Every page chrome
+   uses the shared .page-header (scoped views only tune its padding-bottom, so
+   this single phone-tier bump covers all of them); desktop/tablet keep the
+   edge-flush alignment with the sidebar logo. On device the status-bar inset
+   is padded OUTSIDE the header (--safe-area-top on .page-fixed / .sticky-top),
+   so this is pure visual rhythm on top of that. */
+@media (max-width: 767px) {
+  .page-header {
+    padding-top: 8px;
+  }
+}
+
 /* ─── Mobile redesign shared component: floating-island card ───
    Lifted surface + 28px island radius + soft shadow (design/android-mockups.html
    frame ①/.island). Surface-only on purpose: layout (margins / grid placement)

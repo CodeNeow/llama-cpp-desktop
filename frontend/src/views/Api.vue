@@ -1015,6 +1015,27 @@ function clearLog() {
   white-space: pre;
 }
 
+/* Subtle in-console scrollbars: this box is the horizontal scroll container
+   for overlong `pre` lines (overflow-x: auto above), and mobile overlay
+   scrollbars are invisible at rest — the thin styled bar is the standing
+   affordance that a clipped line tail is reachable by scrolling. Fixed
+   white-alpha thumbs on purpose: the console background is terminal-dark in
+   BOTH themes (#0b0b10), so theme-inverted light-theme thumb tokens would
+   vanish here (same fixed-color precedent as .console-line above). */
+.console-log::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.console-log::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 3px;
+}
+
+.console-log::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+
 .console-empty {
   flex: 1;
   display: flex;
