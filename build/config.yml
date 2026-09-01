@@ -1,8 +1,9 @@
 # Wails v3 dev-mode configuration consumed by `wails3 dev` (see Taskfile.yml).
-# Mirrors the v3 beta.16 template: rebuild the Go binary with the `dev` build
-# tag (blocking), start Vite (background), then run the binary (primary) —
-# the binary proxies assets to the Vite dev server via FRONTEND_DEVSERVER_URL,
-# which `wails3 dev` injects automatically.
+# Mirrors the v3 beta.16 template, plus one deviation: a blocking wait:frontend
+# gate before the binary. The dev binary only retries FRONTEND_DEVSERVER_URL
+# for ~5s before a fatal exit, and a cold start (npm install + Vite dep
+# re-optimization after a lockfile change) can outrun that window — so poll
+# Vite until it answers, then run the binary (see Taskfile.yml wait:frontend).
 version: '3'
 
 dev_mode:
@@ -30,5 +31,7 @@ dev_mode:
       type: blocking
     - cmd: wails3 task dev:frontend
       type: background
+    - cmd: wails3 task wait:frontend
+      type: blocking
     - cmd: wails3 task run:dev
       type: primary

@@ -91,6 +91,30 @@ tasks:
       # (the window 502s otherwise).
       - npm run dev -- --port {{.VITE_PORT}} --strictPort --host 127.0.0.1
 
+  wait:frontend:
+    summary: Block until the Vite dev server answers before the binary starts
+    cmds:
+      # The dev binary only retries FRONTEND_DEVSERVER_URL for ~5s before a
+      # fatal exit, so it must not launch until Vite actually answers. A cold
+      # start (changed lockfile -> npm install + Vite dep re-optimization)
+      # can outrun that window; poll here instead (bounded at 60s — a timeout
+      # means Vite itself failed, see the dev:frontend output above).
+      # Discard via shell redirect, NOT `curl -o /dev/null`: Task's POSIX
+      # interpreter passes the literal path through on Windows and curl dies
+      # with exit 23 even against a healthy server. The deadline is
+      # time-based because a refused connection costs ~2s on some Windows
+      # setups, so a fixed iteration count would not map to a real bound.
+      - |
+        start=$(date +%s)
+        until curl -sf --connect-timeout 2 "http://127.0.0.1:{{.VITE_PORT}}/" >/dev/null; do
+          now=$(date +%s)
+          if [ $((now - start)) -ge 60 ]; then
+            echo "Error: Vite dev server not ready on 127.0.0.1:{{.VITE_PORT}} within 60s"
+            exit 1
+          fi
+          sleep 0.2
+        done
+
   run:dev:
     summary: Run the dev-built binary (primary process of the wails3 dev loop)
     cmds:
