@@ -488,12 +488,17 @@ const defaultModelConfig: Record<string, any> = {
 const modelConfigs: Record<string, Record<string, any>> = {}
 
 // ─── Chat SSE sample answer (POST /v1/chat/completions via the mock runtime) ─
+// Language-aware demo replies, written in the voice of a local model so the
+// mock chat reads naturally in walkthrough captures of either locale.
 
-const chatReply =
-  '你好！我是运行在 mock 预览模式里的假模型，并没有真的加载任何权重。' +
-  '你现在看到的逐字输出，是用来演示聊天页的流式打字效果和手机档布局的。' +
-  '真正的安卓构建会通过 Wails 绑定调用 Go 后端，由本机 llama-server 直接以 SSE 返回 OpenAI 兼容流。' +
-  '这条回答结束后，可以试试底部标签栏的页面切换、TaskDock 的模型卸载按钮，以及把窗口拉宽对比桌面档布局。'
+const chatReplyZh =
+  '你好！我是一个运行在本机 llama-server 上的本地模型，我们的对话完全在这台设备上完成，不会上传任何数据。' +
+  '有什么想了解的，直接继续提问就好。'
+
+const chatReplyEn =
+  "Hi! I'm a local model running on a llama-server instance on this machine. " +
+  'Everything we discuss stays on your device and is never uploaded. ' +
+  'Feel free to continue with any question you like.'
 
 // Reasoning prelude streamed BEFORE the answer when the ?sc=chatthink scenario
 // is active (design frame ⑥: collapsible thinking block + auto collapse).
@@ -918,9 +923,9 @@ export function mockAddServerLog(text: string): void {
   addServerLog(text)
 }
 
-/** The canned streamed chat reply (used by the chat fetch mock). */
+/** The canned streamed chat reply (used by the chat fetch mock); zh or en per browser language. */
 export function mockChatReply(): string {
-  return chatReply
+  return navigator.language.toLowerCase().startsWith('zh') ? chatReplyZh : chatReplyEn
 }
 
 /**
@@ -929,5 +934,5 @@ export function mockChatReply(): string {
  * scenario so the default chat behavior is unchanged.
  */
 export function mockChatThinkParts(): { reasoning: string; content: string } | null {
-  return scenario === 'chatthink' ? { reasoning: chatThinkReasoning, content: chatReply } : null
+  return scenario === 'chatthink' ? { reasoning: chatThinkReasoning, content: mockChatReply() } : null
 }
