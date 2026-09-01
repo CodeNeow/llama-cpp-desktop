@@ -1037,6 +1037,13 @@ onUnmounted(() => {
   color: var(--text-primary);
 }
 
+/* Touch press feedback (OS-scoped): mirrors the hover wash on touch. */
+html[data-os='android'] .dock-pill:active,
+html[data-os='ios'] .dock-pill:active {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
 /* Collapsed-form pill hidden while the popover is open (the "morph" pairing:
    pill fades out, card fades/slides in on the pill's spot). MUST use
    visibility (not v-if / display: none): the hidden pill still occupies
@@ -1388,6 +1395,14 @@ onUnmounted(() => {
   color: rgba(239, 68, 68, 0.95);
 }
 
+/* Touch press feedback (OS-scoped): mirrors the hover wash on touch. */
+html[data-os='android'] .dock-unload-btn:active:not(:disabled),
+html[data-os='ios'] .dock-unload-btn:active:not(:disabled) {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: rgba(239, 68, 68, 0.95);
+}
+
 .dock-unload-btn:disabled {
   opacity: 0.6;
   cursor: wait;
@@ -1584,6 +1599,14 @@ onUnmounted(() => {
 
   .dock-op--danger {
     color: #ef4444;
+  }
+
+  /* Touch press feedback (OS-scoped): the ops circles are phone-tier controls
+     with no hover rule of their own; press darkens the painted disc (filter
+     keeps the background-clip circle intact, a background swap would not). */
+  html[data-os='android'] .dock-op:active,
+  html[data-os='ios'] .dock-op:active {
+    filter: brightness(0.85);
   }
 
   /* In-memory rows: badge goes tbadge-shaped; the chat badge turns green

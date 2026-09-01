@@ -410,6 +410,15 @@ onMounted(() => {
   color: var(--accent-light);
 }
 
+/* Touch press feedback (OS-scoped): the model card itself is not clickable;
+   its clickable area is this gear button, whose active state mirrors the
+   hover visuals on touch. */
+html[data-os='android'] .model-settings-btn:active,
+html[data-os='ios'] .model-settings-btn:active {
+  background: var(--hover-bg);
+  color: var(--accent-light);
+}
+
 .model-name {
   font-size: 16px;
   font-weight: 700;

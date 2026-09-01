@@ -1220,6 +1220,16 @@ onUnmounted(() => {
   border-color: var(--overlay-20);
 }
 
+/* Touch press feedback (OS-scoped): mirrors the capsule chip's hover skin.
+   Without this, the component-level toolbar :active rule (ThemedSelect.vue)
+   wins on the data-os element qualifier and washes the island body out to
+   --hover-bg. The button element qualifier keeps this rule above it. */
+html[data-os='android'] .chat-model-select :deep(button.themed-select__trigger:active:not(:disabled)),
+html[data-os='ios'] .chat-model-select :deep(button.themed-select__trigger:active:not(:disabled)) {
+  background: var(--bg-secondary);
+  border-color: var(--overlay-20);
+}
+
 /* Round glass action buttons (design .chat-top .rnd): 40px circles, island
    surface + soft shadow; the phone tier floors them at the 44px touch target */
 .chat-icon-btn {
@@ -2114,6 +2124,14 @@ html[data-theme='dark'] .params-reset-link {
   color: var(--text-primary);
 }
 
+/* Touch press feedback (OS-scoped): :hover never fires on touch input, so
+   the active state mirrors the hover visuals under html[data-os]. */
+html[data-os='android'] .attach-btn:active,
+html[data-os='ios'] .attach-btn:active {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
 .file-input-hidden {
   display: none;
 }
@@ -2162,6 +2180,14 @@ html[data-theme='dark'] .params-reset-link {
 }
 
 .send-btn:hover:not(:disabled) {
+  filter: brightness(1.08);
+  box-shadow: 0 8px 18px rgba(124, 92, 246, 0.5);
+}
+
+/* Touch press feedback (OS-scoped): mirrors the hover lift on touch (also
+   covers the streaming stop state, which shares this class). */
+html[data-os='android'] .send-btn:active:not(:disabled),
+html[data-os='ios'] .send-btn:active:not(:disabled) {
   filter: brightness(1.08);
   box-shadow: 0 8px 18px rgba(124, 92, 246, 0.5);
 }

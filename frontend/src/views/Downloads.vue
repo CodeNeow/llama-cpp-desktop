@@ -688,6 +688,12 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
   filter: brightness(1.08);
 }
 
+/* Touch press feedback (OS-scoped): mirrors the hover brightness on touch. */
+html[data-os='android'] .dl-round:active,
+html[data-os='ios'] .dl-round:active {
+  filter: brightness(1.08);
+}
+
 /* ─── Tasks ─── */
 .task-list {
   display: flex;
@@ -835,6 +841,28 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
 }
 
 .cancel-btn:hover { background: rgba(239, 68, 68, 0.12); }
+
+/* Touch press feedback (OS-scoped): :hover never fires on touch input, so
+   each variant's active state mirrors its hover wash. */
+html[data-os='android'] .pause-btn:active,
+html[data-os='ios'] .pause-btn:active {
+  background: rgba(251, 191, 36, 0.2);
+}
+
+html[data-os='android'] .resume-btn:active,
+html[data-os='ios'] .resume-btn:active {
+  background: rgba(34, 197, 94, 0.2);
+}
+
+html[data-os='android'] .retry-btn:active,
+html[data-os='ios'] .retry-btn:active {
+  background: rgba(99, 102, 241, 0.2);
+}
+
+html[data-os='android'] .cancel-btn:active,
+html[data-os='ios'] .cancel-btn:active {
+  background: rgba(239, 68, 68, 0.12);
+}
 
 /* ─── Tasks modal ─── */
 .modal-overlay {

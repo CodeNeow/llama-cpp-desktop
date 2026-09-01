@@ -304,6 +304,22 @@ html[data-os='ios'] ::-webkit-scrollbar {
   height: 0;
 }
 
+/* ─── Touch-platform tap highlight (OS-scoped, inherited) ───
+   Chromium's native tap highlight paints on the element's border-box and
+   ignores border-radius, so every touch press flashes a SQUARE — even on
+   circular buttons — and it only appears on touch input (desktop WebView2
+   mouse presses never show it). Clearing it on the root is enough:
+   -webkit-tap-highlight-color is an inherited property, so one rule here
+   covers every element with no wildcard selector. Press feedback for the
+   high-frequency touch controls is provided instead by the OS-scoped :active
+   rules in each component (see Chat / TaskDock / Downloads / SystemInfoTab /
+   ModelsLocal / ThemedSelect). Desktop OSes — including a desktop window
+   narrowed below the phone breakpoint — are untouched. */
+html[data-os='android'],
+html[data-os='ios'] {
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* ==========================================
    Mobile shell + base adjustments (<=767px)
    ------------------------------------------

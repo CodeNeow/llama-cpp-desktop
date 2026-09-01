@@ -1244,6 +1244,13 @@ onUnmounted(() => {
   border-color: rgba(239, 68, 68, 0.4);
 }
 
+/* Touch press feedback (OS-scoped): mirrors the hover wash on touch. */
+html[data-os='android'] .unload-btn:active:not(:disabled),
+html[data-os='ios'] .unload-btn:active:not(:disabled) {
+  background: rgba(239, 68, 68, 0.16);
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
 .unload-btn:disabled {
   opacity: 0.6;
   cursor: wait;

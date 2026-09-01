@@ -245,6 +245,12 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
   border-color: var(--overlay-20);
 }
 
+/* Touch press feedback (OS-scoped): mirrors the hover visuals on touch. */
+html[data-os='android'] .themed-select--field .themed-select__trigger:active:not(:disabled),
+html[data-os='ios'] .themed-select--field .themed-select__trigger:active:not(:disabled) {
+  border-color: var(--overlay-20);
+}
+
 .themed-select--field .themed-select__trigger:focus-visible {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-glow);
@@ -267,6 +273,11 @@ onUnmounted(() => document.removeEventListener('click', onDocClick))
 }
 
 .themed-select--toolbar .themed-select__trigger:hover:not(:disabled) {
+  background: var(--hover-bg);
+}
+
+html[data-os='android'] .themed-select--toolbar .themed-select__trigger:active:not(:disabled),
+html[data-os='ios'] .themed-select--toolbar .themed-select__trigger:active:not(:disabled) {
   background: var(--hover-bg);
 }
 
