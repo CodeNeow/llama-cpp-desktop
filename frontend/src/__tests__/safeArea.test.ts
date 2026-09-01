@@ -47,6 +47,7 @@ afterEach(() => {
   for (const side of ['top', 'bottom', 'left', 'right']) {
     document.documentElement.style.removeProperty(`--safe-area-js-${side}`)
   }
+  document.documentElement.style.removeProperty('--safe-area-js-keyboard')
   vi.clearAllMocks()
 })
 
@@ -105,7 +106,7 @@ describe('initSafeArea DOM publishing', () => {
     expect(cssVar('--safe-area-js-right')).toBe('0px')
   })
 
-  it('pushes of common:safearea update the vars and pad the IME remainder', async () => {
+  it('splits pushes into the system-bar band and the keyboard channel', async () => {
     getSafeAreaMock.mockResolvedValue({ top: 0, bottom: 28, left: 0, right: 0 })
     const { initSafeArea } = await loadModule()
     initSafeArea()
@@ -115,16 +116,19 @@ describe('initSafeArea DOM publishing', () => {
     const onPush = eventsOn.mock.calls[0][1] as (data: unknown) => void
 
     // Keyboard up (800 physical px = 400 css px), viewport not yet resized:
-    // the full remainder is padded on top of the nav bar inset.
+    // the system-bar band stays nav-bar-only (the fixed tab bar must not
+    // ride the keyboard) and the full remainder goes to --keyboard-inset.
     onPush({ top: 84, bottom: 28, left: 0, right: 0, ime: 800 })
     expect(cssVar('--safe-area-js-top')).toBe('42px')
-    expect(cssVar('--safe-area-js-bottom')).toBe('400px')
+    expect(cssVar('--safe-area-js-bottom')).toBe('14px')
+    expect(cssVar('--safe-area-js-keyboard')).toBe('400px')
 
-    // The browser viewport shrinks for the keyboard (resizes-content):
-    // the same IME push now needs no extra padding beyond the nav bar.
+    // The browser viewport shrinks for the keyboard (other browsers /
+    // OSes that do resize): the keyboard remainder drops to zero.
     Object.defineProperty(window, 'innerHeight', { value: 368, configurable: true })
     window.dispatchEvent(new Event('resize'))
     await flush()
+    expect(cssVar('--safe-area-js-keyboard')).toBe('0px')
     expect(cssVar('--safe-area-js-bottom')).toBe('14px')
   })
 
@@ -143,7 +147,7 @@ describe('initSafeArea DOM publishing', () => {
       data: JSON.stringify({ top: 84, bottom: 28, left: 0, right: 0, ime: 800 }),
     })
     expect(cssVar('--safe-area-js-top')).toBe('42px')
-    expect(cssVar('--safe-area-js-bottom')).toBe('400px')
+    expect(cssVar('--safe-area-js-keyboard')).toBe('400px')
   })
 
   it('degrades malformed JSON strings inside the wrapper to zeros', async () => {
@@ -166,8 +170,10 @@ describe('initSafeArea DOM publishing', () => {
     const onPush = eventsOn.mock.calls[0][1] as (data: unknown) => void
 
     onPush({ top: 0, bottom: 28, left: 0, right: 0, ime: 800 })
-    expect(cssVar('--safe-area-js-bottom')).toBe('400px')
+    expect(cssVar('--safe-area-js-keyboard')).toBe('400px')
+    expect(cssVar('--safe-area-js-bottom')).toBe('14px')
     onPush({ top: 0, bottom: 28, left: 0, right: 0, ime: 0 })
+    expect(cssVar('--safe-area-js-keyboard')).toBe('0px')
     expect(cssVar('--safe-area-js-bottom')).toBe('14px')
   })
 

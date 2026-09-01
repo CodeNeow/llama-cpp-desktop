@@ -349,10 +349,20 @@ html[data-os='ios'] {
   /* Bottom safe-area inset: env() base layer composed with the Android
      edge-to-edge bridge (lib/safeArea.ts publishes --safe-area-js-* from the
      native insets — the Android WebView reports env(safe-area-inset-*) ≡ 0).
-     Carries the gesture/nav-bar band and, while the soft keyboard is up,
-     whatever part of it the browser viewport did not already absorb.
-     Consumed by --mobile-nav-height; desktop is a no-op (all sources 0). */
+     SYSTEM-BAR BAND ONLY: the gesture/nav-bar inset, deliberately WITHOUT
+     the soft keyboard — consumers here (the floating tab bar position and
+     --mobile-nav-height) must stay pinned to the screen bottom and be
+     covered by the keyboard, not ride it. Keyboard avoidance is a separate
+     channel, --keyboard-inset, consumed only by the surfaces that must
+     clear the IME (chat composer, bottom sheets). Desktop is a no-op (all
+     sources 0). */
   --safe-area-bottom: max(env(safe-area-inset-bottom, 0px), var(--safe-area-js-bottom, 0px));
+
+  /* Soft-keyboard avoidance inset (Android bridge only, 0 elsewhere): the
+     part of the IME height the browser viewport did not already absorb.
+     Consumed ONLY by keyboard-adjacent surfaces — Chat.vue's .input-area
+     padding and the bottom sheets — never by the fixed tab bar. */
+  --keyboard-inset: var(--safe-area-js-keyboard, 0px);
 }
 
 /* mobile (<=767px): publish the real tab bar band (matches MobileNav.vue's

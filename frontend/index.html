@@ -3,15 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <!-- viewport-fit=cover exposes the env() safe-area insets (see
-         --safe-area-top in global.css); interactive-widget=resizes-content
-         keeps the chat composer visible above the Android soft keyboard.
-         Pinch zoom is disabled ONLY via MainActivity's WebView zoom settings
-         (setSupportZoom(false) + built-in controls off): adding
-         maximum-scale/user-scalable here instead makes the WebView stop
-         shrinking the layout viewport for the soft keyboard (observed on an
-         API 35 WebView with interactive-widget=resizes-content present), so
-         the keyboard then covers the chat composer — keep the two mechanisms
-         separate. -->
+         --safe-area-top in global.css). NOTE: Android WebViews do not honor
+         interactive-widget=resizes-content — the chat composer clears the
+         soft keyboard via the safe-area bridge instead (lib/safeArea.ts
+         --keyboard-inset, MainActivity insets push). No user-scalable /
+         maximum-scale constraints here on purpose: with them this WebView
+         skips its IME layout handling for the page entirely; pinch zoom is
+         disabled via MainActivity's WebView zoom settings instead. -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/png" href="/appicon.png" />

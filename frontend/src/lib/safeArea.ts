@@ -8,8 +8,9 @@
  * layer alone cannot keep content clear of the bars there. This module feeds
  * the missing insets in from the native side and publishes them as the
  * --safe-area-js-* custom properties on <html>; styles/global.css composes
- * them with env() into --safe-area-top/--safe-area-bottom. Desktop stays a
- * no-op: every source is zero there.
+ * them with env() into --safe-area-top/--safe-area-bottom (system bars) and
+ * --keyboard-inset (soft keyboard, own channel). Desktop stays a no-op:
+ * every source is zero there.
  *
  * Two native sources, per side the larger wins:
  *  - GetSafeArea binding (pull): system-bar insets, read at startup and again
@@ -19,11 +20,15 @@
  *    every insets pass — the channel is the same one the mobile features use
  *    (WailsBridge.emitEvent → app.Event.Emit → Events.On).
  *
- * Keyboard avoidance: the viewport meta already declares
- * interactive-widget=resizes-content, so on WebView builds where the IME
- * shrinks the layout viewport the page shrinks on its own. The IME inset is
- * therefore padded only insofar as the viewport did NOT already shrink for it
- * (imeAvoidancePx), which avoids double-compensating the keyboard height.
+ * Keyboard avoidance: Android WebViews (unlike Chrome for Android) do NOT
+ * honor the viewport's interactive-widget=resizes-content — the layout
+ * viewport keeps its full height under the IME. The keyboard remainder is
+ * therefore published on its own channel, --safe-area-js-keyboard (composed
+ * into --keyboard-inset), consumed only by keyboard-adjacent surfaces (chat
+ * composer padding, bottom sheets). imeAvoidancePx subtracts whatever the
+ * viewport DID already shrink (defensive: other browsers/OSes), avoiding
+ * double compensation. The system-bar band stays keyboard-free so the
+ * floating tab bar remains pinned under the keyboard.
  */
 
 import { Events } from '@wailsio/runtime'
@@ -126,7 +131,13 @@ function publish(): void {
   writeVar('--safe-area-js-left', bars.left)
   writeVar('--safe-area-js-right', bars.right)
   const viewportShrunk = Math.max(0, imeBaselineHeight - viewportHeight())
-  writeVar('--safe-area-js-bottom', Math.max(bars.bottom, imeAvoidancePx(imeCss, viewportShrunk)))
+  // Two channels, two audiences: the system-bar band (--safe-area-js-bottom)
+  // pins the floating tab bar and the page height to the screen bottom — the
+  // keyboard must COVER them, not ride them — while the keyboard remainder
+  // goes to --safe-area-js-keyboard for the surfaces that must clear the IME
+  // (chat composer padding, bottom sheets; global.css --keyboard-inset).
+  writeVar('--safe-area-js-bottom', bars.bottom)
+  writeVar('--safe-area-js-keyboard', imeAvoidancePx(imeCss, viewportShrunk))
 }
 
 // refresh re-pulls the binding-side system-bar insets (startup and every

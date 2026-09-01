@@ -1498,7 +1498,7 @@ html[data-os='ios'] .chat-model-select :deep(button.themed-select__trigger:activ
   position: absolute;
   left: 10px;
   right: 10px;
-  bottom: calc(10px + var(--safe-area-bottom, 0px));
+  bottom: calc(10px + var(--safe-area-bottom, 0px) + var(--keyboard-inset, 0px));
   max-height: calc(100vh - 90px);
   max-height: calc(100dvh - 90px);
   display: flex;
@@ -2050,7 +2050,11 @@ html[data-theme='dark'] .params-reset-link {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 12px 0 24px;
+  /* Bottom padding carries the Android keyboard avoidance (--keyboard-inset
+     from lib/safeArea.ts): the composer must clear the IME while the fixed
+     tab bar stays pinned underneath it. Desktop / keyboard-down: the var is
+     0px and the 24px base rhythm applies unchanged. */
+  padding: 12px 0 calc(24px + var(--keyboard-inset, 0px));
   /* Stays fixed at the bottom: never compressed by the flex column */
   flex-shrink: 0;
 }
@@ -2356,9 +2360,12 @@ html[data-os='ios'] .send-btn:active:not(:disabled) {
   /* Composer: 44px touch controls, trimmed band above the bottom tab bar.
      The 10px bottom padding anchors the TaskDock phone offset arithmetic
      (padding-bottom 10 + (row 44 - pill 44) / 2 = 10, see TaskDock.vue's
-     media query) — keep both in sync */
+     media query) — keep both in sync. The Android keyboard avoidance rides
+     on top of the 10px anchor (--keyboard-inset from lib/safeArea.ts): the
+     composer lifts above the IME while the fixed tab bar stays pinned
+     underneath it. */
   .input-area {
-    padding: 8px 0 10px;
+    padding: 8px 0 calc(10px + var(--keyboard-inset, 0px));
     position: relative;
   }
 
