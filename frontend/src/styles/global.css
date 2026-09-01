@@ -276,6 +276,34 @@ html {
   background: var(--scrollbar-thumb-hover);
 }
 
+/* ─── Touch-platform scrollbars (OS-scoped, NOT viewport-scoped) ───
+   App.vue publishes the detected OS as html[data-os]. Once scrollbars are
+   styled, Android WebView (and iOS WKWebView) render classic gutter
+   scrollbars: every scroll container reserves ~8px of asymmetric right
+   padding and shows a visible bar. Touch platforms use overlay scrollbars
+   instead, so hide the styled ones entirely (scrolling itself is kept).
+   Desktop OSes — including a desktop window narrowed below the phone
+   breakpoint — keep the thin scrollbars above. The root's own scrollbar
+   (html::-webkit-scrollbar) needs the attribute-qualified selector; the
+   descendant form covers every inner scroll container, which also absorbs
+   per-view rules like Api.vue's .console-log thumb coloring (harmless: those
+   only paint what display:none already hides on touch). */
+html[data-os='android'],
+html[data-os='ios'],
+html[data-os='android'] *,
+html[data-os='ios'] * {
+  scrollbar-width: none;
+}
+
+html[data-os='android']::-webkit-scrollbar,
+html[data-os='ios']::-webkit-scrollbar,
+html[data-os='android'] ::-webkit-scrollbar,
+html[data-os='ios'] ::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
 /* ==========================================
    Mobile shell + base adjustments (<=767px)
    ------------------------------------------
@@ -353,6 +381,26 @@ html {
 @media (max-width: 767px) {
   .sticky-top {
     position: static;
+  }
+}
+
+/* mobile (<=767px): soft keyboard open. index.html pins
+   interactive-widget=resizes-content, so the layout viewport shrinks while
+   the keyboard is up; the fixed bottom nav would ride up with it (it is
+   positioned against the shrunken viewport) and collide with the composer.
+   lib/keyboard.ts detects the keyboard and toggles html.keyboard-open on
+   <html>: hide the nav and collapse its published band to 0, so fixed-page
+   height chains (calc(100dvh - ... - var(--mobile-nav-height))) run to the
+   keyboard's top edge and the chat composer rests directly on it. Class is
+   only ever set by the keyboard detector (editable focus + viewport-shrink
+   heuristic), so desktop/tablet layouts never see it. */
+@media (max-width: 767px) {
+  html.keyboard-open .mobile-nav {
+    display: none;
+  }
+
+  html.keyboard-open {
+    --mobile-nav-height: 0px;
   }
 }
 

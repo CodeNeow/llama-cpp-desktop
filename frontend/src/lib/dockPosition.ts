@@ -12,7 +12,8 @@
  *
  * Position model: the horizontal axis is always snapped to an edge, so the
  * stored state is `{ side, yNorm }`:
- *   - `side`   which edge the pill hugs ('left' | 'right', 16px gap);
+ *   - `side`   which edge the pill hugs ('left' | 'right'; 16px gap on
+ *              desktop, flush with the screen edge on the phone tier);
  *   - `yNorm`  the pill's top edge as a 0..1 fraction WITHIN the vertical
  *              safe band (top gap below the title bar / safe area, bottom gap
  *              above the mobile nav band or the desktop floor). Band-relative
@@ -24,10 +25,16 @@
  * on a short one.
  */
 
-// Horizontal gap between the pill and the window edge it hugs. Mirrors the
-// `right: 16px` anchor in TaskDock.vue's `.task-dock` and Chat.vue's lane
-// arithmetic (`16px + var(--dock-width) + 8px`).
+// Horizontal gap between the pill and the window edge it hugs. Desktop value;
+// mirrors the `right: 16px` anchor in TaskDock.vue's `.task-dock` and
+// Chat.vue's desktop lane arithmetic (`16px + var(--dock-width) + 8px`). The
+// phone tier hugs the screen edge FLUSH (see DOCK_EDGE_GAP_MOBILE) — both the
+// CSS anchor and the drag math read the gap through DockLayoutMetrics.edgeGap.
 export const DOCK_EDGE_GAP = 16
+
+// Phone-tier edge gap: the capsule sticks to the screen sides themselves (0px
+// inset), mirroring TaskDock.vue's phone `right: 0` anchor override.
+export const DOCK_EDGE_GAP_MOBILE = 0
 
 // Vertical breathing gap below the title bar / safe area that the pill's top
 // edge must respect.
@@ -59,9 +66,12 @@ export const DOCK_DRAG_THRESHOLD = 6
 //   Desktop (130): input-area bottom padding 24 + input row 42 = 66px real
 //     composer band, + ~42px for the optional auto-start notice pill that
 //     rides above the row + ~22px margin ≈ 130.
-//   Phone (170): bottom nav band 82 (14 + 68 + safe-area, --mobile-nav-height)
-//     + composer (input-area padding 8 + row 44 + padding-bottom 10 = 62)
-//     = 144px real band, + notice/margin ≈ 170.
+//   Phone (170): historical value from the retired phone lane (bottom nav
+//     band 82 + composer 62 + margin). The phone chat page no longer
+//     reserves a lane — TaskDock keeps the capsule clear of the composer by
+//     clamping against the MEASURED composer top instead — so the constant
+//     has no production consumer left and is kept only as the documented
+//     reference for that band's real-world phone size.
 export const CHAT_COMPOSER_BAND_DESKTOP = 130
 export const CHAT_COMPOSER_BAND_MOBILE = 170
 
@@ -105,6 +115,13 @@ export interface DockLayoutMetrics {
   clampBottomGap: number
   /** CSS anchor bottom offset (desktop 29 / phone 10+nav) of `.task-dock`. */
   anchorBottomOffset: number
+  /**
+   * Horizontal gap between the pill and the window edge it hugs (desktop 16 /
+   * phone 0 — the capsule sticks to the screen sides on phones). Consumed by
+   * sideLeftX for BOTH the snap math and the anchorTopLeft reference, so the
+   * CSS anchor and the dragged/restored positions can never drift apart.
+   */
+  edgeGap: number
 }
 
 /** Plain x/y point (px, viewport coordinates). */
@@ -159,26 +176,32 @@ export function laneFor(
 }
 
 /**
- * Pill left edge px for a given side: `EDGE_GAP` from the left edge, or
+ * Pill left edge px for a given side: `edgeGap` from the left edge, or
  * mirrored from the right edge. Degenerate inputs degrade to the left-edge
- * placement (the safest visible spot).
+ * placement at the same gap (the safest visible spot) — desktop callers omit
+ * the argument and keep the historical 16px gap.
  */
-export function sideLeftX(side: DockSide, viewportW: number, pillW: number): number {
-  if (side === 'left') return DOCK_EDGE_GAP
+export function sideLeftX(
+  side: DockSide,
+  viewportW: number,
+  pillW: number,
+  edgeGap: number = DOCK_EDGE_GAP
+): number {
+  if (side === 'left') return edgeGap
   if (!isFiniteNumber(viewportW) || !isFiniteNumber(pillW) || pillW <= 0 || viewportW <= 0) {
-    return DOCK_EDGE_GAP
+    return edgeGap
   }
-  return Math.max(DOCK_EDGE_GAP, viewportW - DOCK_EDGE_GAP - pillW)
+  return Math.max(edgeGap, viewportW - edgeGap - pillW)
 }
 
 /**
  * Top edge of the pill's CSS anchor with zero transform applied — the
  * reference every drag translate is measured against (mirrors
- * `.task-dock { right: 16px; bottom: <anchor offset> }`).
+ * `.task-dock { right: <edgeGap>px; bottom: <anchor offset> }`).
  */
 export function anchorTopLeft(layout: DockLayoutMetrics): DockPoint {
   return {
-    x: sideLeftX('right', layout.viewportW, layout.pillW),
+    x: sideLeftX('right', layout.viewportW, layout.pillW, layout.edgeGap),
     y: layout.viewportH - layout.anchorBottomOffset - layout.pillH,
   }
 }
@@ -234,7 +257,7 @@ export function resolvePosition(
 ): { left: number; top: number; side: DockSide } {
   const side: DockSide = stored.side === 'left' ? 'left' : 'right'
   return {
-    left: sideLeftX(side, layout.viewportW, layout.pillW),
+    left: sideLeftX(side, layout.viewportW, layout.pillW, layout.edgeGap),
     top: normToTop(stored.yNorm, layout),
     side,
   }

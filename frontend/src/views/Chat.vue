@@ -1,16 +1,19 @@
 <template>
-  <!-- Lane mirroring, three-state (dockLane from lib/dockSpace): the measured
-       reserve lane exists only while the capsule actually rides in the
-       composer band at the bottom of the window — 'left' moves the lane to the
-       LEFT padding, 'right' keeps the original right lane, and 'none' (capsule
-       parked mid-screen / up top, or dock hidden: dockWidth = 0) retracts the
-       lane so the composer spans the base gutters again. The docked-in-band
-       default reproduces the historical layout byte-for-byte. -->
+  <!-- Lane mirroring, three-state (dockLane from lib/dockSpace), DESKTOP
+       ONLY: the measured reserve lane exists only while the capsule actually
+       rides in the composer band at the bottom of the window — 'left' moves
+       the lane to the LEFT padding, 'right' keeps the original right lane,
+       and 'none' (capsule parked mid-screen / up top, or dock hidden:
+       dockWidth = 0) retracts the lane so the composer spans the base
+       gutters. The phone tier never narrows the page for the capsule (the
+       composer stays full-width; TaskDock keeps the capsule clear of the
+       composer itself by clamping). The docked-in-band default reproduces
+       the historical desktop layout byte-for-byte. -->
   <div
     class="chat-page"
     :class="{
-      'chat-page--dock-left': dockLane === 'left' && dockWidth > 0,
-      'chat-page--dock-right': dockLane === 'right' && dockWidth > 0,
+      'chat-page--dock-left': laneLeftActive,
+      'chat-page--dock-right': laneRightActive,
     }"
   >
     <div class="sticky-top">
@@ -389,7 +392,7 @@
 import { ref, computed, onMounted, nextTick, watch, onUnmounted, type ComponentPublicInstance, type Ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { getServerStatus, getServerConfig, getModels, getLlamaCpp, startServerWithModel, unloadModel } from '../wails'
-import { chatReadiness, fetchRouterModels, modelsToUnload, streamChatCompletion, tokenRates, type ChatReadiness } from '../lib/chat'
+import { chatReadiness, directModeNeedsSwitch, fetchRouterModels, modelsToUnload, streamChatCompletion, tokenRates, type ChatReadiness } from '../lib/chat'
 import { messages, selectedModel, streaming, chatAbortController, persistChat, reconcileSelectedModel, chatParams, persistChatParams, clampStep, sliderFillPercent, formatParamValue, stepNumber, stepMaxTokens, isUnlimitedMaxTokens, type ChatMessage, type ChatParams } from '../lib/chatState'
 import { nudgeDock } from '../lib/dockNudge'
 import { dockLane, dockWidth } from '../lib/dockSpace'
@@ -406,6 +409,19 @@ const platform = usePlatform()
 /** Phone-tier gate (viewport width <= 767, reactive): picks the params sheet
  * over the popover and the phone-only copy/empty-state variants. */
 const isMobileTier = computed(() => platform.value.isMobile)
+
+/**
+ * Desktop-only reserve lanes (see the template note): the phone tier never
+ * narrows the chat page for the capsule — its composer spans the symmetric
+ * 16px gutters at every capsule position, and TaskDock keeps the capsule
+ * clear of the composer by clamping its floor instead.
+ */
+const laneLeftActive = computed(
+  () => !isMobileTier.value && dockLane.value === 'left' && dockWidth.value > 0
+)
+const laneRightActive = computed(
+  () => !isMobileTier.value && dockLane.value === 'right' && dockWidth.value > 0
+)
 
 const serverRunning = ref(false)
 
@@ -770,6 +786,42 @@ async function unloadOtherModels(): Promise<void> {
   }
 }
 
+/**
+ * Direct-mode (Android) resident reconciliation: a running direct server
+ * keeps exactly one model in memory, and the frontend never restarts it in
+ * the background — so if the user picked a different model since the last
+ * send, the OLD resident would answer. Probe the resident list (direct-mode
+ * fallback built into fetchRouterModels) and restart the service with the
+ * selected model via ensureServerReady when it is not resident. Best-effort:
+ * a probe failure (service momentarily unreachable) passes through and lets
+ * the chat request itself surface the real error; a failed RESTART blocks
+ * the send (ensureServerReady already reported the guided error). Returns
+ * true when the selected model is resident and streaming may proceed.
+ */
+async function ensureDirectModeResident(): Promise<boolean> {
+  let needsSwitch: boolean
+  try {
+    const cfg = await getServerConfig()
+    const loaded = await fetchRouterModels(cfg.port)
+    needsSwitch = directModeNeedsSwitch(
+      loaded.filter((m) => m.status === 'loaded').map((m) => m.id),
+      selectedModel.value
+    )
+  } catch {
+    // Resident probe failed: pass through, the chat request reports the truth
+    return true
+  }
+  if (!needsSwitch) return true
+  // Switching notice + restart: startServerWithModel (inside
+  // ensureServerReady) makes the selected model the single resident
+  switchingModel.value = true
+  try {
+    return await ensureServerReady()
+  } finally {
+    switchingModel.value = false
+  }
+}
+
 /** Guided fixes for a failed auto-start: model downloads / runtime tab. */
 function goDownloads() {
   router.push('/models/download')
@@ -911,8 +963,16 @@ async function send() {
   // Without a model id there is nothing to address the request to
   if (!selectedModel.value) return
 
-  // Deterministic model swap: unload every OTHER loaded model first
-  await unloadOtherModels()
+  // Deterministic single-resident memory per platform: desktop router mode
+  // unloads every OTHER loaded model; Android direct mode restarts the
+  // service when the selected model is not the resident one (a running
+  // direct server would otherwise keep answering with the OLD model).
+  if (platform.value.isAndroid) {
+    const ready = await ensureDirectModeResident()
+    if (!ready) return
+  } else {
+    await unloadOtherModels()
+  }
 
   const imgs = pendingImages.value.length ? [...pendingImages.value] : undefined
   messages.value.push({ role: 'user', content: text, images: imgs })
@@ -2145,31 +2205,13 @@ html[data-theme='dark'] .params-reset-link {
 
 @media (max-width: 767px) {
   .chat-page {
-    /* Base gutters, lane retracted (dockLane 'none'): symmetric 16px phone
-       gutters. .chat-page--dock-right (capsule docked in the composer band,
-       right edge) follows the TaskDock pill's MEASURED width (--dock-width,
-       published by lib/dockSpace from the same ResizeObserver as
-       --dock-reserve): 16 pill right offset + pill width + 8 gap keeps the
-       send button 8px clear of the pill's left edge whatever the counter
-       content. The old hardcoded 64px assumed a single-segment ~40px phone
-       pill and overflowed when both the download and model counters showed.
-       .chat-page--dock-left mirrors the lane to the left padding. The glass
-       composer spans this lane (it IS .input-row), so the send button's right
-       edge — the lane's anchor — is unchanged. */
+    /* Symmetric 16px phone gutters at EVERY capsule position: the phone tier
+       reserves no dock lane (the desktop lane classes are gated off in the
+       template) — narrowing the page for a floating capsule wasted reading
+       width on a phone. TaskDock instead clamps the capsule above the
+       composer's top edge on this route, so the full-width input row and its
+       send button stay tappable. */
     padding: var(--safe-area-top, 0px) 16px 0 16px;
-  }
-
-  /* Capsule docked in the composer band, hugging the RIGHT edge: the original
-     measured-width lane. */
-  .chat-page--dock-right {
-    padding: var(--safe-area-top, 0px) calc(16px + var(--dock-width, 0px) + 8px) 0 16px;
-  }
-
-  /* Capsule docked in the composer band, hugging the LEFT edge (phone tier):
-     mirrored lane — measured-width reserve moves to the left padding, right
-     gutter back to the 16px phone gutter. */
-  .chat-page--dock-left {
-    padding: var(--safe-area-top, 0px) 16px 0 calc(16px + var(--dock-width, 0px) + 8px);
   }
 
   /* Carve-out from the global phone-tier unstick (global.css .sticky-top
@@ -2280,8 +2322,8 @@ html[data-theme='dark'] .params-reset-link {
   }
 
   /* Precheck notices float as stacked cards above the composer band (frame ⑦
-     .notify): anchored to the input-area's top edge, so the dock-lane width
-     the composer already respects carries over to the cards. */
+     .notify): anchored to the input-area's top edge, inside the page's
+     symmetric 16px gutters (the phone tier reserves no dock lane). */
   .start-notice-stack {
     position: absolute;
     bottom: calc(100% + 8px);

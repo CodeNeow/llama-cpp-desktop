@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { activeLlamaCppDownload, activeModelTasks, activeUpdateDownload, shouldShowDock } from '../lib/dock'
+import { activeLlamaCppDownload, activeModelTasks, activeUpdateDownload, residentReleaseMode, shouldShowDock } from '../lib/dock'
 import { LLAMA_CPP_DOWNLOAD_STATUSES, MODEL_TASK_STATUSES, UPDATE_DOWNLOAD_STATUSES } from '../lib/downloadStatus'
 import type { LlamaCppDownloadStatus, ModelTaskStatus, UpdateDownloadStatus } from '../lib/downloadStatus'
 
@@ -113,5 +113,15 @@ describe('shouldShowDock', () => {
 
   it('show when only updateActive is true', () => {
     expect(shouldShowDock(false, 0, 0, true)).toBe(true)
+  })
+})
+
+describe('residentReleaseMode', () => {
+  it('stops the service on Android (direct mode has no per-model unload route)', () => {
+    expect(residentReleaseMode(true)).toBe('stop-server')
+  })
+
+  it('unloads through the router on desktop platforms', () => {
+    expect(residentReleaseMode(false)).toBe('router-unload')
   })
 })

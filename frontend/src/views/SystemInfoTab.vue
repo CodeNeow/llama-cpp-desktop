@@ -205,9 +205,10 @@
       </section>
 
       <!-- Resident model cards (frame ① mcard): one per loaded model, with
-           the same unload chain as TaskDock (unloadModel + nudgeDock). The
-           unload button is hidden on Android where direct-mode servers have
-           no unload route. -->
+           the same unload chain as TaskDock: desktop asks the router to evict
+           the model; direct-mode Android stops the service (unloading =
+           stopping, memory is freed with the process and the next chat send
+           auto-restarts the service). -->
       <section v-for="m in loadedModels" :key="m.id" class="island mcard">
         <div class="tile">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -228,7 +229,6 @@
           </div>
         </div>
         <button
-          v-if="canUnloadModels"
           class="unload-btn"
           :disabled="unloadingId === m.id"
           @click="handleUnload(m.id)"
@@ -376,13 +376,14 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { getCPU, getMemory, getGPU, getCUDA, getOS, getDisk, getLlamaCpp, getModels, getMonitorStatus, getAppVersion, getLoadedModels, unloadModel, type LoadedModel } from '../wails'
+import { getCPU, getMemory, getGPU, getCUDA, getOS, getDisk, getLlamaCpp, getModels, getMonitorStatus, getAppVersion, getLoadedModels, unloadModel, stopServer, type LoadedModel } from '../wails'
 import { t } from '../lib/i18n'
 import { usagePercent, formatMB, formatBytes } from '../lib/format'
 import { aggregateVram, buildGpuDisplays, cudaCompatLevel, gpuHasVram, type GpuStaticInfo } from '../lib/sysinfo'
 import { guessQuant } from '../lib/modelFiles'
 import { buildOnboardingView, type OnboardingStepId } from '../lib/onboarding'
 import { nudgeDock } from '../lib/dockNudge'
+import { residentReleaseMode } from '../lib/dock'
 import type { MonitorStatus } from '../lib/monitor'
 import { accelBuildKey, showCudaCompat, showGpuCards, usePlatform } from '../lib/platform'
 import { appConfig, setOnboardingDismissed } from '../store'
@@ -657,11 +658,6 @@ const llamacppBrick = computed(() => {
 
 // ─── Resident model cards (frame ①) ──────────────────────────────
 
-// In-memory unload is a router-mode (desktop) capability: direct-mode servers
-// (Android) always hold exactly one resident model that can only leave memory
-// by stopping the service — same gate as TaskDock.
-const canUnloadModels = computed(() => !platformState.value.isAndroid)
-
 /** Match a loaded router id back to the local model list (chat loads by model name). */
 function matchedLocal(id: string): ModelInfo | undefined {
   return (
@@ -692,13 +688,22 @@ function typeLabel(type: string): string {
   return map[type] || type
 }
 
-/** Unload chain identical to TaskDock: drop the row instantly, then nudge a poll that reconciles. */
+// Unload chain identical to TaskDock: drop the row instantly, then nudge a
+// poll that reconciles. Platform split via lib/dock residentReleaseMode:
+// desktop asks the router to evict the model; direct-mode Android stops the
+// service instead (the single resident leaves memory with the process; the
+// next chat send auto-restarts it), and the poll flips serverRunning so the
+// card disappears.
 async function handleUnload(id: string) {
   unloadingId.value = id
   delete unloadErrors[id]
   try {
-    await unloadModel(id)
-    loadedModels.value = loadedModels.value.filter(m => m.id !== id)
+    if (residentReleaseMode(platformState.value.isAndroid) === 'stop-server') {
+      await stopServer()
+    } else {
+      await unloadModel(id)
+      loadedModels.value = loadedModels.value.filter(m => m.id !== id)
+    }
     nudgeDock()
   } catch (e) {
     unloadErrors[id] = e instanceof Error ? e.message : String(e)
@@ -1760,29 +1765,46 @@ onUnmounted(() => {
     font-family: var(--font-mono);
   }
 
-  /* ── Mini cards (mockup .mini: --r-md radius) ── */
+  /* ── Mini cards (mockup .mini: --r-md radius) ──
+     The used-memory figure is the widest value these cards carry
+     ("11.9 / 16 GB" of mono digits beside the ring); on a 390px phone the
+     desktop-grade 19px digits + 46px ring + 16px card padding overflow the
+     tile and ellipsize the used value. The phone tier tightens all three
+     (16px digits, 42px ring, 12px padding) and lets the unit WRAP rather
+     than shrink: the number itself must render complete — ellipsis
+     truncation of a metric is forbidden — so at 320px the small unit drops
+     to a second baseline row inside the value block instead. The CPU mini
+     shares every rule here. */
   .mini {
     border-radius: var(--r-md);
+    padding: 12px;
+  }
+
+  /* Ring scales with its box (viewBox 0 0 46 46): 42px keeps the gauge
+     readable while handing 4px back to the value row. */
+  .ring {
+    width: 42px;
+    height: 42px;
   }
 
   .mini-val {
     font-family: var(--font-mono);
-    /* Frame ② .mini .val: number + unit share one line and the unit must
-       survive intact ("6.9 /16 GB" both visible). Flex layout makes the
-       <small> unit non-shrinking; the number shrinks/ellipsizes first when
-       space runs out instead of the unit being cut mid-glyph. */
+    /* Frame ② .mini .val: number + unit on one baseline while space allows.
+       flex-wrap is the overflow valve: when the row cannot fit (320px), the
+       non-shrinking <small> unit wraps to the next line — the number is
+       never ellipsized and the unit is never cut mid-glyph. */
     display: flex;
+    flex-wrap: wrap;
     align-items: baseline;
     min-width: 0;
-    /* Slightly smaller digits + tighter gap than desktop (frame ② proportions:
-       "16.5 / 16 GB" fits the 390px card next to the 46px ring) */
-    font-size: 19px;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    font-size: 16px;
+    line-height: 1.25;
   }
 
   .mini-num {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
     white-space: nowrap;
   }
 

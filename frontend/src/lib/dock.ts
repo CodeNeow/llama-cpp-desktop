@@ -71,3 +71,17 @@ export function shouldShowDock(
 ): boolean {
   return llamaActive || activeTaskCount > 0 || loadedCount > 0 || updateActive
 }
+
+/** How a resident model leaves memory on the current platform. */
+export type ResidentReleaseMode = 'router-unload' | 'stop-server'
+
+/**
+ * residentReleaseMode: which binding serves "unload this model" for the
+ * given platform. Desktop router mode has POST /models/unload per model;
+ * direct-mode Android runs one resident per server process with no unload
+ * route, so releasing memory means stopping the service (the next chat send
+ * auto-restarts it). Pure: the callers fetch no state for this decision.
+ */
+export function residentReleaseMode(isAndroid: boolean): ResidentReleaseMode {
+  return isAndroid ? 'stop-server' : 'router-unload'
+}

@@ -11,7 +11,7 @@ Before the auto-start, a guided check runs: with no usable models you are pointe
 
 Sending a message first unloads every OTHER loaded model so the selected one is the only one in memory; load / unload changes show up in the task dock in real time, and models can be unloaded from there at any moment. The dock hugs the bottom-right corner by default and can be dragged to snap to either the left or right edge.
 
-> Android note: the official Android llama-server runs in **direct mode** — one service process hosts exactly one model. Switching the chat model automatically restarts the service to load the new one (first launch is slower on phone storage, please be patient); in-memory models cannot be unloaded manually (the task dock shows no unload button) — stop the service to free resources. Desktop platforms keep router mode with on-demand loading and unloading of multiple models, unchanged.
+> Android note: the official Android llama-server runs in **direct mode** — one service process hosts exactly one model. When the selected model is not the resident one, sending a message automatically restarts the service to load it (first launch is slower on phone storage, please be patient); the task dock and the Home page's resident-model card both offer an unload button — in direct mode unloading means stopping the service, which frees the memory, and the service restarts automatically on the next message. Desktop platforms keep router mode with on-demand loading and unloading of multiple models, unchanged.
 
 Multimodal models (with an mmproj file) can also take images: use the paperclip button next to the input bar to attach one and let the model describe it.
 

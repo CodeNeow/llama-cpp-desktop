@@ -595,6 +595,11 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
   cursor: pointer;
   transition: border-color 0.2s;
   padding: 14px 16px;
+  /* Grid item hardening: kill the automatic min-content minimum so a long
+     unbreakable token inside the card can never widen the 1fr track past
+     the container (the phone tier is single-column, full-bleed — a track
+     breach there clips the card's right edge on the viewport). */
+  min-width: 0;
 }
 
 .result-card:hover {
@@ -632,8 +637,13 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
   color: var(--text-primary);
   margin: 0 0 6px;
   line-height: 1.35;
-  /* Wrap at word boundaries; model names like "...uncensored-GGUF" must not be cut mid-word */
-  overflow-wrap: break-word;
+  /* Wrap at word boundaries AND allow a break anywhere inside an
+     overlong token: `break-word` alone never shrinks the heading's
+     min-content width, so a token longer than the card (real HF ids do
+     contain 30+ char underscored/dotted runs) used to widen the grid track
+     and clip the card's right edge on phones. `anywhere` both wraps the
+     token and keeps the min-content at a single character. */
+  overflow-wrap: anywhere;
 }
 
 .result-meta {
@@ -651,6 +661,9 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
   font-size: 11.5px;
   font-weight: 600;
   color: var(--text-muted);
+  /* Same min-content logic as .result-name: a long author/team token must
+     wrap inside its chip instead of stretching the chip row */
+  overflow-wrap: anywhere;
 }
 
 /* Round gradient download button (frame ③ .dlbtn): 38px circle, the one

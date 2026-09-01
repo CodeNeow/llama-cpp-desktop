@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fetchRouterModels, parseSSEChunks, buildChatBody, buildMessageContent, tokenRates, chatReadiness, modelsToUnload, type ChatParams } from '../lib/chat'
+import { fetchRouterModels, parseSSEChunks, buildChatBody, buildMessageContent, tokenRates, chatReadiness, modelsToUnload, directModeNeedsSwitch, type ChatParams } from '../lib/chat'
 
 describe('parseSSEChunks', () => {
   // complete single-line JSON
@@ -212,6 +212,27 @@ describe('modelsToUnload', () => {
   // nothing loaded -> nothing to unload
   it('empty loaded list yields empty result', () => {
     expect(modelsToUnload([], 'a')).toEqual([])
+  })
+})
+
+describe('directModeNeedsSwitch', () => {
+  // the direct-mode server answers exactly the model it hosts
+  it('is false while the selected model is the resident one', () => {
+    expect(directModeNeedsSwitch(['m1'], 'm1')).toBe(false)
+    expect(directModeNeedsSwitch(['m1', 'm2'], 'm2')).toBe(false)
+  })
+
+  it('is true when the selected model is not resident (old model would answer)', () => {
+    expect(directModeNeedsSwitch(['m1'], 'm2')).toBe(true)
+  })
+
+  it('is true with an empty resident list (service up but nothing loaded)', () => {
+    expect(directModeNeedsSwitch([], 'm1')).toBe(true)
+  })
+
+  it('matches full ids exactly (no prefix/substring or case-insensitive matching)', () => {
+    expect(directModeNeedsSwitch(['qwen-7b'], 'qwen-7b-instruct')).toBe(true)
+    expect(directModeNeedsSwitch(['Qwen3-8B-GGUF'], 'qwen3-8b-gguf')).toBe(true)
   })
 })
 

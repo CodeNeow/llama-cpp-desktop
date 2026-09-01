@@ -144,11 +144,12 @@
               <span class="dock-model-badge" :class="'type-' + model.type">{{ typeLabel(model.type) }}</span>
               <span class="dock-model-id" :title="model.id">{{ truncatedName(model.id) }}</span>
               <span class="dock-model-status">{{ phoneModelStatus(model) }}</span>
-              <!-- Capability gate: direct-mode servers (Android) have no
-                   unload route — the single resident leaves memory only by
-                   stopping the service, so the affordance is hidden there. -->
+              <!-- Unload on every platform: desktop asks the router to evict
+                   the model, direct-mode Android stops the service instead
+                   (the single resident leaves memory with the process; see
+                   handleUnload). The pending visuals and poll reconciliation
+                   are shared. -->
               <button
-                v-if="canUnloadModels"
                 class="dock-unload-btn"
                 :disabled="unloadingId === model.id"
                 @click="handleUnload(model.id)"
@@ -209,6 +210,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch, watchEffect, nextTick, onMounted, onUnmounted } from 'vue'
+import { useRoute } from 'vue-router'
 import {
   getLlamaCppDownloadStatus,
   getDownloadTasks,
@@ -216,13 +218,14 @@ import {
   getLoadedModels,
   getModels,
   unloadModel,
+  stopServer,
   pauseDownloadTask,
   resumeDownloadTask,
   cancelDownloadTask
 } from '../wails'
 import { formatSpeed } from '../lib/format'
 import { matchLoadedModelSize } from '../lib/modelFiles'
-import { activeLlamaCppDownload, activeModelTasks, activeUpdateDownload, shouldShowDock } from '../lib/dock'
+import { activeLlamaCppDownload, activeModelTasks, activeUpdateDownload, residentReleaseMode, shouldShowDock } from '../lib/dock'
 import { dockNudgeCounter, nudgeDock } from '../lib/dockNudge'
 import { dockLane, dockSide, dockWidth, useDockReserve } from '../lib/dockSpace'
 import {
@@ -237,12 +240,13 @@ import {
   topToNorm,
   translateForPosition,
   CHAT_COMPOSER_BAND_DESKTOP,
-  CHAT_COMPOSER_BAND_MOBILE,
   DOCK_TOP_GAP,
   DOCK_BOTTOM_GAP_DESKTOP,
   DOCK_BOTTOM_GAP_MOBILE,
   DOCK_ANCHOR_BOTTOM_DESKTOP,
   DOCK_ANCHOR_BOTTOM_MOBILE,
+  DOCK_EDGE_GAP,
+  DOCK_EDGE_GAP_MOBILE,
   type DockLayoutMetrics,
   type DockPoint,
   type DockStoredPosition,
@@ -307,10 +311,11 @@ const platform = usePlatform()
 // adds the expanded-card backdrop; desktop rendering is untouched.
 const isMobileTier = computed(() => platform.value.isMobile)
 
-// In-memory unload is a router-mode (desktop) capability: direct-mode servers
-// (Android) always hold exactly one resident model that can only leave memory
-// by stopping the service — hide the row's unload button there.
-const canUnloadModels = computed(() => !platform.value.isAndroid)
+// Route context: TaskDock renders inside the app shell where the router is
+// provided. Router-less mounts (unit tests) evaluate useRoute() to undefined
+// and therefore read as "not on chat" — the safe default.
+const route = useRoute() as ReturnType<typeof useRoute> | undefined
+const onChatRoute = computed(() => route?.path === '/chat')
 
 const activeTasks = computed(() => activeModelTasks(allTasks.value))
 
@@ -426,17 +431,45 @@ function measureChromePx(): { top: number; bottom: number } {
 function layoutMetrics(): DockLayoutMetrics {
   const chrome = measureChromePx()
   const isPhone = platform.value.isMobile
+  // Phone + chat: the composer spans the full width (no lane is reserved
+  // there anymore), so its measured top edge becomes the capsule's floor —
+  // the pill must never rest on the input row / send button. The measured
+  // gap already contains the nav band (it runs from the viewport floor), so
+  // it REPLACES the plain bottom gap whenever it is the larger one; 0
+  // elsewhere keeps desktop and non-chat phone routes byte-identical.
+  const composerGap = composerFloorGap()
   return {
     viewportW: window.innerWidth,
     viewportH: window.innerHeight,
     pillW: dockEl.value?.offsetWidth || 0,
     pillH: dockEl.value?.offsetHeight || 0,
     minTop: chrome.top + DOCK_TOP_GAP,
-    clampBottomGap: isPhone ? chrome.bottom + DOCK_BOTTOM_GAP_MOBILE : DOCK_BOTTOM_GAP_DESKTOP,
+    clampBottomGap: Math.max(
+      isPhone ? chrome.bottom + DOCK_BOTTOM_GAP_MOBILE : DOCK_BOTTOM_GAP_DESKTOP,
+      composerGap > 0 ? composerGap + DOCK_BOTTOM_GAP_MOBILE : 0
+    ),
     anchorBottomOffset: isPhone
       ? chrome.bottom + DOCK_ANCHOR_BOTTOM_MOBILE
       : DOCK_ANCHOR_BOTTOM_DESKTOP,
+    edgeGap: isPhone ? DOCK_EDGE_GAP_MOBILE : DOCK_EDGE_GAP,
   }
+}
+
+// Measured keep-out height of the phone chat composer, in px from the
+// viewport floor to the composer's top edge (.chat-page .input-area spans
+// the full width; getBoundingClientRect tracks the live layout, including
+// the keyboard-open state where the nav band collapses and the page chain
+// ends at the keyboard's top). Returns 0 unless the phone tier is on the
+// chat route with a laid-out composer, which keeps every other surface —
+// and all of desktop — unaffected.
+function composerFloorGap(): number {
+  if (!platform.value.isMobile || !onChatRoute.value) return 0
+  const area = document.querySelector('.chat-page .input-area')
+  if (!(area instanceof HTMLElement)) return 0
+  const rect = area.getBoundingClientRect()
+  if (rect.height <= 0) return 0
+  const gap = Math.ceil(window.innerHeight - rect.top)
+  return Number.isFinite(gap) && gap > 0 ? gap : 0
 }
 
 // Apply the stored position (or the legacy default) as a root translate.
@@ -445,7 +478,16 @@ function applyStoredPosition(): void {
   const layout = layoutMetrics()
   if (layout.pillW <= 0 || layout.pillH <= 0) return
   const stored = storedPosition.value
-  dragTranslate.value = translateForPosition(stored, layout)
+  if (stored) {
+    dragTranslate.value = translateForPosition(stored, layout)
+  } else if (composerFloorGap() > 0) {
+    // No position memory on the phone chat page: the legacy CSS anchor sits
+    // ON the composer (the old reserved-lane spot), so park the capsule at
+    // the keep-out floor instead — just above the input row.
+    dragTranslate.value = translateForPosition({ side: 'right', yNorm: 1 }, layout)
+  } else {
+    dragTranslate.value = { x: 0, y: 0 }
+  }
   dockSide.value = stored?.side ?? 'right'
   updateCardAnchor(layout)
   publishLane(layout)
@@ -453,19 +495,24 @@ function applyStoredPosition(): void {
 
 // Chat-page lane state (lib/dockSpace dockLane): 'left'/'right' only while
 // the capsule's viewport bottom edge reaches into the composer band at the
-// bottom of the window, 'none' while it parks mid-screen / up top. The bottom
-// edge is DERIVED from the anchor + current translate + pill height (the same
-// reference frame the transform itself is built on) rather than
+// bottom of the window, 'none' while it parks mid-screen / up top. Phone
+// tiers never publish a lane — the phone chat page spans the full width and
+// TaskDock keeps the capsule clear of the composer by clamping instead. The
+// bottom edge is DERIVED from the anchor + current translate + pill height
+// (the same reference frame the transform itself is built on) rather than
 // getBoundingClientRect, which stays 0/undefined in unit-test DOMs and would
 // race the 0.2s snap transition right after a release. Called only at
 // settle/restore/resize points — the lane follows the RELEASED anchor, so a
 // mid-drag position never flaps the chat padding frame-by-frame.
 function publishLane(layout: DockLayoutMetrics): void {
   if (layout.pillW <= 0 || layout.pillH <= 0) return // not laid out yet: republished on measure
+  if (platform.value.isMobile) {
+    dockLane.value = 'none'
+    return
+  }
   const anchor = anchorTopLeft(layout)
   const capsuleBottom = anchor.y + dragTranslate.value.y + layout.pillH
-  const band = platform.value.isMobile ? CHAT_COMPOSER_BAND_MOBILE : CHAT_COMPOSER_BAND_DESKTOP
-  dockLane.value = laneFor(dockSide.value, capsuleBottom, layout.viewportH, band)
+  dockLane.value = laneFor(dockSide.value, capsuleBottom, layout.viewportH, CHAT_COMPOSER_BAND_DESKTOP)
 }
 
 // Flip the expand card to top-anchored growth when the capsule's (resolved)
@@ -695,14 +742,26 @@ watch(dockNudgeCounter, () => {
 
 // ─── Unload ───────────────────────────────────────────────────────
 
+// Platform-split release of a resident model (decision in lib/dock
+// residentReleaseMode): desktop router mode asks the router to evict the
+// model; direct-mode Android has no unload route — stopping the service is
+// the unload (the single resident leaves memory with the process, and the
+// next chat send auto-restarts the service).
 async function handleUnload(id: string) {
   unloadingId.value = id
   delete unloadErrors[id]
   try {
-    await unloadModel(id)
-    // Instant feedback: drop the row now, then nudge a poll that reconciles
-    // against reality (an unload that silently failed re-appears on the poll)
-    loadedModels.value = loadedModels.value.filter(m => m.id !== id)
+    if (residentReleaseMode(platform.value.isAndroid) === 'stop-server') {
+      await stopServer()
+    } else {
+      await unloadModel(id)
+      // Instant feedback: drop the row now, then nudge a poll that
+      // reconciles against reality (an unload that silently failed
+      // re-appears on the poll)
+      loadedModels.value = loadedModels.value.filter(m => m.id !== id)
+    }
+    // Both paths: nudge a poll that reconciles (serverRunning flips false on
+    // Android and the row disappears; a failed stop re-appears instead)
     nudgeDock()
   } catch (e: any) {
     unloadErrors[id] = e?.message || 'unknown'
@@ -1348,9 +1407,10 @@ onUnmounted(() => {
        pill stays ~40px wide (2x8 padding + 12 icon + 4 gap + 8 count digit).
        The pill's width is content-driven (one segment per active counter), so
        consumers must not hardcode it: the pill's measured width is published
-       as --dock-width (lib/dockSpace, same ResizeObserver as --dock-reserve)
-       and Chat.vue's phone right-padding lane is computed from it, keeping the
-       send button 8px clear of the pill's left edge at any segment count. The
+       as --dock-width (lib/dockSpace, same ResizeObserver as --dock-reserve).
+       The phone chat page spans full-width gutters — the capsule is instead
+       clamped above the composer (layoutMetrics' composerFloorGap) — while the
+       desktop chat lane keeps consuming --dock-width. The
        bottom offset is recomputed from the phone composer metrics instead of
        the desktop-tuned 29px, which rode
        high enough to cover the composer's top: Chat.vue phone input-area
@@ -1363,8 +1423,12 @@ onUnmounted(() => {
   /* Layering (frame ⑲): the collapsed capsule sits UNDER the glass bottom
      nav (40) so the nav wins any overlap; when the card opens the root jumps
      ABOVE the nav (40) and the status-bar scrim (45) while staying below the
-     update modal (1000) — the dim + card need the whole screen. */
+     update modal (1000) — the dim + card need the whole screen. The anchor
+     hugs the SCREEN edge (right: 0, DOCK_EDGE_GAP_MOBILE): the phone capsule
+     sticks to the sides themselves, and the drag math reads the same gap
+     through DockLayoutMetrics.edgeGap. */
   .task-dock {
+    right: 0;
     bottom: calc(10px + var(--mobile-nav-height, 0px));
     z-index: 38;
   }
@@ -1375,7 +1439,7 @@ onUnmounted(() => {
 
   /* Dark AssistiveTouch capsule (frame ⑲ .capsule) in BOTH themes: dark
      translucent pill, white bold label, docked-edge corners flattened toward
-     the hugging edge. Height stays the 44px touch target the composer lane
+     the hugging edge. Height stays the 44px touch target the phone anchor
      arithmetic is built on (padding 0, not the mockup's 11px vertical). */
   .dock-pill {
     height: 44px;

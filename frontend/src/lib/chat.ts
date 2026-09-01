@@ -54,6 +54,19 @@ export function modelsToUnload(loaded: { id: string; status: string }[], selecte
 }
 
 /**
+ * Direct-mode (Android) resident check: true when the selected model is NOT
+ * among the currently resident ids, so serving the request needs a model
+ * switch — on Android that means restarting the service with the new model
+ * as the single resident (startServerWithModel → backend bridge). Callers
+ * probe GET /models (lib fetchRouterModels, direct-mode fallback included)
+ * and pass the resident ids; an empty list means "nothing resident" and
+ * therefore always needs the switch. Pure.
+ */
+export function directModeNeedsSwitch(loadedIds: string[], selected: string): boolean {
+  return !loadedIds.includes(selected)
+}
+
+/**
  * Incrementally parse a chunk of SSE response text.
  *
  * Input is the raw response text accumulated so far (may contain a half-finished

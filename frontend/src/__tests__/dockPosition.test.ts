@@ -21,8 +21,9 @@ import {
 } from '../lib/dockPosition'
 
 // Standard desktop-tier metrics: 1280x800 viewport, 48x32 pill, title bar
-// 0px -> minTop 8, desktop bottom gap 16, desktop anchor offset 29. The safe
-// vertical band is therefore [8, 800 - 16 - 32] = [8, 752].
+// 0px -> minTop 8, desktop bottom gap 16, desktop anchor offset 29, desktop
+// edge gap 16. The safe vertical band is therefore [8, 800 - 16 - 32] =
+// [8, 752].
 function layout(over: Partial<DockLayoutMetrics> = {}): DockLayoutMetrics {
   return {
     viewportW: 1280,
@@ -32,6 +33,7 @@ function layout(over: Partial<DockLayoutMetrics> = {}): DockLayoutMetrics {
     minTop: 8,
     clampBottomGap: 16,
     anchorBottomOffset: 29,
+    edgeGap: 16,
     ...over,
   }
 }
@@ -94,6 +96,35 @@ describe('sideLeftX', () => {
   it('degrades to the left-edge spot for a degenerate pill box', () => {
     expect(sideLeftX('right', 1280, 0)).toBe(16)
     expect(sideLeftX('right', NaN, 48)).toBe(16)
+  })
+})
+
+describe('sideLeftX with a custom edge gap (phone tier hugs the screen edge)', () => {
+  it('snaps flush to both edges at gap 0', () => {
+    expect(sideLeftX('left', 390, 44, 0)).toBe(0)
+    expect(sideLeftX('right', 390, 44, 0)).toBe(346) // 390 - 0 - 44
+  })
+
+  it('keeps the pill inside the viewport at gap 0', () => {
+    expect(sideLeftX('right', 390, 44, 0)).toBeGreaterThanOrEqual(0)
+  })
+
+  it('degrades degenerate inputs to the provided gap', () => {
+    expect(sideLeftX('right', 390, 0, 0)).toBe(0)
+    expect(sideLeftX('right', NaN, 44, 0)).toBe(0)
+  })
+})
+
+describe('anchorTopLeft / resolvePosition with the phone edge gap', () => {
+  it('anchors the CSS spot flush to the right screen edge at gap 0', () => {
+    const phone = layout({ viewportW: 390, pillW: 44, edgeGap: 0 })
+    expect(anchorTopLeft(phone).x).toBe(346)
+  })
+
+  it('restores a stored position flush to the hugging edge at gap 0', () => {
+    const phone = layout({ viewportW: 390, viewportH: 844, pillW: 44, pillH: 44, edgeGap: 0 })
+    expect(resolvePosition({ side: 'right', yNorm: 0 }, phone).left).toBe(346)
+    expect(resolvePosition({ side: 'left', yNorm: 0 }, phone).left).toBe(0)
   })
 })
 

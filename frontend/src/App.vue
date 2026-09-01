@@ -65,7 +65,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { Application, Window as WailsWindow } from '@wailsio/runtime'
 import Sidebar from './components/Sidebar.vue'
@@ -75,6 +75,7 @@ import MobileNav from './components/MobileNav.vue'
 import { updateState, checkForUpdate, shouldAutoCheck, closeUpdateModal } from './lib/update'
 import { dockReserve, dockWidth, dockSide } from './lib/dockSpace'
 import { initSafeArea } from './lib/safeArea'
+import { initKeyboardTracking, stopKeyboardTracking, keyboardVisible } from './lib/keyboard'
 import { t } from './lib/i18n'
 import { appConfig } from './store'
 import { getOS } from './wails'
@@ -127,9 +128,23 @@ const osId = ref<OsId>('windows')
 const arch = ref('')
 function syncPlatformState() {
   setPlatform(buildPlatformState(osId.value, window.innerWidth, arch.value))
+  // Mirror the OS id onto <html> as data-os (same pattern as main.ts's
+  // data-theme): global.css keys OS-scoped behavior off it — touch platforms
+  // hide scrollbars there while desktop keeps them at every viewport width.
+  document.documentElement.setAttribute('data-os', osId.value)
 }
 window.addEventListener('resize', syncPlatformState, { passive: true })
 onUnmounted(() => window.removeEventListener('resize', syncPlatformState))
+syncPlatformState()
+
+// Soft keyboard (lib/keyboard.ts): mirror the reactive visibility onto <html>
+// as the keyboard-open class — global.css hides the mobile nav and collapses
+// its height band so fixed-page layouts run down to the keyboard's top edge.
+// Desktop / tablet never get the class (the detector requires a viewport
+// shrink around an editable focus, which desktop resizing does not produce).
+watch(keyboardVisible, (open) => {
+  document.documentElement.classList.toggle('keyboard-open', open)
+})
 
 // Detect the OS on startup; on failure silently keep the empty string (same style as existing getOS optional chaining)
 onMounted(async () => {
@@ -138,6 +153,8 @@ onMounted(async () => {
   // the composed --safe-area-top/--safe-area-bottom vars read (no-op on
   // desktop, where every source is zero).
   initSafeArea()
+  // Soft-keyboard visibility tracking (mobile nav hiding, see the watcher above).
+  initKeyboardTracking()
   try {
     const info = await getOS()
     platform.value = (info as { os?: string }).os ?? ''
@@ -160,6 +177,11 @@ function minimize() {
   // .catch guards the standalone-vite case where the runtime has no backend.
   WailsWindow.Minimise().catch(() => {})
 }
+
+onUnmounted(() => {
+  // Safety net: never leave window-level keyboard listeners attached.
+  stopKeyboardTracking()
+})
 
 // Maximize/restore: toggle the window; flip the icon state locally first for instant feedback,
 // then correct it later against the real state
