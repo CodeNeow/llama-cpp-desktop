@@ -819,11 +819,18 @@ html[data-os='ios'] .model-settings-btn:active {
   }
 
   .arch-tag,
-  .quant-tag,
-  .size-tag {
+  .quant-tag {
     background: var(--hover-bg);
     color: var(--text-muted);
     border: none;
+  }
+
+  /* Frame ⑨ size: plain muted text below the chip row (no chip background) */
+  .size-tag {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--text-dim);
   }
 
   /* Phone card slimming: the standalone author line demotes into the meta

@@ -72,7 +72,19 @@
             <span class="row-title">{{ t('settings.language') }}</span>
             <span class="row-sub">{{ languageCurrentLabel }}</span>
           </div>
-          <div class="row-tail">
+          <!-- Phone tail (frame ⑯): compact select showing current language label -->
+          <div v-if="isPhone" class="row-tail row-tail-select">
+            <ThemedSelect
+              :model-value="appConfig.language"
+              :options="languageOptions"
+              :placeholder="t('settings.language')"
+              variant="field"
+              :label="t('settings.language')"
+              @update:model-value="setLanguagePref"
+            />
+          </div>
+          <!-- Desktop segmented control (hidden on phone) -->
+          <div v-else class="row-tail">
             <div class="row-seg" role="radiogroup" :aria-label="t('settings.language')">
               <button
                 v-for="opt in languageOptions"
@@ -100,7 +112,19 @@
             <span class="row-title">{{ t('settings.downloadSource') }}</span>
             <span class="row-sub">{{ sourceCurrentLabel }}</span>
           </div>
-          <div class="row-tail">
+          <!-- Phone tail (frame ⑯): compact select showing current source label -->
+          <div v-if="isPhone" class="row-tail row-tail-select">
+            <ThemedSelect
+              :model-value="downloadSource"
+              :options="sourceOptions"
+              :placeholder="t('settings.downloadSource')"
+              variant="field"
+              :label="t('settings.downloadSource')"
+              @update:model-value="setSource"
+            />
+          </div>
+          <!-- Desktop segmented control (hidden on phone) -->
+          <div v-else class="row-tail">
             <div class="row-seg" role="radiogroup" :aria-label="t('settings.downloadSource')">
               <button
                 v-for="opt in sourceOptions"
@@ -173,7 +197,19 @@
             <span class="row-title">{{ t('settings.accessScope') }}</span>
             <span class="row-sub">{{ t('settings.accessDesc') }}</span>
           </div>
-          <div class="row-tail">
+          <!-- Phone tail (frame ⑯): compact select showing current access scope -->
+          <div v-if="isPhone" class="row-tail row-tail-select">
+            <ThemedSelect
+              :model-value="appConfig.serverAccessMode"
+              :options="accessOptions"
+              :placeholder="t('settings.accessScope')"
+              variant="field"
+              :label="t('settings.accessScope')"
+              @update:model-value="setAccessScope"
+            />
+          </div>
+          <!-- Desktop segmented control (hidden on phone) -->
+          <div v-else class="row-tail">
             <div class="row-seg" role="radiogroup" :aria-label="t('settings.accessScope')">
               <button
                 v-for="opt in accessOptions"
@@ -202,7 +238,14 @@
             <span class="row-title">{{ t('settings.apiKey') }}</span>
             <span class="row-sub">{{ t('settings.apiKeyDesc') }}</span>
           </div>
+          <!-- Phone tail (frame ⑯): "未设置（无鉴权）›" / "已设置 ›" -->
+          <button v-if="isPhone" type="button" class="row-tail-api-key" @click="showApiKeySheet = true">
+            <span>{{ apiKeyInput ? t('settings.apiKeySet') : t('settings.apiKeyNotSet') }}</span>
+            <span aria-hidden="true">›</span>
+          </button>
+          <!-- Desktop inline input (hidden on phone) -->
           <input
+            v-else
             v-model="apiKeyInput"
             type="password"
             class="api-key-input"
@@ -214,6 +257,24 @@
           />
         </div>
         <p v-if="apiKeyError" class="row-error">{{ apiKeyError }}</p>
+
+        <!-- Phone API key bottom sheet (frame ⑯) -->
+        <div v-if="isPhone && showApiKeySheet" class="api-key-dim" @click.self="showApiKeySheet = false"></div>
+        <div v-if="isPhone && showApiKeySheet" class="api-key-sheet">
+          <div class="api-key-grab"></div>
+          <div class="api-key-sheet-title">{{ t('settings.apiKey') }}</div>
+          <input
+            v-model="apiKeyInput"
+            type="password"
+            class="api-key-sheet-input"
+            autocomplete="off"
+            spellcheck="false"
+            :disabled="apiKeySwitching"
+            :placeholder="t('settings.apiKeyPlaceholder')"
+            @change="saveApiKey"
+          />
+          <button type="button" class="api-key-done" @click="showApiKeySheet = false">{{ t('api.done') }}</button>
+        </div>
       </div>
 
       <!-- Inference GPU selection: pins the llama-server child to the chosen
@@ -611,6 +672,7 @@ async function setAccessScope(mode: string) {
 const apiKeyInput = ref('')
 const apiKeyError = ref('')
 const apiKeySwitching = ref(false)
+const showApiKeySheet = ref(false)
 
 async function saveApiKey() {
   if (apiKeySwitching.value) return
@@ -1473,6 +1535,127 @@ async function manualCheck() {
     font-size: 13px;
     font-weight: 600;
     white-space: nowrap;
+  }
+
+  /* Frame ⑯ select tails: compact inline select beside the label (same
+     auto-width policy as the switch tails above) */
+  .row-tail-select {
+    width: auto;
+    min-height: 44px;
+  }
+
+  /* Compact ThemedSelect trigger inside a select tail: shrink to the value
+     text + chevron, no extra padding */
+  .row-tail-select :deep(.themed-select__trigger) {
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text-secondary);
+    min-height: 36px;
+  }
+
+  .row-tail-select :deep(.themed-select__menu) {
+    position: fixed;
+    left: 10px;
+    right: 10px;
+    top: auto;
+    bottom: calc(var(--mobile-nav-height, 0px) + 10px + var(--keyboard-inset, 0px));
+    width: auto;
+    max-height: 50vh;
+    border-radius: 20px;
+    border: none;
+    box-shadow: 0 -10px 40px rgba(20, 22, 45, 0.3);
+  }
+
+  /* API key row tail (frame ⑯): compact button showing current auth state */
+  .row-tail-api-key {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    width: auto;
+    min-height: 44px;
+    padding: 6px 12px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+  }
+
+  /* API key bottom sheet (frame ⑯) */
+  .api-key-dim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 39;
+    background: rgba(16, 18, 33, 0.42);
+  }
+
+  .api-key-sheet {
+    position: fixed;
+    left: 10px;
+    right: 10px;
+    top: auto;
+    bottom: calc(var(--mobile-nav-height, 0px) + 10px + var(--keyboard-inset, 0px));
+    z-index: 40;
+    background: var(--bg-secondary);
+    border: none;
+    border-radius: 26px;
+    box-shadow: 0 -10px 40px rgba(20, 22, 45, 0.3);
+    padding: 18px 20px 16px;
+  }
+
+  .api-key-grab {
+    display: block;
+    width: 40px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--border);
+    margin: 0 auto 12px;
+  }
+
+  .api-key-sheet-title {
+    font-size: 17px;
+    font-weight: 800;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+  }
+
+  .api-key-sheet-input {
+    width: 100%;
+    padding: 12px 14px;
+    background: var(--surface-2);
+    border: none;
+    border-radius: 12px;
+    color: var(--text-primary);
+    font-size: 14px;
+    font-family: var(--font-mono);
+    outline: none;
+    margin-bottom: 10px;
+    box-sizing: border-box;
+  }
+
+  .api-key-done {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 44px;
+    padding: 13px 0;
+    border: none;
+    border-radius: 16px;
+    background: var(--grad);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 800;
+    font-family: inherit;
+    cursor: pointer;
   }
 }
 </style>

@@ -33,7 +33,7 @@
             :disabled="selectedCount === 0"
             @click="handleDownload"
           >
-            {{ t('downloads.downloadSelected') }}
+            <span aria-hidden="true">⬇</span> {{ t('downloads.downloadSelected') }}
           </button>
         </div>
       </div>
@@ -60,7 +60,7 @@
             :disabled="selectedCount === 0"
             @click="handleDownload"
           >
-            {{ t('downloads.downloadSelected') }}
+            <span aria-hidden="true">⬇</span> {{ t('downloads.downloadSelected') }}
           </button>
         </div>
       </div>
@@ -827,7 +827,7 @@ onMounted(() => {
   }
 
   /* Frame ⑩ .file: hairline separators instead of the desktop gap + hover
-     card; mono filename left, muted size right */
+     card; bold dark filename left, muted size right */
   .files-list {
     gap: 0;
   }
@@ -849,7 +849,8 @@ onMounted(() => {
     min-width: 0;
     font-family: var(--font-mono);
     font-size: 12px;
-    font-weight: 600;
+    font-weight: 700;
+    color: var(--text-primary);
   }
 
   .file-size {

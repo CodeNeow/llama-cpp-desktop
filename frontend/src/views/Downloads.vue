@@ -1035,6 +1035,19 @@ html[data-os='ios'] .cancel-btn:active {
     box-shadow: 0 8px 18px rgba(124, 92, 246, 0.4);
   }
 
+  /* Frame ⑧ search button: circular gradient (equal width/height, fully
+     rounded) instead of the desktop rounded-rect pill; real text renders
+     inside the 44px circle for correct accessible naming */
+  .search-bar > .pill-btn:first-of-type {
+    width: 44px;
+    min-width: 44px;
+    padding: 0;
+    border-radius: 50%;
+    font-size: 13px;
+    font-weight: 800;
+    box-shadow: 0 6px 14px rgba(124, 92, 246, 0.35);
+  }
+
   /* Frame ⑧ .gbtn.ghost: surface + island shadow, no border */
   .pill-btn.ghost {
     border: none;
@@ -1077,8 +1090,12 @@ html[data-os='ios'] .cancel-btn:active {
   }
 
   .dl-pct {
-    color: var(--text-primary);
+    color: var(--accent-light);
     font-weight: 700;
+  }
+
+  html[data-theme='dark'] .dl-pct {
+    color: #c4b5fd;
   }
 
   .dl-card-meta {

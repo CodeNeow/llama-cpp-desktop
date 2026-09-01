@@ -1440,7 +1440,7 @@ html[data-theme='dark'] .speed-baseline {
     left: 10px;
     right: 10px;
     top: auto;
-    bottom: calc(10px + var(--safe-area-bottom, 0px) + var(--keyboard-inset, 0px));
+    bottom: calc(var(--mobile-nav-height, 0px) + 10px + var(--keyboard-inset, 0px));
     width: auto;
     z-index: 40;
     border: none;

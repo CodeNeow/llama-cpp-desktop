@@ -33,9 +33,8 @@
         </button>
         <button class="sb sb-action sb-github" type="button" @click="openOnGithub">{{ t('docs.openOnGithub') }}</button>
       </div>
-      <!-- Section rows: numbered grad-soft tile + title + chevron (Aurora
-           .docrow). The manifest carries no per-section descriptions, so the
-           mockup's desc line is omitted. -->
+      <!-- Section rows: numbered grad-soft tile + title + desc + chevron
+           (Aurora .docrow). Desc comes from i18n docs.section.<id>.desc. -->
       <nav class="doclist" :aria-label="t('docs.toc')">
         <button
           v-for="(section, index) in docSections"
@@ -45,7 +44,10 @@
           @click="openSection(section.id)"
         >
           <span class="no">{{ String(index + 1).padStart(2, '0') }}</span>
-          <span class="docrow-t">{{ t(section.titleKey) }}</span>
+          <span class="docrow-text">
+            <span class="docrow-t">{{ t(section.titleKey) }}</span>
+            <span class="docrow-desc">{{ t(section.titleKey + '.desc') }}</span>
+          </span>
           <span class="ar" aria-hidden="true">›</span>
         </button>
       </nav>
@@ -688,6 +690,24 @@ html[data-theme='dark'] .docrow .no {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.docrow .docrow-desc {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-top: 2px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.docrow .docrow-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
 }
 
 .docrow .ar {

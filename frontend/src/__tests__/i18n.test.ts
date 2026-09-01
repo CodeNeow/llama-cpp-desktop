@@ -14,7 +14,7 @@ describe('lib/i18n', () => {
 
   it('t gets current locale dict value (zh)', () => {
     expect(t('nav.home')).toBe('本机')
-    expect(t('settings.themeMode')).toBe('主题模式')
+    expect(t('settings.themeMode')).toBe('深色模式')
   })
 
   it('t returns key as-is when missing', () => {
@@ -177,7 +177,7 @@ describe('lib/i18n', () => {
   it('after setLocale, t returns corresponding language', () => {
     setLocale('en')
     expect(t('nav.home')).toBe('System')
-    expect(t('settings.themeMode')).toBe('Theme Mode')
+    expect(t('settings.themeMode')).toBe('Dark Mode')
     // English interpolation
     expect(t('downloads.selectedCount', { n: 3 })).toBe('3 files selected')
   })
