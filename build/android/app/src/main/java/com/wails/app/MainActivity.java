@@ -3,6 +3,7 @@ package com.wails.app;
 import android.annotation.SuppressLint;
 import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.ClipData;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.res.Configuration;
@@ -28,7 +29,9 @@ import android.view.Window;
 import android.view.WindowInsets;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
+import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
+import android.webkit.ValueCallback;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
@@ -67,9 +70,17 @@ public class MainActivity extends AppCompatActivity {
     private static final String WAILS_SCHEME = "https";
     private static final String WAILS_HOST = "wails.localhost";
     private static final int FILE_PICKER_REQUEST = 7001;
+    // Request code for the WebChromeClient <input type="file"> chooser — kept
+    // distinct from the Go-side dialog flow's FILE_PICKER_REQUEST so both
+    // onActivityResult branches can never collide.
+    private static final int WEB_FILE_CHOOSER_REQUEST = 7004;
 
     private WebView webView;
     private WailsBridge bridge;
+    // In-flight <input type="file"> callback from the WebChromeClient (null
+    // when no system picker is up for a web file input).
+    @Nullable
+    private ValueCallback<Uri[]> pendingWebFileChooser;
     // Battery: system-event receivers are registered only while the activity is
     // in the foreground (onStart) and torn down in onStop, so background battery/
     // network/screen broadcasts don't wake the app.
@@ -217,6 +228,38 @@ public class MainActivity extends AppCompatActivity {
                 // Same for the system-bar insets: a fresh push so the page
                 // starts padded behind the edge-to-edge bars.
                 emitSafeAreaSnapshot();
+            }
+        });
+
+        // <input type="file"> support: Android WebView silently no-ops file
+        // inputs unless a WebChromeClient implements onShowFileChooser — the
+        // chat composer's image-attach button relies on it. createIntent()
+        // honors the input's accept attribute (image/*), OPENABLE keeps the
+        // picker to openable documents, and EXTRA_ALLOW_MULTIPLE maps the
+        // input's multiple flag.
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> filePathCallback,
+                                             FileChooserParams fileChooserParams) {
+                if (pendingWebFileChooser != null) {
+                    // A picker is already up: cancel it so the JS side is not
+                    // left waiting on a stale callback.
+                    pendingWebFileChooser.onReceiveValue(null);
+                }
+                pendingWebFileChooser = filePathCallback;
+                try {
+                    Intent intent = fileChooserParams.createIntent();
+                    intent.addCategory(Intent.CATEGORY_OPENABLE);
+                    if (fileChooserParams.getMode() == FileChooserParams.MODE_OPEN_MULTIPLE) {
+                        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+                    }
+                    startActivityForResult(intent, WEB_FILE_CHOOSER_REQUEST);
+                } catch (Exception e) {
+                    Log.e(TAG, "Failed to launch web file chooser", e);
+                    pendingWebFileChooser = null;
+                    return false;
+                }
+                return true;
             }
         });
 
@@ -563,6 +606,27 @@ public class MainActivity extends AppCompatActivity {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == PHOTO_CAPTURE_REQUEST || requestCode == VIDEO_CAPTURE_REQUEST) {
             handleCaptureResult(resultCode, data);
+            return;
+        }
+        if (requestCode == WEB_FILE_CHOOSER_REQUEST) {
+            // Deliver the picked content URI(s) back to the WebView's file
+            // input: null on cancel/failure, one Uri per selected document.
+            if (pendingWebFileChooser != null) {
+                Uri[] uris = null;
+                if (resultCode == RESULT_OK && data != null) {
+                    if (data.getClipData() != null) {
+                        ClipData clip = data.getClipData();
+                        uris = new Uri[clip.getItemCount()];
+                        for (int i = 0; i < clip.getItemCount(); i++) {
+                            uris[i] = clip.getItemAt(i).getUri();
+                        }
+                    } else if (data.getData() != null) {
+                        uris = new Uri[]{data.getData()};
+                    }
+                }
+                pendingWebFileChooser.onReceiveValue(uris);
+                pendingWebFileChooser = null;
+            }
             return;
         }
         if (requestCode != FILE_PICKER_REQUEST) {

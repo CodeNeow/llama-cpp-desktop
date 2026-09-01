@@ -128,6 +128,36 @@ describe('initSafeArea DOM publishing', () => {
     expect(cssVar('--safe-area-js-bottom')).toBe('14px')
   })
 
+  it('unwraps the real native payload: WailsEvent wrapper + JSON string', async () => {
+    // The actual on-device contract: Events.On delivers the runtime's
+    // WailsEvent wrapper ({name, data}) and MainActivity emits the payload
+    // as a JSON string (bridge.emitEvent(name, JSONObject.toString())).
+    getSafeAreaMock.mockResolvedValue({ top: 0, bottom: 28, left: 0, right: 0 })
+    const { initSafeArea } = await loadModule()
+    initSafeArea()
+    await flush()
+    const onPush = eventsOn.mock.calls[0][1] as (data: unknown) => void
+
+    onPush({
+      name: 'common:safearea',
+      data: JSON.stringify({ top: 84, bottom: 28, left: 0, right: 0, ime: 800 }),
+    })
+    expect(cssVar('--safe-area-js-top')).toBe('42px')
+    expect(cssVar('--safe-area-js-bottom')).toBe('400px')
+  })
+
+  it('degrades malformed JSON strings inside the wrapper to zeros', async () => {
+    getSafeAreaMock.mockResolvedValue({ top: 0, bottom: 0, left: 0, right: 0 })
+    const { initSafeArea } = await loadModule()
+    initSafeArea()
+    await flush()
+    const onPush = eventsOn.mock.calls[0][1] as (data: unknown) => void
+    expect(() =>
+      onPush({ name: 'common:safearea', data: '{not-json' }),
+    ).not.toThrow()
+    expect(cssVar('--safe-area-js-top')).toBe('0px')
+  })
+
   it('keeps the last nav-bar padding after the keyboard closes', async () => {
     getSafeAreaMock.mockResolvedValue({ top: 0, bottom: 28, left: 0, right: 0 })
     const { initSafeArea } = await loadModule()

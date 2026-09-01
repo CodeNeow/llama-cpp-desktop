@@ -141,9 +141,24 @@ async function refresh(): Promise<void> {
   }
 }
 
-// onPush applies a "common:safearea" event (physical-px insets + ime).
-function onPush(data: unknown): void {
-  const src = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>
+// onPush applies a "common:safearea" event. Events.On delivers the runtime's
+// WailsEvent wrapper ({name, data}) — NOT the payload itself — and the native
+// side emits the payload as a JSON string (MainActivity's
+// bridge.emitEvent(name, JSONObject.toString())). Unwrap and parse both
+// layers; bare payloads (unit tests, older callers) keep working.
+function onPush(raw: unknown): void {
+  let payload: unknown = raw
+  if (payload !== null && typeof payload === 'object' && 'data' in (payload as Record<string, unknown>)) {
+    payload = (payload as { data?: unknown }).data
+  }
+  if (typeof payload === 'string') {
+    try {
+      payload = JSON.parse(payload)
+    } catch {
+      payload = {}
+    }
+  }
+  const src = (payload && typeof payload === 'object' ? payload : {}) as Record<string, unknown>
   const currentHeight = viewportHeight()
   const ime = pxToCssPx(Number(src.ime) || 0, devicePixelRatio())
   if (ime <= 0) {

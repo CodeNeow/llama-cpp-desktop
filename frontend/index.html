@@ -4,11 +4,15 @@
     <meta charset="UTF-8" />
     <!-- viewport-fit=cover exposes the env() safe-area insets (see
          --safe-area-top in global.css); interactive-widget=resizes-content
-         keeps the chat composer visible above the Android soft keyboard;
-         maximum-scale/user-scalable disable pinch zoom (app-like: the page is
-         not a zoomable web document — the Android WebView shell additionally
-         turns off its own zoom controls, see MainActivity.java) -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content, maximum-scale=1.0, user-scalable=no" />
+         keeps the chat composer visible above the Android soft keyboard.
+         Pinch zoom is disabled ONLY via MainActivity's WebView zoom settings
+         (setSupportZoom(false) + built-in controls off): adding
+         maximum-scale/user-scalable here instead makes the WebView stop
+         shrinking the layout viewport for the soft keyboard (observed on an
+         API 35 WebView with interactive-widget=resizes-content present), so
+         the keyboard then covers the chat composer — keep the two mechanisms
+         separate. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/png" href="/appicon.png" />
     <title>Llama Desktop</title>
