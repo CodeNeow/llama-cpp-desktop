@@ -1115,10 +1115,19 @@ onUnmounted(() => {
      right gap (see the lane paddings below) and shares the send button's
      vertical band, so the page layout simply fills the viewport below the
      titlebar. */
-  height: calc(100vh - 36px);
+  /* Height chain mirrors the sibling fixed-page shell (.page-fixed in
+     global.css): the titlebar band via --titlebar-h (App.vue publishes 36px
+     on desktop shells, 0px on android/ios where the bar does not render) and
+     the mobile nav band via --mobile-nav-height (phone tier only; html
+     .keyboard-open collapses it to 0 while the soft keyboard is up). The old
+     hardcoded 36px assumed a desktop titlebar that does not exist on the
+     phone: idle it left the composer band tucked under the floating nav, and
+     with the keyboard open it stopped the page 36px short of the keyboard
+     top instead of resting the composer on it. */
+  height: calc(100vh - var(--titlebar-h, 36px) - var(--mobile-nav-height, 0px));
   /* dvh twin: progressive override for mobile browsers reporting a dynamic
      viewport (soft keyboard / browser chrome); no-op where dvh is unsupported */
-  height: calc(100dvh - 36px);
+  height: calc(100dvh - var(--titlebar-h, 36px) - var(--mobile-nav-height, 0px));
   display: flex;
   flex-direction: column;
   /* Base gutters, lane retracted (dockLane 'none': capsule parked away from

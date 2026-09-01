@@ -926,9 +926,15 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public void onBackPressed() {
-        if (webView != null && webView.canGoBack()) {
-            webView.goBack();
-        } else {
+        // App-like back: never walk the WebView history. The SPA router pushes
+        // a WebView history entry per in-app navigation, so goBack() made the
+        // system back button / edge-swipe gesture undo page switches one by
+        // one like a web browser. The system back instead backgrounds the
+        // task (state preserved; the launcher icon resumes instantly).
+        // moveTaskToBack returns false when backgrounding is refused (e.g. the
+        // activity is not root of its task) — fall back to the default
+        // behavior so back still finishes the activity.
+        if (!moveTaskToBack(true)) {
             super.onBackPressed();
         }
     }

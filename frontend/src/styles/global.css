@@ -415,7 +415,18 @@ html[data-os='ios'] {
     display: none;
   }
 
+  /* Document-scroll lock for the keyboard window: Chromium's focus
+     scroll-into-view can programmatic-scroll the root scroller (an
+     overflow:hidden box is still a scroll container) by roughly a keyboard
+     height when the focused composer sits at the document floor, pushing the
+     in-flow chat top bar out of the shrunken viewport. The base html,body
+     rule above already hides document overflow; re-asserting it here pins the
+     lock to the keyboard state itself so the document layer can never
+     user-scroll while the keyboard is up (the programmatic raise is undone by
+     lib/keyboard.ts's scroll re-pin). Only the document layer is locked —
+     .content-area and .messages-area keep their own overflow behavior. */
   html.keyboard-open {
+    overflow: hidden;
     --mobile-nav-height: 0px;
   }
 }

@@ -57,6 +57,21 @@ export function isKeyboardShrink(
   return layoutViewportH - visualViewportH >= threshold
 }
 
+/**
+ * Pin the document scroll to the top. The root scroller (html, overflow:
+ * hidden) is still a scroll CONTAINER: Chromium's focus scroll-into-view can
+ * programmatic-scroll it by roughly a keyboard height when the focused
+ * composer sits at the document floor, pushing the in-flow chat top bar out
+ * of the shrunken viewport (html.keyboard-open's overflow:hidden only blocks
+ * user scrolling, not this raise). Re-run on every keyboard-open signal —
+ * focus lands first, then the IME show fires visual-viewport resizes, and
+ * Chromium may re-raise on each of them — so the pin rides both signals
+ * (focusin and viewport resize) while the keyboard heuristic holds.
+ */
+export function pinRootScroll(): void {
+  window.scrollTo(0, 0)
+}
+
 // Detach fn of the active tracking session; null while not tracking (guards
 // double init from HMR / repeated App mounts).
 let detach: (() => void) | null = null
@@ -87,13 +102,21 @@ export function initKeyboardTracking(): void {
   const onFocusIn = (e: FocusEvent) => {
     editableFocused = isEditableTarget(e.target)
     recompute()
+    // Keyboard open around this focus: undo the focus scroll-into-view raise
+    // Chromium may have applied to the root scroller just before this event.
+    if (keyboardVisible.value) pinRootScroll()
   }
   const onFocusOut = (e: FocusEvent) => {
     if (!isEditableTarget(e.target)) return
     editableFocused = false
     window.setTimeout(recompute, 0)
   }
-  const onVVResize = () => recompute()
+  const onVVResize = () => {
+    recompute()
+    // Re-pin on every IME-driven viewport change while the keyboard heuristic
+    // holds (the raise can recur per resize until the layout settles).
+    if (keyboardVisible.value) pinRootScroll()
+  }
 
   window.addEventListener('focusin', onFocusIn, true)
   window.addEventListener('focusout', onFocusOut, true)
