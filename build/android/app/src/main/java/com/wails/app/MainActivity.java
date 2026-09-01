@@ -126,6 +126,12 @@ public class MainActivity extends AppCompatActivity {
         settings.setAllowContentAccess(false);
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+        // App-like behavior: pinch zoom disabled (viewport meta user-scalable=no
+        // handles scaling); WebView honors the meta but Chrome's accessibility
+        // policy can ignore it, so turn the WebView zoom machinery off too
+        settings.setSupportZoom(false);
+        settings.setBuiltInZoomControls(false);
+        settings.setDisplayZoomControls(false);
 
         // Enable debugging in debug builds
         if (DEBUG) {

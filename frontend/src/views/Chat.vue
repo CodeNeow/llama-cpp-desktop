@@ -2245,9 +2245,15 @@ html[data-os='ios'] .send-btn:active:not(:disabled) {
      flex-shrink:0 band holding the model chip — and .chat-page never scrolls,
      so sticky never engaged here anyway. Re-pin it as position:relative so
      the band occupies the exact same box and still honors the shared
-     z-index:20 stacking above the messages band, pixel-identical to before. */
+     z-index:20 stacking above the messages band, pixel-identical to before.
+     top:auto cancels the base .sticky-top offset (global.css top:
+     var(--safe-area-top)): unlike static, relative positioning still applies
+     that offset, which double-counted the status-bar inset — .chat-page's own
+     padding-top already reserves the same inset, so the toolbar sat one inset
+     lower than the other pages' headers. top:auto restores alignment. */
   .chat-page .sticky-top {
     position: relative;
+    top: auto;
   }
 
   /* Chip + two 44px round buttons on one row: the chip shrinks (ellipsis in
