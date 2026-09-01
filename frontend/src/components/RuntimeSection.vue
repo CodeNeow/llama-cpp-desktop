@@ -57,6 +57,9 @@
               </span>
             </span>
           </div>
+          <!-- Phone tier (Aurora frame ④): the not-found state explains itself
+               under the card title before the download CTA -->
+          <p v-if="platformState.isMobile && !info.installed" class="missing-desc">{{ t('runtime.notFoundDesc') }}</p>
           <div class="info-item" v-if="info.version">
             <span class="info-label">{{ t('runtime.llamacpp.version') }}</span>
             <span class="info-value info-value-version">{{ info.version }}</span>
@@ -67,7 +70,11 @@
           </div>
           <div class="info-item info-item-full" v-if="downloadDir">
             <span class="info-label">{{ t('runtime.downloadDir') }}</span>
-            <span class="info-value path-value">{{ downloadDir }}</span>
+            <!-- Android (Aurora frame ③): download directory lives in
+                 app-internal storage managed by the OS — a friendly label
+                 instead of the raw sandbox path; other platforms keep the path -->
+            <span v-if="platformState.isAndroid" class="info-value info-value-version">{{ t('runtime.storageInternal') }}</span>
+            <span v-else class="info-value path-value">{{ downloadDir }}</span>
           </div>
         </div>
 
@@ -144,6 +151,9 @@
             <!-- Overall summary line + one row per package (the cudart row appears only
                  once its asset actually starts downloading; CPU/Vulkan builds never ship it) -->
             <div class="dl-info">
+              <!-- Phone tier (mockup .dlcard .t): "下载进度" title sharing the
+                   status line's row — title left, combined status right -->
+              <span v-if="platformState.isMobile" class="dl-card-title">{{ t('runtime.dlProgressTitle') }}</span>
               <span class="dl-label">{{ statusLabel[dlStatus.status] }}</span>
               <span class="dl-percent" v-if="dlStatus.status === 'downloading' || dlStatus.status === 'paused'">{{ dlStatus.progress }}%</span>
               <!-- Phone tier (mockup .dlcard .t .st): one combined accent /
@@ -573,6 +583,15 @@ html[data-theme='dark'] .comp-tile {
   color: #8b5cf6;
 }
 
+/* Phone-tier card title (mockup .dlcard .t left slot, "下载进度"): rendered
+   only behind the isMobile v-if inside .dl-info (flex row), so this base
+   style is phone-only already */
+.dl-card-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
 html[data-theme='dark'] .dl-status-line {
   color: #a78bfa;
 }
@@ -590,6 +609,16 @@ html[data-theme='dark'] .dl-status-line {
   margin: 10px 0 0;
   font-size: 11px;
   color: var(--text-dim);
+}
+
+/* Phone-tier not-found description (mockup frame ④ body text under the
+   "● 未找到" card title; rendered behind the isMobile v-if) */
+.missing-desc {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.8;
+  color: var(--text-secondary);
 }
 
 /* "About the runtime" island (mockup frame ③) */
@@ -1169,8 +1198,9 @@ html[data-theme='dark'] .dl-status-line {
     border-radius: 999px;
   }
 
-  /* Ops pills (mockup .pill): 999px radius, neutral pause / green resume /
-     red stop; min-height keeps the 44px touch target */
+  /* Ops pills (mockup .pill): 999px radius, neutral pause / gradient resume
+     (mockup .pill.g) / red-bg stop (mockup .pill.r); min-height keeps the 44px
+     touch target */
   .dl-btn {
     min-height: 44px;
     padding: 6px 13px;
@@ -1180,25 +1210,38 @@ html[data-theme='dark'] .dl-status-line {
   }
 
   .pause-btn {
-    background: var(--overlay-8);
+    background: var(--surface-2);
     color: var(--text-secondary);
     border-color: transparent;
   }
 
   .pause-btn:hover {
-    background: var(--overlay-10);
+    background: var(--surface-2);
     color: var(--text-secondary);
     border-color: transparent;
   }
 
+  .resume-btn {
+    background: var(--grad);
+    color: #fff;
+    border-color: transparent;
+    box-shadow: 0 4px 10px rgba(124, 92, 246, 0.35);
+  }
+
+  .resume-btn:hover {
+    background: var(--grad);
+    color: #fff;
+    border-color: transparent;
+  }
+
   .stop-btn {
-    background: rgba(239, 68, 68, 0.12);
+    background: var(--danger-bg);
     color: var(--danger);
     border-color: transparent;
   }
 
   .stop-btn:hover {
-    background: rgba(239, 68, 68, 0.2);
+    background: var(--danger-bg);
     color: var(--danger);
     border-color: transparent;
   }

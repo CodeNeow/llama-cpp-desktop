@@ -30,3 +30,28 @@ export function guessQuant(filename: string): string {
   }
   return ''
 }
+
+/**
+ * Minimal local-model facts the loaded-model size lookup needs.
+ * Mirrors the fields of the GetModels binding payload used here.
+ */
+export interface LocalModelFact {
+  name: string
+  sizeHuman: string
+}
+
+/**
+ * Human size of the local model a loaded router id was loaded from, for the
+ * dock's in-memory status line ("● 已加载 · 2.3 GB"). Matching mirrors the
+ * chat page's model identity rules: the router id is the model file name (or
+ * its sanitized alias), so an exact name match wins and a contained-name
+ * match is the fallback. Returns '' when nothing matches or the size is
+ * unknown — callers drop the segment instead of inventing one.
+ */
+export function matchLoadedModelSize(id: string, models: LocalModelFact[]): string {
+  if (!id) return ''
+  const exact = models.find((m) => m.name === id)
+  if (exact?.sizeHuman) return exact.sizeHuman
+  const contained = models.find((m) => id.includes(m.name) && m.sizeHuman)
+  return contained?.sizeHuman ?? ''
+}

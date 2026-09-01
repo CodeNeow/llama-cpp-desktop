@@ -33,7 +33,7 @@
           :model-value="selectedModel"
           :options="modelOptions"
           :disabled="serviceStarting || streaming"
-          :placeholder="t('chat.model')"
+          :placeholder="chipPlaceholder"
           :label="t('chat.model')"
           :empty-text="t('chat.noModels')"
           @update:model-value="pickModel"
@@ -343,18 +343,22 @@
           class="chat-input"
           rows="1"
           :placeholder="inputPlaceholder"
-          :disabled="serviceStarting || streaming || !selectedModel"
+          :disabled="serviceStarting || streaming || (!selectedModel && !isMobileTier)"
           @keydown="onInputKeydown"
           @input="onInputResize"
           @paste="onInputPaste"
         ></textarea>
         <!-- Design frame ② composer: circular gradient send button that
              flips to a red circular stop button while streaming — the state
-             must read at a glance, so the icons + aria-labels swap with it. -->
+             must read at a glance, so the icons + aria-labels swap with it.
+             Phone tier (frame ⑦): with no model selected the button stays
+             enabled so tapping it runs the chatReadiness precheck, which
+             surfaces the guided "no models" notice + download CTA instead of
+             a dead button; the desktop keeps the disabled gate unchanged. -->
         <button
           v-if="!streaming"
           class="send-btn"
-          :disabled="serviceStarting || !selectedModel"
+          :disabled="serviceStarting || (!selectedModel && !isMobileTier)"
           :aria-label="t('chat.send')"
           :title="t('chat.send')"
           @click="send"
@@ -473,12 +477,25 @@ const modelOptions = computed<SelectOption[]>(() => localModels.value.map((m) =>
  * ~3 lines inside the narrow phone input. Phones (viewport tier, reactive —
  * follows window resizes across breakpoints) get the short copy instead;
  * desktop keeps the original text and behavior unchanged. A blocked precheck
- * (no models / runtime missing) swaps in the guided copy on phone.
+ * (no models / runtime missing) swaps in the guided copy on phone — and an
+ * empty model directory blocks the composer outright, so the same guided copy
+ * shows there (frame ⑦ "先下载模型后即可发送").
  */
 const inputPlaceholder = computed(() => {
-  if (isMobileTier.value && composerBlocked.value) return t('chat.blockedPlaceholder')
+  if (isMobileTier.value && (composerBlocked.value || modelOptions.value.length === 0)) {
+    return t('chat.blockedPlaceholder')
+  }
   return platform.value.isMobile ? t('chat.inputPlaceholderShort') : t('chat.inputPlaceholder')
 })
+
+/**
+ * Model-chip placeholder (frame ⑦): with an empty directory the phone chip
+ * reads "暂无可用模型" instead of the bare "模型" label; desktop keeps the
+ * original placeholder text.
+ */
+const chipPlaceholder = computed(() =>
+  isMobileTier.value && modelOptions.value.length === 0 ? t('chat.noModels') : t('chat.model')
+)
 
 /**
  * Phone params-sheet control ranges (design frame ⑤). Slider params are

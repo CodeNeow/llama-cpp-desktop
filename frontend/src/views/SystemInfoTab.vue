@@ -113,7 +113,11 @@
             <div class="hero-num">{{ heroTps }}</div>
             <div class="hero-lbl">{{ t('home.hero.metricLbl') }}</div>
           </div>
-          <router-link class="hero-cta" to="/chat">{{ t('home.hero.cta') }}</router-link>
+          <!-- Phone tier (Aurora frame ①): the offline hero is a pure status
+               statement — the "enter chat" CTA only renders while the service
+               is actually ready (frame ②); desktop keeps the CTA in every
+               state (existing desktop look untouched). -->
+          <router-link v-if="serviceRunning || !platformState.isMobile" class="hero-cta" to="/chat">{{ t('home.hero.cta') }}</router-link>
         </div>
       </section>
 
@@ -573,6 +577,9 @@ const heroModel = computed(() => {
 const heroSub = computed(() => {
   if (residentModel.value) return t('home.hero.subResident')
   if (serviceRunning.value) return t('home.hero.subIdle')
+  // Phone tier (Aurora frame ①): while the quick-start checklist is on screen
+  // the offline subline points at it ("finish steps 1–2 above")
+  if (platformState.value.isMobile && onboardingView.value.visible) return t('home.hero.subOnboard')
   return t('home.hero.subOffline')
 })
 
@@ -1661,6 +1668,11 @@ onUnmounted(() => {
   .onboarding-head .section-title {
     font-size: 13px;
     font-weight: 700;
+  }
+
+  /* Mockup .check h4 has no leading icon — plain "快速上手" text only */
+  .onboarding-head .section-title svg {
+    display: none;
   }
 
   .onboarding-steps {

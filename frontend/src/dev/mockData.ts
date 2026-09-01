@@ -63,7 +63,10 @@ const llamaCpp = {
   version: 'b5913',
   cudartInstalled: false,
   cudartVersion: '',
-  accel: 'cpu',
+  // Android probe cannot detect the accel backend (no DLLs to inspect), so it
+  // reports '' and the UI falls back to the platform build guess
+  // (cpuArm64 → "加速构建 · cpuArm64（NEON）", Aurora frame ③).
+  accel: '',
 }
 
 const disk = { path: 'C:\\', used: 231 * GiB, total: 512 * GiB }
@@ -320,9 +323,16 @@ const llamacppDl = {
   error: '',
 }
 
+// Simulated download rate: the rtdl scenario slows the transfer down so the
+// "downloading" walkthrough state stays on screen (~55s to completion at the
+// 45% start) instead of flipping to done within seconds.
+function llamacppDlRate(): number {
+  return scenario === 'rtdl' ? 400_000 : 6_400_000
+}
+
 function llamacppDownloaded(): number {
   if (llamacppDl.status === 'downloading') {
-    const bytes = Math.min(llamacppDl.total, llamacppDl.base + ((Date.now() - llamacppDl.since) / 1000) * 6_400_000)
+    const bytes = Math.min(llamacppDl.total, llamacppDl.base + ((Date.now() - llamacppDl.since) / 1000) * llamacppDlRate())
     if (bytes >= llamacppDl.total) {
       llamacppDl.status = 'done'
       llamacppDl.base = llamacppDl.total
@@ -485,6 +495,94 @@ const chatReply =
   '真正的安卓构建会通过 Wails 绑定调用 Go 后端，由本机 llama-server 直接以 SSE 返回 OpenAI 兼容流。' +
   '这条回答结束后，可以试试底部标签栏的页面切换、TaskDock 的模型卸载按钮，以及把窗口拉宽对比桌面档布局。'
 
+// Reasoning prelude streamed BEFORE the answer when the ?sc=chatthink scenario
+// is active (design frame ⑥: collapsible thinking block + auto collapse).
+const chatThinkReasoning =
+  '用户在 16GB 内存的手机上运行 4B Q4 模型，权重约 2.3GB，需要为 KV 缓存预留足够的空间。' +
+  '上下文从 4096 起步比较稳妥；若系统仍有富余，再逐步加倍并观察内存水位。'
+
+// ─── Walkthrough scenarios (?sc=…, dev-only) ─────────────────────────────────
+// The phone-layout walkthrough (docs/branding/android-design-a-aurora.html
+// frames) needs states the interactive UI cannot reach quickly (fresh
+// first-use, mid-download runtime, blocked chat). A `sc` query param
+// reshuffles the initial fake-backend state at module load. This module is
+// only wired in by `vite --mode mock` (see vite.config.ts), so production
+// builds never read the query string.
+
+const scenario = new URLSearchParams(window.location.search).get('sc') ?? ''
+
+// Companion of ?sc=: ?th=dark boots the mock config with the dark theme so
+// walkthrough captures of the dark rail survive page reloads.
+const themeParam = new URLSearchParams(window.location.search).get('th') ?? ''
+
+function applyScenario(name: string): void {
+  if (themeParam === 'dark') {
+    config.theme = 'dark'
+  }
+  if (name === 'firstuse') {
+    // Frame ①: fresh install — no runtime, no models, service stopped,
+    // quick-start checklist not dismissed.
+    serverRunning = false
+    llamaCpp.installed = false
+    llamaCpp.version = ''
+    llamaCpp.accel = ''
+    models.length = 0
+    config.onboardingDismissed = false
+    tasks.length = 0
+  } else if (name === 'rtdl' || name === 'rtpause' || name === 'rtextract' || name === 'rtfail') {
+    // Frame ④: runtime not installed + the download card in one of its
+    // non-idle states (downloading / paused / extracting / failed).
+    serverRunning = false
+    llamaCpp.installed = false
+    llamaCpp.version = ''
+    config.onboardingDismissed = true
+    tasks.length = 0
+    llamacppDl.total = 40_200_000
+    llamacppDl.version = 'b5913'
+    if (name === 'rtdl') {
+      llamacppDl.status = 'downloading'
+      llamacppDl.base = Math.floor(40_200_000 * 0.45)
+      llamacppDl.since = Date.now()
+    } else if (name === 'rtpause') {
+      llamacppDl.status = 'paused'
+      llamacppDl.paused = true
+      llamacppDl.base = Math.floor(40_200_000 * 0.62)
+    } else if (name === 'rtextract') {
+      llamacppDl.status = 'extracting'
+      llamacppDl.base = 40_200_000
+    } else {
+      llamacppDl.status = 'error'
+      llamacppDl.error = 'download failed: mock scenario (network reset)'
+    }
+  } else if (name === 'chatnomodels') {
+    // Frame ⑦: no local models — gray model chip, 📦 empty state, blocked
+    // composer; tapping send surfaces the guided precheck notice.
+    serverRunning = false
+    models.length = 0
+    config.onboardingDismissed = true
+    tasks.length = 0
+  } else if (name === 'chatstarting') {
+    // Frame ⑦ top card: StartServerWithModel stalls ~8s so the "starting"
+    // notice stays on screen long enough to capture.
+    serverRunning = false
+    config.onboardingDismissed = true
+    tasks.length = 0
+  } else if (name === 'chatthink') {
+    // Frame ⑥: service running (default state) + the chat stream grows a
+    // reasoning prelude (see mockChatThinkParts).
+  } else if (name === 'dock') {
+    // Frame ⑲: runtime download resumed at ~63% alongside the default
+    // downloading model task and the resident in-memory model.
+    llamacppDl.status = 'downloading'
+    llamacppDl.total = 58_000_000
+    llamacppDl.base = Math.floor(58_000_000 * 0.63)
+    llamacppDl.since = Date.now()
+    llamacppDl.version = 'b5913'
+  }
+}
+
+applyScenario(scenario)
+
 // ─── Handler table (keyed by bare binding method name) ───────────────────────
 
 export const handlers: Record<string, (...args: any[]) => any> = {
@@ -579,7 +677,10 @@ export const handlers: Record<string, (...args: any[]) => any> = {
     loadedModels = [{ id: residentModel, type: 'chat', status: 'loaded' }]
     startServerLogs()
   },
-  StartServerWithModel: (model: string) => {
+  StartServerWithModel: async (model: string) => {
+    // chatstarting scenario: stall the bring-up so the "starting service"
+    // notice stays visible for the walkthrough capture.
+    if (scenario === 'chatstarting') await sleep(30000)
     if (!serverRunning) {
       serverRunning = true
       serverStartedAt = Date.now()
@@ -820,4 +921,13 @@ export function mockAddServerLog(text: string): void {
 /** The canned streamed chat reply (used by the chat fetch mock). */
 export function mockChatReply(): string {
   return chatReply
+}
+
+/**
+ * Reasoning prelude for the ?sc=chatthink scenario (design frame ⑥): streamed
+ * as `reasoning_content` deltas BEFORE the answer; null in every other
+ * scenario so the default chat behavior is unchanged.
+ */
+export function mockChatThinkParts(): { reasoning: string; content: string } | null {
+  return scenario === 'chatthink' ? { reasoning: chatThinkReasoning, content: chatReply } : null
 }

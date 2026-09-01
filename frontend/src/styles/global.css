@@ -526,6 +526,17 @@ html[data-theme='dark'] .skel {
   font-family: inherit;
 }
 
+/* Phone tier (Aurora frame ㉑ .retry): the retry pill reads as a danger
+   action — tinted red background + red label over the neutral desktop skin.
+   Scoped to the phone media query so the desktop DocsReader pill keeps its
+   exact current look. */
+@media (max-width: 767px) {
+  .retry {
+    background: var(--danger-bg, rgba(239, 68, 68, 0.12));
+    color: var(--danger);
+  }
+}
+
 /* Empty card: centered icon + title + sub + gradient CTA pill */
 .emptycard {
   background: var(--bg-secondary);

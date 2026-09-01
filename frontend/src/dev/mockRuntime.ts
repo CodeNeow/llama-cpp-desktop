@@ -21,7 +21,7 @@
  * visible, never silently swallowed.
  */
 
-import { handlers, mockServerPort, mockServerRunning, mockLoadedModels, mockAddServerLog, mockChatReply } from './mockData'
+import { handlers, mockServerPort, mockServerRunning, mockLoadedModels, mockAddServerLog, mockChatReply, mockChatThinkParts } from './mockData'
 
 // ─── CancellablePromise ──────────────────────────────────────────────────────
 
@@ -214,13 +214,24 @@ const json = (body: unknown, status = 200): Response =>
 /** OpenAI-compatible SSE stream with a visibly paced typing effect.
  * Honors the request's AbortSignal: the chat page's stop button aborts the
  * fetch, so the stream must stop enqueueing and error the controller (mirrors
- * a real fetch, whose body reader rejects with the abort reason). */
+ * a real fetch, whose body reader rejects with the abort reason).
+ * With the ?sc=chatthink scenario active, a reasoning prelude streams first
+ * as `reasoning_content` deltas (design frame ⑥ collapsible think block). */
 function chatCompletionResponse(signal?: AbortSignal | null): Response {
   const encoder = new TextEncoder()
   const reply = mockChatReply()
   // 2-character slices ≈ one CJK token per chunk, 30ms apart.
   const pieces: string[] = []
   for (let i = 0; i < reply.length; i += 2) pieces.push(reply.slice(i, i + 2))
+  const think = mockChatThinkParts()
+  const reasoningPieces: string[] = []
+  if (think) {
+    for (let i = 0; i < think.reasoning.length; i += 2) reasoningPieces.push(think.reasoning.slice(i, i + 2))
+  }
+  // chatthink scenario: a visibly slower pace so the transient streaming
+  // states (expanded think block / typing dots / red stop) stay observable
+  // during the walkthrough capture.
+  const pace = think ? 150 : 30
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {
       // Abort mid-stream: surface the abort reason to the body reader so the
@@ -238,8 +249,21 @@ function chatCompletionResponse(signal?: AbortSignal | null): Response {
       }
       signal?.addEventListener('abort', onAbort, { once: true })
       try {
+        for (const piece of reasoningPieces) {
+          await sleep(pace)
+          if (signal?.aborted) return // listener already errored the controller
+          try {
+            controller.enqueue(
+              encoder.encode('data: ' + JSON.stringify({ choices: [{ delta: { reasoning_content: piece } }] }) + '\n\n'),
+            )
+          } catch {
+            // Abort raced the enqueue (flag read just before the listener fired):
+            // the controller is already errored, so stop feeding it silently.
+            return
+          }
+        }
         for (const piece of pieces) {
-          await sleep(30)
+          await sleep(pace)
           if (signal?.aborted) return // listener already errored the controller
           try {
             controller.enqueue(

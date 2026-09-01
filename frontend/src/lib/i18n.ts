@@ -94,6 +94,9 @@ export const messages: Record<Locale, Record<string, string>> = {
     'home.hero.subResident': '本机直连 · 已驻留内存 · 无需等待',
     'home.hero.subIdle': '服务运行中 · 首次对话时自动加载模型',
     'home.hero.subOffline': '服务未运行 · 发送消息时自动启动',
+    // Phone-tier offline hero subline while the quick-start checklist is up
+    // (Aurora frame ①: the hero points at the checklist steps)
+    'home.hero.subOnboard': '先完成上方步骤 ① ②，AI 就绪后这里会亮起',
     'home.hero.standby': '待命',
     // The hero metric is the rolling 60s average of the decode speed (same
     // figure the Api page charts), so the label names the averaging window.
@@ -174,6 +177,14 @@ export const messages: Record<Locale, Record<string, string>> = {
     'runtime.customPath': '自定义路径：',
     // Android storage hint under the download CTA (Aurora frame ④)
     'runtime.storageHint': 'Android 使用应用内存储，路径由系统管理',
+    // Phone-tier not-found description (Aurora frame ④, body text under the
+    // "● 未找到" card title)
+    'runtime.notFoundDesc': '尚未检测到推理运行时。下载后即可在本机运行 GGUF 模型，全程离线。',
+    // Android download-directory value (Aurora frame ③: app-internal storage,
+    // the raw sandbox path is system-managed and not user-meaningful)
+    'runtime.storageInternal': '应用内存储',
+    // Phone-tier download-card title (Aurora frame ④ .dlcard .t left slot)
+    'runtime.dlProgressTitle': '下载进度',
     'runtime.pause': '暂停',
     'runtime.resume': '继续',
     'runtime.stop': '取消',
@@ -731,6 +742,9 @@ export const messages: Record<Locale, Record<string, string>> = {
     'home.hero.subResident': 'Local direct · resident in memory · zero wait',
     'home.hero.subIdle': 'Service running · the model loads on your first chat',
     'home.hero.subOffline': 'Service stopped · starts automatically on your first message',
+    // Phone-tier offline hero subline while the quick-start checklist is up
+    // (Aurora frame ①: the hero points at the checklist steps)
+    'home.hero.subOnboard': 'Finish steps 1–2 above and the AI lights up here',
     'home.hero.standby': 'Standby',
     // The hero metric is the rolling 60s average of the decode speed (same
     // figure the Api page charts), so the label names the averaging window.
@@ -811,6 +825,14 @@ export const messages: Record<Locale, Record<string, string>> = {
     'runtime.customPath': 'Custom path:',
     // Android storage hint under the download CTA (Aurora frame ④)
     'runtime.storageHint': 'Android uses app-internal storage; the path is managed by the system',
+    // Phone-tier not-found description (Aurora frame ④, body text under the
+    // "● Not found" card title)
+    'runtime.notFoundDesc': 'No inference runtime detected yet. Download it to run GGUF models locally, fully offline.',
+    // Android download-directory value (Aurora frame ③: app-internal storage,
+    // the raw sandbox path is system-managed and not user-meaningful)
+    'runtime.storageInternal': 'App storage',
+    // Phone-tier download-card title (Aurora frame ④ .dlcard .t left slot)
+    'runtime.dlProgressTitle': 'Download progress',
     'runtime.pause': 'Pause',
     'runtime.resume': 'Resume',
     'runtime.stop': 'Cancel',

@@ -62,12 +62,14 @@
             </div>
           </div>
 
-          <!-- Llama.cpp download -->
-          <div v-if="llamaActive" class="dock-task">
+          <!-- Llama.cpp download. The phone tier (frame ⑲ mockup) keeps a
+               finished runtime row visible ("✓ 已完成") alongside active ones;
+               desktop hides done rows (downloads page owns the history there). -->
+          <div v-if="llamaActive || (isMobileTier && llamaStatus.status === 'done')" class="dock-task">
             <div class="dock-task-header">
               <span class="dock-row-badge badge-runtime">{{ t('dock.badge.runtime') }}</span>
               <span class="dock-task-name">llama.cpp</span>
-              <span class="dock-task-status" :class="'status-' + llamaStatus.status">{{ statusLabel(llamaStatus.status) }}</span>
+              <span class="dock-task-status" :class="'status-' + llamaStatus.status">{{ llamaRowLabel }}</span>
             </div>
             <div v-if="isProgressStatus(llamaStatus.status)" class="dock-bar-wrap">
               <div class="dock-bar">
@@ -212,12 +214,14 @@ import {
   getDownloadTasks,
   getServerStatus,
   getLoadedModels,
+  getModels,
   unloadModel,
   pauseDownloadTask,
   resumeDownloadTask,
   cancelDownloadTask
 } from '../wails'
 import { formatSpeed } from '../lib/format'
+import { matchLoadedModelSize } from '../lib/modelFiles'
 import { activeLlamaCppDownload, activeModelTasks, activeUpdateDownload, shouldShowDock } from '../lib/dock'
 import { dockNudgeCounter, nudgeDock } from '../lib/dockNudge'
 import { dockLane, dockSide, dockWidth, useDockReserve } from '../lib/dockSpace'
@@ -274,6 +278,22 @@ const serverRunning = ref(false)
 
 // Loaded models from router
 const loadedModels = ref<LoadedModel[]>([])
+
+// Phone tier (frame ⑳): human size per loaded router id, matched from the
+// local model scan (the router payload carries no size). The scan runs once
+// per mount — sizes never change while running — and the map re-derives from
+// the live loaded list, so rows that appear later still get their size.
+const localModelFacts = ref<{ name: string; sizeHuman: string }[]>([])
+
+const loadedModelSizes = computed<Record<string, string>>(() => {
+  const sizes: Record<string, string> = {}
+  if (!isMobileTier.value) return sizes
+  for (const m of loadedModels.value) {
+    const size = matchLoadedModelSize(m.id, localModelFacts.value)
+    if (size) sizes[m.id] = size
+  }
+  return sizes
+})
 
 // Unload state
 const unloadingId = ref('')
@@ -768,12 +788,25 @@ function phoneTaskStatus(task: { status: string; progress: number; speed: number
   return statusLabel(task.status)
 }
 
+// llama.cpp row label: the phone tier names the finished state with the
+// ✓-prefixed copy (frame ⑳ "✓ 已完成"); every other state and the desktop
+// keep the shared downloads-page vocabulary (done maps to '' there, where the
+// row is hidden anyway).
+const llamaRowLabel = computed(() =>
+  isMobileTier.value && llamaStatus.value.status === 'done' ? t('dock.statusDone') : statusLabel(llamaStatus.value.status)
+)
+
 // Phone in-memory status: a live dot prefixes the loaded state (frame ⑳
-// .ds.g); loading/sleeping/unloading keep the shared labels on both tiers.
-// Size segment deferred: the router payload carries no model size field.
+// .ds.g) plus the model's size segment matched from the local scan
+// ("● 已加载 · 2.3 GB"); loading/sleeping/unloading keep the shared labels on
+// both tiers. Size segment dropped (no invented values) when no local model
+// matches.
 function phoneModelStatus(model: LoadedModel): string {
   if (unloadingId.value === model.id) return t('dock.unloading')
-  if (isMobileTier.value && model.status === 'loaded') return t('dock.modelStatus.loadedDot')
+  if (isMobileTier.value && model.status === 'loaded') {
+    const size = loadedModelSizes.value[model.id]
+    return size ? `${t('dock.modelStatus.loadedDot')} · ${size}` : t('dock.modelStatus.loadedDot')
+  }
   return modelStatusLabel(model.status)
 }
 
@@ -809,8 +842,23 @@ function truncatedName(name: string, maxLen = 22): string {
 
 // ─── Lifecycle ────────────────────────────────────────────────────
 
+// One-shot local scan feeding the phone status-line size segment (see
+// loadedModelSizes): always fetched — the tier gate lives in the computed,
+// and gating the fetch itself would race the platform state's first
+// resolution (a desktop-class first frame would skip it forever). Best-effort:
+// a failed or empty scan just leaves the size segment off the in-memory rows.
+async function fetchModelSizes(): Promise<void> {
+  try {
+    const list = (await getModels()) as { name: string; sizeHuman: string }[]
+    localModelFacts.value = Array.isArray(list) ? list : []
+  } catch {
+    // Standalone vite / scan failure: the size segment stays hidden
+  }
+}
+
 onMounted(() => {
   startPolling()
+  fetchModelSizes()
   window.addEventListener('resize', onWindowResize, { passive: true })
 })
 

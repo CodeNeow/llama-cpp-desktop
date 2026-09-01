@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { sortModelFiles, guessQuant } from '../lib/modelFiles'
+import { sortModelFiles, guessQuant, matchLoadedModelSize } from '../lib/modelFiles'
 
 describe('sortModelFiles', () => {
   // sort by size descending; missing size defaults to 0 (sorted to end)
@@ -59,5 +59,36 @@ describe('guessQuant', () => {
   it('no quantization recognized returns empty string', () => {
     expect(guessQuant('model.gguf')).toBe('')
     expect(guessQuant('README.md')).toBe('')
+  })
+})
+
+describe('matchLoadedModelSize', () => {
+  // Dock in-memory rows (frame ⑳): the loaded router id maps back to the
+  // local scan's human size; no match / unknown size drops the segment ('')
+  const models = [
+    { name: 'Qwen3-4B-Instruct-Q4_K_M', sizeHuman: '2.3 GB' },
+    { name: 'Llama-3.2-3B-Q5_K_M', sizeHuman: '2.1 GB' },
+    { name: 'NoSize-Model', sizeHuman: '' },
+  ]
+
+  it('exact name match returns its size', () => {
+    expect(matchLoadedModelSize('Qwen3-4B-Instruct-Q4_K_M', models)).toBe('2.3 GB')
+  })
+
+  it('contained-name match (sanitized router id) returns the size', () => {
+    expect(matchLoadedModelSize('Qwen3-4B-Instruct-Q4_K_M.gguf', models)).toBe('2.3 GB')
+    expect(matchLoadedModelSize('dir/Llama-3.2-3B-Q5_K_M', models)).toBe('2.1 GB')
+  })
+
+  it('no match returns empty string', () => {
+    expect(matchLoadedModelSize('Gemma-2-2B', models)).toBe('')
+  })
+
+  it('match without a usable size returns empty string', () => {
+    expect(matchLoadedModelSize('NoSize-Model', models)).toBe('')
+  })
+
+  it('empty id returns empty string', () => {
+    expect(matchLoadedModelSize('', models)).toBe('')
   })
 })

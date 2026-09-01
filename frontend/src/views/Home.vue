@@ -35,8 +35,12 @@
            navigation stay correct. The row's right side carries the system
            tab's updated-at stamp + refresh toolbar, wired to the SystemInfoTab
            instance through its exposed API and shown only while that tab is
-           active. -->
-      <div class="env-tabs-row">
+           active. Phone tier (Aurora frame ①): while the quick-start checklist
+           is up on the system tab the row is hidden entirely — the checklist
+           IS the first-use screen; the runtime tab keeps its row (frames ③/④),
+           so the checklist's own links remain the way in and the tab row the
+           way back. -->
+      <div v-if="!phoneHideTabs" class="env-tabs-row">
         <div class="env-tabs" role="tablist" :aria-label="t('home.title')">
           <button
             v-for="tab in tabs"
@@ -206,6 +210,13 @@ const panelId = 'home-panel'
 // else under the shell (/system, and the bare / while the default resolver is
 // still probing) shows the system tab
 const activeTabId = computed(() => (route.path.startsWith('/runtime') ? 'tab-runtime' : 'tab-system'))
+
+// Phone tier (Aurora frame ①): the tab row disappears while the quick-start
+// checklist owns the system tab — the checklist state has no tab strip in the
+// mockup. The runtime tab (frames ③/④) always keeps its row.
+const phoneHideTabs = computed(
+  () => platformState.value.isMobile && showOnboardHint.value && activeTabId.value === 'tab-system'
+)
 
 // Exposed API of the system tab (SystemInfoTab.vue defineExpose): the refresh
 // toolbar beside the tab bar delegates the manual re-probe to the active
@@ -498,11 +509,13 @@ const tabs = [
     white-space: nowrap;
   }
 
-  /* First-use guidance (mockup frame ①): the "complete the 3 steps" line
-     drops onto its own row under the status instead of competing with it */
+  /* First-use guidance (mockup frame ① .h-greet p): the "complete the 3
+     steps" note rides the SAME line as the red status — dot + red bold
+     status + muted note, single-line ellipsis when space runs out (no wrap
+     onto a second row) */
   .greet-hint {
-    flex-basis: 100%;
-    margin-left: 19px;
+    flex-basis: auto;
+    margin-left: 0;
   }
 
   /* Tab row: pill chips (mockup .tabs), no underline, refresh stays on the
