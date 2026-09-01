@@ -1168,6 +1168,36 @@ onUnmounted(() => {
   padding: var(--safe-area-top, 0px) 48px 0 max(72px, calc(16px + var(--dock-width, 0px) + 8px));
 }
 
+/* ─── Desktop centered column: 860px on >=1100px (Aurora D6) ───
+   The chat column is centered with auto side margins; the base 48px gutters
+   collapse into the centered column. Dock lane paddings are preserved via
+   the higher-specificity --dock-right/--dock-left rules below. */
+@media (min-width: 1100px) {
+  .chat-page {
+    max-width: 860px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  /* Dock lanes still apply inside the centered column */
+  .chat-page--dock-right {
+    padding-right: max(72px, calc(16px + var(--dock-width, 0px) + 8px));
+  }
+
+  .chat-page--dock-left {
+    padding-left: max(72px, calc(16px + var(--dock-width, 0px) + 8px));
+  }
+}
+
+/* ─── Tablet centered column: 720px on 768-1099px (Aurora D6) ─── */
+@media (min-width: 768px) and (max-width: 1099px) {
+  .chat-page {
+    max-width: 720px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
+
 /* Never compress the fixed header/input bands; the messages area absorbs overflow instead */
 .chat-page .sticky-top {
   flex-shrink: 0;
@@ -1457,20 +1487,29 @@ html[data-os='ios'] .chat-model-select :deep(button.themed-select__trigger:activ
   padding: 48px 0;
   color: var(--text-dim);
   font-size: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
 }
 
-/* Desktop renders the original single-line hint: the emoji mark and the
-   sub-caption added for the phone empty state (frame ⑦) are hidden, and the
-   title line inherits the hint's font exactly. */
-.empty-ico,
-.empty-sub {
-  display: none;
+.empty-ico {
+  font-size: 32px;
+  line-height: 1;
 }
 
 .empty-title {
-  display: inline;
-  font: inherit;
-  color: inherit;
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.empty-sub {
+  display: block;
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.6;
 }
 
 /* ─── Phone params sheet (design frame ⑤ .dim / .sheet) ───
@@ -2332,6 +2371,7 @@ html[data-os='ios'] .send-btn:active:not(:disabled) {
   /* Two-line empty states (frame ⑦ .emptystate): emoji mark + bold title +
      muted sub-caption */
   .empty-hint {
+    display: block;
     padding: 60px 20px 0;
     color: var(--text-muted);
   }

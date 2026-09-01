@@ -330,6 +330,15 @@ onMounted(() => {
   gap: 12px;
 }
 
+/* Desktop two-column grid: 1280px+ (Aurora D5) */
+@media (min-width: 1280px) {
+  .model-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+}
+
 .model-card {
   display: flex;
   align-items: flex-start;
@@ -344,6 +353,11 @@ onMounted(() => {
 
 .model-card:hover {
   border-color: var(--overlay-10);
+}
+
+.model-card:active {
+  border-color: var(--overlay-20);
+  background: var(--bg-secondary);
 }
 
 /* 48px gradient icon brick (frame ③ .tile): soft brand-gradient wash with the
@@ -515,6 +529,17 @@ html[data-os='ios'] .model-settings-btn:active {
   overflow: hidden;
   text-overflow: ellipsis;
   line-height: 1.4;
+}
+
+/* Desktop card chips/path alignment (Aurora D13) */
+@media (min-width: 768px) {
+  .model-meta {
+    gap: 10px;
+  }
+
+  .meta-tag {
+    padding: 3px 12px;
+  }
 }
 
 /* ─── Empty ─── */

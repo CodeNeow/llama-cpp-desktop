@@ -11,8 +11,13 @@
            shapes layout only — the mobile bottom nav bar takes over at
            <=767px while the title bar band stays via --titlebar-h. -->
       <div class="title-bar" v-if="platformState.supportsFramelessTitlebar && isDesktop">
-        <div></div>
-        <!-- macOS keeps the colorful dots (matches existing style); Windows / Linux / unknown use native flat buttons -->
+        <!-- Breadcrumb: brand + current page name (design frame ㉒ .titlebar .crumb) -->
+        <div class="titlebar-crumb">
+          <span class="titlebar-brand">{{ t('title.brand') }}</span>
+          <span class="titlebar-sep">·</span>
+          <span class="titlebar-page">{{ pageTitle }}</span>
+        </div>
+        <!-- macOS keeps the colorful dots (matches existing style); Windows / Linux / unknown use rounded 34x26 chip buttons -->
         <template v-if="platform === 'darwin'">
           <div class="window-controls">
             <button class="win-btn win-min" @click="minimize" :title="t('title.minimize')">
@@ -26,21 +31,21 @@
             </button>
           </div>
         </template>
-        <!-- Windows / Linux / unknown: native flat buttons, 46x36 px filling the title bar -->
+        <!-- Windows / Linux / unknown: rounded 34x26 chip buttons (design frame ㉒ .titlebar .winctl i) -->
         <div v-else class="window-controls native">
           <button class="native-btn" @click="minimize" :title="t('title.minimize')">
-            <svg width="10" height="10" viewBox="0 0 10 10"><line x1="1" y1="5" x2="9" y2="5" stroke="currentColor" stroke-width="1"/></svg>
+            <svg width="12" height="12" viewBox="0 0 12 12"><line x1="2" y1="6" x2="10" y2="6" stroke="currentColor" stroke-width="1.2"/></svg>
           </button>
           <button class="native-btn" @click="maximize" :title="isMax ? t('title.restore') : t('title.maximize')">
             <!-- Maximize: hollow square; restore: two overlapping squares (rear offset 3,3 semi-transparent + front 0.5,0.5) -->
-            <svg v-if="!isMax" width="10" height="10" viewBox="0 0 10 10"><rect x="1" y="1" width="8" height="8" stroke="currentColor" stroke-width="1" fill="none"/></svg>
-            <svg v-else width="10" height="10" viewBox="0 0 10 10">
-              <rect x="3" y="3" width="7" height="7" stroke="currentColor" stroke-width="1" fill="none" opacity="0.35"/>
-              <rect x="0.5" y="0.5" width="7" height="7" stroke="currentColor" stroke-width="1" fill="none"/>
+            <svg v-if="!isMax" width="12" height="12" viewBox="0 0 12 12"><rect x="2" y="2" width="8" height="8" stroke="currentColor" stroke-width="1.1" fill="none"/></svg>
+            <svg v-else width="12" height="12" viewBox="0 0 12 12">
+              <rect x="4" y="4" width="7" height="7" stroke="currentColor" stroke-width="1" fill="none" opacity="0.35"/>
+              <rect x="1" y="1" width="7" height="7" stroke="currentColor" stroke-width="1" fill="none"/>
             </svg>
           </button>
           <button class="native-btn close" @click="closeWindow" :title="t('title.close')">
-            <svg width="10" height="10" viewBox="0 0 10 10"><line x1="1" y1="1" x2="9" y2="9" stroke="currentColor" stroke-width="1.2"/><line x1="9" y1="1" x2="1" y2="9" stroke="currentColor" stroke-width="1.2"/></svg>
+            <svg width="12" height="12" viewBox="0 0 12 12"><line x1="2" y1="2" x2="10" y2="10" stroke="currentColor" stroke-width="1.3"/><line x1="10" y1="2" x2="2" y2="10" stroke="currentColor" stroke-width="1.3"/></svg>
           </button>
         </div>
       </div>
@@ -103,13 +108,17 @@ const platformState = usePlatform()
 const route = useRoute()
 const isFixedPage = computed(() => route.meta.fixed === true)
 
+// Titlebar breadcrumb page name: route.meta.title stores an i18n key; resolve
+// it through t() so the crumb always shows the localized page name.
+const pageTitle = computed(() => t(route.meta.title as string))
+
 // Custom-property height of the title bar band, consumed by the fixed-viewport
-// page shells (global.css .page-fixed, Chat.vue .chat-page): 36px while the
+// page shells (global.css .page-fixed, Chat.vue .chat-page): 40px while the
 // bar renders, 0px otherwise. Derived from the OS-scoped
 // supportsFramelessTitlebar capability (correct at any viewport width — media
 // queries cannot see the OS); fixed pages then always fill the visible
 // viewport exactly.
-const titlebarH = computed(() => (isDesktop && platformState.value.supportsFramelessTitlebar ? '36px' : '0px'))
+const titlebarH = computed(() => (isDesktop && platformState.value.supportsFramelessTitlebar ? '40px' : '0px'))
 
 // Current OS: 'darwin' (macOS) / 'windows' / 'linux' / empty string (unknown or backend unavailable)
 // Drives window-control button platform adaptation: macOS keeps the colorful dots, other platforms use native flat buttons
@@ -242,7 +251,7 @@ async function closeWindow() {
 
 /* ─── Title bar ─── */
 .title-bar {
-  height: 36px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -252,11 +261,40 @@ async function closeWindow() {
   flex-shrink: 0;
 }
 
+/* Breadcrumb (design frame ㉒ .titlebar .crumb): brand bold + muted page name */
+.titlebar-crumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  min-width: 0;
+  flex-shrink: 1;
+  overflow: hidden;
+}
+
+.titlebar-brand {
+  font-weight: 700;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.titlebar-sep {
+  color: var(--text-dim);
+  user-select: none;
+}
+
+.titlebar-page {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ─── Two window-control button styles ───
  * darwin (macOS): .win-btn colorful dots (yellow/green/red), matching the system look;
- * windows / linux / unknown: .window-controls.native flat square-corner buttons,
- *   36px tall filling the title bar, hover background var(--overlay-20), close button hover red with white glyph.
- * Trigger: render the dots when platform === 'darwin', otherwise the native flat group.
+ * windows / linux / unknown: .window-controls.native rounded 34x26 chip buttons,
+ *   hover background var(--surface-2), close button hover red with white glyph.
+ * Trigger: render the dots when platform === 'darwin', otherwise the native chip group.
  * --wails-draggable: no-drag preserved: .window-controls existing setting carries over to the new button group.
  */
 .window-controls {
@@ -266,14 +304,14 @@ async function closeWindow() {
 }
 
 .window-controls.native {
-  gap: 0;  /* Native buttons sit flush together, no spacing */
+  gap: 2px;  /* Compact chip spacing (design frame ㉒ .titlebar .winctl gap:2px) */
 }
 
 .native-btn {
-  width: 46px;
-  height: 36px;
+  width: 34px;
+  height: 26px;
   border: none;
-  border-radius: 0;
+  border-radius: 8px;
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
@@ -281,16 +319,17 @@ async function closeWindow() {
   align-items: center;
   justify-content: center;
   padding: 0;
-  transition: background 0.1s ease;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .native-btn:hover {
-  background: var(--overlay-20);
+  background: var(--surface-2);
+  color: var(--text-primary);
 }
 
-/* Close button hover: red background, white glyph */
+/* Close button hover: red background, white glyph (design frame ㉒ .titlebar .winctl i.close.hover) */
 .native-btn.close:hover {
-  background: #e81123;
+  background: #ef4444;
   color: #fff;
 }
 

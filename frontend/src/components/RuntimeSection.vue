@@ -77,7 +77,10 @@
             <span v-else class="info-value path-value">{{ downloadDir }}</span>
           </div>
         </div>
+      </section>
 
+      <!-- Right column: components + download (desktop ≥1100) -->
+      <div class="runtime-main">
         <!-- Installed components: the download fetches the main-program asset plus
              (on Windows CUDA builds) the cudart runtime asset and extracts both into
              the same directory, so each component is reported separately -->
@@ -215,11 +218,11 @@
             </div>
           </div>
         </div>
-      </section>
+      </div>
 
-      <!-- "About the runtime" island (Aurora frame ③, phone only): in-app
-           storage, system-managed path and the in-page resumable upgrade flow -->
-      <section v-if="platformState.isMobile" class="runtime-about">
+      <!-- "About the runtime" island (Aurora frame ③): desktop ≥1100 shows
+           in the left column alongside the info card -->
+      <section class="runtime-about">
         <h4>{{ t('runtime.aboutTitle') }}</h4>
         <p>{{ t('runtime.aboutBody') }}</p>
       </section>
@@ -833,6 +836,7 @@ html[data-theme='dark'] .dl-status-line {
 
 .download-btn:active {
   transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(99, 102, 241, 0.15);
 }
 
 /* ─── Custom button ─── */
@@ -855,6 +859,11 @@ html[data-theme='dark'] .dl-status-line {
   background: var(--overlay-8);
   border-color: var(--scrollbar-thumb-hover);
   color: var(--text-primary);
+}
+
+.custom-btn:active {
+  background: var(--overlay-10);
+  transform: scale(0.98);
 }
 
 .custom-path-info {
@@ -1257,6 +1266,45 @@ html[data-theme='dark'] .dl-status-line {
 
   .retry-btn {
     min-height: 44px;
+  }
+}
+
+/* Tablet centered column: 768–1099px (Aurora F7) */
+@media (min-width: 768px) and (max-width: 1099px) {
+  .runtime-section {
+    max-width: 800px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
+
+/* Desktop layout: constrain to 1280px max-width (Aurora D5) */
+@media (min-width: 1280px) {
+  .runtime-section {
+    max-width: 1280px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
+
+/* Desktop ≥1100: two-column layout — left: info card + about, right: components + download (Aurora F6) */
+@media (min-width: 1100px) {
+  .runtime-section {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+
+  .info-section {
+    /* Left column: info card */
+  }
+
+  .runtime-about {
+    /* Left column: about card, below info card */
+  }
+
+  .runtime-main {
+    /* Right column: components + download */
   }
 }
 </style>

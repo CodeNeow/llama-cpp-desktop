@@ -35,7 +35,7 @@ const routes = [
     path: '/',
     name: 'Home',
     component: Home,
-    meta: { title: '本机环境', icon: 'home', fixed: true },
+    meta: { title: 'home.title', icon: 'home', fixed: true },
     children: [
       // Entering / resolves the landing tab (see EnvironmentDefault). Named so
       // vue-router does not warn about the nameless empty-path child.
@@ -44,13 +44,13 @@ const routes = [
         path: 'system',
         name: 'SystemInfo',
         component: SystemInfoTab,
-        meta: { title: '系统信息' }
+        meta: { title: 'home.tabSystem' }
       },
       {
         path: 'runtime',
         name: 'Runtime',
         component: RuntimeSection,
-        meta: { title: '运行环境' }
+        meta: { title: 'home.tabRuntime' }
       }
     ]
   },
@@ -58,7 +58,7 @@ const routes = [
     path: '/chat',
     name: 'Chat',
     component: Chat,
-    meta: { title: '本地聊天', icon: 'message-circle', fixed: true }
+    meta: { title: 'chat.title', icon: 'message-circle', fixed: true }
   },
   {
     // Models hub: one sidebar entry with an in-page tab bar owned by the shell.
@@ -68,7 +68,7 @@ const routes = [
     path: '/models',
     name: 'Models',
     component: Models,
-    meta: { title: '模型管理', icon: 'cube' },
+    meta: { title: 'models.title', icon: 'cube' },
     children: [
       // Entering /models lands on the download tab (search first). Named so
       // vue-router does not warn about the nameless empty-path child.
@@ -77,13 +77,13 @@ const routes = [
         path: 'download',
         name: 'Downloads',
         component: Downloads,
-        meta: { title: '下载模型' }
+        meta: { title: 'models.tabDownload' }
       },
       {
         path: 'local',
         name: 'ModelsLocal',
         component: ModelsLocal,
-        meta: { title: '我的模型' }
+        meta: { title: 'models.tabLocal' }
       }
     ]
   },
@@ -98,7 +98,7 @@ const routes = [
     path: '/models/model/:modelId',
     name: 'ModelDetail',
     component: ModelDetail,
-    meta: { title: '模型详情' }
+    meta: { title: 'modelDetail.title' }
   },
   {
     // Compat: old /downloads/model/... links redirect to the new path; a named
@@ -113,13 +113,13 @@ const routes = [
     path: '/models/settings/:modelName',
     name: 'ModelSettings',
     component: ModelSettings,
-    meta: { title: '模型设置' }
+    meta: { title: 'modelSettings.title' }
   },
   {
     path: '/api',
     name: 'Api',
     component: Api,
-    meta: { title: 'API 路由', icon: 'terminal', fixed: true }
+    meta: { title: 'api.title', icon: 'terminal', fixed: true }
   },
   {
     path: '/monitor',
@@ -130,7 +130,7 @@ const routes = [
     path: '/settings',
     name: 'Settings',
     component: Settings,
-    meta: { title: '偏好设置', icon: 'settings' }
+    meta: { title: 'settings.title', icon: 'settings' }
   },
   {
     // In-app documentation/tutorial: bundled bilingual markdown rendered with
@@ -138,7 +138,7 @@ const routes = [
     path: '/docs',
     name: 'Docs',
     component: Docs,
-    meta: { title: '帮助与教程', icon: 'book' }
+    meta: { title: 'docs.title', icon: 'book' }
   },
   {
     // Docs reader subpage (phone tier, Aurora frame ⑱): one section per route,

@@ -72,8 +72,19 @@
             <span class="row-title">{{ t('settings.language') }}</span>
             <span class="row-sub">{{ languageCurrentLabel }}</span>
           </div>
+          <!-- Desktop / tablet: compact ThemedSelect in the row tail (Aurora F5) -->
+          <div v-if="!isPhone" class="row-tail row-tail-select">
+            <ThemedSelect
+              :model-value="appConfig.language"
+              :options="languageOptions"
+              :placeholder="t('settings.language')"
+              variant="toolbar"
+              :label="t('settings.language')"
+              @update:model-value="setLanguagePref"
+            />
+          </div>
           <!-- Phone tail (frame ⑯): compact select showing current language label -->
-          <div v-if="isPhone" class="row-tail row-tail-select">
+          <div v-else class="row-tail row-tail-select">
             <ThemedSelect
               :model-value="appConfig.language"
               :options="languageOptions"
@@ -82,23 +93,6 @@
               :label="t('settings.language')"
               @update:model-value="setLanguagePref"
             />
-          </div>
-          <!-- Desktop segmented control (hidden on phone) -->
-          <div v-else class="row-tail">
-            <div class="row-seg" role="radiogroup" :aria-label="t('settings.language')">
-              <button
-                v-for="opt in languageOptions"
-                :key="opt.value"
-                type="button"
-                class="row-seg-btn"
-                role="radio"
-                :class="{ active: appConfig.language === opt.value }"
-                :aria-checked="appConfig.language === opt.value"
-                tabindex="0"
-                @click="setLanguagePref(opt.value)"
-                @keydown.enter="setLanguagePref(opt.value)"
-              >{{ opt.label }}</button>
-            </div>
           </div>
         </div>
         <p v-if="languageError" class="row-error">{{ languageError }}</p>
@@ -112,8 +106,19 @@
             <span class="row-title">{{ t('settings.downloadSource') }}</span>
             <span class="row-sub">{{ sourceCurrentLabel }}</span>
           </div>
+          <!-- Desktop / tablet: compact ThemedSelect in the row tail (Aurora F5) -->
+          <div v-if="!isPhone" class="row-tail row-tail-select">
+            <ThemedSelect
+              :model-value="downloadSource"
+              :options="sourceOptions"
+              :placeholder="t('settings.downloadSource')"
+              variant="toolbar"
+              :label="t('settings.downloadSource')"
+              @update:model-value="setSource"
+            />
+          </div>
           <!-- Phone tail (frame ⑯): compact select showing current source label -->
-          <div v-if="isPhone" class="row-tail row-tail-select">
+          <div v-else class="row-tail row-tail-select">
             <ThemedSelect
               :model-value="downloadSource"
               :options="sourceOptions"
@@ -122,23 +127,6 @@
               :label="t('settings.downloadSource')"
               @update:model-value="setSource"
             />
-          </div>
-          <!-- Desktop segmented control (hidden on phone) -->
-          <div v-else class="row-tail">
-            <div class="row-seg" role="radiogroup" :aria-label="t('settings.downloadSource')">
-              <button
-                v-for="opt in sourceOptions"
-                :key="opt.value"
-                type="button"
-                class="row-seg-btn"
-                role="radio"
-                :class="{ active: downloadSource === opt.value }"
-                :aria-checked="downloadSource === opt.value"
-                tabindex="0"
-                @click="setSource(opt.value)"
-                @keydown.enter="setSource(opt.value)"
-              >{{ opt.label }}</button>
-            </div>
           </div>
         </div>
         <p class="row-foot">{{ t('settings.sourceHint') }}</p>
@@ -197,8 +185,19 @@
             <span class="row-title">{{ t('settings.accessScope') }}</span>
             <span class="row-sub">{{ t('settings.accessDesc') }}</span>
           </div>
+          <!-- Desktop / tablet: compact ThemedSelect in the row tail (Aurora F5) -->
+          <div v-if="!isPhone" class="row-tail row-tail-select">
+            <ThemedSelect
+              :model-value="appConfig.serverAccessMode"
+              :options="accessOptions"
+              :placeholder="t('settings.accessScope')"
+              variant="toolbar"
+              :label="t('settings.accessScope')"
+              @update:model-value="setAccessScope"
+            />
+          </div>
           <!-- Phone tail (frame ⑯): compact select showing current access scope -->
-          <div v-if="isPhone" class="row-tail row-tail-select">
+          <div v-else class="row-tail row-tail-select">
             <ThemedSelect
               :model-value="appConfig.serverAccessMode"
               :options="accessOptions"
@@ -207,23 +206,6 @@
               :label="t('settings.accessScope')"
               @update:model-value="setAccessScope"
             />
-          </div>
-          <!-- Desktop segmented control (hidden on phone) -->
-          <div v-else class="row-tail">
-            <div class="row-seg" role="radiogroup" :aria-label="t('settings.accessScope')">
-              <button
-                v-for="opt in accessOptions"
-                :key="opt.value"
-                type="button"
-                class="row-seg-btn"
-                role="radio"
-                :class="{ active: appConfig.serverAccessMode === opt.value }"
-                :aria-checked="appConfig.serverAccessMode === opt.value"
-                tabindex="0"
-                @click="setAccessScope(opt.value)"
-                @keydown.enter="setAccessScope(opt.value)"
-              >{{ opt.label }}</button>
-            </div>
           </div>
         </div>
         <p v-if="accessError" class="row-error">{{ accessError }}</p>
@@ -238,23 +220,16 @@
             <span class="row-title">{{ t('settings.apiKey') }}</span>
             <span class="row-sub">{{ t('settings.apiKeyDesc') }}</span>
           </div>
+          <!-- Desktop / tablet: "设置 ›" button opening a centered dialog (Aurora F5) -->
+          <button v-if="!isPhone" type="button" class="row-tail-api-key" @click="showApiKeyDialog = true">
+            <span>{{ t('settings.apiKeySet') }}</span>
+            <span aria-hidden="true">›</span>
+          </button>
           <!-- Phone tail (frame ⑯): "未设置（无鉴权）›" / "已设置 ›" -->
-          <button v-if="isPhone" type="button" class="row-tail-api-key" @click="showApiKeySheet = true">
+          <button v-else type="button" class="row-tail-api-key" @click="showApiKeySheet = true">
             <span>{{ apiKeyInput ? t('settings.apiKeySet') : t('settings.apiKeyNotSet') }}</span>
             <span aria-hidden="true">›</span>
           </button>
-          <!-- Desktop inline input (hidden on phone) -->
-          <input
-            v-else
-            v-model="apiKeyInput"
-            type="password"
-            class="api-key-input"
-            autocomplete="off"
-            spellcheck="false"
-            :disabled="apiKeySwitching"
-            aria-label="API Key"
-            @change="saveApiKey"
-          />
         </div>
         <p v-if="apiKeyError" class="row-error">{{ apiKeyError }}</p>
 
@@ -274,6 +249,26 @@
             @change="saveApiKey"
           />
           <button type="button" class="api-key-done" @click="showApiKeySheet = false">{{ t('api.done') }}</button>
+        </div>
+
+        <!-- Desktop API key centered dialog (Aurora F5) -->
+        <div v-if="!isPhone && showApiKeyDialog" class="api-key-dialog-root" @click.self="showApiKeyDialog = false">
+          <div class="api-key-dialog">
+            <div class="api-key-dialog-title">{{ t('settings.apiKey') }}</div>
+            <input
+              v-model="apiKeyInput"
+              type="password"
+              class="api-key-dialog-input"
+              autocomplete="off"
+              spellcheck="false"
+              :disabled="apiKeySwitching"
+              :placeholder="t('settings.apiKeyPlaceholder')"
+              @change="saveApiKey"
+            />
+            <div class="api-key-dialog-actions">
+              <button type="button" class="api-key-dialog-cancel" @click="showApiKeyDialog = false">{{ t('api.done') }}</button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -673,6 +668,7 @@ const apiKeyInput = ref('')
 const apiKeyError = ref('')
 const apiKeySwitching = ref(false)
 const showApiKeySheet = ref(false)
+const showApiKeyDialog = ref(false)
 
 async function saveApiKey() {
   if (apiKeySwitching.value) return
@@ -1321,6 +1317,28 @@ async function manualCheck() {
   user-select: text;
 }
 
+/* ─── Desktop two-column layout: 1280px+ (Aurora D5) ─── */
+@media (min-width: 1280px) {
+  .page {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    max-width: 1280px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .sticky-top,
+  .docs-entry,
+  .device-card {
+    grid-column: 1 / -1;
+  }
+
+  .settings-group {
+    margin-bottom: 0;
+  }
+}
+
 /* ─── Phone (<=767px): rows keep their island cards but every control becomes
        thumb-friendly — tails wrap under the labels at full width, segments and
        inputs go full-width, and long directory paths wrap. ─── */
@@ -1657,5 +1675,72 @@ async function manualCheck() {
     font-family: inherit;
     cursor: pointer;
   }
+}
+
+/* Desktop API key dialog (Aurora F5): centered modal */
+.api-key-dialog-root {
+  position: fixed;
+  inset: 0;
+  z-index: 39;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(16, 18, 33, 0.42);
+}
+
+.api-key-dialog {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  padding: 20px;
+  width: 340px;
+  max-width: 90vw;
+}
+
+.api-key-dialog-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+}
+
+.api-key-dialog-input {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: var(--font-mono);
+  outline: none;
+  margin-bottom: 12px;
+  box-sizing: border-box;
+}
+
+.api-key-dialog-input:focus {
+  border-color: var(--accent);
+}
+
+.api-key-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.api-key-dialog-cancel {
+  padding: 7px 16px;
+  background: var(--active-bg);
+  color: var(--accent-light);
+  border: 1px solid var(--overlay-20);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.api-key-dialog-cancel:hover {
+  background: var(--accent-glow);
 }
 </style>

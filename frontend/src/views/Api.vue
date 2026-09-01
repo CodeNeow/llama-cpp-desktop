@@ -5,192 +5,200 @@
         <h1 class="page-title">{{ t('api.title') }}</h1>
         <p class="page-subtitle">{{ t('api.subtitle') }}</p>
       </div>
-
-      <!-- Status hero (design frame ④ .api-hero island): running status light
-           with a pulse ring + state text + uptime pill, the mono address chip
-           with a copy affordance, and the generation-speed gradient area chart
-           embedded in the same card. Platform-related visibility untouched. -->
-      <section class="api-hero">
-        <div class="hero-status-row">
-          <span class="pulse-dot" :class="{ on: serverRunning }"></span>
-          <span class="hero-status-text" :class="{ off: !serverRunning }">{{ serverRunning ? t('api.running') : t('api.stopped') }}</span>
-          <span v-if="serverRunning && status.uptimeSeconds > 0" class="hero-uptime">
-            {{ formatUptime(status.uptimeSeconds, locale) }}
-            <span class="hero-uptime-label">{{ t('monitor.uptimeLabel') }}</span>
-          </span>
-        </div>
-
-        <!-- Address chip: monospace URL + copy button (transient confirmation) -->
-        <button
-          v-if="serverRunning"
-          class="hero-address"
-          type="button"
-          :title="copied ? t('api.addressCopied') : t('api.copyAddress')"
-          @click.stop="copyAddress"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="address-lock-icon">
-            <rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/>
-          </svg>
-          <span class="address-text">http://{{ cfg.host }}:{{ cfg.port }}</span>
-          <span v-if="copied" class="address-copied">{{ t('api.addressCopied') }}</span>
-          <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="address-copy-icon">
-            <rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
-          </svg>
-        </button>
-
-        <!-- Generation speed: gradient area chart (frame ④ chart-wrap) fed by
-             the existing 60s decode sampling chain. Stopped state: the phone
-             tier ghosts the block at 45% ink and swaps the chart for a dashed
-             baseline with a "— tok/s" value (frame ⑭ .ghosted); desktop keeps
-             the visibility-hidden ghost — either way the card height never
-             shifts. -->
-        <div class="hero-speed">
-          <div class="speed-head">
-            <span class="speed-label">{{ t('api.speedLabel') }}</span>
-            <span class="speed-value" :class="{ 'tps-ghost': !status.serverRunning }" :aria-hidden="!status.serverRunning">
-              <template v-if="status.serverRunning">{{ decodeTpsText }} <small>tok/s</small></template>
-              <template v-else>{{ t('monitor.noSpeed') }}</template>
-            </span>
-          </div>
-          <div class="speed-chart" :class="{ 'tps-ghost': !status.serverRunning }" :aria-hidden="!status.serverRunning">
-            <svg :viewBox="`-6 -6 ${chartWidth + 12} ${chartHeight + 12}`">
-              <defs>
-                <linearGradient id="apiSpeedFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.34"/>
-                  <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0"/>
-                </linearGradient>
-                <linearGradient id="apiSpeedLine" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%" stop-color="#6366f1"/>
-                  <stop offset="100%" stop-color="#a855f7"/>
-                </linearGradient>
-              </defs>
-              <line v-if="!status.serverRunning" class="speed-baseline" x1="0" :y1="chartHeight / 2" :x2="chartWidth" :y2="chartHeight / 2" />
-              <path v-if="status.serverRunning" class="speed-area" :d="decodeAreaPath" />
-              <path v-if="status.serverRunning" class="speed-line" :d="decodeLinePath" />
-              <circle v-if="status.serverRunning && decodeEndDot" class="speed-dot" :cx="decodeEndDot.x" :cy="decodeEndDot.y" r="4" />
-            </svg>
-          </div>
-          <div class="speed-meta" :class="{ 'tps-ghost': !status.serverRunning }" :aria-hidden="!status.serverRunning">
-            <span>{{ t('monitor.promptSpeed') }} {{ promptTpsText }} tok/s</span>
-            <span>{{ t('monitor.chartLabel', { n: decodeHistory.length }) }}</span>
-          </div>
-          <div v-if="!status.serverRunning" class="speed-placeholder">{{ t('monitor.uptimePlaceholder') }}</div>
-        </div>
-      </section>
-
-      <!-- Single primary action (frame ④ .btnrow): running = one danger-tinted
-           "stop" button while restart is demoted to an icon button; stopped =
-           one gradient "start" button. The start/stop/restart bindings, the
-           graceful-stop chain and the busy-disable semantics are unchanged —
-           only the layout is regrouped. -->
-      <div class="action-row">
-        <button v-if="serverRunning" class="primary-btn danger" :disabled="busy" @click="doStop">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
-            <rect x="5" y="5" width="14" height="14" rx="2"/>
-          </svg>
-          {{ t('api.stopServer') }}
-        </button>
-        <button v-else class="primary-btn start" :disabled="busy" @click="doStart">
-          {{ t('api.startServer') }}
-        </button>
-        <button
-          v-if="serverRunning"
-          class="ghost-icon"
-          type="button"
-          :disabled="busy"
-          :title="t('api.restart')"
-          :aria-label="t('api.restart')"
-          @click="doRestart"
-        >
-          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 12a9 9 0 11-2.6-6.4M21 3v6h-6"/>
-          </svg>
-        </button>
-        <button class="ghost-icon" type="button" @click.stop="showCfg = !showCfg" :aria-expanded="showCfg" :title="t('api.settings')">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="3"/>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-          </svg>
-        </button>
-
-        <!-- Phone bottom-sheet scrim (frame ⑮ .dim); display:none on >=768px -->
-        <div v-if="showCfg" class="cfg-dim"></div>
-        <!-- Server parameters: popover anchored to the action row (desktop) /
-             bottom sheet (phone, frame ⑮). Same fields, same 500ms debounced
-             silent save, same disabled-while-running lock on both tiers. -->
-        <div v-if="showCfg" class="cfg-popover" @click.stop>
-          <div class="cfg-grab"></div>
-          <div class="cfg-popover-title cfg-title-desktop">{{ t('api.settings') }}</div>
-          <div class="cfg-popover-title cfg-title-phone">{{ t('api.serviceSettings') }}</div>
-          <div v-if="serverRunning" class="cfg-locked-sheet">{{ t('api.cfgLockedSheet') }}</div>
-          <div class="cfg-item" :class="{ locked: serverRunning }">
-            <label>{{ t('api.cfgPort') }}<small class="cfg-item-sub">{{ t('api.cfgPortSub') }}</small></label>
-            <input v-model.number="cfg.port" type="number" min="1024" max="65535" step="1" class="cfg-input cfg-num" :disabled="serverRunning" />
-          </div>
-          <div class="cfg-item" :class="{ locked: serverRunning }">
-            <label>{{ t('api.cfgMaxModels') }}<small class="cfg-item-sub">{{ t('api.cfgMaxModelsSub') }}</small></label>
-            <input v-model.number="cfg.maxModels" type="number" min="1" step="1" class="cfg-input cfg-num" :disabled="serverRunning" />
-          </div>
-          <div class="cfg-item" :class="{ locked: serverRunning }">
-            <label>{{ t('api.cfgCacheRam') }}<small class="cfg-item-sub">{{ t('api.cfgCacheRamSub') }}</small></label>
-            <input v-model.number="cfg.cacheRam" type="number" min="0" step="1" class="cfg-input cfg-num" :disabled="serverRunning" placeholder="8192" />
-          </div>
-          <div v-if="serverRunning" class="cfg-locked-hint">{{ t('api.cfgLockedHint') }}</div>
-          <button type="button" class="cfg-done" @click="showCfg = false">{{ t('api.done') }}</button>
-        </div>
-      </div>
     </div>
 
-    <!-- Main area: scrollable band with the available-models island (frame ④)
-         above the terminal-style log console -->
+    <!-- Main area: scrollable band with the status card (left) and the
+         available-models island + service log (right, stacked) -->
     <div class="page-scroll">
-      <!-- Available models (frame ④ island → ⑬ chips): chips are real buttons —
-           tapping a non-active chip loads that model; the loaded model's chip
-           wears the active gradient + "●" marker (phone tier per frames) -->
-      <section class="models-island">
-        <div class="island-head">
-          <span class="island-title">{{ t('api.modelsHeading') }}</span>
-          <span class="island-more">{{ t('api.modelsMore', { n: modelCount }) }}</span>
-        </div>
-        <div v-if="modelCount > 0" class="model-chips">
-          <button
-            v-for="m in availableModels"
-            :key="m"
-            type="button"
-            class="model-chip"
-            :class="{ active: m === activeModelName }"
-            :disabled="switchingModel"
-            @click="loadModel(m)"
-          >{{ m === activeModelName && platform.isMobile ? `● ${m}` : m }}</button>
-        </div>
-        <span v-if="modelCount === 0" class="empty-hint">
-          {{ t('api.emptyHint') }}
-          <button class="empty-cta" @click="goDownloads">{{ t('action.gotoDownloads') }}</button>
-        </span>
-        <!-- Phone empty state (frame ⑭): centered emptycard pattern; the
-             desktop inline hint above keeps the >=768px rendering -->
-        <div v-if="modelCount === 0" class="emptycard api-empty-card">
-          <div class="ico">📦</div>
-          <b>{{ t('api.emptyTitle') }}</b>
-          <p>{{ t('api.emptySub') }}</p>
-          <button type="button" class="cta" @click="goDownloads">{{ t('action.gotoDownloads') }}</button>
-        </div>
-      </section>
+      <div class="api-main-grid">
+        <!-- Left column: status hero + action row (frame ④) -->
+        <div class="api-left">
+          <!-- Status hero (design frame ④ .api-hero island): running status light
+               with a pulse ring + state text + uptime pill, the mono address chip
+               with a copy affordance, and the generation-speed gradient area chart
+               embedded in the same card. Platform-related visibility untouched. -->
+          <section class="api-hero">
+            <div class="hero-status-row">
+              <span class="pulse-dot" :class="{ on: serverRunning }"></span>
+              <span class="hero-status-text" :class="{ off: !serverRunning }">{{ serverRunning ? t('api.running') : t('api.stopped') }}</span>
+              <span v-if="serverRunning && status.uptimeSeconds > 0" class="hero-uptime">
+                {{ formatUptime(status.uptimeSeconds, locale) }}
+                <span class="hero-uptime-label">{{ t('monitor.uptimeLabel') }}</span>
+              </span>
+            </div>
 
-      <!-- Service log (frame ⑬ .logbox on phone): terminal-dark console inside
-           a floating island; the footer link toggles the phone console between
-           compact preview and expanded height -->
-      <section class="log-panel" :class="{ 'log-expanded': logExpanded }">
-        <div class="panel-header">
-          <span class="panel-title">{{ t('api.logTitle') }}</span>
-          <button v-if="serverLog.length" class="log-clear-btn" @click="clearLog">{{ t('api.logClear') }}</button>
+            <!-- Address chip: monospace URL + copy button (transient confirmation) -->
+            <button
+              v-if="serverRunning"
+              class="hero-address"
+              type="button"
+              :title="copied ? t('api.addressCopied') : t('api.copyAddress')"
+              @click.stop="copyAddress"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="address-lock-icon">
+                <rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/>
+              </svg>
+              <span class="address-text">http://{{ cfg.host }}:{{ cfg.port }}</span>
+              <span v-if="copied" class="address-copied">{{ t('api.addressCopied') }}</span>
+              <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="address-copy-icon">
+                <rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+              </svg>
+            </button>
+
+            <!-- Generation speed: gradient area chart (frame ④ chart-wrap) fed by
+                 the existing 60s decode sampling chain. Stopped state: the phone
+                 tier ghosts the block at 45% ink and swaps the chart for a dashed
+                 baseline with a "— tok/s" value (frame ⑭ .ghosted); desktop keeps
+                 the visibility-hidden ghost — either way the card height never
+                 shifts. -->
+            <div class="hero-speed">
+              <div class="speed-head">
+                <span class="speed-label">{{ t('api.speedLabel') }}</span>
+                <span class="speed-value" :class="{ 'tps-ghost': !status.serverRunning }" :aria-hidden="!status.serverRunning">
+                  <template v-if="status.serverRunning">{{ decodeTpsText }} <small>tok/s</small></template>
+                  <template v-else>{{ t('monitor.noSpeed') }}</template>
+                </span>
+              </div>
+              <div class="speed-chart" :class="{ 'tps-ghost': !status.serverRunning }" :aria-hidden="!status.serverRunning">
+                <svg :viewBox="`-6 -6 ${chartWidth + 12} ${chartHeight + 12}`">
+                  <defs>
+                    <linearGradient id="apiSpeedFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.34"/>
+                      <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0"/>
+                    </linearGradient>
+                    <linearGradient id="apiSpeedLine" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0%" stop-color="#6366f1"/>
+                      <stop offset="100%" stop-color="#a855f7"/>
+                    </linearGradient>
+                  </defs>
+                  <line v-if="!status.serverRunning" class="speed-baseline" x1="0" :y1="chartHeight / 2" :x2="chartWidth" :y2="chartHeight / 2" />
+                  <path v-if="status.serverRunning" class="speed-area" :d="decodeAreaPath" />
+                  <path v-if="status.serverRunning" class="speed-line" :d="decodeLinePath" />
+                  <circle v-if="status.serverRunning && decodeEndDot" class="speed-dot" :cx="decodeEndDot.x" :cy="decodeEndDot.y" r="4" />
+                </svg>
+              </div>
+              <div class="speed-meta" :class="{ 'tps-ghost': !status.serverRunning }" :aria-hidden="!status.serverRunning">
+                <span>{{ t('monitor.promptSpeed') }} {{ promptTpsText }} tok/s</span>
+                <span>{{ t('monitor.chartLabel', { n: decodeHistory.length }) }}</span>
+              </div>
+              <div v-if="!status.serverRunning" class="speed-placeholder">{{ t('monitor.uptimePlaceholder') }}</div>
+            </div>
+          </section>
+
+          <!-- Single primary action (frame ④ .btnrow): running = one danger-tinted
+               "stop" button while restart is demoted to an icon button; stopped =
+               one gradient "start" button. The start/stop/restart bindings, the
+               graceful-stop chain and the busy-disable semantics are unchanged —
+               only the layout is regrouped. -->
+          <div class="action-row">
+            <button v-if="serverRunning" class="primary-btn danger" :disabled="busy" @click="doStop">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="5" y="5" width="14" height="14" rx="2"/>
+              </svg>
+              {{ t('api.stopServer') }}
+            </button>
+            <button v-else class="primary-btn start" :disabled="busy" @click="doStart">
+              {{ t('api.startServer') }}
+            </button>
+            <button
+              v-if="serverRunning"
+              class="ghost-icon"
+              type="button"
+              :disabled="busy"
+              :title="t('api.restart')"
+              :aria-label="t('api.restart')"
+              @click="doRestart"
+            >
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 12a9 9 0 11-2.6-6.4M21 3v6h-6"/>
+              </svg>
+            </button>
+            <button class="ghost-icon" type="button" @click.stop="showCfg = !showCfg" :aria-expanded="showCfg" :title="t('api.settings')">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l.06.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0-1.51 1z"/>
+              </svg>
+            </button>
+
+            <!-- Phone bottom-sheet scrim (frame ⑮ .dim); display:none on >=768px -->
+            <div v-if="showCfg" class="cfg-dim"></div>
+            <!-- Server parameters: popover anchored to the action row (desktop) /
+                 bottom sheet (phone, frame ⑮). Same fields, same 500ms debounced
+                 silent save, same disabled-while-running lock on both tiers. -->
+            <div v-if="showCfg" class="cfg-popover" @click.stop>
+              <div class="cfg-grab"></div>
+              <div class="cfg-popover-title cfg-title-desktop">{{ t('api.settings') }}</div>
+              <div class="cfg-popover-title cfg-title-phone">{{ t('api.serviceSettings') }}</div>
+              <div v-if="serverRunning" class="cfg-locked-sheet">{{ t('api.cfgLockedSheet') }}</div>
+              <div class="cfg-item" :class="{ locked: serverRunning }">
+                <label>{{ t('api.cfgPort') }}<small class="cfg-item-sub">{{ t('api.cfgPortSub') }}</small></label>
+                <input v-model.number="cfg.port" type="number" min="1024" max="65535" step="1" class="cfg-input cfg-num" :disabled="serverRunning" />
+              </div>
+              <div class="cfg-item" :class="{ locked: serverRunning }">
+                <label>{{ t('api.cfgMaxModels') }}<small class="cfg-item-sub">{{ t('api.cfgMaxModelsSub') }}</small></label>
+                <input v-model.number="cfg.maxModels" type="number" min="1" step="1" class="cfg-input cfg-num" :disabled="serverRunning" />
+              </div>
+              <div class="cfg-item" :class="{ locked: serverRunning }">
+                <label>{{ t('api.cfgCacheRam') }}<small class="cfg-item-sub">{{ t('api.cfgCacheRamSub') }}</small></label>
+                <input v-model.number="cfg.cacheRam" type="number" min="0" step="1" class="cfg-input cfg-num" :disabled="serverRunning" placeholder="8192" />
+              </div>
+              <div v-if="serverRunning" class="cfg-locked-hint">{{ t('api.cfgLockedHint') }}</div>
+              <button type="button" class="cfg-done" @click="showCfg = false">{{ t('api.done') }}</button>
+            </div>
+          </div>
         </div>
-        <div v-if="serverLog.length" class="console-log" ref="logEl">
-          <div v-for="(line, i) in serverLog" :key="i" class="console-line" :class="logLineClass(line)">{{ line }}</div>
-          <button type="button" class="log-more-btn" @click="logExpanded = !logExpanded">{{ t('api.logMore') }}</button>
+
+        <!-- Right column: available models (top) + service log (bottom) -->
+        <div class="api-right">
+          <!-- Available models (frame ④ island → ⑬ chips): chips are real buttons —
+               tapping a non-active chip loads that model; the loaded model's chip
+               wears the active gradient + "●" marker (phone tier per frames) -->
+          <section class="models-island">
+            <div class="island-head">
+              <span class="island-title">{{ t('api.modelsHeading') }}</span>
+              <span class="island-more">{{ t('api.modelsMore', { n: modelCount }) }}</span>
+            </div>
+            <div v-if="modelCount > 0" class="model-chips">
+              <button
+                v-for="m in availableModels"
+                :key="m"
+                type="button"
+                class="model-chip"
+                :class="{ active: m === activeModelName }"
+                :disabled="switchingModel"
+                @click="loadModel(m)"
+              >{{ m === activeModelName && platform.isMobile ? `● ${m}` : m }}</button>
+            </div>
+            <span v-if="modelCount === 0" class="empty-hint">
+              {{ t('api.emptyHint') }}
+              <button class="empty-cta" @click="goDownloads">{{ t('action.gotoDownloads') }}</button>
+            </span>
+            <!-- Phone empty state (frame ⑭): centered emptycard pattern; the
+                 desktop inline hint above keeps the >=768px rendering -->
+            <div v-if="modelCount === 0" class="emptycard api-empty-card">
+              <div class="ico">📦</div>
+              <b>{{ t('api.emptyTitle') }}</b>
+              <p>{{ t('api.emptySub') }}</p>
+              <button type="button" class="cta" @click="goDownloads">{{ t('action.gotoDownloads') }}</button>
+            </div>
+          </section>
+
+          <!-- Service log (frame ⑬ .logbox on phone): terminal-dark console inside
+               a floating island; the footer link toggles the phone console between
+               compact preview and expanded height -->
+          <section class="log-panel" :class="{ 'log-expanded': logExpanded }">
+            <div class="panel-header">
+              <span class="panel-title">{{ t('api.logTitle') }}</span>
+              <button v-if="serverLog.length" class="log-clear-btn" @click="clearLog">{{ t('api.logClear') }}</button>
+            </div>
+            <div v-if="serverLog.length" class="console-log" ref="logEl">
+              <div v-for="(line, i) in serverLog" :key="i" class="console-line" :class="logLineClass(line)">{{ line }}</div>
+              <button type="button" class="log-more-btn" @click="logExpanded = !logExpanded">{{ t('api.logMore') }}</button>
+            </div>
+            <div v-else class="console-empty">{{ t('api.logEmpty') }}</div>
+          </section>
         </div>
-        <div v-else class="console-empty">{{ t('api.logEmpty') }}</div>
-      </section>
+      </div>
     </div>
   </div>
 </template>
@@ -872,6 +880,10 @@ html[data-theme='dark'] .speed-baseline {
   filter: brightness(1.06);
 }
 
+.primary-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
 /* Disabled state follows the cfg-input dimming convention; the desaturation
    filter keeps the colored buttons recognizably disabled */
 .primary-btn:disabled {
@@ -1009,6 +1021,39 @@ html[data-theme='dark'] .speed-baseline {
   /* TaskDock pill clearance while the band scrolls (--dock-reserve is bound
      globally by App.vue; 0 while hidden) */
   padding-bottom: calc(24px + var(--dock-reserve, 0px));
+}
+
+/* Tablet centered column: 768–1099px (Aurora F7) */
+@media (min-width: 768px) and (max-width: 1099px) {
+  .page-scroll {
+    max-width: 800px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
+
+/* Desktop two-column main area: 1280px+ (Aurora F4)
+   Left column (1.15fr) = status hero + action row.
+   Right column (.85fr) = available models (top) + service log (bottom). */
+@media (min-width: 1280px) {
+  .page-scroll {
+    display: grid;
+    grid-template-columns: 1.15fr .85fr;
+    gap: 16px;
+    align-items: start;
+  }
+
+  .api-main-grid {
+    display: contents;
+  }
+
+  .api-left,
+  .api-right {
+    /* Release the grid item default min-width:auto so long content (model chips,
+       log pre lines) shrinks and scrolls internally instead of blowing out the
+       .85fr column past the viewport right edge. */
+    min-width: 0;
+  }
 }
 
 /* ─── Available models (frame ④ island): static chips on a neutral surface ─── */

@@ -330,6 +330,24 @@ onMounted(() => {
   border-top: 1px solid var(--border);
 }
 
+/* Desktop glass sticky action bar (Aurora D11): glassmorphism pill bar */
+@media (min-width: 1100px) {
+  .action-bar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--glass);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid var(--glass-line);
+    border-radius: 12px;
+    padding: 10px 16px;
+    margin-top: 0;
+    margin-bottom: 16px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  }
+}
+
 .selected-count {
   font-size: 13px;
   color: var(--text-dim);
@@ -356,6 +374,11 @@ onMounted(() => {
   color: var(--text-primary);
 }
 
+.select-all-btn:active:not(:disabled) {
+  background: var(--overlay-8);
+  transform: scale(0.98);
+}
+
 .select-all-btn:disabled {
   opacity: 0.4;
   cursor: default;
@@ -375,6 +398,11 @@ onMounted(() => {
 
 .download-btn:hover:not(:disabled) {
   background: linear-gradient(135deg, rgba(99, 102, 241, 0.3), rgba(167, 139, 250, 0.25));
+}
+
+.download-btn:active:not(:disabled) {
+  transform: scale(0.98);
+  box-shadow: 0 2px 6px rgba(99, 102, 241, 0.15);
 }
 
 .download-btn:disabled {

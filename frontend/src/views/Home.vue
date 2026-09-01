@@ -356,14 +356,13 @@ const tabs = [
 }
 
 /* ─── Tabs row (same pattern as Models.vue): tab bar left, actions right.
-       Border and bottom gap live on the row so the system-tab toolbar shares
-       the same underline and baseline ─── */
+       Bottom gap lives on the row; no border — the pill tabs carry their own
+       active state (design frame ① .tabs). ─── */
 .env-tabs-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  border-bottom: 1px solid var(--border);
   margin-bottom: 20px;
   flex-shrink: 0;
 }
@@ -427,27 +426,28 @@ const tabs = [
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 10px 14px;
-  background: none;
+  padding: 8px 16px;
+  background: rgba(120, 124, 160, 0.12);
   border: none;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
+  border-radius: 999px;
   color: var(--text-muted);
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 700;
   font-family: inherit;
   cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
+  transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+  white-space: nowrap;
 }
 
 .tab-btn:hover {
+  background: rgba(120, 124, 160, 0.18);
   color: var(--text-secondary);
 }
 
 .tab-btn.active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
-  font-weight: 600;
+  background: var(--text-primary);
+  color: var(--bg-primary);
+  box-shadow: 0 4px 12px rgba(25, 28, 43, 0.25);
 }
 
 .tab-btn .tab-icon {

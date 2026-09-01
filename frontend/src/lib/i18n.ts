@@ -27,6 +27,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'nav.expand': '展开侧边栏',
 
     // ─── Title bar (App.vue) ───
+    'title.brand': 'Llama Desktop',
     'title.minimize': '最小化',
     'title.maximize': '最大化',
     'title.restore': '还原',
@@ -140,6 +141,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'runtime.errorTitle': '无法获取运行环境信息',
     'runtime.retry': '重试',
     'runtime.backendError': '无法连接后端: {msg}',
+    'runtime.title': '运行环境',
     // Phone-tier page heading inside the runtime panel (Aurora frames ③/④)
     'runtime.pageTitle': '运行环境',
     'runtime.pageSub': 'llama.cpp 本地推理运行时',
@@ -321,6 +323,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'downloads.etaMinutes': '剩余约 {n} 分钟',
 
     // ─── Chat page (Chat.vue) ───
+    'chat.title': '本地聊天',
     'chat.model': '模型',
     'chat.clear': '清空对话',
     'chat.attach': '添加图片',
@@ -469,6 +472,7 @@ export const messages: Record<Locale, Record<string, string>> = {
 
     // ─── Model settings modal (ModelSettings.vue) ───
     // zh copy follows the Aurora frame ⑪ .mstop sub-line wording
+    'modelSettings.title': '模型设置',
     'modelSettings.subtitle': '模型推理参数',
     'modelSettings.tabsAria': '参数分类',
     // Aurora frames ⑪⑫ tab labels (full names both tiers)
@@ -555,6 +559,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'modelSettings.saved': '✓ 已保存',
     // Aurora frame ⑪ amber notice: the ⚠ prefix is replaced by an SVG icon on phone
     'modelSettings.restartNote': '服务运行中 · 保存的参数将在重启服务后生效',
+    'modelDetail.title': '模型详情',
     'modelSettings.saving': '保存中...',
     'modelSettings.tuning': '调优中...',
     // Aurora frames ⑪⑫: deep-benchmark action + plain result toast
@@ -687,6 +692,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'nav.expand': 'Expand Sidebar',
 
     // ─── Title bar (App.vue) ───
+    'title.brand': 'Llama Desktop',
     'title.minimize': 'Minimize',
     'title.maximize': 'Maximize',
     'title.restore': 'Restore',
@@ -797,6 +803,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'home.backendError': 'Unable to connect to backend: {msg}',
 
     // ─── Runtime environment tab (RuntimeSection.vue, the Home shell's runtime tab) ───
+    'runtime.title': 'Runtime',
     'runtime.errorTitle': 'Unable to load runtime info',
     'runtime.retry': 'Retry',
     'runtime.backendError': 'Unable to connect to backend: {msg}',
@@ -981,6 +988,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'downloads.etaMinutes': '~{n} min left',
 
     // ─── Chat page (Chat.vue) ───
+    'chat.title': 'Local Chat',
     'chat.model': 'Model',
     'chat.clear': 'Clear chat',
     'chat.attach': 'Attach image',
@@ -1128,6 +1136,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'settings.modelDirAndroidCounted': '{n} models · {size} · path managed by the system',
 
     // ─── Model settings dialog (ModelSettings.vue) ───
+    'modelSettings.title': 'Model Settings',
     'modelSettings.subtitle': 'Inference parameters',
     'modelSettings.tabsAria': 'Parameter categories',
     // Aurora frames ⑪⑫ tab labels (full names both tiers)
@@ -1233,6 +1242,8 @@ export const messages: Record<Locale, Record<string, string>> = {
     'modelSettings.summaryBody': 'Context {ctx} · Threads {threads} · K cache {ctk} · V cache {ctv} · Load {mode}',
     'modelSettings.summarySubHardware': 'Computed by auto-tune for {ram} RAM + {soc}',
     'modelSettings.summarySubGeneric': 'Computed by auto-tune from this device\'s hardware',
+
+    'modelDetail.title': 'Model Detail',
 
     // ─── Update modal (UpdateModal.vue) ───
     'updateModal.title': '🎉 New Version Found',

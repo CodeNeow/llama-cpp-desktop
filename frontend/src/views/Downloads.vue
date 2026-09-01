@@ -448,6 +448,11 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
   color: var(--text-primary);
 }
 
+.pill-btn.ghost:active:not(:disabled) {
+  background: var(--hover-bg);
+  transform: scale(0.98);
+}
+
 .task-badge {
   position: absolute;
   top: -7px;

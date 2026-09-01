@@ -22,13 +22,21 @@
 }
 
 :root {
-  --bg-primary: #0f0f14;
-  --bg-secondary: #161622;
-  --bg-card: #1a1a26;
-  --border: rgba(255, 255, 255, 0.06);
-  --text-primary: #ffffff;
-  --text-secondary: #c4c4d4;
-  --text-muted: rgba(255, 255, 255, 0.4);
+  /* ─── Aurora design tokens (desktop-design-a-aurora.html v2) ───
+     Full-tier baseline: dark mapping is the app default (store.ts seeds
+     data-theme="dark"); light mapping lives in the [data-theme="light"] block
+     below. Old --bg-primary/--bg-secondary/--bg-card/--border/--text-* map to
+     Aurora's bg/surface/line/ink trio; --surface-2 already matched (#232739)
+     and is left untouched. Status trio and tinted *-bg pairs are declared here
+     so every tier shares the same source of truth. Theme-independent tokens
+     (--grad, radius scale, --font-sans fallbacks) are declared once here. */
+  --bg-primary: #0e1018;
+  --bg-secondary: #191c2a;
+  --bg-card: #191c2a;
+  --border: #262a3d;
+  --text-primary: #f0f1f8;
+  --text-secondary: #a2a8bd;
+  --text-muted: #6b7186;
   --text-dim: rgba(255, 255, 255, 0.25);
   --hover-bg: rgba(255, 255, 255, 0.04);
   --active-bg: rgba(99, 102, 241, 0.15);
@@ -43,27 +51,22 @@
   --accent: #6366f1;
   --accent-light: #a78bfa;
   --accent-glow: rgba(99, 102, 241, 0.3);
-  --success: #22c55e;
-  --warning: #f59e0b;
+  --success: #10b981;
+  --success-bg: #12261f;
   --danger: #ef4444;
+  --danger-bg: #2c1a1f;
+  --warning: #f59e0b;
+  --warning-bg: #2c2416;
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
   --radius-xl: 20px;
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Ubuntu', 'Cantarell', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SF Mono', monospace;
 
-  /* ─── Mobile redesign design tokens (design/android-mockups.html v1) ───
-     Additive-only base for the modern mobile restyle (floating-island cards /
-     brand gradient / glassmorphism). The values below are the DARK mapping of
-     design frame ⑦ (surface lifted to #191c2a family, dark glass, gradient
-     saturation unchanged); the light values live in the [data-theme="light"]
-     block below. Theme-independent tokens (--grad, radius scale) are declared
-     once here. Nothing pre-existing consumes these yet — later batches
-     migrate page by page, so current pages render identically. Status colors
-     intentionally keep the existing --success / --danger / --warning
-     semantics above (design targets: green #10b981, red #ef4444, amber
-     #f59e0b — realigned per page when those pages migrate). */
+  /* Aurora shared tokens (same values for all tiers; light overrides are in
+     [data-theme="light"] below). --surface-2 is intentionally NOT re-declared
+     here: it already matches the Aurora value (#232739) and is unchanged. */
   --grad: linear-gradient(135deg, #6366f1 0%, #8b5cf6 55%, #a855f7 100%);
   --grad-soft: linear-gradient(135deg, #232045 0%, #2c2145 100%);
   --r-lg: 28px;
@@ -72,12 +75,6 @@
   --shadow-island: 0 12px 32px rgba(0, 0, 0, 0.45);
   --glass: rgba(24, 27, 42, 0.68);
   --glass-line: rgba(255, 255, 255, 0.09);
-
-  /* Aurora shared second surface (android-design-a-aurora.html --surface-2):
-     raised neutral for chips / skeleton tracks / pills. Declared once for all
-     tiers (the phone token refinement at the bottom of this file keeps the
-     same value); consumed by the additive .skel / .errcard / .emptycard
-     components and Api.vue's phone-tier endpoint chip + model chips. */
   --surface-2: #232739;
 }
 
@@ -87,13 +84,13 @@ html[data-theme='dark'] { color-scheme: dark; }
 
 /* Light theme */
 [data-theme="light"] {
-  --bg-primary: #f8fafc;
+  --bg-primary: #eef0f8;
   --bg-secondary: #ffffff;
-  --bg-card: rgba(0, 0, 0, 0.02);
-  --border: rgba(0, 0, 0, 0.08);
-  --text-primary: #0f172a;
-  --text-secondary: #334155;
-  --text-muted: rgba(0, 0, 0, 0.5);
+  --bg-card: #ffffff;
+  --border: #e8eaf3;
+  --text-primary: #191c2b;
+  --text-secondary: #6b7280;
+  --text-muted: #9aa1b2;
   --text-dim: rgba(0, 0, 0, 0.35);
   --hover-bg: rgba(0, 0, 0, 0.04);
   --active-bg: rgba(79, 70, 229, 0.1);
@@ -108,14 +105,15 @@ html[data-theme='dark'] { color-scheme: dark; }
   --accent: #4f46e5;
   --accent-light: #6366f1;
   --accent-glow: rgba(79, 70, 229, 0.15);
-  --success: #16a34a;
-  --warning: #b45309;
-  --danger: #dc2626;
+  --success: #10b981;
+  --success-bg: #e7f8f1;
+  --danger: #ef4444;
+  --danger-bg: #fdecec;
+  --warning: #f59e0b;
+  --warning-bg: #fdf3e0;
 
-  /* Mobile redesign tokens, light mapping (design/android-mockups.html root
-     tokens): white glass, lavender-tinted island shadows, pastel gradient
-     wash. --grad and the radius scale are theme-independent (declared in
-     :root above) and are not overridden here. */
+  /* Aurora light overrides (same values as the phone-tier duplicate that is
+     removed below — this is now the single source of truth for all tiers). */
   --grad-soft: linear-gradient(135deg, #eef0ff 0%, #f6efff 100%);
   --shadow-island: 0 10px 30px rgba(80, 84, 140, 0.1), 0 2px 6px rgba(80, 84, 140, 0.06);
   --glass: rgba(255, 255, 255, 0.72);
@@ -179,6 +177,15 @@ code, pre {
   max-width: 1280px;
   margin-left: auto;
   margin-right: auto;
+}
+
+/* Tablet centered column: 800px on 768-1099px for non-fixed pages (Aurora D7).
+   .page-fixed pages (Home, Chat, Api) manage their own inner widths and are
+   excluded so the existing desktop layouts there are untouched. */
+@media (min-width: 768px) and (max-width: 1099px) {
+  .page:not(.page-fixed) {
+    max-width: 800px;
+  }
 }
 
 /* Fixed-viewport page variant (Chat / Home / Runtime / API): fills the window
@@ -452,71 +459,6 @@ html[data-os='ios'] {
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-island);
   min-width: 0;
-}
-
-/* ==========================================
-   Aurora phone-tier token refinement (<=767px)
-   ------------------------------------------
-   Source: docs/branding/android-design-a-aurora.html (:root ~12-34 / .dark
-   ~447-469 blocks). Phone-only re-baseline of the core surface / ink / status
-   tokens to the Aurora mockup values (page bg #eef0f8 family, ink trio,
-   status trio #10b981 / #ef4444 / #f59e0b with tinted *-bg pairs). The
-   html-level selectors live INSIDE the phone media query so the refinement
-   wins the cascade at <=767px ONLY — desktop and tablet keep the base tokens
-   above untouched. data-theme is always present on <html> (store.ts), so the
-   attribute blocks carry the override (html + attr out-ranks :root /
-   [data-theme="light"]); the plain html block documents the dark (default)
-   mapping for the pre-store-init frame. --surface-2 is NOT repeated here: it
-   is declared with the same value for every tier in the blocks above.
-   ========================================== */
-@media (max-width: 767px) {
-  html {
-    --bg-primary: #0e1018;
-    --bg-secondary: #191c2a;
-    --bg-card: #191c2a;
-    --border: #262a3d;
-    --text-primary: #f0f1f8;
-    --text-secondary: #a2a8bd;
-    --text-muted: #6b7186;
-    --success: #10b981;
-    --success-bg: #12261f;
-    --danger: #ef4444;
-    --danger-bg: #2c1a1f;
-    --warning: #f59e0b;
-    --warning-bg: #2c2416;
-  }
-
-  html[data-theme='dark'] {
-    --bg-primary: #0e1018;
-    --bg-secondary: #191c2a;
-    --bg-card: #191c2a;
-    --border: #262a3d;
-    --text-primary: #f0f1f8;
-    --text-secondary: #a2a8bd;
-    --text-muted: #6b7186;
-    --success: #10b981;
-    --success-bg: #12261f;
-    --danger: #ef4444;
-    --danger-bg: #2c1a1f;
-    --warning: #f59e0b;
-    --warning-bg: #2c2416;
-  }
-
-  html[data-theme='light'] {
-    --bg-primary: #eef0f8;
-    --bg-secondary: #ffffff;
-    --bg-card: #ffffff;
-    --border: #e8eaf3;
-    --text-primary: #191c2b;
-    --text-secondary: #6b7280;
-    --text-muted: #9aa1b2;
-    --success: #10b981;
-    --success-bg: #e7f8f1;
-    --danger: #ef4444;
-    --danger-bg: #fdecec;
-    --warning: #f59e0b;
-    --warning-bg: #fdf3e0;
-  }
 }
 
 /* ==========================================

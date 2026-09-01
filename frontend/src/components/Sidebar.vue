@@ -117,8 +117,8 @@ function isActive(path: string): boolean {
 
 <style scoped>
 .sidebar {
-  width: 200px;
-  min-width: 200px;
+  width: 236px;
+  min-width: 236px;
   height: 100vh;
   background: var(--bg-secondary);
   border-right: 1px solid var(--border);
@@ -127,7 +127,7 @@ function isActive(path: string): boolean {
   --wails-draggable: drag;
   user-select: none;
   backdrop-filter: blur(20px);
-  /* Expand 200px ↔ collapse 64px; width and min-width must transition together —
+  /* Expand 236px ↔ collapse 64px; width and min-width must transition together —
      an instant min-width jump would mask the expand animation */
   transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -140,7 +140,7 @@ function isActive(path: string): boolean {
 }
 
 .sidebar-header {
-  padding: 28px 16px 20px;
+  padding: 14px 12px 18px;
   --wails-draggable: drag;
 }
 
@@ -195,13 +195,14 @@ function isActive(path: string): boolean {
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 11px 14px;
-  border-radius: 10px;
+  gap: 11px;
+  padding: 0 12px;
+  height: 40px;
+  border-radius: 12px;
   text-decoration: none;
   color: var(--text-muted);
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 13.5px;
+  font-weight: 600;
   position: relative;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   cursor: pointer;
@@ -209,12 +210,17 @@ function isActive(path: string): boolean {
 
 .nav-item:hover {
   color: var(--text-primary);
-  background: var(--hover-bg);
+  background: var(--surface-2);
 }
 
 .nav-item.active {
-  color: var(--text-primary);
-  background: var(--active-bg);
+  background: var(--grad-soft);
+  color: #6d28d9;
+  font-weight: 700;
+}
+
+html[data-theme='dark'] .nav-item.active {
+  color: var(--accent-light);
 }
 
 .nav-icon {
@@ -257,21 +263,20 @@ function isActive(path: string): boolean {
 
 .active-indicator {
   position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
+  left: -12px;
+  top: 9px;
+  bottom: 9px;
   width: 3px;
-  height: 20px;
   border-radius: 0 3px 3px 0;
   background: linear-gradient(180deg, #a78bfa, #6366f1);
 }
 
 .sidebar-footer {
-  padding: 16px 20px;
+  padding: 12px 8px 2px;
   display: flex;
   align-items: center;
   gap: 10px;
-  border-top: 1px solid var(--border);
+  border-top: 1px dashed var(--border);
   --wails-draggable: no-drag;
   position: relative;
   transition: gap 0.2s cubic-bezier(0.4, 0, 0.2, 1), padding 0.2s cubic-bezier(0.4, 0, 0.2, 1);

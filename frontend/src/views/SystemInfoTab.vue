@@ -856,7 +856,7 @@ onUnmounted(() => {
 }
 
 /* ─── Cards grid: single floating-island column on phone/tablet; two equal
-       columns on desktop (>1099px, design frame ① adapted) where the .grid2
+       columns on desktop (>=1280px, design frame ① adapted) where the .grid2
        wrapper dissolves via display:contents so the two minis become regular
        cells of the outer grid. Never three columns. ─── */
 .sys-grid {
@@ -868,6 +868,42 @@ onUnmounted(() => {
 
 .sys-grid > .island {
   padding: 20px;
+}
+
+/* Desktop two-column grid: 1280px+ (Aurora D5) */
+@media (min-width: 1280px) {
+  .sys-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  /* Hero card spans full width */
+  .sys-grid > .hero-card {
+    grid-column: 1 / -1;
+  }
+
+  /* Grid2 wrapper dissolves so its children become regular grid cells */
+  .sys-grid > .grid2 {
+    display: contents;
+  }
+}
+
+/* Desktop narrow: 1100–1279px (Aurora F10) — outer grid stays single-column,
+   but the inner .grid2 pairs (memory/CPU, storage/resident) must also collapse
+   so the cards stack vertically instead of forcing a side-by-side mini pair. */
+@media (min-width: 1100px) and (max-width: 1279px) {
+  .sys-grid > .grid2 {
+    display: contents;
+  }
+}
+
+/* Tablet centered column: 768–1099px (Aurora F7) */
+@media (min-width: 768px) and (max-width: 1099px) {
+  .sys-grid {
+    max-width: 800px;
+    margin-left: auto;
+    margin-right: auto;
+  }
 }
 
 /* ─── Gradient hero card (frame ① .hero): brand gradient + white text, the
@@ -1622,34 +1658,6 @@ html[data-os='ios'] .unload-btn:active:not(:disabled) {
 
 .retry-btn:hover {
   background: var(--accent-glow);
-}
-
-/* ─── Desktop (>1099px): the same card system in a two-column grid (design
-       adaptation — never three columns). The minis' wrapper dissolves so the
-       memory/CPU cards become regular cells; hero and onboarding stay
-       full-width statements. ─── */
-@media (min-width: 1100px) {
-  .sys-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 20px;
-  }
-
-  .sys-grid > .island {
-    padding: 24px 28px;
-  }
-
-  .mini {
-    padding: 20px;
-  }
-
-  .grid2 {
-    display: contents;
-  }
-
-  .onboarding-card,
-  .hero-card {
-    grid-column: 1 / -1;
-  }
 }
 
 /* ─── Phone (<=767px): Aurora mockup frames ①/②. Checklist becomes the

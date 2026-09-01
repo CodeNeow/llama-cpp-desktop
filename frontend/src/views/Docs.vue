@@ -58,14 +58,18 @@
            collapsing into a wrapping chip row on narrow ones (CSS only) -->
       <nav class="docs-toc" :aria-label="t('docs.toc')">
         <button
-          v-for="section in docSections"
+          v-for="(section, index) in docSections"
           :key="section.id"
           class="toc-item"
           :class="{ active: section.id === activeSection }"
           type="button"
           @click="selectSection(section.id)"
         >
-          {{ t(section.titleKey) }}
+          <span class="no">{{ String(index + 1).padStart(2, '0') }}</span>
+          <span class="toc-item-text">
+            <span class="toc-item-title">{{ t(section.titleKey) }}</span>
+            <span class="toc-item-desc">{{ t(section.titleKey + '.desc') }}</span>
+          </span>
         </button>
       </nav>
 
@@ -375,27 +379,87 @@ function selectSection(id: DocSectionId): void {
   gap: 4px;
 }
 
+/* Desktop TOC: sticky vertical list on wide screens (matching phone .docrow pattern) */
 .toc-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 44px;
   text-align: left;
-  padding: 8px 14px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 13.5px;
+  background: var(--bg-secondary);
+  border: none;
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-island);
+  padding: 15px 16px;
+  margin-bottom: 11px;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  font-family: inherit;
+}
+
+.toc-item .no {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  background: var(--grad-soft);
+  color: #6d28d9;
+  font-weight: 800;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+html[data-theme='dark'] .toc-item .no {
+  color: #c4b5fd;
+}
+
+.toc-item-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.toc-item-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toc-item-desc {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-top: 2px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .toc-item:hover {
   background: var(--hover-bg);
-  color: var(--text-primary);
+}
+
+.toc-item:active {
+  background: var(--active-bg);
+  transform: scale(0.99);
 }
 
 .toc-item.active {
   background: var(--active-bg);
   color: var(--text-primary);
   font-weight: 600;
+}
+
+.toc-item:hover .no {
+  background: var(--active-bg);
 }
 
 /* ─── Content pane ─── */
@@ -715,5 +779,18 @@ html[data-theme='dark'] .docrow .no {
   color: var(--text-dim);
   font-size: 15px;
   flex-shrink: 0;
+}
+
+.docrow:hover {
+  background: var(--hover-bg);
+}
+
+.docrow:active {
+  background: var(--active-bg);
+  transform: scale(0.99);
+}
+
+.docrow:hover .no {
+  background: var(--active-bg);
 }
 </style>
