@@ -51,3 +51,7 @@ llama-gui-config.json
 # Local design drafts (Android mockups / branding explorations) are kept on the
 # author's machine only, never committed; the dir also holds the tracked icon.png.
 docs/branding/*.html
+
+# Playwright-MCP local scratch (browser snapshots, walkthrough screenshots,
+# task-package drafts). Never committed.
+.playwright-mcp/
