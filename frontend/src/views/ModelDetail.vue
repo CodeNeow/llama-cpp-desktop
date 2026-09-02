@@ -337,14 +337,12 @@ onMounted(() => {
     top: 0;
     z-index: 10;
     background: var(--glass);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
     border: 1px solid var(--glass-line);
     border-radius: 12px;
     padding: 10px 16px;
     margin-top: 0;
     margin-bottom: 16px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+    box-shadow: none;
   }
 }
 
@@ -402,7 +400,7 @@ onMounted(() => {
 
 .download-btn:active:not(:disabled) {
   transform: scale(0.98);
-  box-shadow: 0 2px 6px rgba(99, 102, 241, 0.15);
+  box-shadow: none;
 }
 
 .download-btn:disabled {
@@ -793,7 +791,7 @@ onMounted(() => {
     border-radius: 999px;
     font-size: 12.5px;
     font-weight: 800;
-    box-shadow: 0 8px 18px rgba(124, 92, 246, 0.4);
+    box-shadow: none;
   }
 
   .action-bar-sticky .download-btn:hover:not(:disabled) {

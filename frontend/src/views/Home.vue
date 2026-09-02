@@ -339,7 +339,7 @@ const tabs = [
 /* Online/resident: glowing green dot (design frame ① .live) */
 .greet-dot.on {
   background: var(--success);
-  box-shadow: 0 0 6px var(--success);
+  box-shadow: none;
 }
 
 /* Service up but no resident model yet: green but unlit */
@@ -447,7 +447,7 @@ const tabs = [
 .tab-btn.active {
   background: var(--text-primary);
   color: var(--bg-primary);
-  box-shadow: 0 4px 12px rgba(25, 28, 43, 0.25);
+  box-shadow: none;
 }
 
 .tab-btn .tab-icon {
@@ -475,7 +475,7 @@ const tabs = [
 
   /* Online glow (mockup .hero .tag .dot): mint 0 0 8px halo */
   .greet-dot.on {
-    box-shadow: 0 0 8px #6ee7b7;
+    box-shadow: none;
   }
 
   /* Subline must never clip mid-glyph: every segment is a single-line
@@ -561,7 +561,7 @@ const tabs = [
   .tab-btn.active {
     background: var(--text-primary);
     color: var(--bg-primary);
-    box-shadow: 0 4px 12px rgba(25, 28, 43, 0.25);
+    box-shadow: none;
   }
 
   .header-actions {

@@ -1122,7 +1122,7 @@ onUnmounted(() => {
 
 .param-input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-glow);
+  box-shadow: none;
 }
 
 .param-input::placeholder {
@@ -1294,7 +1294,7 @@ onUnmounted(() => {
     background: var(--grad);
     color: #fff;
     border-bottom-color: transparent;
-    box-shadow: 0 4px 12px rgba(124, 92, 246, 0.35);
+    box-shadow: none;
   }
 
   /* Frame ⑪ .actbar: ONE row of 4 equal-flex buttons (radius 14, 13/700);
@@ -1335,7 +1335,7 @@ onUnmounted(() => {
   .tune-btn {
     background: var(--grad);
     color: #fff;
-    box-shadow: 0 6px 14px rgba(124, 92, 246, 0.35);
+    box-shadow: none;
   }
 
   .tune-btn:hover {
@@ -1346,7 +1346,7 @@ onUnmounted(() => {
   .btn-primary:not(:disabled) {
     background: var(--grad);
     color: #fff;
-    box-shadow: 0 5px 12px rgba(124, 92, 246, 0.35);
+    box-shadow: none;
   }
 
   .btn-primary:hover:not(:disabled) {

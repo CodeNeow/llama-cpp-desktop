@@ -1250,7 +1250,7 @@ onUnmounted(() => {
   height: 8px;
   border-radius: 50%;
   background: var(--grad);
-  box-shadow: 0 0 6px rgba(139, 92, 246, 0.55);
+  box-shadow: none;
 }
 
 .chat-model-select :deep(.themed-select__trigger:hover:not(:disabled)),
@@ -1420,8 +1420,6 @@ html[data-os='ios'] .chat-model-select :deep(button.themed-select__trigger:activ
   font-weight: 500;
   color: var(--text-secondary);
   background: var(--glass);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
   border: 1px solid var(--glass-line);
 }
 
@@ -1545,7 +1543,7 @@ html[data-os='ios'] .chat-model-select :deep(button.themed-select__trigger:activ
   background: var(--bg-secondary);
   border-radius: 26px;
   padding: 18px 20px 16px;
-  box-shadow: 0 -10px 40px rgba(20, 22, 45, 0.3);
+  box-shadow: none;
   animation: sheet-up 0.25s ease;
 }
 
@@ -1668,7 +1666,7 @@ html[data-theme='dark'] .params-reset-link {
   height: 15px;
   border-radius: 50%;
   background: #fff;
-  box-shadow: 0 1px 5px rgba(40, 44, 90, 0.35);
+  box-shadow: none;
   margin-top: -5.5px;
 }
 
@@ -1690,7 +1688,7 @@ html[data-theme='dark'] .params-reset-link {
   border: none;
   border-radius: 50%;
   background: #fff;
-  box-shadow: 0 1px 5px rgba(40, 44, 90, 0.35);
+  box-shadow: none;
 }
 
 .psheet-val {
@@ -1795,7 +1793,7 @@ html[data-theme='dark'] .params-reset-link {
   background: var(--grad);
   color: #fff;
   border-radius: 22px 22px 6px 22px;
-  box-shadow: 0 8px 20px rgba(124, 92, 246, 0.3);
+  box-shadow: none;
 }
 
 .is-assistant .message-bubble {
@@ -2104,8 +2102,6 @@ html[data-theme='dark'] .params-reset-link {
   gap: 8px;
   padding: 6px 6px 6px 10px;
   background: var(--glass);
-  backdrop-filter: blur(22px) saturate(1.6);
-  -webkit-backdrop-filter: blur(22px) saturate(1.6);
   border: 1px solid var(--glass-line);
   border-radius: 28px;
   box-shadow: var(--shadow-island);
@@ -2228,12 +2224,12 @@ html[data-os='ios'] .attach-btn:active {
   cursor: pointer;
   transition: all 0.2s;
   flex-shrink: 0;
-  box-shadow: 0 6px 14px rgba(124, 92, 246, 0.4);
+  box-shadow: none;
 }
 
 .send-btn:hover:not(:disabled) {
   filter: brightness(1.08);
-  box-shadow: 0 8px 18px rgba(124, 92, 246, 0.5);
+  box-shadow: none;
 }
 
 /* Touch press feedback (OS-scoped): mirrors the hover lift on touch (also
@@ -2241,7 +2237,7 @@ html[data-os='ios'] .attach-btn:active {
 html[data-os='android'] .send-btn:active:not(:disabled),
 html[data-os='ios'] .send-btn:active:not(:disabled) {
   filter: brightness(1.08);
-  box-shadow: 0 8px 18px rgba(124, 92, 246, 0.5);
+  box-shadow: none;
 }
 
 .send-btn:disabled {
@@ -2254,12 +2250,12 @@ html[data-os='ios'] .send-btn:active:not(:disabled) {
    red is reserved for stop/unload) with a square stop glyph */
 .stop-btn {
   background: var(--danger);
-  box-shadow: 0 6px 14px rgba(239, 68, 68, 0.35);
+  box-shadow: none;
 }
 
 .stop-btn:hover:not(:disabled) {
   filter: brightness(1.08);
-  box-shadow: 0 8px 18px rgba(239, 68, 68, 0.45);
+  box-shadow: none;
 }
 
 /* ─── Mobile (<=767px): shell sizing + compact composer ───
@@ -2340,19 +2336,19 @@ html[data-os='ios'] .send-btn:active:not(:disabled) {
   .chat-settings-btn[aria-expanded='true'] {
     color: #7c3aed;
     border-color: transparent;
-    box-shadow: 0 0 0 2px #d6ccf7 inset, var(--shadow-island);
+    box-shadow: none;
   }
 
   html[data-theme='dark'] .chat-settings-btn[aria-expanded='true'] {
     color: #a78bfa;
-    box-shadow: 0 0 0 2px rgba(167, 139, 250, 0.45) inset, var(--shadow-island);
+    box-shadow: none;
   }
 
   /* Model chip status dot (frame ⑤ .mchip .dot): green with a soft glow;
      without models a muted gray dot on a muted chip */
   .chat-model-select :deep(.themed-select__trigger)::before {
     background: #10b981;
-    box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
+    box-shadow: none;
   }
 
   .chat-model-select--empty :deep(.themed-select__trigger) {

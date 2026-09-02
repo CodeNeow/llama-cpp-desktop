@@ -914,7 +914,7 @@ onUnmounted(() => {
   background: var(--grad);
   border: none;
   color: #fff;
-  box-shadow: 0 14px 34px rgba(124, 92, 246, 0.38);
+  box-shadow: none;
 }
 
 .hero-card::after {
@@ -960,7 +960,7 @@ onUnmounted(() => {
   height: 7px;
   border-radius: 50%;
   background: #6ee7b7;
-  box-shadow: 0 0 8px #6ee7b7;
+  box-shadow: none;
 }
 
 /* Offline: the glow dies, the dot goes neutral — status stays honest */
@@ -1022,7 +1022,7 @@ onUnmounted(() => {
   font-weight: 800;
   border-radius: 999px;
   padding: 11px 20px;
-  box-shadow: 0 6px 16px rgba(30, 20, 80, 0.25);
+  box-shadow: none;
   text-decoration: none;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
   flex-shrink: 0;
@@ -1031,7 +1031,7 @@ onUnmounted(() => {
 .hero-cta:hover {
   color: #5b21b6;
   transform: translateY(-1px);
-  box-shadow: 0 8px 20px rgba(30, 20, 80, 0.32);
+  box-shadow: none;
 }
 
 /* ─── Mini metric pair (frame ① .grid2 + .mini) ─── */
@@ -1767,7 +1767,7 @@ html[data-os='ios'] .unload-btn:active:not(:disabled) {
 
   .hero-card.off {
     background: linear-gradient(135deg, #4b5069 0%, #6b7186 60%, #8b90a5 100%);
-    box-shadow: 0 14px 34px rgba(70, 74, 100, 0.3);
+    box-shadow: none;
   }
 
   .hero-card.off .tag-dot {

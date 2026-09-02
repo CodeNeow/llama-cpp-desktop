@@ -58,11 +58,9 @@ const route = useRoute()
     justify-content: space-around;
     height: 68px;
     background: var(--glass);
-    -webkit-backdrop-filter: blur(22px) saturate(1.6);
-    backdrop-filter: blur(22px) saturate(1.6);
     border: 1px solid var(--glass-line);
     border-radius: 26px;
-    box-shadow: 0 12px 34px rgba(40, 44, 90, 0.18);
+    box-shadow: none;
   }
 
   .mobile-nav-item {
@@ -87,7 +85,7 @@ const route = useRoute()
     color: #fff;
     background: var(--grad);
     font-weight: 700;
-    box-shadow: 0 6px 16px rgba(124, 92, 246, 0.42);
+    box-shadow: none;
   }
 
   .mobile-nav-icon {

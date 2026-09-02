@@ -126,7 +126,6 @@ function isActive(path: string): boolean {
   flex-direction: column;
   --wails-draggable: drag;
   user-select: none;
-  backdrop-filter: blur(20px);
   /* Expand 236px ↔ collapse 64px; width and min-width must transition together —
      an instant min-width jump would mask the expand animation */
   transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -155,7 +154,7 @@ function isActive(path: string): boolean {
   width: 32px;
   height: 32px;
   flex-shrink: 0;
-  filter: drop-shadow(0 4px 8px rgba(99, 102, 241, 0.4));
+  filter: none;
 }
 
 .logo-text {
@@ -287,7 +286,7 @@ html[data-theme='dark'] .nav-item.active {
   height: 8px;
   border-radius: 50%;
   background: #22c55e;
-  box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
+  box-shadow: none;
   animation: pulse 2s infinite;
   transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -295,7 +294,7 @@ html[data-theme='dark'] .nav-item.active {
 /* Ready: green breathing */
 .status-dot.ok {
   background: #22c55e;
-  box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
+  box-shadow: none;
   animation: pulse 2s infinite;
 }
 

@@ -656,7 +656,7 @@ async function loadModel(m: string) {
 
 .pulse-dot.on {
   background: var(--success);
-  box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
+  box-shadow: none;
 }
 
 .pulse-dot.on::before {
@@ -895,7 +895,7 @@ html[data-theme='dark'] .speed-baseline {
 /* Stopped → the one executable action rides the brand gradient (frame ⑥) */
 .primary-btn.start {
   background: var(--grad);
-  box-shadow: 0 8px 20px rgba(124, 92, 246, 0.35);
+  box-shadow: none;
 }
 
 /* Running → the one primary action is the danger-tinted stop */
@@ -946,7 +946,7 @@ html[data-theme='dark'] .speed-baseline {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  box-shadow: none;
   padding: 16px;
 }
 
@@ -1490,7 +1490,7 @@ html[data-theme='dark'] .speed-baseline {
     z-index: 40;
     border: none;
     border-radius: 26px;
-    box-shadow: 0 -10px 40px rgba(20, 22, 45, 0.3);
+    box-shadow: none;
     padding: 18px 20px 16px;
   }
 

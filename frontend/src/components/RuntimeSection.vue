@@ -831,12 +831,12 @@ html[data-theme='dark'] .dl-status-line {
   border-color: rgba(99, 102, 241, 0.5);
   color: var(--accent-light);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+  box-shadow: none;
 }
 
 .download-btn:active {
   transform: translateY(0);
-  box-shadow: 0 2px 6px rgba(99, 102, 241, 0.15);
+  box-shadow: none;
 }
 
 /* ─── Custom button ─── */
@@ -1162,7 +1162,7 @@ html[data-theme='dark'] .dl-status-line {
     border-radius: 16px;
     font-size: 13.5px;
     font-weight: 800;
-    box-shadow: 0 8px 18px rgba(124, 92, 246, 0.4);
+    box-shadow: none;
   }
 
   .download-btn:hover {
@@ -1170,7 +1170,7 @@ html[data-theme='dark'] .dl-status-line {
     border-color: transparent;
     color: #fff;
     transform: none;
-    box-shadow: 0 8px 18px rgba(124, 92, 246, 0.4);
+    box-shadow: none;
   }
 
   .custom-btn {
@@ -1234,7 +1234,7 @@ html[data-theme='dark'] .dl-status-line {
     background: var(--grad);
     color: #fff;
     border-color: transparent;
-    box-shadow: 0 4px 10px rgba(124, 92, 246, 0.35);
+    box-shadow: none;
   }
 
   .resume-btn:hover {

@@ -872,14 +872,14 @@ async function manualCheck() {
   background: var(--grad, linear-gradient(135deg, #6366f1 0%, #8b5cf6 55%, #a855f7 100%));
   color: #fff;
   text-decoration: none;
-  box-shadow: 0 14px 34px rgba(124, 92, 246, 0.35);
+  box-shadow: none;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .docs-entry:hover {
   color: #fff;
   transform: translateY(-1px);
-  box-shadow: 0 18px 40px rgba(124, 92, 246, 0.42);
+  box-shadow: none;
 }
 
 .docs-entry-icon {
@@ -1109,7 +1109,7 @@ async function manualCheck() {
   background: #fff;
   top: 2px;
   left: 2px;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  box-shadow: none;
   transition: transform 0.25s ease;
 }
 
@@ -1155,7 +1155,7 @@ async function manualCheck() {
 .row-seg-btn.active {
   background: var(--bg-secondary);
   color: var(--text-primary);
-  box-shadow: 0 2px 8px rgba(80, 84, 140, 0.16);
+  box-shadow: none;
 }
 
 /* ─── API key input (row tail) ─── */
@@ -1439,7 +1439,7 @@ async function manualCheck() {
      brighter sub, and the plain → glyph tail instead of the chevron SVG */
   .docs-entry {
     padding: 18px;
-    box-shadow: 0 14px 34px rgba(124, 92, 246, 0.38);
+    box-shadow: none;
   }
 
   .docs-entry-title {
@@ -1585,7 +1585,7 @@ async function manualCheck() {
     max-height: 50vh;
     border-radius: 20px;
     border: none;
-    box-shadow: 0 -10px 40px rgba(20, 22, 45, 0.3);
+    box-shadow: none;
   }
 
   /* API key row tail (frame ⑯): compact button showing current auth state */
@@ -1625,7 +1625,7 @@ async function manualCheck() {
     background: var(--bg-secondary);
     border: none;
     border-radius: 26px;
-    box-shadow: 0 -10px 40px rgba(20, 22, 45, 0.3);
+    box-shadow: none;
     padding: 18px 20px 16px;
   }
 
@@ -1692,7 +1692,7 @@ async function manualCheck() {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: 16px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  box-shadow: none;
   padding: 20px;
   width: 340px;
   max-width: 90vw;

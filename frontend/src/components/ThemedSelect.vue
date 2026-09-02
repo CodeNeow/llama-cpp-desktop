@@ -253,12 +253,12 @@ html[data-os='ios'] .themed-select--field .themed-select__trigger:active:not(:di
 
 .themed-select--field .themed-select__trigger:focus-visible {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-glow);
+  box-shadow: none;
 }
 
 .themed-select--field .themed-select__trigger[aria-expanded='true'] {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-glow);
+  box-shadow: none;
 }
 
 /* toolbar variant: blends with the chat toolbar controls */
@@ -303,7 +303,7 @@ html[data-os='ios'] .themed-select--toolbar .themed-select__trigger:active:not(:
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  box-shadow: none;
   padding: 4px;
 }
 

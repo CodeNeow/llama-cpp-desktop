@@ -138,7 +138,7 @@ const tabs = [
 .seg-btn.active {
   background: var(--bg-secondary);
   color: var(--text-primary);
-  box-shadow: 0 3px 10px rgba(80, 84, 140, 0.16);
+  box-shadow: none;
 }
 
 /* The 20px gap under the control lives here as sticky-top padding instead of a

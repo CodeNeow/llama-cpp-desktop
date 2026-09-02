@@ -965,7 +965,7 @@ html[data-os='ios'] .model-settings-btn:active {
     border-radius: 999px;
     font-size: 12.5px;
     font-weight: 800;
-    box-shadow: 0 6px 14px rgba(124, 92, 246, 0.35);
+    box-shadow: none;
   }
 
   .empty-cta:hover {

@@ -987,7 +987,7 @@ onUnmounted(() => {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: 12px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  box-shadow: none;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1023,7 +1023,7 @@ onUnmounted(() => {
   border-radius: 999px;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+  box-shadow: none;
   cursor: pointer;
   color: var(--text-secondary);
   font-size: 12px;
@@ -1095,18 +1095,18 @@ html[data-os='ios'] .dock-pill:active {
   height: 7px;
   border-radius: 50%;
   background: #10b981;
-  box-shadow: 0 0 6px #6ee7b7;
+  box-shadow: none;
   flex-shrink: 0;
 }
 
 .pill-dot--warn {
   background: #fbbf24;
-  box-shadow: 0 0 6px #fbbf24;
+  box-shadow: none;
 }
 
 .pill-dot--error {
   background: #ef4444;
-  box-shadow: 0 0 6px #ef4444;
+  box-shadow: none;
 }
 
 .pill-sep {
@@ -1461,11 +1461,9 @@ html[data-os='ios'] .dock-unload-btn:active:not(:disabled) {
     padding: 0 14px;
     gap: 7px;
     background: rgba(25, 28, 43, 0.82);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
     border: none;
     border-radius: 24px 4px 4px 24px;
-    box-shadow: 0 8px 22px rgba(20, 22, 40, 0.35);
+    box-shadow: none;
     color: #fff;
     font-size: 12px;
     font-weight: 700;
@@ -1486,7 +1484,7 @@ html[data-os='ios'] .dock-unload-btn:active:not(:disabled) {
   .dock-popover {
     border: none;
     border-radius: 22px;
-    box-shadow: 0 18px 50px rgba(20, 22, 45, 0.35);
+    box-shadow: none;
     max-height: 60vh;
   }
 

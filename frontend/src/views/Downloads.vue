@@ -423,7 +423,7 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
   font-family: inherit;
   cursor: pointer;
   white-space: nowrap;
-  box-shadow: 0 6px 14px rgba(124, 92, 246, 0.35);
+  box-shadow: none;
   transition: all 0.2s;
 }
 
@@ -685,7 +685,7 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
   border: none;
   cursor: pointer;
   flex-shrink: 0;
-  box-shadow: 0 6px 14px rgba(124, 92, 246, 0.4);
+  box-shadow: none;
   transition: filter 0.2s;
 }
 
@@ -895,7 +895,7 @@ html[data-os='ios'] .cancel-btn:active {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  box-shadow: none;
 }
 
 .modal-header {
@@ -1037,7 +1037,7 @@ html[data-os='ios'] .cancel-btn:active {
     padding: 0 16px;
     font-size: 13px;
     font-weight: 800;
-    box-shadow: 0 8px 18px rgba(124, 92, 246, 0.4);
+    box-shadow: none;
   }
 
   /* Frame ⑧ search button: circular gradient (equal width/height, fully
@@ -1050,7 +1050,7 @@ html[data-os='ios'] .cancel-btn:active {
     border-radius: 50%;
     font-size: 13px;
     font-weight: 800;
-    box-shadow: 0 6px 14px rgba(124, 92, 246, 0.35);
+    box-shadow: none;
   }
 
   /* Frame ⑧ .gbtn.ghost: surface + island shadow, no border */

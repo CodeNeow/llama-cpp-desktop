@@ -207,7 +207,6 @@ function close() {
   position: fixed;
   inset: 0;
   background: rgba(0,0,0,0.6);
-  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -224,7 +223,7 @@ function close() {
   max-height: 80vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  box-shadow: none;
 }
 
 .modal-header {
@@ -362,7 +361,7 @@ function close() {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 6px 16px rgba(99, 102, 241, 0.3);
+  box-shadow: none;
 }
 
 .dl-version {
@@ -530,7 +529,7 @@ function close() {
     width: 100%;
     border: none;
     border-radius: 24px;
-    box-shadow: 0 24px 60px rgba(20, 22, 45, 0.4);
+    box-shadow: none;
   }
 
   .modal-header {
@@ -655,7 +654,7 @@ function close() {
     color: #fff;
     font-size: 13.5px;
     font-weight: 800;
-    box-shadow: 0 8px 18px rgba(124, 92, 246, 0.4);
+    box-shadow: none;
   }
 
   .footer-msg {
