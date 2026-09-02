@@ -107,8 +107,19 @@
              grab handle, header title + reset TEXT link, and slider / stepper
              controls. Same chatParams state and persistence as the popover —
              only the controls differ. .stop keeps in-sheet taps from hitting the
-             document-level close handler; tapping the dim closes. -->
-        <Teleport to="body">
+             document-level close handler; tapping the dim closes.
+
+             WARNING: this Teleport MUST be conditionally rendered with
+             v-if="isMobileTier". A persistent empty Teleport node in the vnode
+             tree breaks Vue's out-in <transition> afterLeave callback on this
+             page: BaseTransition waits for the leaving component's afterLeave,
+             but the lingering Teleport causes the leave hook to be lost,
+             state.isLeaving sticks permanently, and the content area stays
+             blank after navigating away from Chat. This is a known Vue×Teleport
+             edge case (see vuejs/core#5836 and related issues). Desktop and
+             tablet tiers never mount this Teleport node at all; only the phone
+             tier teleports the params sheet to <body>. -->
+        <Teleport v-if="isMobileTier" to="body">
           <div v-if="showParams && isMobileTier" class="params-sheet-root">
             <div class="params-dim" @click="showParams = false"></div>
             <div class="params-sheet" role="dialog" aria-modal="true" :aria-label="t('chat.paramsTitle')" @click.stop>
@@ -1512,7 +1523,13 @@ html[data-os='ios'] .chat-model-select :deep(button.themed-select__trigger:activ
 
 /* ─── Phone params sheet (design frame ⑤ .dim / .sheet) ───
    Rendered only on the phone tier (isMobileTier), teleported to <body> so the
-   dim + sheet float above every page layer. Desktop never mounts this markup. */
+   dim + sheet float above every page layer. Desktop never mounts this markup.
+
+   The Teleport wrapper in the template is gated by v-if="isMobileTier" (not
+   just the inner .params-sheet-root) because a persistent empty Teleport node
+   in the vnode tree breaks Vue's out-in <transition> afterLeave callback on
+   the chat page: state.isLeaving sticks and the content area stays blank
+   after navigating away (Vue×Teleport edge case, vuejs/core#5836). */
 .params-sheet-root {
   position: fixed;
   inset: 0;
