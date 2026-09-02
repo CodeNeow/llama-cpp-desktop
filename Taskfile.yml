@@ -99,21 +99,30 @@ tasks:
       # start (changed lockfile -> npm install + Vite dep re-optimization)
       # can outrun that window; poll here instead (bounded at 60s — a timeout
       # means Vite itself failed, see the dev:frontend output above).
+      #
+      # Why curl --retry instead of date/sleep: go-task invokes the task body
+      # through its own shell interpreter, which on Windows resolves external
+      # commands against the plain cmd.exe PATH (not Git Bash's usr/bin). That
+      # PATH lacks coreutils, so `date +%s` and `sleep` are not found and the
+      # loop dies with exit 127 before the first curl ever runs. Curl is the
+      # only external command required here: Windows 10+ ships curl.exe in
+      # System32, and Git Bash / Linux / macOS also have it.
+      #
+      # --retry-connrefused treats a refused TCP connect as a transient failure
+      # (Windows RST can surface as connection refused during Vite cold start).
+      # --retry-max-time 60 caps total wall-clock time to the same bound the
+      # old date arithmetic enforced. -sf keeps output silent on transient
+      # failures (5xx, timeouts) while still surfacing the final error.
+      #
       # Discard via shell redirect, NOT `curl -o /dev/null`: Task's POSIX
       # interpreter passes the literal path through on Windows and curl dies
-      # with exit 23 even against a healthy server. The deadline is
-      # time-based because a refused connection costs ~2s on some Windows
-      # setups, so a fixed iteration count would not map to a real bound.
+      # with exit 23 even against a healthy server.
       - |
-        start=$(date +%s)
-        until curl -sf --connect-timeout 2 "http://127.0.0.1:{{.VITE_PORT}}/" >/dev/null; do
-          now=$(date +%s)
-          if [ $((now - start)) -ge 60 ]; then
-            echo "Error: Vite dev server not ready on 127.0.0.1:{{.VITE_PORT}} within 60s"
-            exit 1
-          fi
-          sleep 0.2
-        done
+        if ! curl -sf --connect-timeout 2 --retry 60 --retry-delay 1 --retry-connrefused --retry-max-time 60 \
+            "http://127.0.0.1:{{.VITE_PORT}}/" >/dev/null; then
+          echo "Error: Vite dev server not ready on 127.0.0.1:{{.VITE_PORT}} within 60s"
+          exit 1
+        fi
 
   run:dev:
     summary: Run the dev-built binary (primary process of the wails3 dev loop)
