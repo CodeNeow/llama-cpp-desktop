@@ -35,5 +35,5 @@ These two paths decide where **new** content lands; to reuse model files already
 
 ## About
 
-- **Updates**: the app auto-checks for new versions every two days and shows an in-app update prompt when it finds one. The "Updates" row shows a "Check for Updates" button on Windows (the downloaded installer takes over); Android and other platforms show a GitHub Releases link instead (on Android, accepting the update prompt downloads the APK and installs it through the system installer dialog — the first install asks for the "Install unknown apps" grant);
+- **Updates**: the app auto-checks for new versions every two days and shows an in-app update prompt when it finds one. The "Updates" row on Android also provides a "Check for Updates" button (the downloaded APK is confirmed through the system installer; the first install asks for the "Install unknown apps" grant); the GitHub Releases link remains as a supplementary entry. Windows "Check for Updates" uses the NSIS installer for self-update. Linux / macOS have no built-in update channel and only show a link to GitHub Releases.
 - **Version / License / Repository**: the current version, the GPL-3.0 license and the repository URL. On phones these three are consolidated into a single "About" row — tapping it opens the repository page.

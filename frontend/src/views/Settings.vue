@@ -364,9 +364,12 @@
     </section>
 
     <!-- ─── Group: about (frame ⑤ group 3) ───
-         Updates: visible on every platform; the in-app self-update action is
-         Windows-only ('native'), other platforms get the link mode (hint +
-         GitHub Releases link) — same updateSectionMode gate, reskin only. -->
+         Updates: visible on every platform. Windows and Android both render
+         the in-app check-for-updates action cluster (Windows self-updates via
+         the downloaded NSIS installer; Android downloads an APK and the system
+         PackageInstaller confirms it); linux/darwin/other fall back to the
+         link mode (hint + GitHub Releases link) because the backend
+         CheckForUpdateAt gate short-circuits to "no update" on those platforms. -->
     <section class="settings-group" :aria-label="t('settings.about')">
       <div class="group-item">
         <div class="group-row">
@@ -375,8 +378,11 @@
             <span class="row-title">{{ t('settings.update') }}</span>
             <span class="row-sub" :class="{ 'row-sub-ok': updatesLink && isPhone }">{{ updateSub }}</span>
           </div>
-          <!-- Windows: native check-for-updates / self-update action -->
-          <div v-if="updatesNative" class="row-tail update-actions">
+          <!-- Windows / Android: in-app check-for-updates action (Windows self-updates
+               via the downloaded NSIS installer; Android downloads an APK that the
+               system PackageInstaller confirms). Other platforms have no native
+               install path, so the action is hidden there. -->
+          <div v-if="showCheckActions" class="row-tail update-actions">
             <span v-if="checkError" class="row-error">{{ checkError }}</span>
             <span v-else-if="checkResult && !checkResult.hasUpdate" class="update-latest">{{ t('settings.latest') }}</span>
             <button class="btn-check" :disabled="checking" @click="manualCheck">
@@ -384,7 +390,8 @@
             </button>
           </div>
           <!-- Phone link mode (frame ⑯): the Releases link IS the row tail;
-               the shared external-link handler opens the system browser -->
+               the shared external-link handler opens the system browser.
+               Only platforms without a check action reach this branch. -->
           <a
             v-else-if="isPhone"
             class="row-tail updates-link"
@@ -392,10 +399,20 @@
             @click="handleLinkClick"
           >{{ t('settings.updateReleasesLink') }} <span aria-hidden="true">↗</span></a>
         </div>
-        <!-- Desktop link mode: hint instead of the action; the Releases link
-             goes through the shared external-link handler (system browser,
-             never an in-WebView navigation) -->
-        <p v-if="!updatesNative && !isPhone" class="row-foot update-hint">
+        <!-- Android (all form factors): Releases link as a footnote row — the
+             in-app modal handles the actual install path, so the link is
+             supplementary, not the primary discovery mechanism. -->
+        <p v-if="isAndroid" class="row-foot update-hint">
+          <a
+            class="hint-link"
+            href="https://github.com/CodeNeow/llama-cpp-desktop/releases"
+            @click="handleLinkClick"
+          >{{ t('settings.updateReleasesLink') }}</a>
+        </p>
+        <!-- Desktop link mode (no native install path): hint instead of the
+             action; the Releases link opens through the shared external-link
+             handler (system browser, never in-WebView navigation) -->
+        <p v-else-if="!isPhone" class="row-foot update-hint">
           {{ t('settings.updateNotSupported') }}
           <a
             class="hint-link"
@@ -450,7 +467,7 @@ import { computed, onMounted, ref } from 'vue'
 import { appConfig, setTheme, loadConfig, setDownloadSource as applyDownloadSource, setLanguage as applyLanguage, setServerAccessMode as applyServerAccessMode, setApiKey as applyApiKey, setTrayEnabled as applyTrayEnabled } from '../store'
 import { updateState, checkForUpdate } from '../lib/update'
 import { getAppVersion, getLlamaCpp, getSystemInfo, getServerConfig, saveServerConfig, browseLlamaCppDownloadDir, browseModelDownloadDir, setApiRouteMode, getModels } from '../wails'
-import { accelBuildKey, showTraySetting, showApiRouteSetting, showServingGpuSetting, updateSectionMode, usePlatform } from '../lib/platform'
+import { accelBuildKey, showTraySetting, showApiRouteSetting, showServingGpuSetting, updateSectionMode, showUpdateCheckActions, usePlatform } from '../lib/platform'
 import { handleLinkClick } from '../lib/linkHandler'
 import { DOCS_ICON } from '../lib/navigation'
 import { docSections } from '../docs/manifest'
@@ -736,6 +753,11 @@ const showTray = computed(() => showTraySetting(platform.value))
 const showApiRoute = computed(() => showApiRouteSetting(platform.value))
 const showGpu = computed(() => showServingGpuSetting(platform.value))
 const updatesNative = computed(() => updateSectionMode(platform.value) === 'native')
+// Whether the update row renders the manual check-for-updates action cluster
+// (error / "up to date" / check button). Windows and Android both have an
+// in-app install path (NSIS / PackageInstaller); linux/darwin/other short-circuit
+// the update probe to "no update" so the action would be a no-op there.
+const showCheckActions = computed(() => showUpdateCheckActions(platform.value))
 
 // System tray toggle: rendered on Windows/macOS only. Disabling takes effect immediately (backend removes icon and
 // persists); systray cannot restart in same process, so re-enabling requires app restart (hint shown below toggle).
@@ -786,7 +808,9 @@ const checkError = computed(() => updateState.error)
 const checkResult = computed(() => updateState.result)
 
 // Link mode = every platform without the native check-for-updates action
-// (frame ⑯ renders Android as a release-link row too).
+// (linux/darwin/other: the backend update probe short-circuits to "no update",
+// so the action cluster would be a no-op; the row falls back to the hint +
+// GitHub Releases link, and Android/Windows render the action cluster above).
 const updatesLink = computed(() => !updatesNative.value)
 
 // Phone link mode (frame ⑯): static green "up to date · v{x}" sub — the

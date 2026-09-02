@@ -167,15 +167,34 @@ export function showServingGpuSetting(state: PlatformState): boolean {
   return state.os === 'windows'
 }
 
+/**
+ * Whether the update section renders the manual check-for-updates action
+ * cluster (error / "up to date" label / check button). This is distinct from
+ * {@link updateSectionMode}: the latter decides the *resource mode* (Windows
+ * downloads an NSIS installer, Android installs through the system
+ * PackageInstaller after the in-app modal downloads the APK — both are
+ * "native" install paths, but only Windows uses the self-update installer).
+ * Linux, macOS and other OSes do not render the action cluster because the
+ * backend `CheckForUpdateAt` gate short-circuits to "no update" there, so a
+ * manual check would always be a no-op.
+ */
+export function showUpdateCheckActions(state: PlatformState): boolean {
+  return state.os === 'windows' || state.os === 'android'
+}
+
 /** How the update section offers new versions to the user. */
 export type UpdateSectionMode = 'native' | 'link'
 
 /**
- * Update section mode: 'native' renders the in-app check-for-updates action
- * (self-update target: Windows via the downloaded NSIS installer); 'link'
- * renders a GitHub Releases pointer instead — a plain hint line on desktop,
- * and on Android the frame ⑯ release-link row (the automatic update check and
- * its in-app modal are independent of this gate and keep working there).
+ * Update section mode: 'native' means Windows has the in-app self-update
+ * install path (the downloaded NSIS installer takes over). Android's actual
+ * install path is the system PackageInstaller (triggered by the in-app modal
+ * after downloading the APK), but Android remains 'link' mode here — the
+ * GitHub Releases pointer stays as a supplementary entry. The separate
+ * {@link showUpdateCheckActions} gate controls whether the manual
+ * check-for-updates action cluster renders; on Android it does, while
+ * linux/darwin/other platforms render the hint + link only because the
+ * backend `CheckForUpdateAt` gate short-circuits to "no update" there.
  */
 export function updateSectionMode(state: PlatformState): UpdateSectionMode {
   return state.os === 'windows' ? 'native' : 'link'

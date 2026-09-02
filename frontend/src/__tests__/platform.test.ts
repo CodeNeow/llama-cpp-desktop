@@ -8,6 +8,7 @@ import {
   showApiRouteSetting,
   showServingGpuSetting,
   updateSectionMode,
+  showUpdateCheckActions,
   showGpuCards,
   showCudaCompat,
   showCudaRuntimeComponent,
@@ -237,30 +238,46 @@ describe('loadModeOptions', () => {
 describe('OS-scoped setting gates (Settings.vue visibility)', () => {
   // Gates follow each feature's own capability matrix: tray is windows+darwin
   // (NSStatusItem; linux DBUS is too desktop-environment-dependent), headless
-  // relaunch and CUDA device pinning stay Windows-only, and the native
-  // check-for-updates action stays Windows-only (NSIS installer) — Android's
-  // settings row shows the GitHub Releases link instead (frame ⑯); its
-  // automatic update check + in-app modal are independent of that gate.
+  // relaunch and CUDA device pinning stay Windows-only, the native
+  // check-for-updates action renders on Windows (NSIS installer) and Android
+  // (system PackageInstaller for the in-app downloaded APK) — linux/darwin/ios/other
+  // short-circuit the update probe to "no update" so the action cluster would
+  // be a no-op there (Android's settings row shows the GitHub Releases link as
+  // a supplementary footnote, not as the primary discovery path); its
+  // automatic update check + in-app modal are independent of these gates.
   // None of the gates are viewport-scoped.
-  it.each<[OsId, boolean, boolean, boolean, 'native' | 'link']>([
-    ['windows', true, true, true, 'native'],
-    ['darwin', true, false, false, 'link'],
-    ['linux', false, false, false, 'link'],
-    ['android', false, false, false, 'link'],
-    ['ios', false, false, false, 'link'],
-    ['other', false, false, false, 'link'],
+  it.each<[OsId, boolean, boolean, boolean, boolean]>([
+    ['windows', true, true, true, true],
+    ['darwin', true, false, false, false],
+    ['linux', false, false, false, false],
+    ['android', false, false, false, true],
+    ['ios', false, false, false, false],
+    ['other', false, false, false, false],
   ])(
-    '%s -> tray=%s apiRoute=%s gpu=%s updates=%s',
-    (os, tray, apiRoute, gpu, updates) => {
+    '%s -> tray=%s apiRoute=%s gpu=%s showCheckActions=%s',
+    (os, tray, apiRoute, gpu, showCheck) => {
       for (const width of [390, MOBILE_MAX, TABLET_MAX, TABLET_MAX + 1, 1920]) {
         const state: PlatformState = buildPlatformState(os, width)
         expect(showTraySetting(state)).toBe(tray)
         expect(showApiRouteSetting(state)).toBe(apiRoute)
         expect(showServingGpuSetting(state)).toBe(gpu)
-        expect(updateSectionMode(state)).toBe(updates)
+        expect(showUpdateCheckActions(state)).toBe(showCheck)
       }
     },
   )
+
+  it.each<[OsId, 'native' | 'link']>([
+    ['windows', 'native'],
+    ['darwin', 'link'],
+    ['linux', 'link'],
+    ['android', 'link'],
+    ['ios', 'link'],
+    ['other', 'link'],
+  ])('%s -> updateSectionMode=%s', (os, mode) => {
+    for (const width of [390, MOBILE_MAX, TABLET_MAX, TABLET_MAX + 1, 1920]) {
+      expect(updateSectionMode(buildPlatformState(os, width))).toBe(mode)
+    }
+  })
 })
 
 describe('reactive platform singleton', () => {
