@@ -228,6 +228,19 @@ public class MainActivity extends AppCompatActivity {
                 // Same for the system-bar insets: a fresh push so the page
                 // starts padded behind the edge-to-edge bars.
                 emitSafeAreaSnapshot();
+                // App-like: disable pinch-zoom gestures at the JS layer.
+                // Viewport meta intentionally omits user-scalable=no /
+                // maximum-scale because on API 35 WebView that combination
+                // suppresses IME layout resizing and the keyboard covers the
+                // chat composer — keep the two mechanisms separate.
+                webView.evaluateJavascript(
+                    "(function(){"
+                    + "function blockMultiTouch(e){"
+                    + "  if(e.touches&&e.touches.length>1)e.preventDefault();"
+                    + "}"
+                    + "document.addEventListener('touchstart',blockMultiTouch,{passive:false});"
+                    + "document.addEventListener('touchmove',blockMultiTouch,{passive:false});"
+                    + "})()", null);
             }
         });
 
