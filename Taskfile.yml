@@ -5,7 +5,7 @@ version: '3'
 # `wails3 dev` wrap these tasks; see build/config.yml for the dev loop.
 
 vars:
-  APP_NAME: 'llama-desktop'
+  APP_NAME: 'MyLlama'
   BIN_DIR: 'build/bin'
   VITE_PORT: '{{.WAILS_VITE_PORT | default 5173}}'
 
@@ -265,5 +265,5 @@ tasks:
         VER="$(cat core/VERSION)"
         mkdir -p build/bin
         cp build/android/app/build/outputs/apk/release/app-release.apk \
-           "build/bin/llama-desktop-${VER}-android-arm64.apk"
-        echo "Packaged: build/bin/llama-desktop-${VER}-android-arm64.apk"
+           "build/bin/MyLlama-${VER}-android-arm64.apk"
+        echo "Packaged: build/bin/MyLlama-${VER}-android-arm64.apk"

@@ -1,8 +1,8 @@
-# Llama Desktop Development Guidelines
+# MyLlama Development Guidelines
 
 ## Project Overview
 
-Llama Desktop is a local LLM desktop management tool built on **Wails v2** (Go 1.25 backend + WebView2 frontend). The frontend uses **Vue 3 + TypeScript + Vite 5** (no third-party UI library, hand-written CSS variable theming). The inference engine is **llama.cpp** (llama-server router mode).
+MyLlama is a local LLM desktop management tool built on **Wails v2** (Go 1.25 backend + WebView2 frontend). The frontend uses **Vue 3 + TypeScript + Vite 5** (no third-party UI library, hand-written CSS variable theming). The inference engine is **llama.cpp** (llama-server router mode).
 
 Core pipeline: scan `LLM-Models/` for GGUF files → configure per-model inference parameters → generate llama-server model presets (INI) → launch an OpenAI-compatible service (default `127.0.0.1:8080`).
 
@@ -14,7 +14,7 @@ Run these from the repository root:
 
 ```bash
 wails dev                 # Dev mode: Go backend + Vite frontend (:5173) hot-reload
-wails build               # Production build; output at build/bin/llama-desktop.exe (build/ is gitignored)
+wails build               # Production build; output at build/bin/MyLlama.exe (build/ is gitignored)
 cd frontend && npm run build   # Frontend only (vue-tsc type-check + vite build)
 cd frontend && npm run dev     # Vite only (without Wails runtime, backend calls will fail; see below)
 ```

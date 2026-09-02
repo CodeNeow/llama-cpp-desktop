@@ -1,5 +1,7 @@
 # 设计参考：GUI ↔ 无头（API 路由）模式交接与接管
 
+MyLlama 的 GUI ↔ 无头模式切换：退出侧写交接记录，接管侧探活后认领仍在运行的 llama-server。
+
 > 权威来源：`core/handover.go`、`core/headless.go`、`core/bridge.go`（adoptedPid 状态）、
 > `core/server.go`（日志 tailer、`serverTrueStart`）、`core/app.go`、`main.go`、
 > `core/proctime_*.go`。与代码冲突时以代码为准。

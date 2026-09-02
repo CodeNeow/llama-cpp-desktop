@@ -1,4 +1,4 @@
-# Llama Desktop combined validation gate (Windows PowerShell)
+# MyLlama combined validation gate (Windows PowerShell)
 # Usage: .\scripts\check.ps1                 # full (version sync + backend + frontend)
 #       .\scripts\check.ps1 -Scope backend  # backend only
 #       .\scripts\check.ps1 -Scope frontend # frontend only

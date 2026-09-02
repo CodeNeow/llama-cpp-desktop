@@ -34,7 +34,7 @@ var currentVersion = strings.TrimSpace(string(versionFile))
 // name, the current version and the repository URL so recipients can
 // attribute the traffic to this project.
 func appUserAgent() string {
-	return "llama-cpp-desktop/" + currentVersion + " (+https://github.com/CodeNeow/llama-cpp-desktop)"
+	return "MyLlama/" + currentVersion + " (+https://github.com/CodeNeow/llama-cpp-desktop)"
 }
 
 // updateRepoAPI points to this repository's latest release API. The URL is
@@ -187,7 +187,7 @@ func detectInstallKind() string {
 // pickUpdateAsset picks the update-download asset by install kind, matching
 // by keyword (independent of artifact prefix), compatible with three naming
 // generations:
-//   - Current naming: setup installer llama-desktop-setup-vX.Y.Z-windows-amd64.exe
+//   - Current naming: setup installer MyLlama-setup-vX.Y.Z-windows-amd64.exe
 //     (portable builds are no longer published);
 //   - Old naming (since v0.1.7): llama-gui-setup- / llama-gui-portable- prefixes;
 //   - Oldest naming (v0.1.6): installer llama-gui-amd64-installer.exe,
@@ -198,7 +198,7 @@ func detectInstallKind() string {
 // arm64 (the only ABI the release pipeline publishes today, matching the
 // arm64-only abiFilters of the gradle project).
 //
-// setup returns the first installer asset (name contains installer or setup);
+// setup returns the first installer asset (name contains installer or setup) — matches MyLlama-setup-*;
 // portable returns the first asset containing portable or any non-installer
 // exe (the oldest llama-gui.exe contains none of portable/installer/setup and
 // hits the "non-installer" branch). Portable builds are no longer published:
@@ -325,8 +325,8 @@ func downloadUpdateRelease(version string) {
 
 	// Step 2: download into the executable's directory, named by the selected
 	// asset type (not the local install kind): installer assets (name contains
-	// setup / installer) → llama-desktop-setup-v<tag>.exe, anything else →
-	// llama-desktop-portable-v<tag>.exe. Non-fallback paths pick by kind, so
+	// setup / installer) → MyLlama-setup-v<tag>.exe, anything else →
+	// MyLlama-portable-v<tag>.exe. Non-fallback paths pick by kind, so
 	// their filenames are unchanged; only the portable→installer fallback
 	// switches to the setup name, keeping the filename honest about content.
 	exePath, err := updateExePath()
@@ -346,11 +346,11 @@ func downloadUpdateRelease(version string) {
 			setUpdateDownloadError(tr("无法定位应用数据目录", "cannot resolve the app data directory"))
 			return
 		}
-		fileName = "llama-desktop-android-" + release.TagName + ".apk"
+		fileName = "MyLlama-android-" + release.TagName + ".apk"
 	} else if isInstallerAsset {
-		fileName = "llama-desktop-setup-" + release.TagName + ".exe"
+		fileName = "MyLlama-setup-" + release.TagName + ".exe"
 	} else {
-		fileName = "llama-desktop-portable-" + release.TagName + ".exe"
+		fileName = "MyLlama-portable-" + release.TagName + ".exe"
 	}
 	destPath := filepath.Join(dir, fileName)
 

@@ -1,6 +1,6 @@
 # Contributor Guide
 
-Thank you for contributing to Llama Desktop! This guide covers environment setup, commit conventions, quality gates, and the Issue / PR workflow. For the complete development guidelines, see [AGENTS.md](./AGENTS.md).
+Thank you for contributing to MyLlama! This guide covers environment setup, commit conventions, quality gates, and the Issue / PR workflow. For the complete development guidelines, see [AGENTS.md](./AGENTS.md).
 
 ## 1. Environment Setup
 

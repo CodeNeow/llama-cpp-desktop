@@ -1,4 +1,4 @@
-# Llama Desktop combined validation gate (POSIX)
+# MyLlama combined validation gate (POSIX)
 # Usage: make check           # full (version sync + backend + frontend)
 #       make check-version   # version sync check only
 #       make check-backend   # backend only

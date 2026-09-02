@@ -16,7 +16,7 @@
           <path d="M28 16 h17 v45 h30 v17 H28 Z" fill="#fff" />
           <path d="M69 12 l4 10 10 4 -10 4 -4 10 -4 -10 -10 -4 10 -4 Z" fill="#fff" opacity=".95" />
         </svg>
-        <span class="logo-text">Llama Desktop</span>
+        <span class="logo-text">MyLlama</span>
       </div>
 
     </div>

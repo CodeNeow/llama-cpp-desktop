@@ -112,7 +112,7 @@ func (a *App) Startup(ctx context.Context) {
 	configMu.Unlock()
 	applyThemeBackground(theme)
 
-	log.Println("[INFO] Llama Desktop started")
+	log.Println("[INFO] MyLlama started")
 }
 
 // ServiceStartup is the Wails v3 service lifecycle hook (replacement for the
@@ -154,7 +154,7 @@ func (a *App) Shutdown(ctx context.Context) {
 		// Mode-switch restart: the successor process (already relaunched)
 		// adopts llama-server via the handover file; keep the service and the
 		// download goroutines alive until this process exits.
-		log.Println("[INFO] Llama Desktop stopping for mode switch; llama-server keeps running")
+		log.Println("[INFO] MyLlama stopping for mode switch; llama-server keeps running")
 		return
 	}
 
@@ -202,7 +202,7 @@ func (a *App) Shutdown(ctx context.Context) {
 	}
 	dlTasksMu.Unlock()
 
-	log.Println("[INFO] Llama Desktop stopped")
+	log.Println("[INFO] MyLlama stopped")
 }
 
 // ServiceShutdown is the Wails v3 service lifecycle hook (replacement for the

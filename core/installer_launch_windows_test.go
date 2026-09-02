@@ -14,7 +14,7 @@ import "testing"
 func TestLaunchInstallerWindowsRejectsMissingFile(t *testing.T) {
 	// A missing file makes ShellExecute return SE_ERR_FNF before any UAC
 	// dialog, so the call fails deterministically and safely in tests.
-	if err := launchInstaller(`C:\nonexistent\llama-desktop-setup-test.exe`); err == nil {
+	if err := launchInstaller(`C:\nonexistent\MyLlama-setup-test.exe`); err == nil {
 		t.Fatal("launchInstaller on a nonexistent path must return an error")
 	}
 }

@@ -13,7 +13,7 @@ import (
 // ─── Single-instance named mutex ──────────────────────────────────
 //
 // A session-local named mutex (Local\ prefix, per login session) serializes
-// Llama Desktop processes: the mode-switch flow (GUI ⇄ headless) relaunches
+// MyLlama processes: the mode-switch flow (GUI ⇄ headless) relaunches
 // the app before the current process exits, so a new process briefly has to
 // wait for the old one to release the mutex — hence the bounded retry loop.
 // The mutex is held for the whole process lifetime and released by the OS on

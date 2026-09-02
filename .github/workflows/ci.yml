@@ -298,13 +298,13 @@ jobs:
         run: |
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then VER="$GITHUB_REF_NAME"; else VER="$(cat ../../../core/VERSION)"; fi
           echo "ARTIFACT_VERSION=$VER" >> "$GITHUB_ENV"
-          makensis -DARG_WAILS_AMD64_BINARY='..\..\bin\llama-desktop.exe' -DINFO_PRODUCTVERSION="${VER#v}" project.nsi
+          makensis -DARG_WAILS_AMD64_BINARY='..\..\bin\MyLlama.exe' -DINFO_PRODUCTVERSION="${VER#v}" project.nsi
       - name: Rename artifacts with version
         shell: bash
         run: |
           # ARTIFACT_VERSION was resolved in the installer step: tag build uses the tag
           # (e.g. v0.1.6); non-tag builds fall back to core/VERSION.
-          mv build/bin/llama-desktop-amd64-installer.exe "build/bin/llama-desktop-setup-${ARTIFACT_VERSION}-windows-amd64.exe"
+          mv build/bin/MyLlama-amd64-installer.exe "build/bin/MyLlama-setup-${ARTIFACT_VERSION}-windows-amd64.exe"
           ls -la build/bin/
       - name: List build outputs
         shell: bash
@@ -312,9 +312,9 @@ jobs:
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: llama-desktop-windows
+          name: MyLlama-windows
           path: |
-            build/bin/llama-desktop-setup-*.exe
+            build/bin/MyLlama-setup-*.exe
 
   build-linux:
     # Build Ubuntu 22.04 / 24.04 .deb packages with the Wails v3 GTK3 stack.
@@ -386,7 +386,7 @@ jobs:
         # Direct go build (go:embed embeds frontend/dist), no wails CLI / npm;
         # -tags production,gtk3 is the v3 production build for the GTK3 + WebKit2GTK 4.1
         # stack; CGO is required (webview via cgo) and stated explicitly.
-        run: CGO_ENABLED=1 go build -tags "production,gtk3" -trimpath -buildvcs=false -ldflags="-w -s" -o build/bin/llama-desktop .
+        run: CGO_ENABLED=1 go build -tags "production,gtk3" -trimpath -buildvcs=false -ldflags="-w -s" -o build/bin/MyLlama .
 
       - name: Package .deb
         # Hand-rolled dpkg-deb layout (mirrors the v3 nfpm template's file placement):
@@ -410,7 +410,7 @@ jobs:
           # Depends uses alternatives to cover the 24.04 time64 transition gtk3 rename
           # (libgtk-3-0 -> libgtk-3-0t64); WebKit runtime per distro matrix
           cat > pkg/DEBIAN/control <<EOF
-          Package: llama-desktop
+          Package: myllama
           Version: ${DEBVER}
           Section: utils
           Architecture: amd64
@@ -419,19 +419,19 @@ jobs:
           Depends: libgtk-3-0 | libgtk-3-0t64, ${{ matrix.webkit-runtime }}
           EOF
 
-          cp build/bin/llama-desktop pkg/usr/local/bin/llama-desktop
+          cp build/bin/MyLlama pkg/usr/local/bin/myllama
 
-          cat > pkg/usr/share/applications/llama-desktop.desktop <<EOF
+          cat > pkg/usr/share/applications/myllama.desktop <<EOF
           [Desktop Entry]
           Version=1.0
-          Name=Llama Desktop
+          Name=MyLlama
           Comment=Local LLM desktop manager powered by llama.cpp
-          Exec=/usr/local/bin/llama-desktop %u
+          Exec=/usr/local/bin/myllama %u
           Terminal=false
           Type=Application
-          Icon=llama-desktop
+          Icon=myllama
           Categories=Utility;
-          StartupWMClass=llama-desktop
+          StartupWMClass=myllama
           EOF
 
           # Include app icon when build/appicon.png exists; omit otherwise.
@@ -439,25 +439,25 @@ jobs:
           # directory must match the actual image size per the freedesktop icon spec).
           if [[ -f build/appicon.png ]]; then
             mkdir -p pkg/usr/share/icons/hicolor/512x512/apps
-            cp build/appicon.png pkg/usr/share/icons/hicolor/512x512/apps/llama-desktop.png
+            cp build/appicon.png pkg/usr/share/icons/hicolor/512x512/apps/myllama.png
           fi
 
           dpkg-deb --build --root-owner-group pkg
-          mv pkg.deb "build/bin/llama-desktop_${DEBVER}_amd64.deb"
+          mv pkg.deb "build/bin/myllama_${DEBVER}_amd64.deb"
           ls -la build/bin/
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: llama-desktop-linux-${{ matrix.os }}
-          path: build/bin/llama-desktop_*.deb
+          name: MyLlama-linux-${{ matrix.os }}
+          path: build/bin/myllama_*.deb
 
   build-macos:
     # Build a universal (arm64 + amd64) .app bundle zipped for distribution.
     # Codesigning is ad-hoc only: real distribution needs a Developer ID Application
     # certificate plus notarization — Gatekeeper will warn ("unidentified developer" /
     # "damaged and can't be opened") on ad-hoc signed builds; users must right-click >
-    # Open once, or clear quarantine with `xattr -cr /Applications/llama-desktop.app`.
+    # Open once, or clear quarantine with `xattr -cr /Applications/MyLlama.app`.
     # Done on a native macOS runner: CGO cross-arch builds (arm64 + amd64), lipo, sips,
     # iconutil and codesign are all preinstalled there.
     runs-on: macos-latest
@@ -494,13 +494,13 @@ jobs:
         # the 12.0 minimum, then lipo merges them into one universal binary.
         run: |
           CGO_ENABLED=1 go build -tags production -trimpath -buildvcs=false -ldflags="-w -s" \
-            -o build/bin/llama-desktop-arm64 .
+            -o build/bin/MyLlama-arm64 .
           CGO_ENABLED=1 GOARCH=amd64 go build -tags production -trimpath -buildvcs=false -ldflags="-w -s" \
-            -o build/bin/llama-desktop-amd64 .
-          lipo -create -output build/bin/llama-desktop \
-            build/bin/llama-desktop-arm64 build/bin/llama-desktop-amd64
-          rm build/bin/llama-desktop-arm64 build/bin/llama-desktop-amd64
-          lipo -info build/bin/llama-desktop
+            -o build/bin/MyLlama-amd64 .
+          lipo -create -output build/bin/MyLlama \
+            build/bin/MyLlama-arm64 build/bin/MyLlama-amd64
+          rm build/bin/MyLlama-arm64 build/bin/MyLlama-amd64
+          lipo -info build/bin/MyLlama
       - name: Unit tests on the target OS (darwin-specific branches)
         # First-ever execution of the suite against darwin branches (proctime
         # stubs, tray complement, locale env lookup). Runs after the binary
@@ -548,8 +548,8 @@ jobs:
           echo "ARTIFACT_VERSION=$VER" >> "$GITHUB_ENV"
           APPVER="${VER#v}"
 
-          mkdir -p build/bin/llama-desktop.app/Contents/MacOS
-          mkdir -p build/bin/llama-desktop.app/Contents/Resources
+          mkdir -p build/bin/MyLlama.app/Contents/MacOS
+          mkdir -p build/bin/MyLlama.app/Contents/Resources
 
           # Generate appicon.icns from build/appicon.png (512x512) via sips + iconutil
           mkdir -p appicon.iconset
@@ -563,12 +563,12 @@ jobs:
           sips -z 512 512 build/appicon.png --out appicon.iconset/icon_256x256@2x.png
           sips -z 512 512 build/appicon.png --out appicon.iconset/icon_512x512.png
           iconutil -c icns appicon.iconset \
-            -o build/bin/llama-desktop.app/Contents/Resources/appicon.icns
+            -o build/bin/MyLlama.app/Contents/Resources/appicon.icns
           rm -rf appicon.iconset
 
-          cp build/bin/llama-desktop build/bin/llama-desktop.app/Contents/MacOS/llama-desktop
+          cp build/bin/MyLlama build/bin/MyLlama.app/Contents/MacOS/MyLlama
 
-          cat > build/bin/llama-desktop.app/Contents/Info.plist <<EOF
+          cat > build/bin/MyLlama.app/Contents/Info.plist <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -576,11 +576,11 @@ jobs:
               <key>CFBundlePackageType</key>
               <string>APPL</string>
               <key>CFBundleName</key>
-              <string>Llama Desktop</string>
+              <string>MyLlama</string>
               <key>CFBundleExecutable</key>
-              <string>llama-desktop</string>
+              <string>MyLlama</string>
               <key>CFBundleIdentifier</key>
-              <string>com.codeneow.llama-desktop</string>
+              <string>com.codeneow.myllama</string>
               <key>CFBundleVersion</key>
               <string>${APPVER}</string>
               <key>CFBundleShortVersionString</key>
@@ -596,19 +596,19 @@ jobs:
           EOF
 
           # Ad-hoc signature: see job-level comment for the distribution caveat
-          codesign --force --deep -s - build/bin/llama-desktop.app
+          codesign --force --deep -s - build/bin/MyLlama.app
       - name: Zip .app bundle with version
         # -y preserves symlinks inside the bundle (none expected today, but standard
         # practice for .app zips)
         run: |
           cd build/bin
-          zip -r -y "llama-desktop-macos-${ARTIFACT_VERSION}-universal.zip" llama-desktop.app
+          zip -r -y "MyLlama-macos-${ARTIFACT_VERSION}-universal.zip" MyLlama.app
           ls -la
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: llama-desktop-macos
-          path: build/bin/llama-desktop-macos-*.zip
+          name: MyLlama-macos
+          path: build/bin/MyLlama-macos-*.zip
 
   build-android:
     # arm64 APK via the Wails v3 Android gradle project in build/android
@@ -671,9 +671,9 @@ jobs:
             echo "::warning::ANDROID_KEYSTORE_BASE64 secret not set - the arm64 APK falls back to the per-runner debug keystore (not in-app-updatable)"
             exit 0
           fi
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/llama-desktop-release.keystore"
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/myllama-release.keystore"
           {
-            echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/llama-desktop-release.keystore"
+            echo "ANDROID_KEYSTORE_FILE=$RUNNER_TEMP/myllama-release.keystore"
             echo "ANDROID_KEYSTORE_PASSWORD=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}"
             echo "ANDROID_KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS }}"
             echo "ANDROID_KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}"
@@ -696,7 +696,7 @@ jobs:
         # CI's Android emulator is x86_64 and cannot run arm64 native libs, so
         # the smoke job needs a second debug APK carrying an x86_64 libwails.so
         # (Taskfile android:build:go ABI=x86_64 + gradle -PtargetAbi=x86_64).
-        # Uploaded under its own artifact name (outside the llama-desktop-*
+        # Uploaded under its own artifact name (outside the MyLlama-*
         # release pattern) so the release job's 5-artifact count stays intact.
         run: |
           wails3 task android:build:go ABI=x86_64
@@ -705,19 +705,19 @@ jobs:
           ./gradlew -PtargetAbi=x86_64 assembleDebug
           VER="$(cat ../../core/VERSION)"
           cp app/build/outputs/apk/debug/app-debug.apk \
-            "../../build/bin/llama-desktop-${VER}-android-x86_64-debug-smoke.apk"
+            "../../build/bin/MyLlama-${VER}-android-x86_64-debug-smoke.apk"
       - name: Upload smoke APK
         uses: actions/upload-artifact@v4
         with:
           name: smoke-android-apk
-          path: build/bin/llama-desktop-*-android-x86_64-debug-smoke.apk
+          path: build/bin/MyLlama-*-android-x86_64-debug-smoke.apk
       - name: List build outputs
         run: ls -la build/bin/
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: llama-desktop-android
-          path: build/bin/llama-desktop-*-android-arm64.apk
+          name: MyLlama-android
+          path: build/bin/MyLlama-*-android-arm64.apk
 
   smoke-android:
     # Emulator smoke for the APK: boots the x86_64 debug build on an API 30
@@ -782,7 +782,7 @@ jobs:
         # windows 1 exe + linux 2 deb (ubuntu 22.04 / 24.04) + macos 1 zip + android 1 apk
         uses: actions/download-artifact@v4
         with:
-          pattern: llama-desktop-*
+          pattern: MyLlama-*
           path: artifacts
           merge-multiple: true
       - name: Extract release notes from CHANGELOG.md

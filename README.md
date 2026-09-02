@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="docs/branding/icon.png" width="88" alt="Llama Desktop" />
+<img src="docs/branding/icon.png" width="88" alt="MyLlama" />
 
-# Llama Desktop
+# MyLlama
 
 **本地大模型推理桌面的跨平台图形客户端，基于 [llama.cpp](https://github.com/ggml-org/llama.cpp)**——可视化调优 GGUF 模型，多模型共享一个 OpenAI 兼容端点，内置模型下载、本地聊天与实时监控，一套代码覆盖 Windows / Android / Linux。
 
@@ -22,7 +22,7 @@ Windows x64 · Android arm64 · Linux x64/arm64 · GPL-3.0
 
 <div align="center">
 
-![Llama Desktop 本地聊天](docs/screenshots/zh/chat.png)
+![MyLlama 本地聊天](docs/screenshots/zh/chat.png)
 
 *本地聊天：流式对话直连本机 llama-server，服务未启动时自动拉起*
 
@@ -101,17 +101,17 @@ Windows x64 · Android arm64 · Linux x64/arm64 · GPL-3.0
 
 ### Windows
 
-前往 [Releases 最新版](https://github.com/CodeNeow/llama-cpp-desktop/releases/latest) 下载 `llama-desktop-setup-*-windows-amd64.exe`，双击安装即可（安装包内嵌 WebView2 Runtime 引导器，系统缺失时自动安装）。应用内置自动更新，后续新版本无需手动重装。
+前往 [Releases 最新版](https://github.com/CodeNeow/llama-cpp-desktop/releases/latest) 下载 `MyLlama-setup-*-windows-amd64.exe`，双击安装即可（安装包内嵌 WebView2 Runtime 引导器，系统缺失时自动安装）。应用内置自动更新，后续新版本无需手动重装。
 
 环境要求：Windows 10 及以上（x64）。
 
 ### Android
 
-前往 [Releases 最新版](https://github.com/CodeNeow/llama-cpp-desktop/releases/latest) 下载 `llama-desktop-*-android-arm64.apk`（arm64 设备，Android 5.0+），安装时按提示允许「安装未知来源应用」。应用内「偏好设置 → 检查更新」可下载新版本并由系统安装器完成升级；应用内自更新要求新旧版本使用同一签名（Release 发布的 APK 均以稳定密钥签名），本地 debug 签名的构建请先卸载旧版再安装。
+前往 [Releases 最新版](https://github.com/CodeNeow/llama-cpp-desktop/releases/latest) 下载 `MyLlama-*-android-arm64.apk`（arm64 设备，Android 5.0+），安装时按提示允许「安装未知来源应用」。应用内「偏好设置 → 检查更新」可下载新版本并由系统安装器完成升级；应用内自更新要求新旧版本使用同一签名（Release 发布的 APK 均以稳定密钥签名），本地 debug 签名的构建请先卸载旧版再安装。
 
 ### Linux
 
-Releases 提供 Ubuntu 22.04 / 24.04 的 `.deb` 包：下载 `llama-desktop_*_amd64.deb` 后安装（`sudo apt install ./llama-desktop_*_amd64.deb`），GTK / WebKit 运行库由包依赖自动解析。其他发行版可参考下节从源码构建。
+Releases 提供 Ubuntu 22.04 / 24.04 的 `.deb` 包：下载 `myllama_*_amd64.deb` 后安装（`sudo apt install ./myllama_*_amd64.deb`），GTK / WebKit 运行库由包依赖自动解析。其他发行版可参考下节从源码构建。
 
 ### 从源码构建
 
@@ -227,7 +227,7 @@ make check                                                                  # PO
 ## ❓ 常见问题
 
 **启动时提示应用已在运行。**
-应用使用单实例互斥锁，重复启动会被阻止（无头模式 → 界面模式的交接窗口内重试亦被覆盖）。请先关闭正在运行的 Llama Desktop（包括托盘里的后台实例），再重新启动。
+应用使用单实例互斥锁，重复启动会被阻止（无头模式 → 界面模式的交接窗口内重试亦被覆盖）。请先关闭正在运行的 MyLlama（包括托盘里的后台实例），再重新启动。
 
 **`wails3 task dev` 提示端口被占用。**
 Vite 开发服务器绑定 `localhost:5173`（Taskfile 的 `VITE_PORT`，可用 `WAILS_VITE_PORT` 环境变量覆盖）。请结束占用该端口的进程后重试。

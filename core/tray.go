@@ -61,7 +61,7 @@ func trayMenuLabels() (show, quit string) {
 // (mechanism available on Windows / Linux / macOS; the product gates in
 // core/app.go — ServiceStartup and SetTrayEnabled via trayPlatformSupported —
 // only invoke it on Windows and macOS, keeping Linux tray-free): sets the
-// tray icon and tooltip ("Llama Desktop"), with menu items "Show Main Window"
+// tray icon and tooltip ("MyLlama"), with menu items "Show Main Window"
 // and "Quit" (separator in between). Menu click callbacks drive the Wails v3
 // runtime via the global application handle (application.Get) — the named
 // main window is shown/restored for "Show Main Window"; quit ends the app for
@@ -126,7 +126,7 @@ func InitTray(_ context.Context, icon []byte) {
 
 	tray := wa.SystemTray.New()
 	tray.SetIcon(trayIconBytes)
-	tray.SetTooltip("Llama Desktop")
+	tray.SetTooltip("MyLlama")
 	tray.SetMenu(menu)
 	// Open the menu on left click too: the previous fyne tray did this on
 	// Windows (systrayLeftClick falls back to showMenu), so keep the UX.

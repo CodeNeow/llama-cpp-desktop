@@ -26,7 +26,7 @@ func main() {
 	// the persisted apiRouteMode preference requests headless (recovery
 	// escape hatch). ContinueOnError keeps unknown arguments from third-party
 	// launchers harmless.
-	flags := flag.NewFlagSet("llama-desktop", flag.ContinueOnError)
+	flags := flag.NewFlagSet("myllama", flag.ContinueOnError)
 	headless := flags.Bool("headless", false, "run in headless API-route mode (tray + llama-server only, no GUI)")
 	gui := flags.Bool("gui", false, "force GUI mode even when apiRouteMode is enabled in the config")
 	_ = flags.Parse(os.Args[1:])
@@ -50,7 +50,7 @@ func main() {
 	// GUI mode takes the same single-instance mutex (fixes double-launch);
 	// the mutex retry window also covers the headless → GUI handover.
 	if !core.AcquireSingleInstance() {
-		println("Llama Desktop is already running.")
+		println("MyLlama is already running.")
 		return
 	}
 
@@ -60,7 +60,7 @@ func main() {
 	// FRONTEND_DEVSERVER_URL env var (set only by `wails3 dev`) the embedded
 	// assets are served directly.
 	wailsApp := application.New(application.Options{
-		Name:     "Llama Desktop",
+		Name:     "MyLlama",
 		Services: []application.Service{application.NewService(app)},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -76,7 +76,7 @@ func main() {
 	// core.App.ServiceStartup, the v3 equivalent of the v2 OnStartup hook.
 	wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:             mainWindowName,
-		Title:            "Llama Desktop",
+		Title:            "MyLlama",
 		Width:            1200,
 		Height:           800,
 		MinWidth:         900,

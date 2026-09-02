@@ -1,5 +1,7 @@
 # 设计参考：硬件感知一键调优（auto-tune）
 
+MyLlama 的硬件感知一键调优：读 GGUF 真实指标 + 本地硬件快照，为每个模型自动规划最优 llama-server 参数。
+
 > 权威来源：`core/autotune.go`（策略 doc-comment + 常量 + 纯函数 `tuneModelConfig`）、
 > `core/benchbw.go`（实测 RAM 带宽校准）、`core/app.go`（`TuneModelConfig` 绑定）、
 > `frontend/src/views/ModelSettings.vue` + `frontend/src/lib/modelTune.ts`（前端联动）。

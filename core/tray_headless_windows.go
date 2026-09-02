@@ -44,7 +44,7 @@ func InitHeadlessTray(icon []byte, onShow func(), onQuit func()) {
 		defer runtime.UnlockOSThread()
 		systray.Run(func() {
 			systray.SetIcon(icon)
-			systray.SetTooltip("Llama Desktop")
+			systray.SetTooltip("MyLlama")
 
 			showLabel, quitLabel := headlessTrayLabels()
 			showItem := systray.AddMenuItem(showLabel, showLabel)

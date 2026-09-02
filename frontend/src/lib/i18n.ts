@@ -27,7 +27,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'nav.expand': '展开侧边栏',
 
     // ─── Title bar (App.vue) ───
-    'title.brand': 'Llama Desktop',
+    'title.brand': 'MyLlama',
     'title.minimize': '最小化',
     'title.maximize': '最大化',
     'title.restore': '还原',
@@ -692,7 +692,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     'nav.expand': 'Expand Sidebar',
 
     // ─── Title bar (App.vue) ───
-    'title.brand': 'Llama Desktop',
+    'title.brand': 'MyLlama',
     'title.minimize': 'Minimize',
     'title.maximize': 'Maximize',
     'title.restore': 'Restore',

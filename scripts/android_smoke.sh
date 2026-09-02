@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Android emulator smoke test for the llama-desktop debug APK (CI smoke-android
+# Android emulator smoke test for the MyLlama debug APK (CI smoke-android
 # job, run inside the android-emulator-runner). Kept as a committed file so the
 # logic is reviewable and the action's single-input `script` cannot mangle
 # multi-line shell.
@@ -46,7 +46,7 @@ fi
 # by core/paths.go when it falls back to the read-only cwd-relative layout.
 if adb logcat -d | grep -q "keeping cwd-relative app paths"; then
   echo "::error::Android storage anchor unresolved (JNI bridge), app fell back to read-only cwd paths"
-  adb logcat -d | grep -i "llama-desktop" | tail -40
+  adb logcat -d | grep -i "myllama" | tail -40
   exit 1
 fi
 

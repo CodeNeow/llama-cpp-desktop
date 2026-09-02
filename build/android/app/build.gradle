@@ -1,4 +1,4 @@
-// Llama Desktop Android app module.
+// MyLlama Android app module.
 // Adapted from the Wails v3.0.0-beta.16 template
 // (v3/internal/commands/build_assets/android/app/build.gradle), with these
 // changes:
@@ -29,7 +29,7 @@ android {
         minSdk 21
         // targetSdk 28 is a deliberate choice for this sideload-only app:
         // Android 10 (API 29) blocks exec() of binaries stored in app-writable
-        // directories for apps targeting API 29+, and Llama Desktop MUST exec
+        // directories for apps targeting API 29+, and MyLlama MUST exec
         // the llama-server engine that it downloads at runtime from upstream
         // releases (full desktop parity — the engine is not bundled in the
         // APK). targetSdk 28 keeps the W^X exemption for app-writable dirs.

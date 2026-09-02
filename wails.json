@@ -1,6 +1,6 @@
 {
-  "name": "llama-desktop",
-  "outputfilename": "llama-desktop",
+  "name": "MyLlama",
+  "outputfilename": "MyLlama",
   "frontend:install": "npm install",
   "frontend:build": "npm run build",
   "frontend:dev:watcher": "npm run dev",
@@ -9,7 +9,7 @@
     "name": "CodeNeow"
   },
   "info": {
-    "productName": "Llama Desktop",
+    "productName": "MyLlama",
     "productVersion": "0.3.9",
     "copyright": "Copyright (C) 2026 CodeNeow (https://github.com/CodeNeow/llama-cpp-desktop)",
     "comments": "Desktop GUI for llama.cpp - https://github.com/CodeNeow/llama-cpp-desktop"

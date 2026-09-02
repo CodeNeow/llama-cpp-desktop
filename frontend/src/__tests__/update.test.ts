@@ -128,7 +128,7 @@ describe('lib/update', () => {
     mockStartUpdateDownload.mockResolvedValue(undefined)
     mockGetStatus.mockResolvedValue({
       status: 'done', progress: 100, total: 100, downloaded: 100,
-      version: 'v0.2.0', filePath: 'C:/app/llama-desktop-portable-v0.2.0.exe', error: '', kind: 'portable', installer: false,
+      version: 'v0.2.0', filePath: 'C:/app/MyLlama-portable-v0.2.0.exe', error: '', kind: 'portable', installer: false,
     })
 
     await checkForUpdate()
@@ -139,7 +139,7 @@ describe('lib/update', () => {
 
     await vi.advanceTimersByTimeAsync(1100) // trigger one poll
     expect(updateState.download?.status).toBe('done')
-    expect(updateState.download?.filePath).toContain('llama-desktop-portable-v0.2.0.exe')
+    expect(updateState.download?.filePath).toContain('MyLlama-portable-v0.2.0.exe')
 
     // polling should stop after completion (advancing time should not repeat fetches)
     const callsAfterDone = mockGetStatus.mock.calls.length
@@ -184,7 +184,7 @@ describe('lib/update', () => {
     mockStartUpdateDownload.mockResolvedValue(undefined)
     mockGetStatus.mockResolvedValue({
       status: 'done', progress: 100, total: 100, downloaded: 100,
-      version: 'v0.2.0', filePath: 'C:/app/llama-desktop-portable-v0.2.0.exe', error: '', kind: 'portable', installer: false,
+      version: 'v0.2.0', filePath: 'C:/app/MyLlama-portable-v0.2.0.exe', error: '', kind: 'portable', installer: false,
     })
 
     await checkForUpdate()
@@ -267,7 +267,7 @@ describe('lib/update', () => {
   it('installUpdate calls the backend and keeps installing state (app about to exit)', async () => {
     updateState.download = {
       status: 'done', progress: 100, total: 100, downloaded: 100,
-      version: 'v0.2.0', filePath: 'C:/app/llama-desktop-setup-v0.2.0.exe', error: '', kind: 'setup', installer: true,
+      version: 'v0.2.0', filePath: 'C:/app/MyLlama-setup-v0.2.0.exe', error: '', kind: 'setup', installer: true,
     }
     mockInstallUpdate.mockResolvedValue(undefined)
 
@@ -282,7 +282,7 @@ describe('lib/update', () => {
   it('installUpdate failure resets installing and records the error for retry', async () => {
     updateState.download = {
       status: 'done', progress: 100, total: 100, downloaded: 100,
-      version: 'v0.2.0', filePath: 'C:/app/llama-desktop-setup-v0.2.0.exe', error: '', kind: 'setup', installer: true,
+      version: 'v0.2.0', filePath: 'C:/app/MyLlama-setup-v0.2.0.exe', error: '', kind: 'setup', installer: true,
     }
     mockInstallUpdate.mockRejectedValue(new Error('no such file'))
 
@@ -295,7 +295,7 @@ describe('lib/update', () => {
   it('android kind hands the apk path to the Java bridge and marks the install submitted', async () => {
     updateState.download = {
       status: 'done', progress: 100, total: 100, downloaded: 100,
-      version: 'v0.2.0', filePath: '/data/data/com.codeneow.llamadesktop/files/llama-desktop-android-v0.2.0.apk',
+      version: 'v0.2.0', filePath: '/data/data/com.codeneow.llamadesktop/files/MyLlama-android-v0.2.0.apk',
       error: '', kind: 'android', installer: true,
     }
     mockInstallAndroidApk.mockResolvedValue(undefined)
@@ -314,7 +314,7 @@ describe('lib/update', () => {
   it('android needInstallPermission opens the Settings screen and surfaces the recovery hint', async () => {
     updateState.download = {
       status: 'done', progress: 100, total: 100, downloaded: 100,
-      version: 'v0.2.0', filePath: '/data/data/com.codeneow.llamadesktop/files/llama-desktop-android-v0.2.0.apk',
+      version: 'v0.2.0', filePath: '/data/data/com.codeneow.llamadesktop/files/MyLlama-android-v0.2.0.apk',
       error: '', kind: 'android', installer: true,
     }
     mockInstallAndroidApk.mockRejectedValue(Object.assign(new Error('missing grant'), { code: 'needInstallPermission' }))
@@ -330,7 +330,7 @@ describe('lib/update', () => {
   it('android generic install failure surfaces the error without opening Settings', async () => {
     updateState.download = {
       status: 'done', progress: 100, total: 100, downloaded: 100,
-      version: 'v0.2.0', filePath: '/data/data/com.codeneow.llamadesktop/files/llama-desktop-android-v0.2.0.apk',
+      version: 'v0.2.0', filePath: '/data/data/com.codeneow.llamadesktop/files/MyLlama-android-v0.2.0.apk',
       error: '', kind: 'android', installer: true,
     }
     mockInstallAndroidApk.mockRejectedValue(new Error('session commit failed'))

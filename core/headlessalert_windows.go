@@ -45,7 +45,7 @@ func defaultHeadlessServerAlert(err error) {
 			log.Printf("[ERROR] build headless alert text: %v", errPtr)
 			return
 		}
-		titlePtr, errTitle := windows.UTF16PtrFromString("Llama Desktop")
+		titlePtr, errTitle := windows.UTF16PtrFromString("MyLlama")
 		if errTitle != nil {
 			log.Printf("[ERROR] build headless alert title: %v", errTitle)
 			return

@@ -1,5 +1,7 @@
 # 平台能力适配地图（Platform Capability Map）
 
+MyLlama 在各平台（Windows / Linux / macOS / Android）的功能差异速查地图。
+
 本文是各平台（Windows / Linux / macOS / Android）功能差异的速查地图：应用在哪个平台提供什么能力、由哪个文件/函数决定。涉及跨平台改动时，先查这里再动手。
 
 ## 平台 × 功能矩阵

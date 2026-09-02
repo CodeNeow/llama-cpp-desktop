@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="docs/branding/icon.png" width="88" alt="Llama Desktop" />
+<img src="docs/branding/icon.png" width="88" alt="MyLlama" />
 
-# Llama Desktop
+# MyLlama
 
 **A cross-platform GUI client for local LLM inference, built on [llama.cpp](https://github.com/ggml-org/llama.cpp)** — visually tune GGUF models, serve many models behind one OpenAI-compatible endpoint, with built-in model downloads, local chat, and real-time monitoring. One codebase across Windows / Android / Linux.
 
@@ -22,7 +22,7 @@ Windows x64 · Android arm64 · Linux x64/arm64 · GPL-3.0
 
 <div align="center">
 
-![Llama Desktop local chat](docs/screenshots/en/chat.png)
+![MyLlama local chat](docs/screenshots/en/chat.png)
 
 *Local chat: streaming conversation straight to the local llama-server; the service auto-starts on demand*
 
@@ -101,17 +101,17 @@ The floating task dock at the bottom-right corner: download progress plus one-cl
 
 ### Windows
 
-Grab `llama-desktop-setup-*-windows-amd64.exe` from the [latest release](https://github.com/CodeNeow/llama-cpp-desktop/releases/latest) and double-click to install (the installer embeds the WebView2 Runtime bootstrapper and installs it automatically if missing). The app updates itself, so later versions need no manual reinstall.
+Grab `MyLlama-setup-*-windows-amd64.exe` from the [latest release](https://github.com/CodeNeow/llama-cpp-desktop/releases/latest) and double-click to install (the installer embeds the WebView2 Runtime bootstrapper and installs it automatically if missing). The app updates itself, so later versions need no manual reinstall.
 
 Requirements: Windows 10 or later (x64).
 
 ### Android
 
-Grab `llama-desktop-*-android-arm64.apk` from the [latest release](https://github.com/CodeNeow/llama-cpp-desktop/releases/latest) (arm64 devices, Android 5.0+), and allow "install unknown apps" when prompted. "Preferences → Check for Updates" inside the app downloads new versions and hands them to the system installer; in-app self-update requires the installed and the new APK to share one signature (release APKs are signed with a stable key), so debug-signed local builds should uninstall the old version first.
+Grab `MyLlama-*-android-arm64.apk` from the [latest release](https://github.com/CodeNeow/llama-cpp-desktop/releases/latest) (arm64 devices, Android 5.0+), and allow "install unknown apps" when prompted. "Preferences → Check for Updates" inside the app downloads new versions and hands them to the system installer; in-app self-update requires the installed and the new APK to share one signature (release APKs are signed with a stable key), so debug-signed local builds should uninstall the old version first.
 
 ### Linux
 
-Releases ship `.deb` packages for Ubuntu 22.04 / 24.04: download `llama-desktop_*_amd64.deb` and install it (`sudo apt install ./llama-desktop_*_amd64.deb`); the GTK / WebKit runtime libraries are resolved automatically through package dependencies. Other distributions can build from source as described below.
+Releases ship `.deb` packages for Ubuntu 22.04 / 24.04: download `myllama_*_amd64.deb` and install it (`sudo apt install ./myllama_*_amd64.deb`); the GTK / WebKit runtime libraries are resolved automatically through package dependencies. Other distributions can build from source as described below.
 
 ### Build from source
 
@@ -227,7 +227,7 @@ The gate runs `go build` / `go test` / `gofmt` / `golangci-lint` on the backend 
 ## ❓ FAQ
 
 **The app reports it is already running at startup.**
-The app enforces a single-instance mutex, so duplicate launches are blocked (the window also covers retries inside the headless → GUI handover window). Close any running Llama Desktop first (including tray-only background instances), then start it again.
+The app enforces a single-instance mutex, so duplicate launches are blocked (the window also covers retries inside the headless → GUI handover window). Close any running MyLlama first (including tray-only background instances), then start it again.
 
 **`wails3 task dev` reports the port is already in use.**
 The Vite dev server binds `localhost:5173` (`VITE_PORT` in the Taskfile, overridable via the `WAILS_VITE_PORT` environment variable). End the process occupying it and retry.

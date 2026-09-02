@@ -49,7 +49,7 @@
           >
             <div class="dock-task-header">
               <span class="dock-row-badge badge-update">{{ t('dock.badge.update') }}</span>
-              <span class="dock-task-name">llama-desktop {{ updateDownload?.version }}</span>
+              <span class="dock-task-name">MyLlama {{ updateDownload?.version }}</span>
               <span class="dock-task-status" :class="'status-' + updateDownload?.status">
                 {{ updateStatusLabel(updateDownload?.status || '') }}
               </span>

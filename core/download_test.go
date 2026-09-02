@@ -404,8 +404,8 @@ func TestEnsureLlamaServerExecutable(t *testing.T) {
 // current version and the repository URL for attribution.
 func TestAppUserAgent(t *testing.T) {
 	ua := appUserAgent()
-	if !strings.HasPrefix(ua, "llama-cpp-desktop/"+currentVersion) {
-		t.Errorf("User-Agent = %q, want prefix llama-cpp-desktop/%s", ua, currentVersion)
+	if !strings.HasPrefix(ua, "MyLlama/"+currentVersion) {
+		t.Errorf("User-Agent = %q, want prefix MyLlama/%s", ua, currentVersion)
 	}
 	if !strings.Contains(ua, "https://github.com/CodeNeow/llama-cpp-desktop") {
 		t.Errorf("User-Agent = %q, want repository URL", ua)

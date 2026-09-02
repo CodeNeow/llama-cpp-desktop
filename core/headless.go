@@ -180,7 +180,7 @@ func RunHeadless(icon []byte) {
 	loadConfig()
 
 	if !AcquireSingleInstance() {
-		log.Println("[ERROR] another Llama Desktop instance holds the single-instance lock; headless start aborted")
+		log.Println("[ERROR] another MyLlama instance holds the single-instance lock; headless start aborted")
 		return
 	}
 

@@ -67,11 +67,11 @@ func TestPickUpdateAsset(t *testing.T) {
 		t.Errorf("setup should pick llama-gui-amd64-installer.exe, got %v", got)
 	}
 	// setup: new setup name matches (name does not contain "installer" but still matches)
-	if got := pickUpdateAsset([]GitHubAsset{{Name: "llama-desktop-setup-v0.2.0-windows-amd64.exe"}}, installKindSetup); got == nil || got.Name != "llama-desktop-setup-v0.2.0-windows-amd64.exe" {
-		t.Errorf("setup should pick llama-desktop-setup-v0.2.0-windows-amd64.exe, got %v", got)
+	if got := pickUpdateAsset([]GitHubAsset{{Name: "MyLlama-setup-v0.2.0-windows-amd64.exe"}}, installKindSetup); got == nil || got.Name != "MyLlama-setup-v0.2.0-windows-amd64.exe" {
+		t.Errorf("setup should pick MyLlama-setup-v0.2.0-windows-amd64.exe, got %v", got)
 	}
 	// setup: only portable asset available → nil (must not pick portable by mistake)
-	if got := pickUpdateAsset([]GitHubAsset{{Name: "llama-desktop-portable-v0.2.0-amd64.exe"}}, installKindSetup); got != nil {
+	if got := pickUpdateAsset([]GitHubAsset{{Name: "MyLlama-portable-v0.2.0-amd64.exe"}}, installKindSetup); got != nil {
 		t.Errorf("setup with only portable asset should return nil, got %v", got)
 	}
 
@@ -84,18 +84,18 @@ func TestPickUpdateAsset(t *testing.T) {
 		t.Errorf("portable should pick llama-gui.exe, got %v", got)
 	}
 	// portable: new portable name matches
-	if got := pickUpdateAsset([]GitHubAsset{{Name: "llama-desktop-portable-v0.2.0-amd64.exe"}}, installKindPortable); got == nil || got.Name != "llama-desktop-portable-v0.2.0-amd64.exe" {
-		t.Errorf("portable should pick llama-desktop-portable-v0.2.0-amd64.exe, got %v", got)
+	if got := pickUpdateAsset([]GitHubAsset{{Name: "MyLlama-portable-v0.2.0-amd64.exe"}}, installKindPortable); got == nil || got.Name != "MyLlama-portable-v0.2.0-amd64.exe" {
+		t.Errorf("portable should pick MyLlama-portable-v0.2.0-amd64.exe, got %v", got)
 	}
 	// portable: only a setup installer is published (portable builds retired) →
 	// fall back to the installer so existing portable installs keep updating
-	if got := pickUpdateAsset([]GitHubAsset{{Name: "llama-desktop-setup-v0.2.0-windows-amd64.exe"}}, installKindPortable); got == nil || got.Name != "llama-desktop-setup-v0.2.0-windows-amd64.exe" {
+	if got := pickUpdateAsset([]GitHubAsset{{Name: "MyLlama-setup-v0.2.0-windows-amd64.exe"}}, installKindPortable); got == nil || got.Name != "MyLlama-setup-v0.2.0-windows-amd64.exe" {
 		t.Errorf("portable with only a setup installer should fall back to it, got %v", got)
 	}
 	// portable: only installer assets (setup + old installer) → fall back to the first
 	// installer seen (replaces the old nil expectation: portable builds are no longer
 	// published, so portable installs must update via the setup installer)
-	if got := pickUpdateAsset([]GitHubAsset{{Name: "llama-desktop-setup-v0.2.0-windows-amd64.exe"}, {Name: "llama-gui-amd64-installer.exe"}}, installKindPortable); got == nil || got.Name != "llama-desktop-setup-v0.2.0-windows-amd64.exe" {
+	if got := pickUpdateAsset([]GitHubAsset{{Name: "MyLlama-setup-v0.2.0-windows-amd64.exe"}, {Name: "llama-gui-amd64-installer.exe"}}, installKindPortable); got == nil || got.Name != "MyLlama-setup-v0.2.0-windows-amd64.exe" {
 		t.Errorf("portable with only installer assets should fall back to the first installer, got %v", got)
 	}
 
@@ -119,7 +119,7 @@ func TestDetectInstallKind(t *testing.T) {
 	dir := t.TempDir()
 	// no uninstall.exe → portable (green portable build)
 	updateExePath = func() (string, error) {
-		return filepath.Join(dir, "llama-desktop.exe"), nil
+		return filepath.Join(dir, "MyLlama.exe"), nil
 	}
 	if got := detectInstallKind(); got != installKindPortable {
 		t.Errorf("no uninstall.exe should detect %q, got %q", installKindPortable, got)
@@ -148,20 +148,20 @@ func TestDetectInstallKind(t *testing.T) {
 // kind, and an empty asset list yields nil.
 func TestPickUpdateAssetAndroid(t *testing.T) {
 	assets := []GitHubAsset{
-		{Name: "llama-desktop-setup-v0.4.0-windows-amd64.exe"},
-		{Name: "llama-desktop-v0.4.0-android-armv7a.apk"},
-		{Name: "llama-desktop-v0.4.0-android-arm64.apk"},
+		{Name: "MyLlama-setup-v0.4.0-windows-amd64.exe"},
+		{Name: "MyLlama-v0.4.0-android-armv7a.apk"},
+		{Name: "MyLlama-v0.4.0-android-arm64.apk"},
 	}
 	got := pickUpdateAsset(assets, installKindAndroid)
-	if got == nil || got.Name != "llama-desktop-v0.4.0-android-arm64.apk" {
+	if got == nil || got.Name != "MyLlama-v0.4.0-android-arm64.apk" {
 		t.Errorf("android pick = %+v, want the arm64 apk", got)
 	}
 
-	if got := pickUpdateAsset([]GitHubAsset{{Name: "llama-desktop-setup-v0.4.0-windows-amd64.exe"}}, installKindAndroid); got != nil {
+	if got := pickUpdateAsset([]GitHubAsset{{Name: "MyLlama-setup-v0.4.0-windows-amd64.exe"}}, installKindAndroid); got != nil {
 		t.Errorf("android pick with exe-only assets = %+v, want nil", got)
 	}
 
-	if got := pickUpdateAsset([]GitHubAsset{{Name: "llama-desktop-v0.4.0-android-arm64.apk"}}, installKindAndroid); got == nil {
+	if got := pickUpdateAsset([]GitHubAsset{{Name: "MyLlama-v0.4.0-android-arm64.apk"}}, installKindAndroid); got == nil {
 		t.Error("android pick with a single apk = nil, want the apk")
 	}
 
@@ -188,7 +188,7 @@ func TestInstallUpdateNowAndroidGuard(t *testing.T) {
 	updateDownloadMu.Lock()
 	updateDownloadState.Status = "done"
 	updateDownloadState.Installer = true
-	updateDownloadState.FilePath = "llama-desktop-android-v9.9.9.apk"
+	updateDownloadState.FilePath = "MyLlama-android-v9.9.9.apk"
 	updateDownloadMu.Unlock()
 	if err := installUpdateNow(func() {}); err == nil {
 		t.Error("installUpdateNow must be rejected on android, got nil error")
@@ -281,14 +281,14 @@ func TestStartUpdateDownloadRejectsNotNewer(t *testing.T) {
 // TestDownloadUpdateRelease verifies the portable update download end-to-end: fetch from
 // injected release API → pick portable asset by type → download to the executable's
 // directory → status becomes done and the file exists, with a version-and-type-prefixed
-// filename (llama-desktop-portable-v<tag>.exe).
+// filename (MyLlama-portable-v<tag>.exe).
 func TestDownloadUpdateRelease(t *testing.T) {
 	withTempCwd(t)
 	saveUpdateState(t)
 	// download landing directory uses temp dir to simulate "same directory as executable" (no uninstall.exe → portable)
 	exeDir := t.TempDir()
 	updateExePath = func() (string, error) {
-		return filepath.Join(exeDir, "llama-desktop.exe"), nil
+		return filepath.Join(exeDir, "MyLlama.exe"), nil
 	}
 
 	payload := []byte("MZ fake exe payload")
@@ -314,7 +314,7 @@ func TestDownloadUpdateRelease(t *testing.T) {
 	if ds.Status != "done" {
 		t.Fatalf("download completion status = %q, want done (error: %s)", ds.Status, ds.Error)
 	}
-	wantPath := filepath.Join(exeDir, "llama-desktop-portable-v0.2.0.exe")
+	wantPath := filepath.Join(exeDir, "MyLlama-portable-v0.2.0.exe")
 	if ds.FilePath != wantPath {
 		t.Errorf("save path = %q, want %q", ds.FilePath, wantPath)
 	}
@@ -335,7 +335,7 @@ func TestDownloadUpdateRelease(t *testing.T) {
 
 // TestDownloadUpdateReleaseSetup verifies setup installer update download: when the
 // executable directory contains uninstall.exe (NSIS install), the setup-type asset is
-// selected, downloaded as llama-desktop-setup-v<tag>.exe, status becomes done, and kind=setup.
+// selected, downloaded as MyLlama-setup-v<tag>.exe, status becomes done, and kind=setup.
 func TestDownloadUpdateReleaseSetup(t *testing.T) {
 	withTempCwd(t)
 	saveUpdateState(t)
@@ -346,19 +346,19 @@ func TestDownloadUpdateReleaseSetup(t *testing.T) {
 		t.Fatal(err)
 	}
 	updateExePath = func() (string, error) {
-		return filepath.Join(exeDir, "llama-desktop.exe"), nil
+		return filepath.Join(exeDir, "MyLlama.exe"), nil
 	}
 
 	payload := []byte("MZ fake setup payload")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/dl/llama-desktop-setup-v0.2.0-windows-amd64.exe" {
+		if r.URL.Path == "/dl/MyLlama-setup-v0.2.0-windows-amd64.exe" {
 			w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
 			w.Write(payload)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		dlURL := "http://" + r.Host + "/dl/llama-desktop-setup-v0.2.0-windows-amd64.exe"
-		w.Write([]byte(`{"tag_name":"v0.2.0","name":"Release","assets":[{"name":"llama-desktop-setup-v0.2.0-windows-amd64.exe","size":` + strconv.Itoa(len(payload)) + `,"browser_download_url":"` + dlURL + `"},{"name":"llama-desktop-portable-v0.2.0-amd64.exe","size":10,"browser_download_url":"https://x/p.exe"}]}`))
+		dlURL := "http://" + r.Host + "/dl/MyLlama-setup-v0.2.0-windows-amd64.exe"
+		w.Write([]byte(`{"tag_name":"v0.2.0","name":"Release","assets":[{"name":"MyLlama-setup-v0.2.0-windows-amd64.exe","size":` + strconv.Itoa(len(payload)) + `,"browser_download_url":"` + dlURL + `"},{"name":"MyLlama-portable-v0.2.0-amd64.exe","size":10,"browser_download_url":"https://x/p.exe"}]}`))
 	}))
 	defer srv.Close()
 	updateRepoAPI = srv.URL
@@ -372,7 +372,7 @@ func TestDownloadUpdateReleaseSetup(t *testing.T) {
 	if ds.Status != "done" {
 		t.Fatalf("download completion status = %q, want done (error: %s)", ds.Status, ds.Error)
 	}
-	wantPath := filepath.Join(exeDir, "llama-desktop-setup-v0.2.0.exe")
+	wantPath := filepath.Join(exeDir, "MyLlama-setup-v0.2.0.exe")
 	if ds.FilePath != wantPath {
 		t.Errorf("save path = %q, want %q", ds.FilePath, wantPath)
 	}
@@ -394,7 +394,7 @@ func TestDownloadUpdateReleaseSetup(t *testing.T) {
 // TestDownloadUpdateReleasePortableFallbackSetup verifies the portable-install fallback
 // end-to-end: a portable install (no uninstall.exe) updating from a release that ships
 // only the setup installer (portable builds retired) downloads that installer, and the
-// saved file is named after the actual asset type (llama-desktop-setup-v<tag>.exe), not
+// saved file is named after the actual asset type (MyLlama-setup-v<tag>.exe), not
 // the local portable kind; the reported kind stays portable.
 func TestDownloadUpdateReleasePortableFallbackSetup(t *testing.T) {
 	withTempCwd(t)
@@ -402,19 +402,19 @@ func TestDownloadUpdateReleasePortableFallbackSetup(t *testing.T) {
 	// no uninstall.exe in the exe directory → detected install kind is portable
 	exeDir := t.TempDir()
 	updateExePath = func() (string, error) {
-		return filepath.Join(exeDir, "llama-desktop.exe"), nil
+		return filepath.Join(exeDir, "MyLlama.exe"), nil
 	}
 
 	payload := []byte("MZ fake setup payload for portable fallback")
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/dl/llama-desktop-setup-v0.2.1-windows-amd64.exe" {
+		if r.URL.Path == "/dl/MyLlama-setup-v0.2.1-windows-amd64.exe" {
 			w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
 			w.Write(payload)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		dlURL := "http://" + r.Host + "/dl/llama-desktop-setup-v0.2.1-windows-amd64.exe"
-		w.Write([]byte(`{"tag_name":"v0.2.1","name":"Release","assets":[{"name":"llama-desktop-setup-v0.2.1-windows-amd64.exe","size":` + strconv.Itoa(len(payload)) + `,"browser_download_url":"` + dlURL + `"}]}`))
+		dlURL := "http://" + r.Host + "/dl/MyLlama-setup-v0.2.1-windows-amd64.exe"
+		w.Write([]byte(`{"tag_name":"v0.2.1","name":"Release","assets":[{"name":"MyLlama-setup-v0.2.1-windows-amd64.exe","size":` + strconv.Itoa(len(payload)) + `,"browser_download_url":"` + dlURL + `"}]}`))
 	}))
 	defer srv.Close()
 	updateRepoAPI = srv.URL
@@ -429,7 +429,7 @@ func TestDownloadUpdateReleasePortableFallbackSetup(t *testing.T) {
 		t.Fatalf("status = %q, want done (error: %s)", ds.Status, ds.Error)
 	}
 	// filename follows the asset type (setup), not the local portable kind
-	wantPath := filepath.Join(exeDir, "llama-desktop-setup-v0.2.1.exe")
+	wantPath := filepath.Join(exeDir, "MyLlama-setup-v0.2.1.exe")
 	if ds.FilePath != wantPath {
 		t.Errorf("save path = %q, want %q", ds.FilePath, wantPath)
 	}
@@ -460,7 +460,7 @@ func TestDownloadUpdateReleaseCrossDeviceFallback(t *testing.T) {
 	// download landing directory uses temp dir to simulate "same directory as executable" (different device from source temp file)
 	exeDir := t.TempDir()
 	updateExePath = func() (string, error) {
-		return filepath.Join(exeDir, "llama-desktop.exe"), nil
+		return filepath.Join(exeDir, "MyLlama.exe"), nil
 	}
 
 	payload := []byte("MZ fake exe payload cross device")
@@ -487,7 +487,7 @@ func TestDownloadUpdateReleaseCrossDeviceFallback(t *testing.T) {
 	defer func() { renameFile = origRename }()
 
 	// target path already contains an old-version file; verify cross-device fallback does not delete the old file first and cause data loss
-	wantPath := filepath.Join(exeDir, "llama-desktop-portable-v0.2.0.exe")
+	wantPath := filepath.Join(exeDir, "MyLlama-portable-v0.2.0.exe")
 	if err := os.WriteFile(wantPath, []byte("old version"), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -560,7 +560,7 @@ func TestInstallUpdateNowRejectsNonInstaller(t *testing.T) {
 	saveUpdateState(t)
 	saveUpdateInstall(t)
 
-	path := filepath.Join(t.TempDir(), "llama-desktop-portable-v0.2.0.exe")
+	path := filepath.Join(t.TempDir(), "MyLlama-portable-v0.2.0.exe")
 	if err := os.WriteFile(path, []byte("MZ"), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -607,7 +607,7 @@ func TestInstallUpdateNowLaunchFailureRestoresDone(t *testing.T) {
 	saveUpdateState(t)
 	saveUpdateInstall(t)
 
-	path := filepath.Join(t.TempDir(), "llama-desktop-setup-v0.2.0.exe")
+	path := filepath.Join(t.TempDir(), "MyLlama-setup-v0.2.0.exe")
 	if err := os.WriteFile(path, []byte("MZ"), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -636,7 +636,7 @@ func TestInstallUpdateNowLaunchesAndQuits(t *testing.T) {
 	saveUpdateState(t)
 	saveUpdateInstall(t)
 
-	path := filepath.Join(t.TempDir(), "llama-desktop-setup-v0.2.0.exe")
+	path := filepath.Join(t.TempDir(), "MyLlama-setup-v0.2.0.exe")
 	if err := os.WriteFile(path, []byte("MZ"), 0644); err != nil {
 		t.Fatal(err)
 	}
