@@ -1,14 +1,4 @@
 <template>
-  <!-- Lane mirroring, three-state (dockLane from lib/dockSpace), DESKTOP
-       ONLY: the measured reserve lane exists only while the capsule actually
-       rides in the composer band at the bottom of the window — 'left' moves
-       the lane to the LEFT padding, 'right' keeps the original right lane,
-       and 'none' (capsule parked mid-screen / up top, or dock hidden:
-       dockWidth = 0) retracts the lane so the composer spans the base
-       gutters. The phone tier never narrows the page for the capsule (the
-       composer stays full-width; TaskDock keeps the capsule clear of the
-       composer itself by clamping). The docked-in-band default reproduces
-       the historical desktop layout byte-for-byte. -->
   <div
     class="chat-page"
     :class="{
@@ -16,6 +6,23 @@
       'chat-page--dock-right': laneRightActive,
     }"
   >
+    <!-- Lane mirroring, three-state (dockLane from lib/dockSpace), DESKTOP
+         ONLY: the measured reserve lane exists only while the capsule actually
+         rides in the composer band at the bottom of the window — 'left' moves
+         the lane to the LEFT padding, 'right' keeps the original right lane,
+         and 'none' (capsule parked mid-screen / up top, or dock hidden:
+         dockWidth = 0) retracts the lane so the composer spans the base
+         gutters. The phone tier never narrows the page for the capsule (the
+         composer stays full-width; TaskDock keeps the capsule clear of the
+         composer itself by clamping). The docked-in-band default reproduces
+         the historical desktop layout byte-for-byte.
+         WARNING: this comment MUST stay INSIDE the root div. A top-level
+         comment makes the component multi-root (dev builds keep comment
+         vnodes), and a fragment-rooted child under App.vue's out-in
+         <transition> loses the leave hook handoff: state.isLeaving sticks
+         true and every navigation after visiting Chat renders an empty
+         placeholder until a full reload. viewsSingleRoot.test.ts guards
+         this for all route views. -->
     <div class="sticky-top">
       <!-- Design frame ②: the header slims down to a model capsule chip (the
            gradient dot is the brand/status mark, the name + chevron open the
