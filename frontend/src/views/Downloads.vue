@@ -49,7 +49,7 @@
     </div>
 
     <!-- Search results.
-         Header split is phone-tier DOM (Aurora frame ⑧): plain label left +
+         Header split is phone-tier DOM (design draft frame ⑧): plain label left +
          accent count right. Desktop/tablet keep the inline "(n)" form. -->
     <div v-if="searchResults.length > 0" class="results-section">
       <h2 v-if="!platformState.isMobile" class="section-heading">{{ t('downloads.resultsTitle', { n: searchResults.length }) }}</h2>
@@ -1004,7 +1004,7 @@ html[data-os='ios'] .cancel-btn:active {
   margin: 0 0 8px;
 }
 
-/* ─── Phone (<=767px, Aurora frame ⑧): the search controls stay in ONE flex
+/* ─── Phone (<=767px, design draft frame ⑧): the search controls stay in ONE flex
        row (pill input + 搜索 + 任务), result cards go single-column with the
        whole card as the tap target, and the round download button grows to a
        44px touch target. Tablet (768..1099px) keeps the desktop two-column

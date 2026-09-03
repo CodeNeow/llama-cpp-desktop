@@ -7,7 +7,7 @@
  * fully unit-testable without mocks. Labels are i18n keys (resolved by the
  * consumer via t(item.labelKey)) so locale switches re-render both surfaces.
  *
- * IA note (mobile redesign, design/android-mockups.html frame ⑤): the docs
+ * IA note (mobile redesign, v1 mobile design draft frame ⑤): the docs
  * destination left the navigation bars and moved into an entry card at the
  * top of the Settings page; the /docs route itself is unchanged. Its book
  * icon is kept below (DOCS_ICON) as the single source for that entry card.
@@ -22,13 +22,13 @@ export interface NavItem {
   /** Inline stroke-SVG icon string, rendered via v-html (same style as Sidebar). */
   icon: string
   /**
-   * Optional phone-tier icon (Aurora mockup, design/android-design-a-aurora.html
-   * frame ① glass nav): same 24×24 stroke-SVG model but with the mockup's own
-   * path data and stroke-width 2.2. Sidebar.vue keeps consuming `icon`, so the
-   * desktop glyph set is untouched; MobileNav prefers this one when present and
-   * falls back to `icon` (API / settings already match the mockup).
+   * Optional phone-tier icon (docs/branding/android-design.html frame ① glass
+   * nav): same 24×24 stroke-SVG model but with the draft's own path data and
+   * stroke-width 2.2. Sidebar.vue keeps consuming `icon`, so the desktop glyph
+   * set is untouched; MobileNav prefers this one when present and falls back
+   * to `icon` (API / settings already match the draft).
    */
-  auroraIcon?: string
+  phoneIcon?: string
 }
 
 /** Sidebar order: Home → Chat → Models → API → Settings (Docs lives in the Settings entry card). */
@@ -37,19 +37,19 @@ export const NAV_ITEMS: NavItem[] = [
     path: '/',
     labelKey: 'nav.home',
     icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
-    auroraIcon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5L12 3l9 7.5V21H3z"/></svg>`
+    phoneIcon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5L12 3l9 7.5V21H3z"/></svg>`
   },
   {
     path: '/chat',
     labelKey: 'nav.chat',
     icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
-    auroraIcon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 01-8 8H4l2.5-3A8 8 0 1121 12z"/></svg>`
+    phoneIcon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 01-8 8H4l2.5-3A8 8 0 1121 12z"/></svg>`
   },
   {
     path: '/models',
     labelKey: 'nav.models',
     icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>`,
-    auroraIcon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4.5v9L12 20l-8-4.5v-9L12 2z"/></svg>`
+    phoneIcon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4.5v9L12 20l-8-4.5v-9L12 2z"/></svg>`
   },
   {
     path: '/api',

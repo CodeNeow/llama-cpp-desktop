@@ -141,7 +141,7 @@ const routes = [
     meta: { title: 'docs.title', icon: 'book' }
   },
   {
-    // Docs reader subpage (phone tier, Aurora frame ⑱): one section per route,
+    // Docs reader subpage (phone tier, design draft frame ⑱): one section per route,
     // reached from the phone section list. NOT in the sidebar / bottom nav —
     // /docs stays the only nav destination. On desktop tiers DocsReader
     // redirects back to the single-page /docs (the tier check lives in the

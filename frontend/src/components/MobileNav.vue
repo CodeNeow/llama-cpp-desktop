@@ -7,10 +7,10 @@
       class="mobile-nav-item"
       :class="{ active: isActiveNav(item.path, route.path) }"
     >
-      <!-- Phone tier prefers the Aurora mockup glyph (2.2 stroke, see
-           lib/navigation.ts auroraIcon); API / settings have no aurora variant
+      <!-- Phone tier prefers the design draft glyph (2.2 stroke, see
+           lib/navigation.ts phoneIcon); API / settings have no phone-tier variant
            and fall back to the shared sidebar icon, which already matches. -->
-      <span class="mobile-nav-icon" v-html="item.auroraIcon ?? item.icon"></span>
+      <span class="mobile-nav-icon" v-html="item.phoneIcon ?? item.icon"></span>
       <span class="mobile-nav-label">{{ t(item.labelKey) }}</span>
     </router-link>
   </nav>
@@ -23,7 +23,7 @@ import { NAV_ITEMS, isActiveNav } from '../lib/navigation'
 
 // Bottom tab bar of the mobile shell: shown only at the mobile breakpoint
 // (<=767px, see lib/layout.ts MOBILE_MAX), where it replaces the sidebar.
-// Floating glass style per design/android-mockups.html frame ① (14px side and
+// Floating glass style per the v1 mobile design draft frame ① (14px side and
 // bottom insets, 68px tall, blur+saturate backdrop, gradient pill behind the
 // active entry). Entries and active state come from the shared navigation
 // model, so this bar and the desktop sidebar can never drift apart. Its
@@ -39,7 +39,7 @@ const route = useRoute()
   display: none;
 }
 
-/* mobile (<=767px): floating glass tab bar (design/android-mockups.html frame
+/* mobile (<=767px): floating glass tab bar (v1 mobile design draft frame
    ①): a 68px rounded island hovering 14px above the bottom edge with a
    blur+saturate backdrop; the active entry gets a gradient pill with a white
    label. --safe-area-bottom (env() composed with the Android edge-to-edge

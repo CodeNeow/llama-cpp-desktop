@@ -100,7 +100,7 @@
                 :class="{ selected: selectedFiles.includes(f.filename) }"
               >
                 <!-- Native input stays for a11y/keyboard; the phone tier hides
-                     it visually and draws the Aurora .ck box instead -->
+                     it visually and draws the design draft .ck box instead -->
                 <input
                   type="checkbox"
                   class="file-check"
@@ -330,7 +330,7 @@ onMounted(() => {
   border-top: 1px solid var(--border);
 }
 
-/* Desktop glass sticky action bar (Aurora D11): glassmorphism pill bar */
+/* Desktop glass sticky action bar (design draft D11): glassmorphism pill bar */
 @media (min-width: 1100px) {
   .action-bar {
     position: sticky;
@@ -622,7 +622,7 @@ onMounted(() => {
   flex-shrink: 0;
 }
 
-/* Aurora .ck custom checkbox: desktop keeps the native input; the phone tier
+/* design draft .ck custom checkbox: desktop keeps the native input; the phone tier
    hides it visually and draws the box instead (aria-hidden decoration) */
 .file-ck {
   display: none;
@@ -690,7 +690,7 @@ onMounted(() => {
   }
 }
 
-/* ─── Phone (<=767px, Aurora frame ⑩): circular chevron-only back button,
+/* ─── Phone (<=767px, design draft frame ⑩): circular chevron-only back button,
        compact 17px/800 title, island action bar that sticks below the status
        bar while the file list scrolls, drawn .ck checkboxes, hairline file
        rows, and the model-intro island with gradient blockquote callouts. ─── */

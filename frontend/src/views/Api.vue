@@ -273,7 +273,7 @@ const status = ref<MonitorStatus>({
 // (appendHistory default cap=60); rendered as the frame ④ gradient area chart
 const decodeHistory = ref<number[]>([])
 // Chart geometry: desktop keeps the original 560×96 viewBox (unchanged
-// rendering); the phone tier retargets to the Aurora frame ⑬ 4:1 proportions
+// rendering); the phone tier retargets to the design draft frame ⑬ 4:1 proportions
 // (320×80). Tier-reactive so crossing the 767px breakpoint re-projects the
 // same 60-sample history.
 const chartWidth = computed(() => (platform.value.isMobile ? 320 : 560))
@@ -1023,7 +1023,7 @@ html[data-theme='dark'] .speed-baseline {
   padding-bottom: calc(24px + var(--dock-reserve, 0px));
 }
 
-/* Tablet centered column: 768–1099px (Aurora F7) */
+/* Tablet centered column: 768–1099px (design draft F7) */
 @media (min-width: 768px) and (max-width: 1099px) {
   .page-scroll {
     max-width: 800px;
@@ -1032,7 +1032,7 @@ html[data-theme='dark'] .speed-baseline {
   }
 }
 
-/* Desktop two-column main area: 1280px+ (Aurora F4)
+/* Desktop two-column main area: 1280px+ (design draft F4)
    Left column (1.15fr) = status hero + action row.
    Right column (.85fr) = available models (top) + service log (bottom). */
 @media (min-width: 1280px) {
@@ -1253,14 +1253,14 @@ html[data-theme='dark'] .speed-baseline {
   .log-panel { padding: 10px 14px; min-height: 300px; }
 }
 
-/* ─── Phone (<=767px): Aurora frames ⑬⑭⑮ — hero with mono speed digits over a
+/* ─── Phone (<=767px): design draft frames ⑬⑭⑮ — hero with mono speed digits over a
        4:1 chart, soft stop button, real model chips (44px, active = gradient),
        emptycard no-models state, one dark logbox with level colors and a
        compact/expanded footer toggle, and the server-params bottom sheet.
        Desktop (>=768px) is untouched by this whole block. ─── */
 @media (max-width: 767px) {
   /* Phone heading = the design's 24px phone tier (same as Home's .greet-title
-     phone rule, same 1.2 line-height), weight 800 per the Aurora greeting */
+     phone rule, same 1.2 line-height), weight 800 per the design draft greeting */
   .page-title {
     font-size: 24px;
     font-weight: 800;

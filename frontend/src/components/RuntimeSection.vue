@@ -5,7 +5,7 @@
        custom-directory actions; the shell owns the page chrome, so there is
        no page chrome here — only the dependency cards. -->
   <section class="runtime-section">
-    <!-- Phone tier page heading (Aurora frames ③/④): the shell's tab row has
+    <!-- Phone tier page heading (design draft frames ③/④): the shell's tab row has
          no page title on phone, so the panel carries the mockup .h-greet
          heading itself; hidden on desktop/tablet (v-if, not CSS) -->
     <header v-if="platformState.isMobile" class="runtime-page-head">
@@ -42,7 +42,7 @@
             <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
           </svg>
           {{ t('runtime.llamacpp') }}
-          <!-- Phone tier (Aurora .island h4 .more): status rides the card
+          <!-- Phone tier (design draft .island h4 .more): status rides the card
                header — green when installed, AMBER when not found -->
           <span v-if="platformState.isMobile" class="title-status" :class="{ missing: !info.installed }">
             ● {{ info.installed ? t('runtime.llamacpp.installed') : t('runtime.llamacpp.notFound') }}
@@ -57,7 +57,7 @@
               </span>
             </span>
           </div>
-          <!-- Phone tier (Aurora frame ④): the not-found state explains itself
+          <!-- Phone tier (design draft frame ④): the not-found state explains itself
                under the card title before the download CTA -->
           <p v-if="platformState.isMobile && !info.installed" class="missing-desc">{{ t('runtime.notFoundDesc') }}</p>
           <div class="info-item" v-if="info.version">
@@ -70,7 +70,7 @@
           </div>
           <div class="info-item info-item-full" v-if="downloadDir">
             <span class="info-label">{{ t('runtime.downloadDir') }}</span>
-            <!-- Android (Aurora frame ③): download directory lives in
+            <!-- Android (design draft frame ③): download directory lives in
                  app-internal storage managed by the OS — a friendly label
                  instead of the raw sandbox path; other platforms keep the path -->
             <span v-if="platformState.isAndroid" class="info-value info-value-version">{{ t('runtime.storageInternal') }}</span>
@@ -87,7 +87,7 @@
         <div v-if="info.installed" class="components-area">
           <div class="components-title">{{ t('runtime.components') }}</div>
           <div class="comp-row">
-            <!-- Phone tier (Aurora frame ③): 42px gradient-soft icon tile -->
+            <!-- Phone tier (design draft frame ③): 42px gradient-soft icon tile -->
             <span v-if="platformState.isMobile" class="comp-tile">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2l8 4.5v9L12 20l-8-4.5v-9L12 2z"/></svg>
             </span>
@@ -138,7 +138,7 @@
               {{ t('runtime.custom') }}
             </button>
           </div>
-          <!-- Android storage hint (Aurora frame ④): explains why there is no
+          <!-- Android storage hint (design draft frame ④): explains why there is no
                custom-directory option -->
           <p v-if="platformState.isAndroid" class="dl-storage-hint">{{ t('runtime.storageHint') }}</p>
           <!-- Custom path info: independent v-if, not bound to progress area -->
@@ -220,7 +220,7 @@
         </div>
       </div>
 
-      <!-- "About the runtime" island (Aurora frame ③): desktop ≥1100 shows
+      <!-- "About the runtime" island (design draft frame ③): desktop ≥1100 shows
            in the left column alongside the info card -->
       <section class="runtime-about">
         <h4>{{ t('runtime.aboutTitle') }}</h4>
@@ -276,7 +276,7 @@ const accelKey = computed(() => {
 })
 
 // Component-row sublabel: Android names its NEON-qualified cpuArm64 build
-// (Aurora frame ③); every other platform keeps the plain accel label
+// (design draft frame ③); every other platform keeps the plain accel label
 const accelLabel = computed(() => {
   if (platformState.value.isAndroid && accelKey.value === 'cpuArm64') {
     return t('runtime.accel.cpuArm64Neon')
@@ -1107,7 +1107,7 @@ html[data-theme='dark'] .dl-status-line {
   background: rgba(99, 102, 241, 0.25);
 }
 
-/* ─── Phone (<=767px): Aurora mockup frames ③/④. The llama.cpp card becomes
+/* ─── Phone (<=767px): design draft frames ③/④. The llama.cpp card becomes
        a 28px floating island; the download CTA is one full-width gradient
        button; the progress area wraps in its own 22px bordered card with the
        paused state carrying an amber left edge; ops become 999px pills. All
@@ -1269,7 +1269,7 @@ html[data-theme='dark'] .dl-status-line {
   }
 }
 
-/* Tablet centered column: 768–1099px (Aurora F7) */
+/* Tablet centered column: 768–1099px (design draft F7) */
 @media (min-width: 768px) and (max-width: 1099px) {
   .runtime-section {
     max-width: 800px;
@@ -1278,7 +1278,7 @@ html[data-theme='dark'] .dl-status-line {
   }
 }
 
-/* Desktop layout: constrain to 1280px max-width (Aurora D5) */
+/* Desktop layout: constrain to 1280px max-width (design draft D5) */
 @media (min-width: 1280px) {
   .runtime-section {
     max-width: 1280px;
@@ -1287,7 +1287,7 @@ html[data-theme='dark'] .dl-status-line {
   }
 }
 
-/* Desktop ≥1100: two-column layout — left: info card + about, right: components + download (Aurora F6) */
+/* Desktop ≥1100: two-column layout — left: info card + about, right: components + download (design draft F6) */
 @media (min-width: 1100px) {
   .runtime-section {
     display: grid;

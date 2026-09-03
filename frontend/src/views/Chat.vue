@@ -1186,7 +1186,7 @@ onUnmounted(() => {
   padding: var(--safe-area-top, 0px) 48px 0 max(72px, calc(16px + var(--dock-width, 0px) + 8px));
 }
 
-/* ─── Desktop centered column: 860px on >=1100px (Aurora D6) ───
+/* ─── Desktop centered column: 860px on >=1100px (design draft D6) ───
    The chat column is centered with auto side margins; the base 48px gutters
    collapse into the centered column. Dock lane paddings are preserved via
    the higher-specificity --dock-right/--dock-left rules below. */
@@ -1207,7 +1207,7 @@ onUnmounted(() => {
   }
 }
 
-/* ─── Tablet centered column: 720px on 768-1099px (Aurora D6) ─── */
+/* ─── Tablet centered column: 720px on 768-1099px (design draft D6) ─── */
 @media (min-width: 768px) and (max-width: 1099px) {
   .chat-page {
     max-width: 720px;

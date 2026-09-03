@@ -34,7 +34,7 @@
         <button class="sb sb-action sb-github" type="button" @click="openOnGithub">{{ t('docs.openOnGithub') }}</button>
       </div>
       <!-- Section rows: numbered grad-soft tile + title + desc + chevron
-           (Aurora .docrow). Desc comes from i18n docs.section.<id>.desc. -->
+           (design draft .docrow). Desc comes from i18n docs.section.<id>.desc. -->
       <nav class="doclist" :aria-label="t('docs.toc')">
         <button
           v-for="(section, index) in docSections"

@@ -65,7 +65,7 @@ const llamaCpp = {
   cudartVersion: '',
   // Android probe cannot detect the accel backend (no DLLs to inspect), so it
   // reports '' and the UI falls back to the platform build guess
-  // (cpuArm64 → "加速构建 · cpuArm64（NEON）", Aurora frame ③).
+  // (cpuArm64 → "加速构建 · cpuArm64（NEON）", design draft frame ③).
   accel: '',
 }
 
@@ -507,7 +507,7 @@ const chatThinkReasoning =
   '上下文从 4096 起步比较稳妥；若系统仍有富余，再逐步加倍并观察内存水位。'
 
 // ─── Walkthrough scenarios (?sc=…, dev-only) ─────────────────────────────────
-// The phone-layout walkthrough (docs/branding/android-design-a-aurora.html
+// The phone-layout walkthrough (docs/branding/android-design.html
 // frames) needs states the interactive UI cannot reach quickly (fresh
 // first-use, mid-download runtime, blocked chat). A `sc` query param
 // reshuffles the initial fake-backend state at module load. This module is

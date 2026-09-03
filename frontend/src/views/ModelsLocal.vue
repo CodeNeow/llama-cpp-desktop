@@ -18,7 +18,7 @@
         <!-- Android has no native directory picker (the browseModelsDir binding
              errors there): the pick button is replaced by a read-only hint;
              phone tier appends the scanned model count + total size and the
-             rescan link pins to the row's right (Aurora frame ⑨ .dirbar) -->
+             rescan link pins to the row's right (design draft frame ⑨ .dirbar) -->
         <span v-if="platformState.isAndroid" class="dir-android-hint">{{ androidHint }}</span>
         <button v-else class="dir-btn" :title="t('models.chooseDirTitle')" @click="chooseModelsDir">{{ t('models.chooseDir') }}</button>
         <button class="refresh-btn" :disabled="loading" :title="t('models.refreshTitle')" @click="fetchModels(true)">
@@ -31,7 +31,7 @@
       </div>
     </div>
 
-    <!-- Loading skeleton. The tile/mid/block nodes are the Aurora frame ㉑
+    <!-- Loading skeleton. The tile/mid/block nodes are the design draft frame ㉑
          recipe (48px tile + two lines + 56px block); they stay display:none
          on desktop, which keeps rendering the original three-line skeleton. -->
     <div v-if="loading" class="loading-grid">
@@ -330,7 +330,7 @@ onMounted(() => {
   gap: 12px;
 }
 
-/* Desktop two-column grid: 1280px+ (Aurora D5) */
+/* Desktop two-column grid: 1280px+ (design draft D5) */
 @media (min-width: 1280px) {
   .model-list {
     display: grid;
@@ -531,7 +531,7 @@ html[data-os='ios'] .model-settings-btn:active {
   line-height: 1.4;
 }
 
-/* Desktop card chips/path alignment (Aurora D13) */
+/* Desktop card chips/path alignment (design draft D13) */
 @media (min-width: 768px) {
   .model-meta {
     gap: 10px;
@@ -691,7 +691,7 @@ html[data-os='ios'] .model-settings-btn:active {
   border-color: rgba(99, 102, 241, 0.4);
 }
 
-/* ─── Phone (<=767px, Aurora frame ⑨): the directory bar stacks (sources
+/* ─── Phone (<=767px, design draft frame ⑨): the directory bar stacks (sources
        above, actions in a full-width row), source pills take the semantic
        green/blue chip colors, model names drop to 14px with muted meta chips,
        the per-card path line hides (author demotes into the chip row), and

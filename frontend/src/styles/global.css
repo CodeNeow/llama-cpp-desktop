@@ -22,11 +22,11 @@
 }
 
 :root {
-  /* ─── Aurora design tokens (desktop-design-a-aurora.html v2) ───
+  /* ─── Design tokens (desktop design draft v2) ───
      Full-tier baseline: dark mapping is the app default (store.ts seeds
      data-theme="dark"); light mapping lives in the [data-theme="light"] block
      below. Old --bg-primary/--bg-secondary/--bg-card/--border/--text-* map to
-     Aurora's bg/surface/line/ink trio; --surface-2 already matched (#232739)
+     design draft's bg/surface/line/ink trio; --surface-2 already matched (#232739)
      and is left untouched. Status trio and tinted *-bg pairs are declared here
      so every tier shares the same source of truth. Theme-independent tokens
      (--grad, radius scale, --font-sans fallbacks) are declared once here. */
@@ -64,9 +64,9 @@
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Ubuntu', 'Cantarell', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SF Mono', monospace;
 
-  /* Aurora shared tokens (same values for all tiers; light overrides are in
+  /* design draft shared tokens (same values for all tiers; light overrides are in
      [data-theme="light"] below). --surface-2 is intentionally NOT re-declared
-     here: it already matches the Aurora value (#232739) and is unchanged. */
+     here: it already matches the design draft value (#232739) and is unchanged. */
   --grad: linear-gradient(135deg, #6366f1 0%, #8b5cf6 55%, #a855f7 100%);
   --grad-soft: linear-gradient(135deg, #232045 0%, #2c2145 100%);
   --r-lg: 28px;
@@ -111,7 +111,7 @@ html[data-theme='dark'] { color-scheme: dark; }
   --warning: #f59e0b;
   --warning-bg: #fdf3e0;
 
-  /* Aurora light overrides (same values as the phone-tier duplicate that is
+  /* design draft light overrides (same values as the phone-tier duplicate that is
      removed below — this is now the single source of truth for all tiers). */
   --grad-soft: linear-gradient(135deg, #eef0ff 0%, #f6efff 100%);
   --glass: rgba(255, 255, 255, 0.72);
@@ -177,7 +177,7 @@ code, pre {
   margin-right: auto;
 }
 
-/* Tablet centered column: 800px on 768-1099px for non-fixed pages (Aurora D7).
+/* Tablet centered column: 800px on 768-1099px for non-fixed pages (design draft D7).
    .page-fixed pages (Home, Chat, Api) manage their own inner widths and are
    excluded so the existing desktop layouts there are untouched. */
 @media (min-width: 768px) and (max-width: 1099px) {
@@ -337,8 +337,8 @@ html[data-os='ios'] {
 
 :root {
   /* Occupied band of the mobile bottom tab bar: 0 on desktop/tablet, the
-     floating glass bar's full band at the mobile breakpoint (design
-     android-mockups.html frame ①): 14px float gap + 68px bar + safe-area
+     floating glass bar's full band at the mobile breakpoint (v1
+     mobile design draft frame ①): 14px float gap + 68px bar + safe-area
      inset. Consumed by App.vue (.content-area padding, --titlebar-h
      companion) and TaskDock (bottom offset) so content and the floating pill
      stay clear of the bar. Keep the expression in sync with MobileNav.vue's
@@ -378,8 +378,8 @@ html[data-os='ios'] {
   }
 }
 
-/* mobile (<=767px): page horizontal padding 48px → 18px (Aurora mockup page
-   margin, android-design-a-aurora.html .body 18px gutter). The ID prefix is
+/* mobile (<=767px): page horizontal padding 48px → 18px (design draft page
+   margin, docs/branding/android-design.html .body 18px gutter). The ID prefix is
    required to out-rank every view's scoped `.page[data-v-…]` padding rule; it
    is a padding-only override, so each view keeps its own vertical rhythm. */
 @media (max-width: 767px) {
@@ -447,7 +447,7 @@ html[data-os='ios'] {
 }
 
 /* ─── Mobile redesign shared component: floating-island card ───
-   Lifted surface + 28px island radius + soft shadow (design/android-mockups.html
+   Lifted surface + 28px island radius + soft shadow (v1 mobile design draft
    frame ①/.island). Surface-only on purpose: layout (margins / grid placement)
    stays owned by the consuming component. Consumed by the Home redesign
    (batch 2); later page migrations reuse the same class. */
@@ -460,9 +460,9 @@ html[data-os='ios'] {
 }
 
 /* ==========================================
-   Aurora shared state components (all tiers)
+   design draft shared state components (all tiers)
    ------------------------------------------
-   Additive skeleton / error / empty patterns from the Aurora mockup
+   Additive skeleton / error / empty patterns from the design draft
    (.skel / .errcard / .retry / .emptycard / .cta, frame ㉑). Unused by
    existing pages until referenced (Api.vue's phone tier consumes .emptycard
    first); layout (margins / grid placement) stays owned by the consuming
@@ -551,7 +551,7 @@ html[data-theme='dark'] .skel {
   font-family: inherit;
 }
 
-/* Phone tier (Aurora frame ㉑ .retry): the retry pill reads as a danger
+/* Phone tier (design draft frame ㉑ .retry): the retry pill reads as a danger
    action — tinted red background + red label over the neutral desktop skin.
    Scoped to the phone media query so the desktop DocsReader pill keeps its
    exact current look. */

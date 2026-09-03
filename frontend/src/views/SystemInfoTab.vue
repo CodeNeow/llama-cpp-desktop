@@ -1,6 +1,6 @@
 <template>
   <!-- System Info tab panel of the System Environment page (Home.vue shell):
-       redesigned per design/android-mockups.html frame ① — a gradient hero
+       redesigned per the v1 mobile design draft frame ① — a gradient hero
        card answering "is the AI usable right now", a two-column mini-card pair
        (memory / CPU with SVG rings), a storage island (disk bar + GGUF and
        llama.cpp bricks) and the resident-model card with in-place unload.
@@ -83,7 +83,7 @@
             </span>
             <span class="step-text">
               <span class="step-label">{{ t(ONBOARDING_LABELS[step.id]) }}</span>
-              <!-- Phone tier (Aurora .cstep .sd): muted per-step sub-description -->
+              <!-- Phone tier (design draft .cstep .sd): muted per-step sub-description -->
               <span v-if="platformState.isMobile" class="step-sub">{{ t(ONBOARDING_SUBS[step.id]) }}</span>
             </span>
             <button v-if="!step.done" class="step-action" @click="goStep(step.route)">
@@ -113,7 +113,7 @@
             <div class="hero-num">{{ heroTps }}</div>
             <div class="hero-lbl">{{ t('home.hero.metricLbl') }}</div>
           </div>
-          <!-- Phone tier (Aurora frame ①): the offline hero is a pure status
+          <!-- Phone tier (design draft frame ①): the offline hero is a pure status
                statement — the "enter chat" CTA only renders while the service
                is actually ready (frame ②); desktop keeps the CTA in every
                state (existing desktop look untouched). -->
@@ -197,7 +197,7 @@
           </div>
           <div class="brick">
             <span class="brick-lbl">{{ t('home.storage.llamacpp') }}</span>
-            <!-- Phone tier (Aurora frame ①): the "not installed" brick reads
+            <!-- Phone tier (design draft frame ①): the "not installed" brick reads
                  amber in the first-use state -->
             <b class="brick-val" :class="{ warn: !runtimeInstalled }" :title="llamacppBrick">{{ llamacppBrick }}</b>
           </div>
@@ -221,7 +221,7 @@
             <i>{{ typeLabel(m.type) }}</i>
             <i v-if="residentQuant(m)">{{ residentQuant(m) }}</i>
             <i v-if="residentSize(m)">{{ residentSize(m) }}</i>
-            <!-- Phone tier (Aurora .mt i.src-g): trailing green source pill -->
+            <!-- Phone tier (design draft .mt i.src-g): trailing green source pill -->
             <i v-if="platformState.isMobile" class="resident-chip">{{ t('home.residentBadge') }}</i>
           </div>
           <div v-if="unloadErrors[m.id]" class="mcard-error">
@@ -439,7 +439,7 @@ const ONBOARDING_LABELS: Record<OnboardingStepId, string> = {
   service: 'onboarding.step.service'
 }
 
-// Phone-tier muted sub-descriptions (Aurora .cstep .sd), rendered only on the
+// Phone-tier muted sub-descriptions (design draft .cstep .sd), rendered only on the
 // phone tier where the checklist matches the mockup layout
 const ONBOARDING_SUBS: Record<OnboardingStepId, string> = {
   runtime: 'onboarding.sub.runtime',
@@ -447,7 +447,7 @@ const ONBOARDING_SUBS: Record<OnboardingStepId, string> = {
   service: 'onboarding.sub.service'
 }
 
-// Phone-tier per-step go-link labels (Aurora .cstep .go); the desktop button
+// Phone-tier per-step go-link labels (design draft .cstep .go); the desktop button
 // keeps the single generic label
 const ONBOARDING_GOTOS: Record<OnboardingStepId, string> = {
   runtime: 'onboarding.goto.runtime',
@@ -578,7 +578,7 @@ const heroModel = computed(() => {
 const heroSub = computed(() => {
   if (residentModel.value) return t('home.hero.subResident')
   if (serviceRunning.value) return t('home.hero.subIdle')
-  // Phone tier (Aurora frame ①): while the quick-start checklist is on screen
+  // Phone tier (design draft frame ①): while the quick-start checklist is on screen
   // the offline subline points at it ("finish steps 1–2 above")
   if (platformState.value.isMobile && onboardingView.value.visible) return t('home.hero.subOnboard')
   return t('home.hero.subOffline')
@@ -870,7 +870,7 @@ onUnmounted(() => {
   padding: 20px;
 }
 
-/* Desktop two-column grid: 1280px+ (Aurora D5) */
+/* Desktop two-column grid: 1280px+ (design draft D5) */
 @media (min-width: 1280px) {
   .sys-grid {
     grid-template-columns: 1fr 1fr;
@@ -888,7 +888,7 @@ onUnmounted(() => {
   }
 }
 
-/* Desktop narrow: 1100–1279px (Aurora F10) — outer grid stays single-column,
+/* Desktop narrow: 1100–1279px (design draft F10) — outer grid stays single-column,
    but the inner .grid2 pairs (memory/CPU, storage/resident) must also collapse
    so the cards stack vertically instead of forcing a side-by-side mini pair. */
 @media (min-width: 1100px) and (max-width: 1279px) {
@@ -897,7 +897,7 @@ onUnmounted(() => {
   }
 }
 
-/* Tablet centered column: 768–1099px (Aurora F7) */
+/* Tablet centered column: 768–1099px (design draft F7) */
 @media (min-width: 768px) and (max-width: 1099px) {
   .sys-grid {
     max-width: 800px;
@@ -1660,7 +1660,7 @@ html[data-os='ios'] .unload-btn:active:not(:disabled) {
   background: var(--accent-glow);
 }
 
-/* ─── Phone (<=767px): Aurora mockup frames ①/②. Checklist becomes the
+/* ─── Phone (<=767px): design draft frames ①/②. Checklist becomes the
        mockup .check card (13px title, dashed separators, 26px markers, muted
        sub-lines, bare bold go-links), the offline hero gets the mockup gray
        gradient, minis + hero drop to the 22px --r-md radius, resident card

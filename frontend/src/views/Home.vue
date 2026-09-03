@@ -4,7 +4,7 @@
       <div class="page-header">
         <div class="page-header-row">
           <div class="greet-block">
-            <!-- Greeting header (design/android-mockups.html frame ①): a
+            <!-- Greeting header (v1 mobile design draft frame ①): a
                  time-of-day greeting replaces the static page title, and the
                  subline answers "is the AI usable right now" from the live
                  service status + resident model — never hardcoded online. -->
@@ -20,7 +20,7 @@
               <template v-else>
                 <span class="greet-dot" :class="{ idle: greetState === 'idle', off: greetState === 'off' }"></span>
                 <span class="greet-text" :class="{ 'is-off': greetState === 'off' }">{{ greetLine }}</span>
-                <!-- Phone tier (Aurora frame ①): while the checklist card is up
+                <!-- Phone tier (design draft frame ①): while the checklist card is up
                      and the service is not ready, the subline points at it -->
                 <span v-if="showOnboardHint" class="greet-rest greet-hint">· {{ t('home.greet.onboardHint') }}</span>
               </template>
@@ -35,7 +35,7 @@
            navigation stay correct. The row's right side carries the system
            tab's updated-at stamp + refresh toolbar, wired to the SystemInfoTab
            instance through its exposed API and shown only while that tab is
-           active. Phone tier (Aurora frame ①): while the quick-start checklist
+           active. Phone tier (design draft frame ①): while the quick-start checklist
            is up on the system tab the row is hidden entirely — the checklist
            IS the first-use screen; the runtime tab keeps its row (frames ③/④),
            so the checklist's own links remain the way in and the tab row the
@@ -144,7 +144,7 @@ const greetState = computed<'loading' | 'online' | 'idle' | 'off'>(() => {
 
 const greetModel = computed(() => residentModel.value?.id ?? '')
 
-// Phone-tier guidance hint (Aurora frame ①): shown while the service is not
+// Phone-tier guidance hint (design draft frame ①): shown while the service is not
 // ready and the quick-start checklist can be on screen. SystemInfoTab owns the
 // checklist's probe-derived visibility; from the shell, "not dismissed and
 // service not ready" is an exact-enough proxy — a stopped / model-less service
@@ -211,7 +211,7 @@ const panelId = 'home-panel'
 // still probing) shows the system tab
 const activeTabId = computed(() => (route.path.startsWith('/runtime') ? 'tab-runtime' : 'tab-system'))
 
-// Phone tier (Aurora frame ①): the tab row disappears while the quick-start
+// Phone tier (design draft frame ①): the tab row disappears while the quick-start
 // checklist owns the system tab — the checklist state has no tab strip in the
 // mockup. The runtime tab (frames ③/④) always keeps its row.
 const phoneHideTabs = computed(
@@ -454,7 +454,7 @@ const tabs = [
   display: flex;
 }
 
-/* ─── Phone (<=767px): Aurora mockup frames ①/② header. Greeting 27px, the
+/* ─── Phone (<=767px): design draft frames ①/② header. Greeting 27px, the
        ready-suffix stays visible (ellipsis on overflow), the offline status
        turns red, the tab row becomes mockup pill chips sharing one line with
        an icon-only round refresh button (44px touch targets throughout). ─── */

@@ -8,7 +8,7 @@
     </div>
 
     <!-- Help & tutorial entry: the former sixth navigation destination moved
-         here from the nav bars (mobile redesign IA, design/android-mockups.html
+         here from the nav bars (mobile redesign IA, v1 mobile design draft
          frame ⑤). The /docs route itself is unchanged; the card sits above the
          setting groups so it is reachable from every scroll position. -->
     <router-link to="/docs" class="docs-entry">
@@ -72,7 +72,7 @@
             <span class="row-title">{{ t('settings.language') }}</span>
             <span class="row-sub">{{ languageCurrentLabel }}</span>
           </div>
-          <!-- Desktop / tablet: compact ThemedSelect in the row tail (Aurora F5) -->
+          <!-- Desktop / tablet: compact ThemedSelect in the row tail (design draft F5) -->
           <div v-if="!isPhone" class="row-tail row-tail-select">
             <ThemedSelect
               :model-value="appConfig.language"
@@ -106,7 +106,7 @@
             <span class="row-title">{{ t('settings.downloadSource') }}</span>
             <span class="row-sub">{{ sourceCurrentLabel }}</span>
           </div>
-          <!-- Desktop / tablet: compact ThemedSelect in the row tail (Aurora F5) -->
+          <!-- Desktop / tablet: compact ThemedSelect in the row tail (design draft F5) -->
           <div v-if="!isPhone" class="row-tail row-tail-select">
             <ThemedSelect
               :model-value="downloadSource"
@@ -185,7 +185,7 @@
             <span class="row-title">{{ t('settings.accessScope') }}</span>
             <span class="row-sub">{{ t('settings.accessDesc') }}</span>
           </div>
-          <!-- Desktop / tablet: compact ThemedSelect in the row tail (Aurora F5) -->
+          <!-- Desktop / tablet: compact ThemedSelect in the row tail (design draft F5) -->
           <div v-if="!isPhone" class="row-tail row-tail-select">
             <ThemedSelect
               :model-value="appConfig.serverAccessMode"
@@ -220,7 +220,7 @@
             <span class="row-title">{{ t('settings.apiKey') }}</span>
             <span class="row-sub">{{ t('settings.apiKeyDesc') }}</span>
           </div>
-          <!-- Desktop / tablet: "设置 ›" button opening a centered dialog (Aurora F5) -->
+          <!-- Desktop / tablet: "设置 ›" button opening a centered dialog (design draft F5) -->
           <button v-if="!isPhone" type="button" class="row-tail-api-key" @click="showApiKeyDialog = true">
             <span>{{ t('settings.apiKeySet') }}</span>
             <span aria-hidden="true">›</span>
@@ -251,7 +251,7 @@
           <button type="button" class="api-key-done" @click="showApiKeySheet = false">{{ t('api.done') }}</button>
         </div>
 
-        <!-- Desktop API key centered dialog (Aurora F5) -->
+        <!-- Desktop API key centered dialog (design draft F5) -->
         <div v-if="!isPhone && showApiKeyDialog" class="api-key-dialog-root" @click.self="showApiKeyDialog = false">
           <div class="api-key-dialog">
             <div class="api-key-dialog-title">{{ t('settings.apiKey') }}</div>
@@ -883,7 +883,7 @@ async function manualCheck() {
   margin: 0;
 }
 
-/* ─── Docs entry card (design/android-mockups.html frame ⑤) ───
+/* ─── Docs entry card (v1 mobile design draft frame ⑤) ───
    Brand-gradient hero row linking to the /docs tutorial: white text, 36px
    icon tile, rgba-white sub line and trailing chevron. */
 .docs-entry {
@@ -1341,7 +1341,7 @@ async function manualCheck() {
   user-select: text;
 }
 
-/* ─── Desktop two-column layout: 1280px+ (Aurora D5) ─── */
+/* ─── Desktop two-column layout: 1280px+ (design draft D5) ─── */
 @media (min-width: 1280px) {
   .page {
     display: grid;
@@ -1701,7 +1701,7 @@ async function manualCheck() {
   }
 }
 
-/* Desktop API key dialog (Aurora F5): centered modal */
+/* Desktop API key dialog (design draft F5): centered modal */
 .api-key-dialog-root {
   position: fixed;
   inset: 0;

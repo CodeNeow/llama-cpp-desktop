@@ -110,7 +110,7 @@
           <h3 class="group-title">{{ t('modelSettings.groupBase') }}</h3>
           <div class="param-grid">
             <!-- param-frow marks plain input rows: the phone tier reflows them
-                 into the Aurora frame ⑪ .frow layout (label left, mono input
+                 into the design draft frame ⑪ .frow layout (label left, mono input
                  right); select / toggle rows keep the stacked layout -->
             <div class="param param-frow">
               <label class="param-field">
@@ -246,7 +246,7 @@
           </div>
         </div>
 
-        <!-- Phone tier (Aurora frame ⑫): live "参数速览" summary island at the
+        <!-- Phone tier (design draft frame ⑫): live "参数速览" summary island at the
              bottom of the memory tab — current form values plus the auto-tune
              hardware basis. Desktop keeps the plain form (isMobile-gated DOM). -->
         <div v-if="platformState.isMobile" class="summary-island">
@@ -1212,7 +1212,7 @@ onUnmounted(() => {
   outline-offset: 2px;
 }
 
-/* ─── Phone (<=767px, Aurora frames ⑪⑫): the header becomes the mockup
+/* ─── Phone (<=767px, design draft frames ⑪⑫): the header becomes the mockup
        .mstop — a 44px circular island back button (chevron only) in its own
        row, then the model name at 17px/800 on a single ellipsized line, then
        the 11.5px muted sub-line; the tab row becomes scrollable pill chips
