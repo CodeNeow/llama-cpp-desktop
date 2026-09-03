@@ -9,7 +9,7 @@
 | L1 单元测试 | Go(`go test ./...`)+ 前端(vitest) | ubuntu、windows、macos(各自真实 OS 代码分支) | 每次推送 |
 | L2 服务链路集成测试 | `core/servchain_e2e_test.go`:真实 llama-server + 真实 tiny GGUF,走「模型扫描 → 预设生成 → 进程拉起 → 日志采集 → `/health` → `/v1/models` → `/v1/completions` 真实推理 → 优雅停止」全链 | ubuntu、windows、macos | 每次推送 |
 | L3 安卓模拟器冒烟 | x86_64 调试 APK 装入 API 30 模拟器,断言进程存活、无崩溃、JNI 存储锚点解析成功(非 cwd 回退),留存截图 | CI 模拟器 | 每次推送 |
-| L4 前端 E2E | 计划中:vite + `window.go` mock 驱动页面流程 | — | — |
+| L4 前端 E2E | 计划中:页面流程级 E2E 自动化;仓库已内置纯前端 mock 可驱动完整 UI(`npm run dev:mock`,vite `--mode mock` 将 `@wailsio/runtime` 别名到 `src/dev/mockRuntime.ts`,假数据与处理器在 `src/dev/mockData.ts`),但尚无自动化 E2E 用例 | — | — |
 | L5 人工验收 | 见下方清单,打 tag 发版前执行 | 真机 / 真硬件 | 发版前 |
 
 平台 × 功能覆盖矩阵(L1–L3 自动覆盖 ●;L5 人工 ○;该平台无此功能 —):

@@ -8,22 +8,23 @@ Thank you for contributing to MyLlama! This guide covers environment setup, comm
 | --- | --- | --- |
 | [Go](https://go.dev/dl/) | 1.25+ | Backend (declared in `go.mod`) |
 | [Node.js](https://nodejs.org/) | 18+ | Frontend build (CI uses 24) |
-| [Wails CLI](https://wails.io/docs/gettingstarted/installation) | v2 | `go install github.com/wailsapp/wails/v2/cmd/wails@latest` |
+| [Wails CLI](https://wails.io/docs/gettingstarted/installation) | v3 | `go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.16` (keep the pinned version in sync with `go.mod`) |
 | [golangci-lint](https://golangci-lint.run/) | v2 | `go install github.com/golangci/golangci-lint/cmd/golangci-lint@v2.9.0` |
+| Android toolchain (optional) | JDK 17 + NDK | Only needed for `wails3 task android:*`; install an NDK via `sdkmanager "ndk;26.3.11579264" "platforms;android-35"` |
 
 Local development:
 
 ```bash
-wails dev          # Go backend + Vite frontend (:5173) hot-reload
+wails3 task dev    # Go backend + Vite frontend (:5173) hot-reload
 ```
 
-> The frontend calls the backend via `window.go.core.App`. Running `npm run dev` standalone (without the Wails runtime) causes backend calls to throw — this is expected behavior.
+> The frontend calls the backend through the Wails v3 generated bindings (`frontend/bindings/`, re-exported by `frontend/src/wails.ts`). Running `npm run dev` standalone (without the Wails runtime) makes backend calls fail at fetch time — this is expected behavior. Use `npm run dev:mock` to debug the UI in a plain browser against the in-repo mock runtime.
 
 ## 2. Branches and Commits
 
 ### 2.1 Branches
 
-- Commit directly to `main` by default; only create a feature branch when the change needs isolated review (e.g., opening a PR).
+- Active integration happens on `dev` — commit there by default. `main` is the release channel: it advances only at release time (version-bump + CHANGELOG commit, then the annotated tag), so ordinary work never targets it directly. Only create a feature branch when the change needs isolated review (e.g., opening a PR).
 
 ### 2.2 Commit Messages
 
@@ -68,7 +69,7 @@ When using multi-agent / multi-session collaboration, roles are declared by the 
 
 Combined quality gate: use `make check` on POSIX; use `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\check.ps1` on Windows. Choose local vs. full verification per change scope; tiering rules are in [AGENTS.md](./AGENTS.md) "Pre-commit Test Tiers".
 
-> CI (`.github/workflows/ci.yml`) runs the above checks automatically on every push / PR, and completes a `wails build` desktop packaging verification on Windows. Local passes do not replace CI's final determination.
+> CI (`.github/workflows/ci.yml`) runs on every push / PR: `frontend` (type-check + build + vitest, uploads the `frontend-dist` artifact for the go:embed builds), `backend` (ubuntu, `gtk3`-tagged go build + tests + gofmt + golangci-lint, plus service-chain E2E against a real llama-server and a tiny GGUF in both router mode and the Android direct mode), `build-windows` (`wails3 task build`, NSIS installer, windows-branch unit tests + router-mode E2E), `build-linux` (Ubuntu 22.04 / 24.04 `.deb` packages on the GTK3 stack), `build-macos` (universal `.app` zip, darwin-branch unit tests + router-mode E2E), `build-android` (arm64 release APK from `build/android`, plus an x86_64 smoke APK) and `smoke-android` (x86_64 APK booted on an API-30 emulator with logcat assertions and screenshots). A `v*` tag push additionally triggers `release`, which publishes the 5-artifact GitHub Release with notes extracted from CHANGELOG.md. Local passes do not replace CI's final determination.
 
 ## 4. Issue Workflow
 
@@ -108,7 +109,7 @@ Issue bodies must never contain tokens, secrets, or machine-specific absolute pa
 
 ## 5. Pull Request Workflow
 
-1. Cut a feature branch from `main`; commit conventions are in Section 2.
+1. Cut a feature branch from `dev`; commit conventions are in Section 2.
 2. Ensure all local quality gates (Section 3) pass.
 3. Open a PR: use `Fixes #N` to associate the corresponding issue (if any), and attach verification commands and results in the description.
 4. After CI is fully green, a maintainer reviews and merges.

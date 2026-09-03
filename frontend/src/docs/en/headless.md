@@ -9,7 +9,7 @@ Prerequisites:
 
 - **Windows** only;
 - The **system tray** must be enabled first — the tray menu is the only way back from headless mode;
-- Developers: this feature is unavailable under `wails dev` (the switch restarts the process and kills the dev session) — test it with a release build.
+- Developers: this feature is unavailable under `wails3 task dev` (the switch restarts the process and kills the dev session) — test it with a release build.
 
 ## Switching between GUI and headless never drops the service
 

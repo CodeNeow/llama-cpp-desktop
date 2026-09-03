@@ -11,7 +11,7 @@ Before starting, the app scans the model directories (the model download path pl
 ## Port already in use
 
 - **Service port (default 8080)**: if starting fails and the log reports the port is taken, check what occupies 8080; for a lasting conflict, change Port to another value between 1024–65535 in "API Router → Settings" (while the service is stopped).
-- **Dev port 5173**: under `wails dev` Vite binds localhost:5173; when starting dev again reports the port is occupied, end the stale process holding it first.
+- **Dev port 5173**: under `wails3 task dev` Vite binds 127.0.0.1:5173; when starting dev again reports the port is occupied, end the stale process holding it first.
 
 ## The right way to stop the service
 
