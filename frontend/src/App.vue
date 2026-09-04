@@ -136,7 +136,22 @@ const osId = ref<OsId>('windows')
 // arm64 GPU card / Metal offload selector) react to the real backend arch.
 const arch = ref('')
 function syncPlatformState() {
-  setPlatform(buildPlatformState(osId.value, window.innerWidth, arch.value))
+  // Build once and reuse: the same freshly classified PlatformState feeds both
+  // setPlatform and the data-viewport mirror below.
+  const next = buildPlatformState(osId.value, window.innerWidth, arch.value, window.innerHeight)
+  setPlatform(next)
+  // Mirror the classified viewport tier onto <html> as data-viewport (same
+  // pattern as the data-os attribute below): global.css / components may key
+  // tablet-landscape styling off `[data-viewport='tablet-landscape']` because
+  // media queries cannot see the OS or the viewport height.
+  const viewportMode = next.isMobile
+    ? 'mobile'
+    : next.isTabletLandscape
+      ? 'tablet-landscape'
+      : next.isTablet
+        ? 'tablet'
+        : 'desktop'
+  document.documentElement.setAttribute('data-viewport', viewportMode)
   // Mirror the OS id onto <html> as data-os (same pattern as main.ts's
   // data-theme): global.css keys OS-scoped behavior off it — touch platforms
   // hide scrollbars there while desktop keeps them at every viewport width.

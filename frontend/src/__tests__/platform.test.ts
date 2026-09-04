@@ -110,6 +110,60 @@ describe('buildPlatformState tier classification is width-driven only', () => {
   })
 })
 
+describe('buildPlatformState Android landscape-tablet band', () => {
+  // The ONE Android-gated extension to the width-only rule: an Android tablet
+  // rotated to landscape (width in TABLET_MAX+1..TABLET_LANDSCAPE_MAX with
+  // width > height) classifies back into the tablet tier and gains
+  // isTabletLandscape. Explicit non-goals covered below: desktop OSes are
+  // never re-classified, Android portrait above TABLET_MAX stays desktop,
+  // squares tie to portrait, and widths beyond the band stay desktop.
+  it.each<[number, number, 'portrait' | 'landscape', boolean, boolean, boolean]>([
+    [800, 1280, 'portrait', false, true, false], // portrait tablet: plain tablet tier
+    [1280, 800, 'landscape', false, true, true], // landscape tablet: tablet + isTabletLandscape
+    [1100, 900, 'landscape', false, true, true], // band lower edge is inclusive
+    [1361, 900, 'landscape', false, false, false], // beyond the band: desktop tier
+    [1280, 1280, 'portrait', false, false, false], // square ties to portrait: desktop tier
+  ])(
+    'android %ix%i -> orientation=%s mobile=%s tablet=%s tabletLandscape=%s',
+    (width, height, orientation, isMobile, isTablet, isTabletLandscape) => {
+      const state = buildPlatformState('android', width, '', height)
+      expect(state.orientation).toBe(orientation)
+      expect(state.isMobile).toBe(isMobile)
+      expect(state.isTablet).toBe(isTablet)
+      expect(state.isTabletLandscape).toBe(isTabletLandscape)
+      expect(state.isDesktop).toBe(!isMobile && !isTablet)
+    },
+  )
+
+  it('android 1280x800 lands in the tablet tier with isTabletLandscape', () => {
+    const state = buildPlatformState('android', 1280, '', 800)
+    expect(state.isTablet).toBe(true)
+    expect(state.orientation).toBe('landscape')
+    expect(state.isTabletLandscape).toBe(true)
+    expect(state.isDesktop).toBe(false)
+    expect(state.isAndroid).toBe(true)
+  })
+
+  it('desktop OSes are never re-classified by the landscape band (OS gate)', () => {
+    const landscape = buildPlatformState('windows', 1280, '', 800)
+    expect(landscape.isDesktop).toBe(true)
+    expect(landscape.isTablet).toBe(false)
+    expect(landscape.isTabletLandscape).toBe(false)
+
+    const narrowTablet = buildPlatformState('windows', 900, '', 700)
+    expect(narrowTablet.isTablet).toBe(true)
+    expect(narrowTablet.isTabletLandscape).toBe(false)
+  })
+
+  it('legacy 2/3-arg calls default to portrait (Infinity height) and keep desktop classification', () => {
+    const state = buildPlatformState('android', 1280)
+    expect(state.orientation).toBe('portrait')
+    expect(state.isTablet).toBe(false)
+    expect(state.isTabletLandscape).toBe(false)
+    expect(state.isDesktop).toBe(true)
+  })
+})
+
 describe('buildPlatformState capability matrix', () => {
   it.each<[OsId, number, boolean, boolean]>([
     ['windows', 1920, true, true], // desktop windows: tray + frameless titlebar
