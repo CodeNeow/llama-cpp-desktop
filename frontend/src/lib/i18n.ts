@@ -623,6 +623,19 @@ export const messages: Record<Locale, Record<string, string>> = {
     'modelSettings.summaryBody': '上下文 {ctx} · 线程 {threads} · K 缓存 {ctk} · V 缓存 {ctv} · 加载 {mode}',
     'modelSettings.summarySubHardware': '由「一键调优」按 {ram} 内存 + {soc} 自动计算',
     'modelSettings.summarySubGeneric': '由「一键调优」按本机硬件自动计算',
+    // design draft tablet frames ⑪⑫ "参数速览" rows (portrait bottom island +
+    // landscape sticky rail share the row set; lib/modelMemory.ts builds it)
+    'modelSettings.summaryLive': '参数速览（实时）',
+    'modelSettings.summaryCtxThreads': '上下文 / 线程',
+    'modelSettings.summaryKv': 'KV 缓存',
+    'modelSettings.summaryEstimate': '权重 + KV 预估',
+    'modelSettings.summaryKvSaved': 'KV 量化节省',
+    'modelSettings.summaryAvailable': '可用内存',
+    'modelSettings.summaryHeadroom': '余量',
+    'modelSettings.headroomOk': '充足 ✓',
+    'modelSettings.headroomTight': '偏紧',
+    'modelSettings.headroomOver': '不足',
+    'modelSettings.threadsAutoShort': '自动',
 
     // ─── Update modal (UpdateModal.vue) ───
     'updateModal.title': '🎉 发现新版本',
@@ -1330,6 +1343,19 @@ export const messages: Record<Locale, Record<string, string>> = {
     'modelSettings.summaryBody': 'Context {ctx} · Threads {threads} · K cache {ctk} · V cache {ctv} · Load {mode}',
     'modelSettings.summarySubHardware': 'Computed by auto-tune for {ram} RAM + {soc}',
     'modelSettings.summarySubGeneric': 'Computed by auto-tune from this device\'s hardware',
+    // design draft tablet frames ⑪⑫ "参数速览" rows (portrait bottom island +
+    // landscape sticky rail share the row set; lib/modelMemory.ts builds it)
+    'modelSettings.summaryLive': 'Params summary (live)',
+    'modelSettings.summaryCtxThreads': 'Context / Threads',
+    'modelSettings.summaryKv': 'KV cache',
+    'modelSettings.summaryEstimate': 'Weights + KV est.',
+    'modelSettings.summaryKvSaved': 'KV quant. saving',
+    'modelSettings.summaryAvailable': 'Available memory',
+    'modelSettings.summaryHeadroom': 'Headroom',
+    'modelSettings.headroomOk': 'Plenty ✓',
+    'modelSettings.headroomTight': 'Tight',
+    'modelSettings.headroomOver': 'Not enough',
+    'modelSettings.threadsAutoShort': 'auto',
 
     'modelDetail.title': 'Model Detail',
 
