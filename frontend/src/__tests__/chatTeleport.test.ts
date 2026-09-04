@@ -100,4 +100,69 @@ describe('Chat.vue Teleport conditional rendering', () => {
 
     wrapper.unmount()
   })
+
+  // Android tablet in PORTRAIT (tablet draft frame ⑤): the params editor is
+  // the centered modal card variant of the same Teleported overlay — the
+  // sheet root mounts, the dialog carries the --modal class, and no
+  // landscape rail exists.
+  it('renders the modal-card params overlay on Android tablet portrait', async () => {
+    setPlatform(buildPlatformState('android', 800, 'arm64', 1280))
+    const wrapper = mount(Chat, { attachTo: document.body })
+    await flushPromises()
+    await nextTick()
+
+    expect(document.querySelector('.params-sheet-root')).toBeNull()
+
+    await wrapper.find('.chat-settings-btn').trigger('click')
+    await nextTick()
+
+    const sheetRoot = document.querySelector('.params-sheet-root')
+    expect(sheetRoot).not.toBeNull()
+    expect(sheetRoot?.querySelector('.params-sheet')?.classList.contains('params-sheet--modal')).toBe(true)
+
+    // Portrait track has no persistent rail
+    expect(wrapper.find('.chat-rail').exists()).toBe(false)
+
+    wrapper.unmount()
+  })
+
+  // Android tablet in LANDSCAPE (tablet draft frames B⑤/B⑥/B⑦): the params
+  // editor lives in the persistent right rail instead — no Teleported
+  // overlay, no popover, even with the params state toggled.
+  it('renders the persistent params rail on Android tablet landscape', async () => {
+    setPlatform(buildPlatformState('android', 1280, 'arm64', 800))
+    const wrapper = mount(Chat, { attachTo: document.body })
+    await flushPromises()
+    await nextTick()
+
+    // Rail exists with the always-visible params card (empty + idle chat:
+    // context card hidden, session card hidden — draft B⑤ params-only rail)
+    expect(wrapper.find('.chat-rail').exists()).toBe(true)
+    expect(wrapper.find('.rail-card--params').exists()).toBe(true)
+    expect(wrapper.findAll('.rail-card').length).toBe(1)
+
+    // Toggling the params state must NOT open the Teleported sheet nor the
+    // desktop popover on this tier
+    await wrapper.find('.chat-settings-btn').trigger('click')
+    await nextTick()
+    expect(document.querySelector('.params-sheet-root')).toBeNull()
+    expect(wrapper.find('.params-popover').exists()).toBe(false)
+
+    wrapper.unmount()
+  })
+
+  it('keeps messages-area scroll container and inline banner placement on tablet tiers', async () => {
+    setPlatform(buildPlatformState('android', 1280, 'arm64', 800))
+    const wrapper = mount(Chat, { attachTo: document.body })
+    await flushPromises()
+    await nextTick()
+
+    // The rail is a sibling of the scrollable messages area (stick-to-bottom
+    // wiring stays on .messages-area in every layout branch)
+    expect(wrapper.find('.chat-body .messages-area').exists()).toBe(true)
+    // Fresh idle mount: no precheck banner
+    expect(wrapper.find('.chat-precheck-stack').exists()).toBe(false)
+
+    wrapper.unmount()
+  })
 })

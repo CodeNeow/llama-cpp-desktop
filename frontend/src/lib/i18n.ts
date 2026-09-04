@@ -391,6 +391,20 @@ export const messages: Record<Locale, Record<string, string>> = {
     'chat.blockedPlaceholder': '先下载模型后即可发送',
     'chat.statsThinking': '思考 {v} tok/s',
     'chat.statsAnswer': '生成 {v} tok/s',
+    // Tablet-landscape context rail (design draft tablet frames B⑤/B⑥/B⑦)
+    'chat.railAria': '模型状态与推理参数',
+    'chat.railContext': '当前上下文',
+    'chat.railSession': '本会话',
+    'chat.railService': '服务',
+    'chat.railModel': '模型',
+    'chat.railSpeed': '速度',
+    'chat.railMessages': '消息数',
+    'chat.railTokensUsed': '已用 Token（估）',
+    'chat.railSuggestion': '建议',
+    'chat.railSuggestionRetry': '启动服务后重试',
+    'chat.serviceRunning': '运行中',
+    'chat.serviceStarting': '启动中…',
+    'chat.serviceDown': '未运行',
 
     // ─── Monitoring (embedded in Api.vue) ───
     'monitor.uptimeLabel': '运行时长',
@@ -1071,6 +1085,20 @@ export const messages: Record<Locale, Record<string, string>> = {
     'chat.blockedPlaceholder': 'Download a model to start sending',
     'chat.statsThinking': 'Thinking {v} tok/s',
     'chat.statsAnswer': 'Generating {v} tok/s',
+    // Tablet-landscape context rail (design draft tablet frames B⑤/B⑥/B⑦)
+    'chat.railAria': 'Model status and inference parameters',
+    'chat.railContext': 'Current context',
+    'chat.railSession': 'This session',
+    'chat.railService': 'Service',
+    'chat.railModel': 'Model',
+    'chat.railSpeed': 'Speed',
+    'chat.railMessages': 'Messages',
+    'chat.railTokensUsed': 'Tokens used (est.)',
+    'chat.railSuggestion': 'Suggestion',
+    'chat.railSuggestionRetry': 'Start the service and retry',
+    'chat.serviceRunning': 'Running',
+    'chat.serviceStarting': 'Starting…',
+    'chat.serviceDown': 'Not running',
 
     // ─── Monitor (embedded in Api.vue) ───
     'monitor.uptimeLabel': 'Uptime',

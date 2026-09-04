@@ -1,5 +1,22 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fetchRouterModels, parseSSEChunks, buildChatBody, buildMessageContent, tokenRates, chatReadiness, modelsToUnload, directModeNeedsSwitch, type ChatParams } from '../lib/chat'
+import {
+  buildChatBody,
+  buildMessageContent,
+  chatContextRows,
+  chatContextSummary,
+  chatParamsLayout,
+  chatReadiness,
+  directModeNeedsSwitch,
+  estimateChatTokens,
+  estimateConversationTokens,
+  fetchRouterModels,
+  formatTokenCount,
+  lastReplyTps,
+  modelsToUnload,
+  parseSSEChunks,
+  tokenRates,
+  type ChatParams,
+} from '../lib/chat'
 
 describe('parseSSEChunks', () => {
   // complete single-line JSON
@@ -424,5 +441,228 @@ describe('fetchRouterModels', () => {
   it('propagates an error when both /models and /v1/models fail', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(jsonResponse(404, {}))))
     await expect(fetchRouterModels(8080)).rejects.toThrow('GET /v1/models failed: 404')
+  })
+})
+
+// ─── Tablet chat layout helpers (tablet design draft frames ⑤⑥⑦) ───────────
+
+describe('chatParamsLayout', () => {
+  it('Android tablet-landscape gets the persistent rail panel', () => {
+    expect(chatParamsLayout(false, true, true)).toBe('panel')
+  })
+
+  it('phone tier keeps the docked bottom sheet', () => {
+    expect(chatParamsLayout(true, false, false)).toBe('sheet')
+  })
+
+  it('tablet portrait gets the centered modal card, not the phone sheet', () => {
+    expect(chatParamsLayout(false, true, false)).toBe('modal')
+  })
+
+  it('desktop keeps the anchored popover', () => {
+    expect(chatParamsLayout(false, false, false)).toBe('popover')
+  })
+
+  it('landscape wins over the phone check (defensive ordering)', () => {
+    expect(chatParamsLayout(true, true, true)).toBe('panel')
+  })
+})
+
+describe('estimateChatTokens', () => {
+  it('counts ~4 latin characters per token, rounded up', () => {
+    expect(estimateChatTokens('Hello, world!')).toBe(4)
+    expect(estimateChatTokens('ab')).toBe(1)
+  })
+
+  it('counts CJK characters at 0.75 tokens each, rounded up', () => {
+    expect(estimateChatTokens('你好世界')).toBe(3)
+  })
+
+  it('handles mixed scripts', () => {
+    // 2 CJK * 0.75 + 6 latin / 4 = 1.5 + 1.5 = 3
+    expect(estimateChatTokens('你好 world')).toBe(3)
+  })
+
+  it('empty text estimates zero tokens', () => {
+    expect(estimateChatTokens('')).toBe(0)
+  })
+})
+
+describe('estimateConversationTokens', () => {
+  it('sums the per-message estimates', () => {
+    const msgs = [
+      { role: 'user', content: '你好' },
+      { role: 'assistant', content: 'Hi there' },
+    ]
+    // 2 * 0.75 -> 2 ; 8 / 4 -> 2
+    expect(estimateConversationTokens(msgs)).toBe(4)
+  })
+
+  it('empty history estimates zero', () => {
+    expect(estimateConversationTokens([])).toBe(0)
+  })
+})
+
+describe('lastReplyTps', () => {
+  it('returns the most recent assistant answer rate', () => {
+    const msgs = [
+      { role: 'user', content: 'a' },
+      { role: 'assistant', content: 'b', stats: { answerTps: 31.8 } },
+      { role: 'user', content: 'c' },
+      { role: 'assistant', content: 'd', stats: { reasoningTps: 14.6, answerTps: 40 } },
+    ]
+    expect(lastReplyTps(msgs)).toBe(40)
+  })
+
+  it('falls back to the reasoning rate when no answer rate exists', () => {
+    expect(lastReplyTps([{ role: 'assistant', stats: { reasoningTps: 14.6 } }])).toBe(14.6)
+  })
+
+  it('skips user messages and stats-less assistant messages', () => {
+    expect(lastReplyTps([{ role: 'assistant' }])).toBeNull()
+    expect(lastReplyTps([])).toBeNull()
+  })
+})
+
+describe('formatTokenCount', () => {
+  it('renders small counts as integers', () => {
+    expect(formatTokenCount(0)).toBe('0')
+    expect(formatTokenCount(832)).toBe('832')
+  })
+
+  it('renders thousands with one decimal + k suffix', () => {
+    expect(formatTokenCount(1234)).toBe('1.2k')
+    expect(formatTokenCount(1000)).toBe('1.0k')
+  })
+
+  it('degrades non-finite and negative inputs to zero', () => {
+    expect(formatTokenCount(-5)).toBe('0')
+    expect(formatTokenCount(Number.NaN)).toBe('0')
+  })
+})
+
+describe('chatContextSummary', () => {
+  const base = {
+    serverRunning: true,
+    starting: false,
+    blocked: false,
+    streaming: false,
+    modelLabel: 'Qwen3-4B',
+    liveTps: null,
+    messages: [{ role: 'user', content: 'hi' }, { role: 'assistant', content: 'hello', stats: { answerTps: 31.2 } }],
+  }
+
+  it('reports running service, last-reply speed and token estimate', () => {
+    const s = chatContextSummary(base)
+    expect(s.service).toBe('running')
+    expect(s.speedTps).toBe(31.2)
+    expect(s.messageCount).toBe(2)
+    expect(s.estimatedTokens).toBeGreaterThan(0)
+    expect(s.suggestRestart).toBe(false)
+    expect(s.showContextCard).toBe(true)
+  })
+
+  it('prefers the live streaming rate over the last reply rate', () => {
+    expect(chatContextSummary({ ...base, liveTps: 55.5 }).speedTps).toBe(55.5)
+  })
+
+  it('marks the service down with the restart suggestion when blocked', () => {
+    const s = chatContextSummary({ ...base, serverRunning: false, blocked: true })
+    expect(s.service).toBe('down')
+    expect(s.suggestRestart).toBe(true)
+  })
+
+  it('no suggestion while the bring-up is in progress', () => {
+    const s = chatContextSummary({ ...base, serverRunning: false, starting: true, blocked: true })
+    expect(s.service).toBe('starting')
+    expect(s.suggestRestart).toBe(false)
+  })
+
+  it('hides the context card for an idle empty chat (params-only rail, draft B5)', () => {
+    const s = chatContextSummary({
+      serverRunning: false,
+      starting: false,
+      blocked: false,
+      streaming: false,
+      modelLabel: '',
+      liveTps: null,
+      messages: [],
+    })
+    expect(s.showContextCard).toBe(false)
+    expect(s.speedTps).toBeNull()
+  })
+
+  it('shows the context card while streaming even with empty history', () => {
+    const s = chatContextSummary({ ...base, messages: [], streaming: true })
+    expect(s.showContextCard).toBe(true)
+  })
+})
+
+describe('chatContextRows', () => {
+  const copy = {
+    serviceRunning: 'Running',
+    serviceStarting: 'Starting…',
+    serviceDown: 'Not running',
+    noModel: 'No models',
+    noSpeed: '—',
+    formatTps: (tps: number) => `${tps.toFixed(1)} tok/s`,
+    suggestion: 'Start the service and retry',
+  }
+
+  it('renders service / model / speed rows for a healthy session', () => {
+    const rows = chatContextRows(
+      chatContextSummary({
+        serverRunning: true,
+        starting: false,
+        blocked: false,
+        streaming: false,
+        modelLabel: 'Qwen3-4B',
+        liveTps: null,
+        messages: [{ role: 'assistant', content: 'x', stats: { answerTps: 31.2 } }],
+      }),
+      copy
+    )
+    expect(rows).toEqual([
+      { key: 'service', value: 'Running', tone: 'ok' },
+      { key: 'model', value: 'Qwen3-4B', tone: 'plain' },
+      { key: 'speed', value: '31.2 tok/s', tone: 'plain' },
+    ])
+  })
+
+  it('renders the down state + suggestion rows when blocked (draft B7)', () => {
+    const rows = chatContextRows(
+      chatContextSummary({
+        serverRunning: false,
+        starting: false,
+        blocked: true,
+        streaming: false,
+        modelLabel: 'Qwen3-4B',
+        liveTps: null,
+        messages: [],
+      }),
+      copy
+    )
+    expect(rows).toEqual([
+      { key: 'service', value: 'Not running', tone: 'error' },
+      { key: 'model', value: 'Qwen3-4B', tone: 'plain' },
+      { key: 'speed', value: '—', tone: 'plain' },
+      { key: 'suggestion', value: 'Start the service and retry', tone: 'error' },
+    ])
+  })
+
+  it('uses the no-model placeholder label when nothing is picked', () => {
+    const rows = chatContextRows(
+      chatContextSummary({
+        serverRunning: true,
+        starting: false,
+        blocked: false,
+        streaming: false,
+        modelLabel: '',
+        liveTps: null,
+        messages: [],
+      }),
+      copy
+    )
+    expect(rows.find((r) => r.key === 'model')?.value).toBe('No models')
   })
 })
