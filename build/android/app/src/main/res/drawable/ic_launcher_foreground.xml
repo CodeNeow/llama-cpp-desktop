@@ -1,25 +1,84 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Adaptive launcher-icon foreground: the concept-C glyph (L mark + AI
-     sparkle) from the 96-unit brand source. The artwork bounding box
-     (x 28-83, y 12-78) is scaled 0.75 and re-centered on the 108dp adaptive
-     canvas, keeping its ~49.5dp box inside the 66dp safe-zone circle on
-     every mask shape. Doubles as the monochrome (themed icon) source. -->
+<!-- Adaptive launcher-icon foreground: the chibi llama-head mascot (project
+     palette, same geometry as build/appicon.svg — mascot route, final
+     implementation 2026-09-04). The artwork bounding box (x 56-456,
+     y ~58-434) is scaled 0.635 and re-centered on the 108dp adaptive
+     canvas: its extreme points are the ear tips, 244.2 viewport-units from
+     the box center, which scale to 155.1 units x (108/512)dp = 32.7dp <=
+     the 33dp radius of the 66dp safe-zone circle on every mask shape.
+     Doubles as the monochrome (themed icon) source: themed icons render the
+     silhouette (outline + fills collapse to alpha). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
+    android:viewportWidth="512"
+    android:viewportHeight="512">
     <group
-        android:scaleX="0.75"
-        android:scaleY="0.75"
-        android:translateX="12.375"
-        android:translateY="20.25">
+        android:scaleX="0.635"
+        android:scaleY="0.635"
+        android:translateX="93.44"
+        android:translateY="99.79">
         <path
-            android:fillColor="#FFFFFF"
-            android:pathData="M28,16 h17 v45 h30 v17 H28 Z" />
+            android:fillColor="#FFEEF2FF"
+            android:strokeColor="#FF43377B"
+            android:strokeWidth="13"
+            android:strokeLineJoin="round"
+            android:pathData="M132,162 C100,146 76,106 88,74 C94,58 112,60 128,82 C144,104 162,134 176,156 C181,163 184,167 186,169 Z" />
         <path
-            android:fillColor="#FFFFFF"
-            android:fillAlpha="0.95"
-            android:pathData="M69,12 l4,10 10,4 -10,4 -4,10 -4,-10 -10,-4 10,-4 Z" />
+            android:fillColor="#FFEEF2FF"
+            android:strokeColor="#FF43377B"
+            android:strokeWidth="13"
+            android:strokeLineJoin="round"
+            android:pathData="M380,162 C412,146 436,106 424,74 C418,58 400,60 384,82 C368,104 350,134 336,156 C331,163 328,167 326,169 Z" />
+        <path
+            android:fillColor="#FFC9CFF7"
+            android:pathData="M124,150 C104,136 88,106 96,84 C102,70 118,74 132,94 C144,112 158,138 168,154 Z" />
+        <path
+            android:fillColor="#FFC9CFF7"
+            android:pathData="M388,150 C408,136 424,106 416,84 C410,70 394,74 380,94 C368,112 354,138 344,154 Z" />
+        <path
+            android:fillColor="#FFEEF2FF"
+            android:strokeColor="#FF43377B"
+            android:strokeWidth="13"
+            android:strokeLineJoin="round"
+            android:pathData="M56,320 C56,250 76,198 114,164 C130,150 146,138 160,130 C168,116 176,106 182,100 Q192,72 212,82 Q224,86 228,102 Q240,64 268,64 Q282,66 286,96 Q298,70 324,78 Q338,84 346,106 C362,126 390,146 406,170 C430,198 456,250 456,320 C456,402 372,434 256,434 C140,434 56,402 56,320 Z" />
+        <path
+            android:fillColor="#FFD7DEFA"
+            android:pathData="M400,210 C416,244 422,284 418,320 C416,342 408,358 402,372 C404,336 402,276 386,224 Z" />
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:strokeColor="#FF43377B"
+            android:strokeWidth="11"
+            android:pathData="M136,300 C136,252 186,228 256,228 C326,228 376,252 376,302 C376,372 324,428 256,428 C188,428 136,372 136,300 Z" />
+        <path
+            android:fillColor="#FFF2D8EC"
+            android:pathData="M146,320 a24,15 0 1 0 48,0 a24,15 0 1 0 -48,0 Z" />
+        <path
+            android:fillColor="#FFF2D8EC"
+            android:pathData="M318,320 a24,15 0 1 0 48,0 a24,15 0 1 0 -48,0 Z" />
+        <path
+            android:fillColor="#FF2A2547"
+            android:pathData="M203.75,272 a17,21 0 1 0 34,0 a17,21 0 1 0 -34,0 Z" />
+        <path
+            android:fillColor="#FF2A2547"
+            android:pathData="M275,272 a17,21 0 1 0 34,0 a17,21 0 1 0 -34,0 Z" />
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M208.5,264 a5.5,5.5 0 1 0 11,0 a5.5,5.5 0 1 0 -11,0 Z" />
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M222.2,280 a2.8,2.8 0 1 0 5.6,0 a2.8,2.8 0 1 0 -5.6,0 Z" />
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M280.5,264 a5.5,5.5 0 1 0 11,0 a5.5,5.5 0 1 0 -11,0 Z" />
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M294.2,280 a2.8,2.8 0 1 0 5.6,0 a2.8,2.8 0 1 0 -5.6,0 Z" />
+        <path
+            android:strokeColor="#FF43377B"
+            android:strokeWidth="10"
+            android:strokeLineCap="round"
+            android:fillColor="#00000000"
+            android:pathData="M234,324 Q256,346 278,324" />
     </group>
 </vector>
