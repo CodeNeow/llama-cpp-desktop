@@ -1,12 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">
-  <!-- Mono variant v2: pure-white llama-head silhouette (subtle-3/4) on a
-       transparent canvas, for dark surfaces (system tray) and themed icon
-       layers. Face features kept as alpha steps per the mono convention:
-       head + ears solid #fff, face patch #fff at .72 with the bean eyes as
-       transparent even-odd cutouts; inner-ear / blush / nose / shading
-       details dropped. -->
-  <path d="M29.19 32.25 C23.85 32.32 18.44 27.29 18.68 22.08 C18.79 19.47 21.57 19.2 25.43 22.25 C28.39 24.48 30.89 26.87 32.79 28.9 C33.54 29.8 33.99 30.22 34.24 30.52 Z" fill="#fff"/>
-  <path d="M62.25 40.5 C72.25 40.68 87.62 36.39 91.44 30.39 C93.03 27.88 90.53 25.52 85.84 27.25 C80.3 29.35 73.43 32.85 67.89 36.49 C66.02 37.77 64.2 38.86 63.07 39.54 C62.57 40 62.34 40.14 62.25 40.5 Z" fill="#fff"/>
-  <path d="M19.31 60.38 C19.31 47.25 22.5 37.5 28.24 31.12 C30.79 28.5 33.34 26.25 35.57 24.75 C36.84 22.12 37.8 20.25 38.76 19.12 Q40.03 13.5 43.22 15.75 Q45.13 16.5 45.77 20.25 Q47.68 12.75 53.25 13.5 Q55.88 13.88 56.62 19.5 Q59.62 13.5 66 15.38 Q68.62 16.5 69.38 20.25 C72 24 75.38 28.12 77.62 33 C81.75 38.62 85.88 47.62 85.88 60.38 C85.88 75.38 70.5 81.38 48.75 81.38 C30.15 81.38 19.31 75 19.31 60.38 Z" fill="#fff"/>
-  <path fill-rule="evenodd" fill="#fff" opacity=".72" d="M34.61 48.75 C34.61 41.25 40.67 37.12 49.12 37.12 C58.88 37.12 66 41.25 65.62 48.75 C65.44 55.5 62.62 61.12 57.38 64.12 C52.12 66.75 46.41 66.75 41.94 64.12 C37.48 61.12 34.77 55.5 34.61 48.75 Z M40.03 48 a2.39 3.03 0 1 0 4.78 0 a2.39 3.03 0 1 0 -4.78 0 Z M53.94 47.62 a2.81 3.56 0 1 0 5.62 0 a2.81 3.56 0 1 0 -5.62 0 Z"/>
+  <!-- Mono variant: pure-white llama-head silhouette on a transparent
+       canvas, for dark surfaces (system tray) and themed/monochrome icon
+       layers. No background plate — the glyph alone carries the mark.
+       Face features are kept as alpha steps per the mono convention: head +
+       ears solid #fff, face patch #fff at .72 with the bean eyes as
+       transparent cutouts (even-odd), inner-ear / blush / shading details
+       dropped. -->
+  <path d="M24.75 30.38 C18.75 27.38 14.25 19.88 16.5 13.88 C17.63 10.88 21 11.25 24 15.38 C27 19.5 30.38 25.13 33 29.25 C33.94 30.56 34.5 31.31 34.88 31.69 Z" fill="#fff"/>
+  <path d="M71.25 30.38 C77.25 27.38 81.75 19.88 79.5 13.88 C78.38 10.88 75 11.25 72 15.38 C69 19.5 65.63 25.13 63 29.25 C62.06 30.56 61.5 31.31 61.13 31.69 Z" fill="#fff"/>
+  <path d="M10.5 60 C10.5 46.13 14.25 37.13 21.38 30.75 C24.38 28.13 27.38 25.88 30 24.38 C31.5 21.75 33 19.88 34.13 18.75 Q36 13.5 39.75 15.38 Q42 16.13 42.75 19.13 Q45 12 50.25 12 Q52.88 12.38 53.63 18 Q55.88 13.13 60.75 14.63 Q63.38 15.75 64.88 19.88 C67.88 23.63 73.13 27.38 76.13 31.88 C80.63 37.13 85.5 46.88 85.5 60 C85.5 75.38 69.75 81.38 48 81.38 C26.25 81.38 10.5 75.38 10.5 60 Z" fill="#fff"/>
+  <path fill-rule="evenodd" fill="#fff" opacity=".72" d="M25.5 56.25 C25.5 47.25 34.88 42.75 48 42.75 C61.13 42.75 70.5 47.25 70.5 56.63 C70.5 69.75 60.75 80.25 48 80.25 C35.25 80.25 25.5 69.75 25.5 56.25 Z M38.06 51 a3.19 3.94 0 1 0 6.38 0 a3.19 3.94 0 1 0 -6.38 0 Z M51.56 51 a3.19 3.94 0 1 0 6.38 0 a3.19 3.94 0 1 0 -6.38 0 Z"/>
 </svg>
