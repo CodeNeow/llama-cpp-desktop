@@ -117,6 +117,9 @@ Section
 
     !insertmacro wails.files
 
+    # legacy-named binary from pre-MyLlama installers
+    Delete "$INSTDIR\llama-desktop.exe"
+
     CreateShortcut "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
     CreateShortCut "$DESKTOP\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
 
