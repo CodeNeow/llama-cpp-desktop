@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { activeLlamaCppDownload, activeModelTasks, activeUpdateDownload, residentReleaseMode, shouldShowDock } from '../lib/dock'
+import { activeLlamaCppDownload, activeModelTasks, activeUpdateDownload, homeResidentShowsUnload, residentReleaseMode, shouldShowDock } from '../lib/dock'
 import { LLAMA_CPP_DOWNLOAD_STATUSES, MODEL_TASK_STATUSES, UPDATE_DOWNLOAD_STATUSES } from '../lib/downloadStatus'
 import type { LlamaCppDownloadStatus, ModelTaskStatus, UpdateDownloadStatus } from '../lib/downloadStatus'
 
@@ -123,5 +123,15 @@ describe('residentReleaseMode', () => {
 
   it('unloads through the router on desktop platforms', () => {
     expect(residentReleaseMode(false)).toBe('router-unload')
+  })
+})
+
+describe('homeResidentShowsUnload', () => {
+  it('Android shows status only: no unload button on the Home resident card', () => {
+    expect(homeResidentShowsUnload(true)).toBe(false)
+  })
+
+  it('desktop platforms keep the unload action', () => {
+    expect(homeResidentShowsUnload(false)).toBe(true)
   })
 })

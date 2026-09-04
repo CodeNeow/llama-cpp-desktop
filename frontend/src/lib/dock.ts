@@ -85,3 +85,14 @@ export type ResidentReleaseMode = 'router-unload' | 'stop-server'
 export function residentReleaseMode(isAndroid: boolean): ResidentReleaseMode {
   return isAndroid ? 'stop-server' : 'router-unload'
 }
+
+/**
+ * homeResidentShowsUnload: whether the Home resident-model card offers the
+ * unload action. Android shows STATUS ONLY (design-draft platform crop, frames
+ * A②/B②): direct mode swaps models automatically on the next chat, so a
+ * manual unload button has nothing to do — the card renders the "auto switch"
+ * pill in its place instead.
+ */
+export function homeResidentShowsUnload(isAndroid: boolean): boolean {
+  return !isAndroid
+}

@@ -87,17 +87,22 @@ export const messages: Record<Locale, Record<string, string>> = {
     'home.greet.idle': '服务运行中 · 等待模型加载',
     'home.greet.offline': '服务未运行',
     'home.greet.loading': '正在获取状态…',
-    // Phone greeting second line while onboarding is visible and the service is
-    // not ready (design draft frame ① "· 完成下面 3 步即可开始")
+    // Checklist greeting second line while onboarding is visible and the service
+    // is not ready (design draft frame ① "· 完成下面 3 步即可开始"); the Side
+    // variant is the Android tablet-landscape layout (draft frame B①: the
+    // checklist sits in the right column next to the hero)
     'home.greet.onboardHint': '完成下面 3 步即可开始',
+    'home.greet.onboardHintSide': '完成右侧 3 步即可开始',
     'home.hero.tagReady': 'AI 就绪',
     'home.hero.tagOffline': '离线',
     'home.hero.subResident': '本机直连 · 已驻留内存 · 无需等待',
     'home.hero.subIdle': '服务运行中 · 首次对话时自动加载模型',
     'home.hero.subOffline': '服务未运行 · 发送消息时自动启动',
-    // Phone-tier offline hero subline while the quick-start checklist is up
-    // (design draft frame ①: the hero points at the checklist steps)
+    // Checklist-tier offline hero subline while the quick-start checklist is up
+    // (design draft frame ①: the hero points at the checklist steps); the Side
+    // variant is the Android tablet-landscape layout (draft frame B①)
     'home.hero.subOnboard': '先完成上方步骤 ① ②，AI 就绪后这里会亮起',
+    'home.hero.subOnboardSide': '先完成右侧步骤 ① ②，AI 就绪后这里会亮起',
     'home.hero.standby': '待命',
     // The hero metric is the rolling 60s average of the decode speed (same
     // figure the Api page charts), so the label names the averaging window.
@@ -115,6 +120,12 @@ export const messages: Record<Locale, Record<string, string>> = {
     'home.noModel': '暂无模型',
     // Resident-model card trailing green source pill (design draft .mt i.src-g)
     'home.residentBadge': '已驻留',
+    // Android resident-model card: status only — the unload button is cropped on
+    // Android (design-draft note) and the "auto switch" pill takes its place
+    // (draft frame A② .act); the hint line renders in the tablet-landscape
+    // right rail (draft frame B②)
+    'home.residentAutoSwitch': '自动切换',
+    'home.residentAutoHint': '聊天切换模型时自动换装，无需手动卸载。',
 
     // ─── Quick-start onboarding (Home checklist card + empty-state CTAs) ───
     'onboarding.title': '快速上手',
@@ -194,6 +205,10 @@ export const messages: Record<Locale, Record<string, string>> = {
     // Phone-tier "About the runtime" island (design draft frame ③)
     'runtime.aboutTitle': '关于运行时',
     'runtime.aboutBody': 'Android 版使用应用内存储，路径由系统管理。llama.cpp 发布新版本时，可在此页直接下载升级（支持断点续传）。',
+    // Android tablet-landscape right-rail card with the read-only install paths
+    // (design draft frame B③: 安装路径（只读）island)
+    'runtime.pathsTitle': '安装路径（只读）',
+    'runtime.pathsHint': '路径由系统分配，应用内不可更改。',
 
     // ─── Download status labels (shared: RuntimeSection.vue / TaskDock.vue) ───
     'dl.fetching': '正在获取最新版本信息...',
@@ -752,17 +767,22 @@ export const messages: Record<Locale, Record<string, string>> = {
     'home.greet.idle': 'Service running · waiting for a model',
     'home.greet.offline': 'Service stopped',
     'home.greet.loading': 'Fetching status…',
-    // Phone greeting second line while onboarding is visible and the service is
-    // not ready (design draft frame ① "· 完成下面 3 步即可开始")
+    // Checklist greeting second line while onboarding is visible and the service
+    // is not ready (design draft frame ① "· Complete the 3 steps below"); the
+    // Side variant is the Android tablet-landscape layout (draft frame B①: the
+    // checklist sits in the right column next to the hero)
     'home.greet.onboardHint': 'Complete the 3 steps below to get started',
+    'home.greet.onboardHintSide': 'Complete the 3 steps on the right to get started',
     'home.hero.tagReady': 'AI ready',
     'home.hero.tagOffline': 'Offline',
     'home.hero.subResident': 'Local direct · resident in memory · zero wait',
     'home.hero.subIdle': 'Service running · the model loads on your first chat',
     'home.hero.subOffline': 'Service stopped · starts automatically on your first message',
-    // Phone-tier offline hero subline while the quick-start checklist is up
-    // (design draft frame ①: the hero points at the checklist steps)
+    // Checklist-tier offline hero subline while the quick-start checklist is up
+    // (design draft frame ①: the hero points at the checklist steps); the Side
+    // variant is the Android tablet-landscape layout (draft frame B①)
     'home.hero.subOnboard': 'Finish steps 1–2 above and the AI lights up here',
+    'home.hero.subOnboardSide': 'Finish steps 1–2 on the right and the AI lights up here',
     'home.hero.standby': 'Standby',
     // The hero metric is the rolling 60s average of the decode speed (same
     // figure the Api page charts), so the label names the averaging window.
@@ -780,6 +800,12 @@ export const messages: Record<Locale, Record<string, string>> = {
     'home.noModel': 'No models',
     // Resident-model card trailing green source pill (design draft .mt i.src-g)
     'home.residentBadge': 'Resident',
+    // Android resident-model card: status only — the unload button is cropped on
+    // Android (design-draft note) and the "auto switch" pill takes its place
+    // (draft frame A② .act); the hint line renders in the tablet-landscape
+    // right rail (draft frame B②)
+    'home.residentAutoSwitch': 'Auto-switch',
+    'home.residentAutoHint': 'Models swap automatically when you switch in Chat — no manual unload needed.',
 
     // ─── Quick-start onboarding (Home checklist card + empty-state CTAs) ───
     'onboarding.title': 'Quick Start',
@@ -859,6 +885,10 @@ export const messages: Record<Locale, Record<string, string>> = {
     // Phone-tier "About the runtime" island (design draft frame ③)
     'runtime.aboutTitle': 'About the runtime',
     'runtime.aboutBody': 'The Android build uses app-internal storage with system-managed paths. When a new llama.cpp version is released, you can download the upgrade right from this page (resumable download supported).',
+    // Android tablet-landscape right-rail card with the read-only install paths
+    // (design draft frame B③: 安装路径（只读）island)
+    'runtime.pathsTitle': 'Install paths (read-only)',
+    'runtime.pathsHint': 'Paths are assigned by the system and cannot be changed in the app.',
 
     // ─── Download status labels (shared: RuntimeSection.vue / TaskDock.vue) ───
     'dl.fetching': 'Fetching latest release info...',

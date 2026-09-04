@@ -55,9 +55,11 @@
 
     <!-- Data -->
     <div v-else class="sys-grid">
-      <!-- Quick-start checklist: full-width island above the hero, hides once
-           every step completes or the user dismisses it. It guides across tabs
-           (its actions router.push other routes), which works from any tab. -->
+      <!-- Quick-start checklist: hides once every step completes or the user
+           dismisses it. It guides across tabs (its actions router.push other
+           routes), which works from any tab. Lives in the side column so the
+           tablet-landscape right rail can pack it above the storage island. -->
+      <div class="home-side-col">
       <section v-if="onboardingView.visible" class="island onboarding-card">
         <div class="onboarding-head">
           <h2 class="section-title">
@@ -83,8 +85,8 @@
             </span>
             <span class="step-text">
               <span class="step-label">{{ t(ONBOARDING_LABELS[step.id]) }}</span>
-              <!-- Phone tier (design draft .cstep .sd): muted per-step sub-description -->
-              <span v-if="platformState.isMobile" class="step-sub">{{ t(ONBOARDING_SUBS[step.id]) }}</span>
+            <!-- Checklist tiers (draft .cstep .sd): muted per-step sub-description -->
+            <span v-if="checklistDetails" class="step-sub">{{ t(ONBOARDING_SUBS[step.id]) }}</span>
             </span>
             <button v-if="!step.done" class="step-action" @click="goStep(step.route)">
               {{ stepGoLabel(step.id) }}
@@ -97,6 +99,96 @@
         </ol>
       </section>
 
+
+      <!-- Storage island (frame ①): disk usage bar + GGUF and llama.cpp
+           bricks. The bar keeps the design's amber "disk level" color. -->
+      <section class="island storage-card">
+        <div class="island-head">
+          <h4>{{ t('home.storage') }}</h4>
+          <span v-if="diskView" class="head-more">{{ storageFree }}</span>
+        </div>
+        <template v-if="diskView">
+          <div class="storage-row">
+            <span>{{ t('home.storage.used', { size: formatBytes(diskView.used) || '—' }) }}</span>
+            <b>{{ diskPct }}%</b>
+          </div>
+          <div
+            class="storage-bar"
+            role="progressbar"
+            :aria-valuenow="diskPct"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            :aria-label="t('home.storage')"
+          >
+            <i :style="{ width: diskPct + '%' }"></i>
+          </div>
+        </template>
+        <div v-else class="info-empty">
+          <span>{{ t('home.disk.notAvailable') }}</span>
+        </div>
+        <div class="brick-row">
+          <div class="brick">
+            <span class="brick-lbl">{{ t('home.storage.models') }}</span>
+            <b class="brick-val" :title="ggufBrick">{{ ggufBrick }}</b>
+          </div>
+          <div class="brick">
+            <span class="brick-lbl">{{ t('home.storage.llamacpp') }}</span>
+            <!-- Phone tier (design draft frame ①): the "not installed" brick reads
+                 amber in the first-use state -->
+            <b class="brick-val" :class="{ warn: !runtimeInstalled }" :title="llamacppBrick">{{ llamacppBrick }}</b>
+          </div>
+        </div>
+      </section>
+
+      <!-- Resident model cards (frame ① mcard): one per loaded model, with
+           the same unload chain as TaskDock: desktop asks the router to evict
+           the model; direct-mode Android stops the service (unloading =
+           stopping, memory is freed with the process and the next chat send
+           auto-restarts the service). -->
+      <section v-for="m in loadedModels" :key="m.id" class="island mcard">
+        <div class="tile">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2l8 4.5v9L12 20l-8-4.5v-9L12 2z"/><path d="M12 11L4.5 6.8M12 11l7.5-4.2M12 11v8.5"/>
+          </svg>
+        </div>
+        <div class="mcard-main">
+          <div class="mcard-name" :title="m.id">{{ m.id }}</div>
+          <div class="mcard-chips">
+            <i>{{ typeLabel(m.type) }}</i>
+            <i v-if="residentQuant(m)">{{ residentQuant(m) }}</i>
+            <i v-if="residentSize(m)">{{ residentSize(m) }}</i>
+            <!-- Checklist tiers (draft .mt i.src-g): trailing green source pill -->
+            <i v-if="checklistDetails" class="resident-chip">{{ t('home.residentBadge') }}</i>
+          </div>
+          <div v-if="unloadErrors[m.id]" class="mcard-error">
+            {{ t('dock.unloadFailed', { msg: unloadErrors[m.id] }) }}
+          </div>
+          <!-- Android tablet-landscape right rail (draft frame B②): explains why
+               there is no unload action on this card -->
+          <p v-if="showAutoSwitchHint" class="mcard-auto-hint">{{ t('home.residentAutoHint') }}</p>
+        </div>
+        <!-- Desktop platforms keep the in-place unload (same chain as TaskDock);
+             Android renders the status-only "auto switch" pill instead (draft A②) -->
+        <button
+          v-if="showResidentUnload"
+          class="unload-btn"
+          :disabled="unloadingId === m.id"
+          @click="handleUnload(m.id)"
+        >
+          {{ unloadingId === m.id ? t('dock.unloading') : t('dock.unload') }}
+        </button>
+        <span v-else class="resident-auto-pill">{{ t('home.residentAutoSwitch') }}</span>
+      </section>
+      </div>
+
+      <!-- Column wrappers (Android tablet-landscape draft frames B①/B②): the
+           checklist + storage + resident cards form the RIGHT rail, hero + mini
+           pair the LEFT column, capability/system cards a full-width band below.
+           Everywhere else they dissolve via display:contents into the flat
+           single/two-column grid; the base order values in the style block keep
+           the flat item order identical to the pre-wrapper layout (checklist
+           leads, hero + minis follow, storage/resident/capability cards last). -->
+      <div class="home-main-col">
       <!-- Gradient hero card (frame ①): status tag, model name, honest subline
            and the live decode speed with a CTA into the chat page. All values
            come from the live monitor / router / model probes — nothing here is
@@ -163,80 +255,9 @@
           <div class="mini-trend" :title="info.cpu.model">{{ cpuAux }}</div>
         </section>
       </div>
+      </div>
 
-      <!-- Storage island (frame ①): disk usage bar + GGUF and llama.cpp
-           bricks. The bar keeps the design's amber "disk level" color. -->
-      <section class="island storage-card">
-        <div class="island-head">
-          <h4>{{ t('home.storage') }}</h4>
-          <span v-if="diskView" class="head-more">{{ storageFree }}</span>
-        </div>
-        <template v-if="diskView">
-          <div class="storage-row">
-            <span>{{ t('home.storage.used', { size: formatBytes(diskView.used) || '—' }) }}</span>
-            <b>{{ diskPct }}%</b>
-          </div>
-          <div
-            class="storage-bar"
-            role="progressbar"
-            :aria-valuenow="diskPct"
-            aria-valuemin="0"
-            aria-valuemax="100"
-            :aria-label="t('home.storage')"
-          >
-            <i :style="{ width: diskPct + '%' }"></i>
-          </div>
-        </template>
-        <div v-else class="info-empty">
-          <span>{{ t('home.disk.notAvailable') }}</span>
-        </div>
-        <div class="brick-row">
-          <div class="brick">
-            <span class="brick-lbl">{{ t('home.storage.models') }}</span>
-            <b class="brick-val" :title="ggufBrick">{{ ggufBrick }}</b>
-          </div>
-          <div class="brick">
-            <span class="brick-lbl">{{ t('home.storage.llamacpp') }}</span>
-            <!-- Phone tier (design draft frame ①): the "not installed" brick reads
-                 amber in the first-use state -->
-            <b class="brick-val" :class="{ warn: !runtimeInstalled }" :title="llamacppBrick">{{ llamacppBrick }}</b>
-          </div>
-        </div>
-      </section>
-
-      <!-- Resident model cards (frame ① mcard): one per loaded model, with
-           the same unload chain as TaskDock: desktop asks the router to evict
-           the model; direct-mode Android stops the service (unloading =
-           stopping, memory is freed with the process and the next chat send
-           auto-restarts the service). -->
-      <section v-for="m in loadedModels" :key="m.id" class="island mcard">
-        <div class="tile">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2l8 4.5v9L12 20l-8-4.5v-9L12 2z"/><path d="M12 11L4.5 6.8M12 11l7.5-4.2M12 11v8.5"/>
-          </svg>
-        </div>
-        <div class="mcard-main">
-          <div class="mcard-name" :title="m.id">{{ m.id }}</div>
-          <div class="mcard-chips">
-            <i>{{ typeLabel(m.type) }}</i>
-            <i v-if="residentQuant(m)">{{ residentQuant(m) }}</i>
-            <i v-if="residentSize(m)">{{ residentSize(m) }}</i>
-            <!-- Phone tier (design draft .mt i.src-g): trailing green source pill -->
-            <i v-if="platformState.isMobile" class="resident-chip">{{ t('home.residentBadge') }}</i>
-          </div>
-          <div v-if="unloadErrors[m.id]" class="mcard-error">
-            {{ t('dock.unloadFailed', { msg: unloadErrors[m.id] }) }}
-          </div>
-        </div>
-        <button
-          class="unload-btn"
-          :disabled="unloadingId === m.id"
-          @click="handleUnload(m.id)"
-        >
-          {{ unloadingId === m.id ? t('dock.unloading') : t('dock.unload') }}
-        </button>
-      </section>
-
+      <div class="home-info-col">
       <!-- GPU Card: only on platforms with a real GPU probe (windows, linux,
            macOS on Apple Silicon). Android probes are unsupported (GPUs always
            empty) and macOS x64 ships the CPU-only release (no GPUs), so the
@@ -369,6 +390,7 @@
           </div>
         </div>
       </section>
+      </div>
     </div>
   </div>
 </template>
@@ -381,9 +403,9 @@ import { t } from '../lib/i18n'
 import { usagePercent, formatMB, formatBytes } from '../lib/format'
 import { aggregateVram, buildGpuDisplays, cudaCompatLevel, gpuHasVram, type GpuStaticInfo } from '../lib/sysinfo'
 import { guessQuant } from '../lib/modelFiles'
-import { buildOnboardingView, type OnboardingStepId } from '../lib/onboarding'
+import { buildOnboardingView, heroOnboardSubKey, type OnboardingStepId } from '../lib/onboarding'
 import { nudgeDock } from '../lib/dockNudge'
-import { residentReleaseMode } from '../lib/dock'
+import { homeResidentShowsUnload, residentReleaseMode } from '../lib/dock'
 import type { MonitorStatus } from '../lib/monitor'
 import { accelBuildKey, showCudaCompat, showGpuCards, usePlatform } from '../lib/platform'
 import { appConfig, setOnboardingDismissed } from '../store'
@@ -439,15 +461,16 @@ const ONBOARDING_LABELS: Record<OnboardingStepId, string> = {
   service: 'onboarding.step.service'
 }
 
-// Phone-tier muted sub-descriptions (design draft .cstep .sd), rendered only on the
-// phone tier where the checklist matches the mockup layout
+// Phone-tier muted sub-descriptions (design draft .cstep .sd), rendered on the
+// checklist-shaped tiers (phone + tablet, both draft tracks) where the mockup
+// checklist carries them
 const ONBOARDING_SUBS: Record<OnboardingStepId, string> = {
   runtime: 'onboarding.sub.runtime',
   models: 'onboarding.sub.models',
   service: 'onboarding.sub.service'
 }
 
-// Phone-tier per-step go-link labels (design draft .cstep .go); the desktop button
+// Per-step go-link labels (design draft .cstep .go); the desktop button
 // keeps the single generic label
 const ONBOARDING_GOTOS: Record<OnboardingStepId, string> = {
   runtime: 'onboarding.goto.runtime',
@@ -455,9 +478,14 @@ const ONBOARDING_GOTOS: Record<OnboardingStepId, string> = {
   service: 'onboarding.goto.service'
 }
 
-/** Go-link label for one checklist step: per-step copy on phone, generic on desktop. */
+// Checklist-mockup tiers: phone + tablet (portrait AND landscape) render the
+// per-step sub-lines and go-link labels of the draft .check card; desktop keeps
+// its own compact button style
+const checklistDetails = computed(() => platformState.value.isMobile || platformState.value.isTablet)
+
+/** Go-link label for one checklist step: per-step copy on phone/tablet, generic on desktop. */
 function stepGoLabel(id: OnboardingStepId): string {
-  return platformState.value.isMobile ? t(ONBOARDING_GOTOS[id]) : t('onboarding.goto')
+  return checklistDetails.value ? t(ONBOARDING_GOTOS[id]) : t('onboarding.goto')
 }
 
 const info = ref<SystemInfo>({
@@ -578,9 +606,11 @@ const heroModel = computed(() => {
 const heroSub = computed(() => {
   if (residentModel.value) return t('home.hero.subResident')
   if (serviceRunning.value) return t('home.hero.subIdle')
-  // Phone tier (design draft frame ①): while the quick-start checklist is on screen
-  // the offline subline points at it ("finish steps 1–2 above")
-  if (platformState.value.isMobile && onboardingView.value.visible) return t('home.hero.subOnboard')
+  // Checklist tiers (design draft frames A①/B①): while the quick-start checklist
+  // is on screen the offline subline points at it — "steps above" on phone /
+  // tablet portrait, "steps on the right" on tablet landscape (lib/onboarding)
+  const subKey = heroOnboardSubKey(platformState.value)
+  if (subKey && onboardingView.value.visible) return t(subKey)
   return t('home.hero.subOffline')
 })
 
@@ -687,6 +717,15 @@ function typeLabel(type: string): string {
   }
   return map[type] || type
 }
+
+// Android renders the resident-model card as STATUS ONLY (design-draft platform
+// crop, frames A②/B②): the unload action is cropped and an "auto switch" pill
+// takes its place; the tablet-landscape right rail additionally carries the
+// swap hint line (lib/dock.homeResidentShowsUnload)
+const showResidentUnload = computed(() => homeResidentShowsUnload(platformState.value.isAndroid))
+const showAutoSwitchHint = computed(
+  () => platformState.value.isAndroid && platformState.value.isTabletLandscape
+)
 
 // Unload chain identical to TaskDock: drop the row instantly, then nudge a
 // poll that reconciles. Platform split via lib/dock residentReleaseMode:
@@ -866,7 +905,19 @@ onUnmounted(() => {
   align-content: start;
 }
 
-.sys-grid > .island {
+/* Column wrappers (Android tablet-landscape split, draft B①/B②): they only
+   become real boxes there; every other tier dissolves them into the flat grid
+   so the item order and spacing stay exactly as before the wrappers existed */
+.home-main-col,
+.home-side-col,
+.home-info-col {
+  display: contents;
+}
+
+.sys-grid > .island,
+.home-main-col > .island,
+.home-side-col > .island,
+.home-info-col > .island {
   padding: 20px;
 }
 
@@ -878,12 +929,12 @@ onUnmounted(() => {
   }
 
   /* Hero card spans full width */
-  .sys-grid > .hero-card {
+  .home-main-col > .hero-card {
     grid-column: 1 / -1;
   }
 
   /* Grid2 wrapper dissolves so its children become regular grid cells */
-  .sys-grid > .grid2 {
+  .home-main-col > .grid2 {
     display: contents;
   }
 }
@@ -892,7 +943,7 @@ onUnmounted(() => {
    but the inner .grid2 pairs (memory/CPU, storage/resident) must also collapse
    so the cards stack vertically instead of forcing a side-by-side mini pair. */
 @media (min-width: 1100px) and (max-width: 1279px) {
-  .sys-grid > .grid2 {
+  .home-main-col > .grid2 {
     display: contents;
   }
 }
@@ -1292,6 +1343,28 @@ html[data-os='ios'] .unload-btn:active:not(:disabled) {
   cursor: wait;
 }
 
+/* ─── Android resident card: status-only actions (draft frames A②/B②) ─── */
+/* Neutral "auto switch" pill taking the unload button's slot (draft A② .act pill) */
+.resident-auto-pill {
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 6px 13px;
+  border-radius: 999px;
+  background: var(--overlay-8);
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* Swap hint line inside the tablet-landscape right rail (draft B②) */
+.mcard-auto-hint {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-dim);
+}
+
 /* ─── Retained capability cards (GPU / CUDA / system): same island surface,
        existing inner content untouched ─── */
 .info-section {
@@ -1327,6 +1400,30 @@ html[data-os='ios'] .unload-btn:active:not(:disabled) {
 /* ─── Quick-start checklist ─── */
 .onboarding-card {
   grid-column: 1 / -1;
+  /* Leads the flat grid whenever the wrappers are display:contents (phone /
+     tablet-portrait / desktop), and packs first into the right rail on
+     tablet-landscape */
+  order: -3;
+}
+
+/* Flat-grid ordering of the wrapper-dissolved cards: the checklist leads
+   (order: -3 above), then hero + minis, then the storage / resident /
+   capability cards in their DOM order. Only matters while the wrappers are
+   display:contents; inside the tablet-landscape flex columns each column
+   packs its own children (with the overrides set there). .grid2 carries the
+   order while it is a real box (phone / tablet tiers); the .mini order kicks
+   in on desktop where grid2 dissolves via display:contents and the minis
+   become outer-grid items themselves. */
+.home-main-col > .hero-card {
+  order: -2;
+}
+
+.home-main-col > .grid2 {
+  order: -1;
+}
+
+.mini {
+  order: -1;
 }
 
 .onboarding-head {
@@ -1860,6 +1957,294 @@ html[data-os='ios'] .unload-btn:active:not(:disabled) {
   }
 }
 
-/* ─── Tablet (768..1099px): single column, same as the phone tier (the
-       desktop two-column grid only engages above 1099px). ─── */
+/* ─── Tablet portrait (768..1099px, design draft track A frames ①/②): the
+       single-column layout from the tier above stays, but the first-use screen
+       picks up the draft .check card treatment (26px markers, dashed rows,
+       muted sub-lines, bare accent go-links) and the offline hero gets the
+       mockup gray gradient. Card order follows draft A②: resident-model card
+       above the storage island, capability/system cards last. ─── */
+@media (min-width: 768px) and (max-width: 1099px) {
+  /* Draft A② card order: hero → minis → resident → storage → capability cards.
+     The wrappers are display:contents here, so the promoted children order
+     against each other inside the outer grid. */
+  .home-side-col > .mcard {
+    order: 1;
+  }
+
+  .home-side-col > .storage-card {
+    order: 2;
+  }
+
+  .home-info-col > .island {
+    order: 3;
+  }
+
+  /* Offline hero: mockup .hero.off gray gradient (draft A① 离线灰调) */
+  .hero-card.off {
+    background: linear-gradient(135deg, #4b5069 0%, #6b7186 60%, #8b90a5 100%);
+    box-shadow: none;
+  }
+
+  .hero-card.off .tag-dot {
+    background: #cbd0e0;
+    box-shadow: none;
+  }
+
+  /* Metric digits in the mono face (mockup .num / .val numerals) */
+  .hero-num,
+  .mini-val {
+    font-family: var(--font-mono);
+  }
+
+  /* Touch targets stay ≥44px on the tablet too */
+  .onboarding-step {
+    min-height: 44px;
+  }
+
+  .onboarding-dismiss {
+    padding: 10px 12px;
+  }
+
+  .unload-btn,
+  .retry-btn {
+    min-height: 44px;
+  }
+
+  /* ── Checklist (mockup .check / .cstep, same treatment as the phone tier) ── */
+  .onboarding-head .section-title {
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  /* Mockup .check h4 has no leading icon — plain "快速上手" text only */
+  .onboarding-head .section-title svg {
+    display: none;
+  }
+
+  .onboarding-steps {
+    gap: 0;
+  }
+
+  .onboarding-step {
+    padding: 10px 0;
+    border-bottom: 1px dashed var(--border);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .onboarding-step:last-child {
+    border-bottom: none;
+    padding-bottom: 2px;
+  }
+
+  .step-marker {
+    width: 26px;
+    height: 26px;
+    border: none;
+    background: var(--overlay-8);
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .step-text {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .step-sub {
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--text-dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Go-link: mockup .cstep .go — bare bold accent text, no filled chip */
+  .step-action {
+    min-height: 44px;
+    padding: 10px 0 10px 12px;
+    background: transparent;
+    border-radius: 8px;
+    color: #7c3aed;
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .step-action:hover {
+    background: transparent;
+  }
+
+  .step-action svg {
+    display: none;
+  }
+
+  html[data-theme='dark'] .step-action {
+    color: #a78bfa;
+  }
+}
+
+/* ─── Android tablet-landscape (design draft track B frames ①/②). Hooked on
+       [data-viewport], never a media query: the 1100–1360px band on desktop
+       OSes must stay byte-identical. Hero + mini pair take the LEFT column;
+       the checklist (first use), resident-model card and storage island pack
+       a 340px RIGHT rail; capability/system cards span the full width below. ─── */
+[data-viewport='tablet-landscape'] .sys-grid {
+  grid-template-columns: minmax(0, 1fr) 340px;
+  align-items: start;
+}
+
+[data-viewport='tablet-landscape'] .home-main-col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+}
+
+[data-viewport='tablet-landscape'] .home-side-col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+}
+
+[data-viewport='tablet-landscape'] .home-info-col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  grid-column: 1 / -1;
+  grid-row: 2;
+  min-width: 0;
+}
+
+/* Draft B② right-rail order: resident-model card above the storage island */
+[data-viewport='tablet-landscape'] .home-side-col > .mcard {
+  order: -1;
+}
+
+/* The ≥1280px desktop rule dissolves .grid2 (display:contents) into the outer
+   grid — restore it as a real two-column pair inside the LEFT flex column */
+[data-viewport='tablet-landscape'] .home-main-col > .grid2 {
+  display: grid;
+}
+
+/* Draft B① offline hero: mockup .hero.off gray gradient (same as the
+   tablet-portrait band above) */
+[data-viewport='tablet-landscape'] .hero-card.off {
+  background: linear-gradient(135deg, #4b5069 0%, #6b7186 60%, #8b90a5 100%);
+  box-shadow: none;
+}
+
+[data-viewport='tablet-landscape'] .hero-card.off .tag-dot {
+  background: #cbd0e0;
+  box-shadow: none;
+}
+
+/* Draft numerals render in the mono face (same as the tablet-portrait band) */
+[data-viewport='tablet-landscape'] .hero-num,
+[data-viewport='tablet-landscape'] .mini-val {
+  font-family: var(--font-mono);
+}
+
+/* Draft B① checklist: the .check card treatment shared with the phone tier
+   and the tablet-portrait band (13px title, dashed rows, 26px markers, muted
+   sub-lines, bare accent go-links); touch targets stay ≥44px */
+[data-viewport='tablet-landscape'] .onboarding-step {
+  min-height: 44px;
+  padding: 10px 0;
+  border-bottom: 1px dashed var(--border);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+[data-viewport='tablet-landscape'] .onboarding-step:last-child {
+  border-bottom: none;
+  padding-bottom: 2px;
+}
+
+[data-viewport='tablet-landscape'] .onboarding-head .section-title {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* Mockup .check h4 has no leading icon — plain "快速上手" text only */
+[data-viewport='tablet-landscape'] .onboarding-head .section-title svg {
+  display: none;
+}
+
+[data-viewport='tablet-landscape'] .onboarding-steps {
+  gap: 0;
+}
+
+[data-viewport='tablet-landscape'] .step-marker {
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: var(--overlay-8);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+[data-viewport='tablet-landscape'] .step-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+[data-viewport='tablet-landscape'] .step-sub {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+[data-viewport='tablet-landscape'] .step-action {
+  min-height: 44px;
+  padding: 10px 0 10px 12px;
+  background: transparent;
+  border-radius: 8px;
+  color: #7c3aed;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+[data-viewport='tablet-landscape'] .step-action:hover {
+  background: transparent;
+}
+
+[data-viewport='tablet-landscape'] .step-action svg {
+  display: none;
+}
+
+html[data-theme='dark'] [data-viewport='tablet-landscape'] .step-action {
+  color: #a78bfa;
+}
+
+/* Loading skeleton children: keep them in the main column while the tier
+   grid is two columns wide */
+[data-viewport='tablet-landscape'] .sys-grid > .hero-skel {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+[data-viewport='tablet-landscape'] .sys-grid > .grid2 {
+  grid-column: 1;
+  grid-row: 2;
+  display: grid;
+}
+
+[data-viewport='tablet-landscape'] .sys-grid > .island.skeleton-card {
+  grid-column: 1 / -1;
+}
 </style>

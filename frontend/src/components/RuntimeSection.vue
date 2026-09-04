@@ -1,9 +1,9 @@
 <template>
-  <!-- Runtime Environment tab panel of the System Environment page (Home.vue
-       shell): the tab label replaces the former section heading. Owns its own
-       data loading (skeleton / error + retry) and all llama.cpp download /
-       custom-directory actions; the shell owns the page chrome, so there is
-       no page chrome here — only the dependency cards. -->
+  <!-- Runtime Environment tab panel of the Home shell: the tab label replaces
+       the former section heading. Owns its own data loading (skeleton / error
+       + retry) and all llama.cpp download / custom-directory actions; the
+       shell owns the page chrome, so there is no page chrome here — only the
+       dependency cards. -->
   <section class="runtime-section">
     <!-- Phone tier page heading (design draft frames ③/④): the shell's tab row has
          no page title on phone, so the panel carries the mockup .h-greet
@@ -33,8 +33,13 @@
     </div>
 
     <!-- Data: one stacked full-width card per managed dependency (llama.cpp today,
-         future runtime dependencies append their own cards below) -->
+         future runtime dependencies append their own cards below). The two column
+         wrappers only become real boxes on Android tablet-landscape (draft
+         frames B③/B④: status+components/download LEFT, paths+explanation RIGHT);
+         everywhere else they dissolve via display:contents into the flat stack /
+         desktop two-column grid, leaving the item order untouched. -->
     <template v-else>
+      <div class="rt-main-col">
       <!-- llama.cpp Card -->
       <section class="info-section">
         <h2 class="section-title">
@@ -219,13 +224,37 @@
           </div>
         </div>
       </div>
+      </div>
+
+      <div class="rt-side-col">
+      <!-- Android tablet-landscape right rail (design draft frame B③): the
+           read-only install paths split out of the status card into their own
+           island; every other tier keeps the paths inside the info card above
+           (they are hidden there on tablet-landscape via CSS) -->
+      <section v-if="platformState.isTabletLandscape && info.installed" class="runtime-paths">
+        <h4 class="paths-title">{{ t('runtime.pathsTitle') }}</h4>
+        <div class="path-row">
+          <span class="path-label">{{ t('runtime.llamacpp.path') }}</span>
+          <span class="path-value">{{ info.path }}</span>
+        </div>
+        <div v-if="downloadDir" class="path-row">
+          <span class="path-label">{{ t('runtime.downloadDir') }}</span>
+          <!-- Android keeps the friendly app-storage label instead of the raw
+               sandbox path (same convention as the info card above) -->
+          <span v-if="platformState.isAndroid" class="path-value">{{ t('runtime.storageInternal') }}</span>
+          <span v-else class="path-value">{{ downloadDir }}</span>
+        </div>
+        <p class="paths-hint">{{ t('runtime.pathsHint') }}</p>
+      </section>
 
       <!-- "About the runtime" island (design draft frame ③): desktop ≥1100 shows
-           in the left column alongside the info card -->
+           in the left column alongside the info card; tablet-landscape packs it
+           into the right rail below the paths card (draft frame B③/B④) -->
       <section class="runtime-about">
         <h4>{{ t('runtime.aboutTitle') }}</h4>
         <p>{{ t('runtime.aboutBody') }}</p>
       </section>
+      </div>
     </template>
   </section>
 </template>
@@ -497,6 +526,14 @@ onUnmounted(() => {
   min-width: 0;
 }
 
+/* Column wrappers (Android tablet-landscape split, draft frames B③/B④): they
+   only become real boxes there; every other tier dissolves them via
+   display:contents so the stack / desktop grid item order is unchanged */
+.rt-main-col,
+.rt-side-col {
+  display: contents;
+}
+
 .info-section {
   margin-bottom: 16px;
   padding: 24px 28px;
@@ -648,6 +685,53 @@ html[data-theme='dark'] .dl-status-line {
   font-size: 13.5px;
   line-height: 1.75;
   color: var(--text-muted);
+}
+
+/* ─── Read-only install-paths rail card (Android tablet-landscape, draft
+       frame B③). Renders only behind the isTabletLandscape v-if, so these
+       base styles never apply on other tiers. ─── */
+.runtime-paths {
+  padding: 24px 28px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  min-width: 0;
+}
+
+.paths-title {
+  margin: 0 0 14px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: var(--text-secondary);
+}
+
+.path-row {
+  padding: 10px 0;
+  min-width: 0;
+}
+
+.path-row + .path-row {
+  border-top: 1px dashed var(--border);
+}
+
+.path-label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.paths-hint {
+  margin: 10px 0 0;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--text-dim);
 }
 
 /* ─── Info grid ─── */
@@ -1306,5 +1390,77 @@ html[data-theme='dark'] .dl-status-line {
   .runtime-main {
     /* Right column: components + download */
   }
+}
+
+/* ─── Android tablet-landscape (design draft track B frames ③/④). Hooked on
+       [data-viewport], never a media query: same-width desktop windows keep
+       the desktop two-column grid above. The two wrappers become flex columns:
+       installed (B③) status card + components LEFT, read-only paths +
+       explanation RIGHT; first download (B④) download progress LEFT, static
+       explanation RIGHT rail. ─── */
+[data-viewport='tablet-landscape'] .runtime-section {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  gap: 20px;
+  align-items: start;
+}
+
+[data-viewport='tablet-landscape'] .runtime-section .rt-main-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  grid-column: 1;
+  min-width: 0;
+}
+
+[data-viewport='tablet-landscape'] .runtime-section .rt-side-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  grid-column: 2;
+  min-width: 0;
+}
+
+/* Grid-cell treatment: the stacked-layout outer margins vanish (the column
+   gap takes over) */
+[data-viewport='tablet-landscape'] .runtime-section .info-section,
+[data-viewport='tablet-landscape'] .runtime-section .runtime-paths,
+[data-viewport='tablet-landscape'] .runtime-section .runtime-about {
+  margin-bottom: 0;
+}
+
+/* The components list becomes its own island in the LEFT column (draft B③) */
+[data-viewport='tablet-landscape'] .runtime-section .components-area {
+  margin-top: 0;
+  padding: 20px 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+/* The stacked-layout divider margins vanish once the areas are grid cells */
+[data-viewport='tablet-landscape'] .runtime-section .download-area {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+/* The active download wraps as its own card in the LEFT column (draft B④ dlcard) */
+[data-viewport='tablet-landscape'] .runtime-section .download-progress {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 16px 18px;
+}
+
+/* The in-card install paths move into the right-rail card on this layout */
+[data-viewport='tablet-landscape'] .runtime-section .info-section .info-item-full {
+  display: none;
+}
+
+/* Skeleton / error states span the full split width */
+[data-viewport='tablet-landscape'] .runtime-section > .skeleton-card,
+[data-viewport='tablet-landscape'] .runtime-section > .error-card {
+  grid-column: 1 / -1;
 }
 </style>

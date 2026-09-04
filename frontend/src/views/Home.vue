@@ -20,9 +20,10 @@
               <template v-else>
                 <span class="greet-dot" :class="{ idle: greetState === 'idle', off: greetState === 'off' }"></span>
                 <span class="greet-text" :class="{ 'is-off': greetState === 'off' }">{{ greetLine }}</span>
-                <!-- Phone tier (design draft frame ①): while the checklist card is up
-                     and the service is not ready, the subline points at it -->
-                <span v-if="showOnboardHint" class="greet-rest greet-hint">· {{ t('home.greet.onboardHint') }}</span>
+                <!-- Phone + tablet tiers (design draft frames A①/B①): while the checklist card
+                     is up and the service is not ready, the subline points at it — "below" on
+                     phone / tablet portrait, "on the right" on tablet landscape (lib/onboarding) -->
+                <span v-if="showOnboardHint" class="greet-rest greet-hint">· {{ greetHintText }}</span>
               </template>
             </p>
           </div>
@@ -99,6 +100,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { t } from '../lib/i18n'
+import { onboardHintKey } from '../lib/onboarding'
 import { usePlatform } from '../lib/platform'
 import { appConfig } from '../store'
 import { getServerStatus, getLoadedModels, type LoadedModel } from '../wails'
@@ -144,17 +146,22 @@ const greetState = computed<'loading' | 'online' | 'idle' | 'off'>(() => {
 
 const greetModel = computed(() => residentModel.value?.id ?? '')
 
-// Phone-tier guidance hint (design draft frame ①): shown while the service is not
-// ready and the quick-start checklist can be on screen. SystemInfoTab owns the
-// checklist's probe-derived visibility; from the shell, "not dismissed and
-// service not ready" is an exact-enough proxy — a stopped / model-less service
-// always keeps the checklist incomplete, so the card is up unless dismissed.
+// Checklist guidance hint (design draft frames A①/B①): shown while the service is
+// not ready and the quick-start checklist can be on screen. The tier/orientation
+// gate lives in lib/onboarding.onboardHintKey: phone + tablet tiers render it
+// (with the "on the right" copy on tablet landscape), desktop never does.
+// SystemInfoTab owns the checklist's probe-derived visibility; from the shell,
+// "not dismissed and service not ready" is an exact-enough proxy — a stopped /
+// model-less service always keeps the checklist incomplete, so the card is up
+// unless dismissed.
+const onboardHint = computed(() => onboardHintKey(platformState.value))
 const showOnboardHint = computed(
   () =>
-    platformState.value.isMobile &&
+    onboardHint.value !== null &&
     (greetState.value === 'off' || greetState.value === 'idle') &&
     !appConfig.onboardingDismissed
 )
+const greetHintText = computed(() => (onboardHint.value ? t(onboardHint.value) : ''))
 
 const greetLine = computed(() => {
   switch (greetState.value) {
@@ -213,7 +220,9 @@ const activeTabId = computed(() => (route.path.startsWith('/runtime') ? 'tab-run
 
 // Phone tier (design draft frame ①): the tab row disappears while the quick-start
 // checklist owns the system tab — the checklist state has no tab strip in the
-// mockup. The runtime tab (frames ③/④) always keeps its row.
+// mockup. The runtime tab (frames ③/④) always keeps its row. Deliberately
+// phone-only: the tablet draft keeps the tab strip visible (frames A③/A④ draw
+// it), and the tabs stay the only way back from the runtime tab.
 const phoneHideTabs = computed(
   () => platformState.value.isMobile && showOnboardHint.value && activeTabId.value === 'tab-system'
 )
