@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { sortModelFiles, guessQuant, matchLoadedModelSize } from '../lib/modelFiles'
+import { sortModelFiles, guessQuant, matchLoadedModelSize, selectedBytes, localLibraryStats } from '../lib/modelFiles'
 
 describe('sortModelFiles', () => {
   // sort by size descending; missing size defaults to 0 (sorted to end)
@@ -90,5 +90,48 @@ describe('matchLoadedModelSize', () => {
 
   it('empty id returns empty string', () => {
     expect(matchLoadedModelSize('', models)).toBe('')
+  })
+})
+
+describe('selectedBytes', () => {
+  // Detail-page sticky bar (draft A10/B10 "已选 1 个 · 2.3 GB"): sums the
+  // selected files' sizes without inventing weight for unknown/unsized entries
+  const files = [
+    { filename: 'q4_k_m.gguf', size: 2_300_000_000 },
+    { filename: 'q8_0.gguf', size: 4_100_000_000 },
+    { filename: 'mmproj.gguf', size: 400_000_000 },
+    { filename: 'README.md' },
+  ]
+
+  it('sums the selected files sizes', () => {
+    expect(selectedBytes(['q4_k_m.gguf'], files)).toBe(2_300_000_000)
+    expect(selectedBytes(['q4_k_m.gguf', 'mmproj.gguf'], files)).toBe(2_700_000_000)
+  })
+
+  it('unknown filenames and missing sizes contribute 0', () => {
+    expect(selectedBytes(['README.md'], files)).toBe(0)
+    expect(selectedBytes(['not-in-list.gguf'], files)).toBe(0)
+    expect(selectedBytes(['q4_k_m.gguf', 'not-in-list.gguf'], files)).toBe(2_300_000_000)
+  })
+
+  it('empty selection returns 0', () => {
+    expect(selectedBytes([], files)).toBe(0)
+  })
+})
+
+describe('localLibraryStats', () => {
+  // My Models summary card (draft B9 "模型 3 个 · 占用 2.9 GB"): scan length
+  // plus byte total; missing/negative sizes count as 0
+  it('counts models and sums sizes', () => {
+    const models = [{ sizeBytes: 2_300_000_000 }, { sizeBytes: 600_000_000 }, { sizeBytes: 500 }]
+    expect(localLibraryStats(models)).toEqual({ count: 3, totalBytes: 2_900_000_500 })
+  })
+
+  it('missing and negative sizes are treated as 0', () => {
+    expect(localLibraryStats([{ sizeBytes: 100 }, {}, { sizeBytes: -5 }])).toEqual({ count: 3, totalBytes: 100 })
+  })
+
+  it('empty library returns zeros', () => {
+    expect(localLibraryStats([])).toEqual({ count: 0, totalBytes: 0 })
   })
 })

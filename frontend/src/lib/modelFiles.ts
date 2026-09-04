@@ -55,3 +55,27 @@ export function matchLoadedModelSize(id: string, models: LocalModelFact[]): stri
   const contained = models.find((m) => id.includes(m.name) && m.sizeHuman)
   return contained?.sizeHuman ?? ''
 }
+
+/**
+ * Total byte size of the selected files (model detail draft frames A10/B10:
+ * the sticky bar reads "已选 1 个 · 2.3 GB"). Unknown filenames contribute 0
+ * and missing sizes default to 0, so the sum never invents weight. Returns 0
+ * for an empty selection — callers drop the size segment then.
+ */
+export function selectedBytes(selected: readonly string[], files: readonly { filename: string; size?: number }[]): number {
+  const byName = new Map(files.map((f) => [f.filename, f.size || 0]))
+  let total = 0
+  for (const name of selected) total += byName.get(name) || 0
+  return total
+}
+
+/**
+ * Local library statistics for the My Models summary card (tablet draft frame
+ * B9: "本地库 · 模型 3 个 · 占用 2.9 GB"). Count is the scan length; the total
+ * sums the per-file byte sizes with missing/negative values counted as 0.
+ */
+export function localLibraryStats(models: readonly { sizeBytes?: number }[]): { count: number; totalBytes: number } {
+  let totalBytes = 0
+  for (const m of models) totalBytes += m.sizeBytes && m.sizeBytes > 0 ? m.sizeBytes : 0
+  return { count: models.length, totalBytes }
+}

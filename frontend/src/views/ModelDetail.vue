@@ -124,7 +124,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { getModelFiles, getModelDescription, startDownload } from '../wails'
-import { sortModelFiles, guessQuant } from '../lib/modelFiles'
+import { sortModelFiles, guessQuant, selectedBytes } from '../lib/modelFiles'
 import { formatBytes } from '../lib/format'
 import { renderDescription } from '../lib/markdown'
 import { handleLinkClick } from '../lib/linkHandler'
@@ -171,9 +171,17 @@ const fileCountLabel = computed(() => {
   return pipelineTag.value ? `${base} · ${pipelineTag.value}` : base
 })
 
-// Selected count label
+// Selected count label. Tablet tiers (draft frames A⑩/B⑩) append the selected
+// byte total ("已选 1 个 · 2.3 GB") when something is actually selected; phone
+// and desktop keep the plain count word.
 const selectedCount = computed(() => selectedFiles.length)
-const selectedCountLabel = computed(() => t('downloads.selectedCount', { n: selectedCount.value }))
+const selectedCountLabel = computed(() => {
+  if (platformState.value.isTablet && selectedCount.value > 0) {
+    const size = formatBytes(selectedBytes(selectedFiles, files.value))
+    if (size) return t('downloads.selectedCountSize', { n: selectedCount.value, size })
+  }
+  return t('downloads.selectedCount', { n: selectedCount.value })
+})
 
 // Whether all files are selected
 const allSelected = computed(() => files.value.length > 0 && selectedFiles.length === files.value.length)
@@ -690,6 +698,190 @@ onMounted(() => {
   }
 }
 
+/* ─── Tablet portrait (768..1099px, design draft frame A⑩): the selection
+       count + download action ride a GLASS stickbar in the pinned header
+       band; the file list becomes a two-column card grid placed ABOVE the
+       description island (draft order: files, then the intro island). ─── */
+@media (min-width: 768px) and (max-width: 1099px) {
+  /* Draft ⑩ .stickbar: glass pill bar (same skin as the desktop ≥1100 bar) */
+  .action-bar {
+    background: var(--glass);
+    backdrop-filter: blur(22px) saturate(1.6);
+    border: 1px solid var(--glass-line);
+    border-radius: 16px;
+    padding: 10px 14px;
+    margin-top: 0;
+    margin-bottom: 16px;
+  }
+
+  /* Draft .stickbar .all: accent text link, not a bordered chip */
+  .select-all-btn {
+    background: transparent;
+    border: none;
+    color: #7c3aed;
+    font-weight: 700;
+  }
+
+  .select-all-btn:hover:not(:disabled),
+  .select-all-btn:active:not(:disabled) {
+    background: transparent;
+    border: none;
+    color: #7c3aed;
+    transform: none;
+  }
+
+  html[data-theme='dark'] .select-all-btn,
+  html[data-theme='dark'] .select-all-btn:hover:not(:disabled) {
+    color: #a78bfa;
+  }
+
+  /* Draft .stickbar .dl: solid gradient pill */
+  .download-btn {
+    background: var(--grad);
+    color: #fff;
+    border: none;
+    border-radius: 999px;
+    font-weight: 800;
+    box-shadow: none;
+  }
+
+  .download-btn:hover:not(:disabled),
+  .download-btn:active:not(:disabled) {
+    background: var(--grad);
+    transform: none;
+  }
+
+  /* Draft order: the file grid comes first, the intro island stacks below */
+  .detail-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .files-section {
+    order: -1;
+  }
+
+  /* Draft ⑩ .grid2 of .file cards: two columns of free-standing cards */
+  .files-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+    align-items: start;
+  }
+
+  .file-item {
+    position: relative;
+    flex-wrap: nowrap;
+    min-height: 44px;
+    padding: 12px 14px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    box-shadow: var(--shadow-island);
+  }
+
+  .file-item:hover {
+    background: var(--bg-secondary);
+  }
+
+  /* Drawn 20px .ck checkbox replaces the visually hidden native input (kept
+     for keyboard/a11y; the row is a wrapping label) */
+  .file-check {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    margin: 0;
+    pointer-events: none;
+  }
+
+  .file-ck {
+    display: inline-block;
+    position: relative;
+    width: 20px;
+    height: 20px;
+    border: 2px solid #c9cdde;
+    border-radius: 6px;
+    flex-shrink: 0;
+  }
+
+  html[data-theme='dark'] .file-ck {
+    border-color: #3d4759;
+  }
+
+  .file-ck.on {
+    background: var(--grad);
+    border-color: transparent;
+  }
+
+  .file-ck.on::after {
+    content: '';
+    position: absolute;
+    left: 5px;
+    top: 1.5px;
+    width: 5px;
+    height: 9px;
+    border: solid #fff;
+    border-width: 0 2px 2px 0;
+    transform: rotate(42deg);
+  }
+
+  .file-check:focus-visible ~ .file-ck {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  /* Draft .file .fn: bold mono filename truncating inside its card */
+  .file-name {
+    flex: 0 1 auto;
+    min-width: 0;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .file-size {
+    margin-left: auto;
+    font-size: 11.5px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+  }
+
+  /* Draft .qbadge: purple-on-gradient-soft quant tag */
+  .file-quant {
+    background: var(--grad-soft);
+    color: #6d28d9;
+    border-radius: 6px;
+    font-size: 10px;
+    font-weight: 800;
+  }
+
+  html[data-theme='dark'] .file-quant {
+    color: #c4b5fd;
+  }
+
+  /* Draft ⑩ .island: the description becomes a free-standing island card */
+  .desc-section {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 22px;
+    box-shadow: var(--shadow-island);
+    padding: 18px 20px;
+  }
+
+  .desc-section .section-title {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    color: var(--text-muted);
+  }
+
+  .desc-text {
+    background: transparent;
+    padding: 0;
+  }
+}
+
 /* ─── Phone (<=767px, design draft frame ⑩): circular chevron-only back button,
        compact 17px/800 title, island action bar that sticks below the status
        bar while the file list scrolls, drawn .ck checkboxes, hairline file
@@ -924,5 +1116,123 @@ onMounted(() => {
   .retry-btn {
     min-height: 44px;
   }
+}
+
+/* ─── Android tablet-landscape (design draft track B frame ⑩). Hooked on
+       [data-viewport], never a media query: same-width desktop windows keep
+       the desktop description|files grid byte-identically. Files LEFT /
+       description RIGHT (380px), so ticking files for download keeps the
+       description visible; the sticky glass bar is inherited from the desktop
+       band, with the draft's accent link + gradient pill buttons. ─── */
+[data-viewport='tablet-landscape'] .detail-grid {
+  grid-template-columns: minmax(0, 1fr) 380px;
+}
+
+[data-viewport='tablet-landscape'] .desc-section {
+  grid-column: 2;
+  grid-row: 1;
+  /* Content-height when the README is short; capped at the row (with the body
+     scrolling internally) when it is long */
+  align-self: start;
+  max-height: 100%;
+  /* Draft ⑩ .island: the description becomes a free-standing island card */
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  box-shadow: var(--shadow-island);
+  padding: 18px 20px;
+}
+
+[data-viewport='tablet-landscape'] .files-section {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+[data-viewport='tablet-landscape'] .desc-section .section-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: var(--text-muted);
+}
+
+[data-viewport='tablet-landscape'] .desc-text {
+  background: transparent;
+  padding: 0;
+}
+
+/* Draft ⑩ .file rows: free-standing cards (single column in the left band) */
+[data-viewport='tablet-landscape'] .files-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+}
+
+[data-viewport='tablet-landscape'] .file-item {
+  padding: 12px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-island);
+}
+
+[data-viewport='tablet-landscape'] .file-item:hover {
+  background: var(--bg-secondary);
+}
+
+/* Draft .file typography: bold mono filename, purple qbadge, mono size */
+[data-viewport='tablet-landscape'] .file-name {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+[data-viewport='tablet-landscape'] .file-quant {
+  background: var(--grad-soft);
+  color: #6d28d9;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+html[data-theme='dark'][data-viewport='tablet-landscape'] .file-quant {
+  color: #c4b5fd;
+}
+
+[data-viewport='tablet-landscape'] .file-size {
+  font-family: var(--font-mono);
+}
+
+/* Draft .stickbar .all / .dl accents on the inherited glass bar */
+[data-viewport='tablet-landscape'] .select-all-btn {
+  background: transparent;
+  border: none;
+  color: #7c3aed;
+  font-weight: 700;
+}
+
+[data-viewport='tablet-landscape'] .select-all-btn:hover:not(:disabled) {
+  background: transparent;
+  border: none;
+  color: #7c3aed;
+}
+
+html[data-theme='dark'][data-viewport='tablet-landscape'] .select-all-btn,
+html[data-theme='dark'][data-viewport='tablet-landscape'] .select-all-btn:hover:not(:disabled) {
+  color: #a78bfa;
+}
+
+[data-viewport='tablet-landscape'] .download-btn {
+  background: var(--grad);
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  font-weight: 800;
+  box-shadow: none;
+}
+
+[data-viewport='tablet-landscape'] .download-btn:hover:not(:disabled) {
+  background: var(--grad);
 }
 </style>

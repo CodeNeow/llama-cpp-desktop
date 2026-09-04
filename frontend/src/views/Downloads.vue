@@ -24,79 +24,119 @@
       </button>
     </div>
 
-    <!-- In-flight downloads pinned on top as progress cards (frame ③ .dlcard):
-         data rides the existing getDownloadTasks polling unchanged; tapping a
-         card opens the task manager modal where pause/resume/cancel live. -->
-    <div v-if="activeTaskList.length > 0" class="dl-pinned" role="region" :aria-label="t('downloads.inProgress')">
-      <button v-for="task in activeTaskList" :key="task.id" class="dl-card" @click="showTasksModal = true" :title="t('downloads.downloadTitle')">
-        <span class="dl-card-top">
-          <span class="dl-name">{{ task.fileName }}</span>
-          <span class="dl-pct">{{ task.progress }}%</span>
-        </span>
-        <span class="dl-bar">
-          <span class="dl-fill" :class="taskBarClass(task.status)" :style="{ width: task.progress + '%' }"></span>
-        </span>
-        <span class="dl-card-meta">
-          <span v-if="task.sizeHuman && task.sizeHuman !== '0 B'" class="dl-size">{{ task.sizeHuman }}</span>
-          <span v-if="etaText(task)" class="dl-eta">{{ etaText(task) }}</span>
-          <!-- Frame ⑧ meta tail "… · 12.4 MB/s": while a transfer speed is
-               measurable the pinned card ends with the speed; the status word
-               is only the fallback. Desktop always keeps the status word. -->
-          <span v-if="speedTail(task)" class="dl-speed">{{ formatSpeed(task.speed) }}</span>
-          <span v-else class="dl-status" :class="'status-' + task.status">{{ statusMap[task.status] || task.status }}</span>
-        </span>
-      </button>
-    </div>
+    <!-- Body band (tablet-landscape split, draft frame B⑧): results LEFT,
+         in-progress downloads + page summary pinned in a 340px RIGHT rail.
+         Elsewhere .dl-rail dissolves via display:contents so the pinned block
+         stays the flat first child above the results, exactly as before. -->
+    <div class="dl-body">
+      <aside class="dl-rail" :aria-label="t('downloads.railAria')">
+        <!-- In-flight downloads pinned on top as progress cards (frame ⑧ .dlcard):
+             data rides the existing getDownloadTasks polling unchanged; tapping a
+             card opens the task manager modal where pause/resume/cancel live.
+             The card is a role="button" div (not a native button) so the
+             tablet-landscape rail can host real pause/resume ops inside. -->
+        <div v-if="activeTaskList.length > 0" class="dl-pinned" role="region" :aria-label="t('downloads.inProgress')">
+          <div
+            v-for="task in activeTaskList"
+            :key="task.id"
+            class="dl-card"
+            role="button"
+            tabindex="0"
+            @click="showTasksModal = true"
+            @keydown.enter.prevent="showTasksModal = true"
+            @keydown.space.prevent="showTasksModal = true"
+            :title="t('downloads.downloadTitle')"
+          >
+            <span class="dl-card-top">
+              <span class="dl-name">{{ task.fileName }}</span>
+              <span class="dl-pct">{{ task.progress }}%</span>
+            </span>
+            <span class="dl-bar">
+              <span class="dl-fill" :class="taskBarClass(task.status)" :style="{ width: task.progress + '%' }"></span>
+            </span>
+            <span class="dl-card-meta">
+              <span v-if="task.sizeHuman && task.sizeHuman !== '0 B'" class="dl-size">{{ task.sizeHuman }}</span>
+              <span v-if="etaText(task)" class="dl-eta">{{ etaText(task) }}</span>
+              <!-- Frame ⑧ meta tail "… · 12.4 MB/s": while a transfer speed is
+                   measurable the pinned card ends with the speed; the status word
+                   is only the fallback. Desktop always keeps the status word. -->
+              <span v-if="speedTail(task)" class="dl-speed">{{ formatSpeed(task.speed) }}</span>
+              <span v-else class="dl-status" :class="'status-' + task.status">{{ statusMap[task.status] || task.status }}</span>
+            </span>
+            <!-- Tablet-landscape rail ops (draft B⑧ .ops): inline pause/resume
+                 plus the task-manager entry, so the search → download → progress
+                 loop closes on one screen. Wired to the existing task actions. -->
+            <span v-if="isTabletLandscape && (task.status === 'downloading' || task.status === 'paused')" class="dl-ops">
+              <button
+                class="dl-op"
+                :class="task.status === 'downloading' ? 'dl-op--pause' : 'dl-op--resume'"
+                @click.stop="task.status === 'downloading' ? pauseTask(task.id) : resumeTask(task.id)"
+              >{{ task.status === 'downloading' ? t('downloads.pause') : t('downloads.resume') }}</button>
+              <button class="dl-op dl-op--ghost" @click.stop="showTasksModal = true">{{ t('downloads.details') }}</button>
+            </span>
+          </div>
+        </div>
 
-    <!-- Search results.
-         Header split is phone-tier DOM (design draft frame ⑧): plain label left +
-         accent count right. Desktop/tablet keep the inline "(n)" form. -->
-    <div v-if="searchResults.length > 0" class="results-section">
-      <h2 v-if="!platformState.isMobile" class="section-heading">{{ t('downloads.resultsTitle', { n: searchResults.length }) }}</h2>
-      <div v-else class="section-head-row">
-        <h2 class="section-heading">{{ t('downloads.resultsLabel') }}</h2>
-        <span class="section-count">{{ t('downloads.resultsCount', { n: searchResults.length }) }}</span>
-      </div>
-      <div class="results-grid">
-        <div
-          v-for="r in searchResults"
-          :key="r.modelId"
-          class="result-card"
-          @click="goToDetail(r.modelId)"
-          :title="t('downloads.viewDetail')"
-        >
-          <div class="result-main">
-            <!-- Gradient icon brick (frame ③ .tile): 48px rounded tile on the
-                 soft brand gradient wash, cube glyph in the accent color -->
-            <div class="result-tile">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 2l8 4.5v9L12 20l-8-4.5v-9L12 2z"/><path d="M12 11L4.5 6.8M12 11l7.5-4.2M12 11v8.5"/>
-              </svg>
-            </div>
-            <div class="result-info">
-              <h3 class="result-name">{{ r.modelId }}</h3>
-              <div class="result-meta">
-                <span v-if="r.author" class="result-chip">{{ r.author }}</span>
-                <span v-if="r.pipelineTag" class="result-chip">{{ r.pipelineTag }}</span>
-                <span v-if="modelSizes[r.modelId]" class="result-chip">{{ formatBytes(modelSizes[r.modelId]) }}</span>
+        <!-- Tablet-landscape summary card (draft B⑧ .summary-card): result count,
+             active transfers and the preserved download-source preference -->
+        <section v-if="isTabletLandscape" class="dl-summary">
+          <h5>{{ t('downloads.railSummary') }}</h5>
+          <div class="dl-summary-row"><span>{{ t('downloads.railResults') }}</span><b>{{ t('downloads.resultsCount', { n: searchResults.length }) }}</b></div>
+          <div class="dl-summary-row"><span>{{ t('downloads.railActive') }}</span><b>{{ activeTaskCount }}</b></div>
+          <div class="dl-summary-row"><span>{{ t('downloads.railSource') }}</span><b>{{ sourceLabel }}</b></div>
+        </section>
+      </aside>
+
+      <!-- Search results.
+           Header split is phone-tier DOM (design draft frame ⑧): plain label left +
+           accent count right. Desktop/tablet keep the inline "(n)" form. -->
+      <div v-if="searchResults.length > 0" class="results-section">
+        <h2 v-if="!platformState.isMobile" class="section-heading">{{ t('downloads.resultsTitle', { n: searchResults.length }) }}</h2>
+        <div v-else class="section-head-row">
+          <h2 class="section-heading">{{ t('downloads.resultsLabel') }}</h2>
+          <span class="section-count">{{ t('downloads.resultsCount', { n: searchResults.length }) }}</span>
+        </div>
+        <div class="results-grid">
+          <div
+            v-for="r in searchResults"
+            :key="r.modelId"
+            class="result-card"
+            @click="goToDetail(r.modelId)"
+            :title="t('downloads.viewDetail')"
+          >
+            <div class="result-main">
+              <!-- Gradient icon brick (frame ③ .tile): 48px rounded tile on the
+                   soft brand gradient wash, cube glyph in the accent color -->
+              <div class="result-tile">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 2l8 4.5v9L12 20l-8-4.5v-9L12 2z"/><path d="M12 11L4.5 6.8M12 11l7.5-4.2M12 11v8.5"/>
+                </svg>
               </div>
+              <div class="result-info">
+                <h3 class="result-name">{{ r.modelId }}</h3>
+                <div class="result-meta">
+                  <span v-if="r.author" class="result-chip">{{ r.author }}</span>
+                  <span v-if="r.pipelineTag" class="result-chip">{{ r.pipelineTag }}</span>
+                  <span v-if="modelSizes[r.modelId]" class="result-chip">{{ formatBytes(modelSizes[r.modelId]) }}</span>
+                </div>
+              </div>
+              <!-- Round gradient download button (frame ③ .dlbtn): entry to the
+                   existing download flow (model detail page) -->
+              <button class="dl-round" :title="t('downloads.viewDetail')" @click.stop="goToDetail(r.modelId)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 4v12M6 12l6 6 6-6"/>
+                </svg>
+              </button>
             </div>
-            <!-- Round gradient download button (frame ③ .dlbtn): entry to the
-                 existing download flow (model detail page) -->
-            <button class="dl-round" :title="t('downloads.viewDetail')" @click.stop="goToDetail(r.modelId)">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 4v12M6 12l6 6 6-6"/>
-              </svg>
-            </button>
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- No results -->
-    <div v-else-if="searched && !searching" class="empty-state">
-      <h2>{{ t('downloads.noResults') }}</h2>
-      <p>{{ t('downloads.tryOther') }}</p>
+      <!-- No results -->
+      <div v-else-if="searched && !searching" class="empty-state">
+        <h2>{{ t('downloads.noResults') }}</h2>
+        <p>{{ t('downloads.tryOther') }}</p>
+      </div>
     </div>
 
     <!-- Download tasks modal -->
@@ -186,7 +226,8 @@ import { formatSpeed, formatBytes } from '../lib/format'
 import { LatestOnly } from '../lib/latestOnly'
 import { hasActiveTask, countActiveTasks, visibleTasks, activeTaskItems, finishedTaskItems } from '../lib/taskStatus'
 import { LimitedQueue } from '../lib/limitedQueue'
-import { searchQuery, searched, searchResults, modelSizes, HFResult } from '../lib/downloadsState'
+import { searchQuery, searched, searchResults, modelSizes, downloadSourceLabelKey, HFResult } from '../lib/downloadsState'
+import { appConfig } from '../store'
 import { t } from '../lib/i18n'
 import { usePlatform } from '../lib/platform'
 
@@ -209,6 +250,14 @@ const router = useRouter()
 // Viewport tier gate: the phone-only results-header split (frame ⑧) swaps DOM
 // structure, so it must branch on the shared platform state, not a media query
 const platformState = usePlatform()
+
+// Android tablet-landscape gate (draft frame B⑧): the pinned downloads and the
+// page summary move into the right rail, and the rail cards gain inline ops
+const isTabletLandscape = computed(() => platformState.value.isTabletLandscape)
+
+// Draft B⑧ summary "下载源" row: the persisted source preference rendered with
+// the shared short labels (HF 镜像 / HF 官方 / 魔搭)
+const sourceLabel = computed(() => t(downloadSourceLabelKey(appConfig.downloadSource)))
 
 const searching = ref(false)
 // Concurrency-limited queue for search cards' batched size requests
@@ -256,11 +305,13 @@ function etaText(task: DlTask): string {
   return t('downloads.etaMinutes', { n: Math.max(1, Math.round(secs / 60)) })
 }
 
-// Frame ⑧ pinned-card meta tail: on the phone tier a measurable transfer
-// speed closes the line (mockup "8.29 GB · 剩余约 6 分钟 · 12.4 MB/s");
-// otherwise — and on desktop always — the status word is the last segment.
+// Frame ⑧ pinned-card meta tail: on the phone tier AND the tablet tiers the
+// draft's meta line ends with a measurable transfer speed (tablet draft frame
+// A⑧/B⑧ "1.0 / 2.3 GB · 4.2 MB/s"); otherwise — and on desktop always — the
+// status word is the last segment.
 function speedTail(task: DlTask): boolean {
-  return platformState.value.isMobile && task.status === 'downloading' && task.speed > 0
+  const tier = platformState.value
+  return (tier.isMobile || tier.isTablet) && task.status === 'downloading' && task.speed > 0
 }
 
 function goToDetail(modelId: string) {
@@ -364,6 +415,21 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
   /* No page padding: the merged shell (.page) already provides the horizontal
      padding and the bottom reserve; this panel only fills the tab body */
   min-width: 0;
+}
+
+/* ─── Body band: flat stack everywhere; tablet-landscape re-composes it into
+       the draft B⑧ split via the [data-viewport] block at the end ─── */
+.dl-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Rail wrapper: dissolves into the flat stack on every tier except Android
+   tablet-landscape, where it becomes the real 340px right rail (same wrapper
+   convention as SystemInfoTab's column wrappers) */
+.dl-rail {
+  display: contents;
 }
 
 /* ─── Search (frame ③ .search): floating pill capsule ─── */
@@ -496,6 +562,12 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
   border-color: var(--overlay-10);
 }
 
+/* role="button" card focus parity with the former native button */
+.dl-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .dl-card-top {
   display: flex;
   justify-content: space-between;
@@ -575,6 +647,90 @@ onUnmounted(() => { if (taskPollTimer) clearInterval(taskPollTimer) })
 .status-queued { color: var(--text-dim); }
 .status-error { color: var(--danger); }
 .status-cancelled { color: var(--overlay-20); }
+
+/* ─── Tablet-landscape rail card ops (draft B⑧ .ops): inline pause/resume +
+       task-manager entry. Rendered only behind the isTabletLandscape v-if, so
+       these base styles never apply on other tiers. ─── */
+.dl-ops {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.dl-op {
+  padding: 6px 13px;
+  border: none;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  background: var(--hover-bg);
+  color: var(--text-secondary);
+  transition: filter 0.15s, background 0.15s;
+}
+
+.dl-op:hover {
+  filter: brightness(1.06);
+}
+
+.dl-op--pause {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+.dl-op--resume {
+  background: rgba(34, 197, 94, 0.12);
+  color: #16a34a;
+}
+
+.dl-op:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ─── Tablet-landscape summary card (draft B⑧ .summary-card). Rendered only
+       behind the isTabletLandscape v-if, so these base styles never apply on
+       other tiers. ─── */
+.dl-summary {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-island);
+  padding: 16px 18px;
+  min-width: 0;
+}
+
+.dl-summary h5 {
+  margin: 0 0 8px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  color: var(--text-dim);
+}
+
+.dl-summary-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.dl-summary-row + .dl-summary-row {
+  border-top: 1px dashed var(--border);
+}
+
+.dl-summary-row b {
+  color: var(--text-primary);
+  font-weight: 700;
+  text-align: right;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 
 /* ─── Section heading ─── */
 .section-heading {
@@ -1004,6 +1160,29 @@ html[data-os='ios'] .cancel-btn:active {
   margin: 0 0 8px;
 }
 
+/* ─── Tablet portrait (768..1099px, design draft frame A⑧): the pinned
+       progress card's meta line joins into one muted "size · remaining ·
+       speed" line like the draft's dlcard (the speed tail itself is gated in
+       the template by the shared platform state). The two-column results grid
+       and the pinned-on-top composition already match the draft. ─── */
+@media (min-width: 768px) and (max-width: 1099px) {
+  .dl-card-meta {
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .dl-card-meta span + span::before {
+    content: '·';
+    margin: 0 6px;
+  }
+
+  .dl-status {
+    margin-left: 0;
+  }
+}
+
 /* ─── Phone (<=767px, design draft frame ⑧): the search controls stay in ONE flex
        row (pill input + 搜索 + 任务), result cards go single-column with the
        whole card as the tap target, and the round download button grows to a
@@ -1194,5 +1373,41 @@ html[data-os='ios'] .cancel-btn:active {
     height: auto;
     max-height: calc(100dvh - 24px);
   }
+}
+
+/* ─── Android tablet-landscape (design draft track B frame ⑧). Hooked on
+       [data-viewport], never a media query: same-width desktop windows keep
+       the desktop two-column results grid byte-identically. The search bar
+       stays full width above; results list LEFT, the pinned in-progress
+       downloads + page summary pack a 340px RIGHT rail so the
+       search → download → progress loop closes on one screen. ─── */
+[data-viewport='tablet-landscape'] .dl-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 18px;
+  align-items: start;
+}
+
+[data-viewport='tablet-landscape'] .dl-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+}
+
+[data-viewport='tablet-landscape'] .results-section,
+[data-viewport='tablet-landscape'] .empty-state {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+}
+
+/* Draft B⑧ results: a single-column mcard list (the width budget moves to the
+   rail; the two-column grid stays a portrait/desktop composition) */
+[data-viewport='tablet-landscape'] .results-grid {
+  grid-template-columns: 1fr;
+  gap: 10px;
 }
 </style>

@@ -1,109 +1,132 @@
 <template>
   <div class="models-local">
-    <!-- Local-model directory bar (non-sticky): the directory sources plus the
-         manual rescan action, so this block scrolls with the content. -->
-    <div class="dir-bar">
-      <div class="dir-sources">
-        <div class="dir-info">
-          <span class="dir-label">{{ t('models.downloadDir') }}</span>
-          <!-- title exposes the full path when the phone-tier ellipsis truncates -->
-          <span class="dir-value" :title="downloadDir || t('settings.dirDefaultModels')">{{ downloadDir || t('settings.dirDefaultModels') }}</span>
-        </div>
-        <div class="dir-info">
-          <span class="dir-label">{{ t('models.importDir') }}</span>
-          <span class="dir-value" :class="{ 'dir-empty': !modelsDir }" :title="modelsDir || t('models.dirNotSet')">{{ modelsDir || t('models.dirNotSet') }}</span>
-        </div>
-      </div>
-      <div class="dir-actions" :class="{ 'dir-actions-android': platformState.isAndroid }">
-        <!-- Android has no native directory picker (the browseModelsDir binding
-             errors there): the pick button is replaced by a read-only hint;
-             phone tier appends the scanned model count + total size and the
-             rescan link pins to the row's right (design draft frame ⑨ .dirbar) -->
-        <span v-if="platformState.isAndroid" class="dir-android-hint">{{ androidHint }}</span>
-        <button v-else class="dir-btn" :title="t('models.chooseDirTitle')" @click="chooseModelsDir">{{ t('models.chooseDir') }}</button>
-        <button class="refresh-btn" :disabled="loading" :title="t('models.refreshTitle')" @click="fetchModels(true)">
-          <svg :class="{ spinning: loading }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
-            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-          </svg>
-          {{ t('models.refresh') }}
-        </button>
-      </div>
-    </div>
-
-    <!-- Loading skeleton. The tile/mid/block nodes are the design draft frame ㉑
-         recipe (48px tile + two lines + 56px block); they stay display:none
-         on desktop, which keeps rendering the original three-line skeleton. -->
-    <div v-if="loading" class="loading-grid">
-      <div v-for="i in 3" :key="i" class="skeleton-card">
-        <div class="skeleton-tile"></div>
-        <div class="skeleton-line skeleton-title"></div>
-        <div class="skeleton-line skeleton-mid"></div>
-        <div class="skeleton-line skeleton-short"></div>
-        <div class="skeleton-block"></div>
-      </div>
-    </div>
-
-    <!-- Error state -->
-    <div v-else-if="error" class="error-card">
-      <div class="error-icon">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-        </svg>
-      </div>
-      <h2>{{ t('models.errorTitle') }}</h2>
-      <p>{{ error }}</p>
-      <button class="retry-btn" @click="fetchModels()">{{ t('home.retry') }}</button>
-    </div>
-
-    <!-- Empty state -->
-    <div v-else-if="models.length === 0" class="empty-state">
-      <div class="empty-icon">
-        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-          <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
-          <line x1="12" y1="22.08" x2="12" y2="12"/>
-        </svg>
-      </div>
-      <h2>{{ t('models.emptyTitle') }}</h2>
-      <p>{{ t('models.emptyHint', { dir: downloadDir || t('settings.dirDefaultModels') }) }}</p>
-      <button class="empty-cta" @click="router.push('/models/download')">{{ t('action.gotoDownloads') }}</button>
-    </div>
-
-    <!-- Model list -->
-    <div v-else class="model-list">
-      <div v-for="model in models" :key="model.path" class="model-card">
-        <div class="model-icon">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-          </svg>
-        </div>
-        <div class="model-info">
-          <div class="model-header">
-            <h3 class="model-name">{{ model.name }}</h3>
-            <span v-if="model.hasMmproj" class="mmproj-badge" :title="t('models.multimodalTitle')">👁️ {{ t('models.multimodal') }}</span>
-            <div class="model-actions">
-              <button class="model-settings-btn" :title="t('models.settings')" @click.stop="openSettings(model)">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0-2.83l-.06-.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-                </svg>
-              </button>
+    <!-- Body band (tablet-landscape split, draft frame B⑨): model cards LEFT,
+         the directory strip + local-library summary in a 360px RIGHT rail.
+         Elsewhere the rail dissolves via display:contents and the main column
+         gets order:1, so the flat stack keeps the dir-bar above the list. -->
+    <div class="ml-body">
+      <aside class="ml-rail" :aria-label="t('models.dir')">
+        <!-- Local-model directory bar (non-sticky): the directory sources plus
+             the manual rescan action, so this block scrolls with the content.
+             On Android the pick button is replaced by a read-only hint (the
+             browseModelsDir binding errors there) — the edit affordance is
+             desktop-OS only; tablet Android reads the same read-only strip. -->
+        <div class="dir-bar">
+          <div class="dir-sources">
+            <div class="dir-info">
+              <span class="dir-label">{{ t('models.downloadDir') }}</span>
+              <!-- title exposes the full path when the phone-tier ellipsis truncates -->
+              <span class="dir-value" :title="downloadDir || t('settings.dirDefaultModels')">{{ downloadDir || t('settings.dirDefaultModels') }}</span>
+            </div>
+            <div class="dir-info">
+              <span class="dir-label">{{ t('models.importDir') }}</span>
+              <span class="dir-value" :class="{ 'dir-empty': !modelsDir }" :title="modelsDir || t('models.dirNotSet')">{{ modelsDir || t('models.dirNotSet') }}</span>
             </div>
           </div>
-          <div class="model-author" v-if="model.author">{{ model.author }}</div>
-          <div class="source-badge" :class="model.sourceDir === downloadDir ? 'source-download' : 'source-import'">
-            {{ model.sourceDir === downloadDir ? t('models.sourceDownload') : t('models.sourceImport') }}
+          <div class="dir-actions" :class="{ 'dir-actions-android': platformState.isAndroid }">
+            <!-- Android has no native directory picker (the browseModelsDir binding
+                 errors there): the pick button is replaced by a read-only hint;
+                 phone tier appends the scanned model count + total size and the
+                 rescan link pins to the row's right (design draft frame ⑨ .dirbar) -->
+            <span v-if="platformState.isAndroid" class="dir-android-hint">{{ androidHint }}</span>
+            <button v-else class="dir-btn" :title="t('models.chooseDirTitle')" @click="chooseModelsDir">{{ t('models.chooseDir') }}</button>
+            <button class="refresh-btn" :disabled="loading" :title="t('models.refreshTitle')" @click="fetchModels(true)">
+              <svg :class="{ spinning: loading }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+              </svg>
+              {{ t('models.refresh') }}
+            </button>
           </div>
-          <div class="model-meta">
-            <!-- Phone tier (frame ⑨): the standalone author line is demoted into
-                 the meta chip row; the desktop-only author block hides via CSS -->
-            <span v-if="platformState.isMobile && model.author" class="meta-tag author-tag">{{ model.author }}</span>
-            <span v-if="model.architecture && model.architecture !== '-'" class="meta-tag arch-tag">{{ model.architecture }}</span>
-            <span v-if="model.quantization && model.quantization !== '-'" class="meta-tag quant-tag">{{ model.quantization }}</span>
-            <span class="meta-tag size-tag">{{ model.sizeHuman }}</span>
-          </div>
-          <div class="model-path">{{ model.path }}</div>
         </div>
+
+        <!-- Tablet-landscape summary card (draft B⑨ .summary-card): local library
+             count + disk footprint. No "last used" row — the scan carries no
+             usage timestamps, so nothing is invented there. -->
+        <section v-if="platformState.isTabletLandscape" class="ml-summary">
+          <h5>{{ t('models.librarySummary') }}</h5>
+          <div class="ml-summary-row"><span>{{ t('models.summaryModels') }}</span><b>{{ libraryStats.count }}</b></div>
+          <div class="ml-summary-row"><span>{{ t('models.summarySize') }}</span><b>{{ librarySizeLabel }}</b></div>
+        </section>
+      </aside>
+
+      <div class="ml-main-col">
+
+      <!-- Loading skeleton. The tile/mid/block nodes are the design draft frame ㉑
+           recipe (48px tile + two lines + 56px block); they stay display:none
+           on desktop, which keeps rendering the original three-line skeleton. -->
+      <div v-if="loading" class="loading-grid">
+        <div v-for="i in 3" :key="i" class="skeleton-card">
+          <div class="skeleton-tile"></div>
+          <div class="skeleton-line skeleton-title"></div>
+          <div class="skeleton-line skeleton-mid"></div>
+          <div class="skeleton-line skeleton-short"></div>
+          <div class="skeleton-block"></div>
+        </div>
+      </div>
+
+      <!-- Error state -->
+      <div v-else-if="error" class="error-card">
+        <div class="error-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+        </div>
+        <h2>{{ t('models.errorTitle') }}</h2>
+        <p>{{ error }}</p>
+        <button class="retry-btn" @click="fetchModels()">{{ t('home.retry') }}</button>
+      </div>
+
+      <!-- Empty state -->
+      <div v-else-if="models.length === 0" class="empty-state">
+        <div class="empty-icon">
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+            <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+            <line x1="12" y1="22.08" x2="12" y2="12"/>
+          </svg>
+        </div>
+        <h2>{{ t('models.emptyTitle') }}</h2>
+        <p>{{ t('models.emptyHint', { dir: downloadDir || t('settings.dirDefaultModels') }) }}</p>
+        <button class="empty-cta" @click="router.push('/models/download')">{{ t('action.gotoDownloads') }}</button>
+      </div>
+
+      <!-- Model list -->
+      <div v-else class="model-list">
+        <div v-for="model in models" :key="model.path" class="model-card">
+          <div class="model-icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+            </svg>
+          </div>
+          <div class="model-info">
+            <div class="model-header">
+              <h3 class="model-name">{{ model.name }}</h3>
+              <span v-if="model.hasMmproj" class="mmproj-badge" :title="t('models.multimodalTitle')">👁️ {{ t('models.multimodal') }}</span>
+              <div class="model-actions">
+                <button class="model-settings-btn" :title="t('models.settings')" @click.stop="openSettings(model)">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="model-author" v-if="model.author">{{ model.author }}</div>
+            <div class="source-badge" :class="model.sourceDir === downloadDir ? 'source-download' : 'source-import'">
+              {{ model.sourceDir === downloadDir ? t('models.sourceDownload') : t('models.sourceImport') }}
+            </div>
+            <div class="model-meta">
+              <!-- Phone tier (frame ⑨): the standalone author line is demoted into
+                   the meta chip row; the desktop-only author block hides via CSS -->
+              <span v-if="platformState.isMobile && model.author" class="meta-tag author-tag">{{ model.author }}</span>
+              <span v-if="model.architecture && model.architecture !== '-'" class="meta-tag arch-tag">{{ model.architecture }}</span>
+              <span v-if="model.quantization && model.quantization !== '-'" class="meta-tag quant-tag">{{ model.quantization }}</span>
+              <span class="meta-tag size-tag">{{ model.sizeHuman }}</span>
+            </div>
+            <div class="model-path">{{ model.path }}</div>
+          </div>
+        </div>
+      </div>
       </div>
     </div>
   </div>
@@ -115,6 +138,7 @@ import { useRouter } from 'vue-router'
 import { getModels, refreshModels, getConfig, browseModelsDir } from '../wails'
 import { t } from '../lib/i18n'
 import { formatBytes } from '../lib/format'
+import { localLibraryStats } from '../lib/modelFiles'
 import { usePlatform } from '../lib/platform'
 
 const router = useRouter()
@@ -160,6 +184,11 @@ const androidHint = computed(() => {
   return t('models.dirAndroidHintCounted', { n: models.value.length, size: formatBytes(totalBytes) })
 })
 
+// Tablet-landscape summary card (draft B⑨): local library model count and
+// disk footprint, derived purely from the scan result
+const libraryStats = computed(() => localLibraryStats(models.value))
+const librarySizeLabel = computed(() => formatBytes(libraryStats.value.totalBytes) || '0 B')
+
 async function chooseModelsDir() {
   try {
     const dir = await browseModelsDir()
@@ -202,6 +231,67 @@ onMounted(() => {
   /* No page padding: the merged shell (.page) already provides the horizontal
      padding and the bottom reserve; this panel only fills the tab body */
   min-width: 0;
+}
+
+/* ─── Body band: flat column stack everywhere; Android tablet-landscape
+       re-composes it into the draft B⑨ split via the [data-viewport] block at
+       the end of this file ─── */
+.ml-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Rail wrapper (directory strip + landscape summary): dissolves into the flat
+   stack everywhere except Android tablet-landscape. The main column takes
+   order:1 so the dissolved dir-bar stays the first block of the stack. */
+.ml-rail {
+  display: contents;
+}
+
+.ml-main-col {
+  order: 1;
+  min-width: 0;
+}
+
+/* ─── Tablet-landscape summary card (draft B⑨ .summary-card). Rendered only
+       behind the isTabletLandscape v-if, so these base styles never apply on
+       other tiers. ─── */
+.ml-summary {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-island);
+  padding: 16px 18px;
+  min-width: 0;
+}
+
+.ml-summary h5 {
+  margin: 0 0 8px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  color: var(--text-dim);
+}
+
+.ml-summary-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.ml-summary-row + .ml-summary-row {
+  border-top: 1px dashed var(--border);
+}
+
+.ml-summary-row b {
+  color: var(--text-primary);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ─── Models directory bar (frame ③ language: floating-island skin) ─── */
@@ -691,6 +781,181 @@ html[data-os='ios'] .model-settings-btn:active {
   border-color: rgba(99, 102, 241, 0.4);
 }
 
+/* ─── Tablet portrait (768..1099px, design draft frame A⑨): the directory bar
+       stacks into the draft's vertical strip (sources above, actions below),
+       and the model list becomes the draft's TWO-column card grid with the
+       compact card treatment (author/path lines hidden, 14px names, semantic
+       source pills, muted meta chips, 44px gear target). ─── */
+@media (min-width: 768px) and (max-width: 1099px) {
+  .dir-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .dir-actions {
+    justify-content: flex-end;
+  }
+
+  /* Frame ⑨ .dirbar .d .p: single-line ellipsis (full path in the title
+     tooltip) instead of the wrapping desktop value */
+  .dir-value {
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    word-break: normal;
+  }
+
+  .dir-btn,
+  .refresh-btn {
+    min-height: 44px;
+    padding: 10px 16px;
+  }
+
+  /* Android hint row: hint text left, the rescan action pinned right as a
+     bold accent text link (frame ⑨ "↻ 刷新") */
+  .dir-actions-android {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .dir-android-hint {
+    flex: 1;
+    min-width: 0;
+    text-align: left;
+  }
+
+  .dir-actions-android .refresh-btn {
+    min-height: 44px;
+    padding: 10px 0 10px 12px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    color: #7c3aed;
+    font-weight: 800;
+  }
+
+  .dir-actions-android .refresh-btn:hover:not(:disabled) {
+    background: transparent;
+    border: none;
+    color: #7c3aed;
+  }
+
+  html[data-theme='dark'] .dir-actions-android .refresh-btn,
+  html[data-theme='dark'] .dir-actions-android .refresh-btn:hover:not(:disabled) {
+    color: #a78bfa;
+  }
+
+  /* Frame A⑨ .grid2: the tablet width dividend — two model cards per row */
+  .model-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    align-items: start;
+  }
+
+  .model-card {
+    padding: 14px 16px;
+  }
+
+  /* Balanced card row: the name owns the header line (flex:1, wraps freely
+     inside its own box) and the gear pins to the top-right corner */
+  .model-header {
+    flex-wrap: nowrap;
+    align-items: flex-start;
+  }
+
+  /* Frame ⑨ .mcard .nm: 14px card title */
+  .model-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 14px;
+  }
+
+  /* Frame ⑨ .gearbtn: 38px-circle skin at rest, 44px touch target via the
+     negative-margin technique */
+  .model-settings-btn {
+    width: 44px;
+    height: 44px;
+    margin: -8px;
+    border-radius: 50%;
+    background: var(--bg-card);
+    color: var(--text-muted);
+    opacity: 1;
+  }
+
+  .model-card:hover .model-settings-btn {
+    opacity: 1;
+  }
+
+  /* Frame ⑨ .mt i: source pills take semantic colors — download green,
+     external blue — at the shared chip geometry */
+  .source-badge {
+    padding: 2px 7px;
+    border-radius: 6px;
+    font-size: 10px;
+    font-weight: 700;
+  }
+
+  .source-download {
+    background: #e7f8f1;
+    color: #0b7c5b;
+    border: none;
+  }
+
+  html[data-theme='dark'] .source-download {
+    background: #12261f;
+    color: #6ee7b7;
+  }
+
+  .source-import {
+    background: #e8f1fd;
+    color: #2563eb;
+    border: none;
+  }
+
+  html[data-theme='dark'] .source-import {
+    background: #1a2740;
+    color: #93c5fd;
+  }
+
+  /* Frame ⑨ .mt i base: all meta chips unify to the muted surface-2 chip */
+  .meta-tag {
+    padding: 2px 7px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0;
+    background: var(--hover-bg);
+    color: var(--text-muted);
+    border: none;
+  }
+
+  .arch-tag,
+  .quant-tag {
+    background: var(--hover-bg);
+    color: var(--text-muted);
+    border: none;
+  }
+
+  /* Frame ⑨ size: plain muted text in the chip row (no chip background) */
+  .size-tag {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--text-dim);
+  }
+
+  /* Card slimming: the standalone author line and the full mono path line
+     hide (the grid cards read name + source + chips like the draft) */
+  .model-author,
+  .model-path {
+    display: none;
+  }
+}
+
 /* ─── Phone (<=767px, design draft frame ⑨): the directory bar stacks (sources
        above, actions in a full-width row), source pills take the semantic
        green/blue chip colors, model names drop to 14px with muted meta chips,
@@ -975,5 +1240,129 @@ html[data-os='ios'] .model-settings-btn:active {
 
 @keyframes skel-sweep {
   to { background-position: -200% 0; }
+}
+
+/* ─── Android tablet-landscape (design draft track B frame ⑨). Hooked on
+       [data-viewport], never a media query: same-width desktop windows keep
+       the desktop list layout byte-identically. Model cards LEFT, the
+       read-only directory strip + local-library summary in a 360px RIGHT
+       rail; the rescan action travels with the strip so it stays reachable. ─── */
+[data-viewport='tablet-landscape'] .ml-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 18px;
+  align-items: start;
+}
+
+[data-viewport='tablet-landscape'] .ml-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+}
+
+[data-viewport='tablet-landscape'] .ml-main-col {
+  order: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+}
+
+/* The ≥1280px desktop rule turns .model-list into a two-column grid; on this
+   tier the draft's LEFT column is a single-column mcard list (the width budget
+   moves to the rail). Specificity (0,2,0) beats the desktop media rule. */
+[data-viewport='tablet-landscape'] .model-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Draft B⑨ card anatomy = the compact mcard (name + chips + gear): 14px name,
+   semantic source pills, muted meta chips, no author/path lines */
+[data-viewport='tablet-landscape'] .model-name {
+  font-size: 14px;
+}
+
+[data-viewport='tablet-landscape'] .model-author,
+[data-viewport='tablet-landscape'] .model-path {
+  display: none;
+}
+
+[data-viewport='tablet-landscape'] .source-badge {
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+[data-viewport='tablet-landscape'] .source-download {
+  background: #e7f8f1;
+  color: #0b7c5b;
+  border: none;
+}
+
+html[data-theme='dark'][data-viewport='tablet-landscape'] .source-download {
+  background: #12261f;
+  color: #6ee7b7;
+}
+
+[data-viewport='tablet-landscape'] .source-import {
+  background: #e8f1fd;
+  color: #2563eb;
+  border: none;
+}
+
+html[data-theme='dark'][data-viewport='tablet-landscape'] .source-import {
+  background: #1a2740;
+  color: #93c5fd;
+}
+
+[data-viewport='tablet-landscape'] .meta-tag {
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+  background: var(--hover-bg);
+  color: var(--text-muted);
+  border: none;
+}
+
+[data-viewport='tablet-landscape'] .arch-tag,
+[data-viewport='tablet-landscape'] .quant-tag {
+  background: var(--hover-bg);
+  color: var(--text-muted);
+  border: none;
+}
+
+[data-viewport='tablet-landscape'] .size-tag {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-dim);
+}
+
+/* The strip becomes the draft's rail card: stacked rows, no outer margin (the
+   column gap takes over) */
+[data-viewport='tablet-landscape'] .dir-bar {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  margin-bottom: 0;
+}
+
+/* Actions row inside the narrow rail: desktop-OS keeps pick + refresh grouped
+   at the end; Android keeps its read-only hint left with the rescan right */
+[data-viewport='tablet-landscape'] .dir-actions {
+  justify-content: flex-end;
+}
+
+[data-viewport='tablet-landscape'] .dir-actions-android {
+  justify-content: space-between;
 }
 </style>

@@ -239,6 +239,11 @@ export const messages: Record<Locale, Record<string, string>> = {
     // Source pills (design draft frame ⑨ .mt i.src-g / .src-b)
     'models.sourceDownload': '下载路径',
     'models.sourceImport': '外部路径',
+    // Tablet-landscape summary card (design draft tablet frame B⑨): local
+    // library count + disk footprint; no "last used" row (no data source)
+    'models.librarySummary': '本地库',
+    'models.summaryModels': '模型',
+    'models.summarySize': '占用',
     // design draft frame ㉑ errcard title
     'models.errorTitle': '加载失败',
     'models.emptyTitle': '暂无模型',
@@ -336,6 +341,16 @@ export const messages: Record<Locale, Record<string, string>> = {
     'downloads.inProgress': '进行中下载',
     'downloads.etaSeconds': '剩余约 {n} 秒',
     'downloads.etaMinutes': '剩余约 {n} 分钟',
+    // Tablet-landscape right rail (design draft tablet frame B⑧): summary card
+    // closing the search → download → progress loop on one screen
+    'downloads.railAria': '下载进度与本页汇总',
+    'downloads.railSummary': '本页汇总',
+    'downloads.railResults': '结果',
+    'downloads.railActive': '进行中',
+    'downloads.railSource': '下载源',
+    // Detail-page sticky bar with selected size (tablet draft frames A⑩/B⑩)
+    'downloads.selectedCountSize': '已选 {n} 个 · {size}',
+    'downloads.details': '详情',
 
     // ─── Chat page (Chat.vue) ───
     'chat.title': '本地聊天',
@@ -933,6 +948,11 @@ export const messages: Record<Locale, Record<string, string>> = {
     // Source pills (design draft frame ⑨ .mt i.src-g / .src-b)
     'models.sourceDownload': 'Downloaded',
     'models.sourceImport': 'External',
+    // Tablet-landscape summary card (design draft tablet frame B⑨): local
+    // library count + disk footprint; no "last used" row (no data source)
+    'models.librarySummary': 'Local library',
+    'models.summaryModels': 'Models',
+    'models.summarySize': 'On disk',
     // design draft frame ㉑ errcard title
     'models.errorTitle': 'Load failed',
     'models.emptyTitle': 'No models yet',
@@ -1030,6 +1050,16 @@ export const messages: Record<Locale, Record<string, string>> = {
     'downloads.inProgress': 'In-Progress Downloads',
     'downloads.etaSeconds': '~{n}s left',
     'downloads.etaMinutes': '~{n} min left',
+    // Tablet-landscape right rail (design draft tablet frame B⑧): summary card
+    // closing the search → download → progress loop on one screen
+    'downloads.railAria': 'Download progress and page summary',
+    'downloads.railSummary': 'Page summary',
+    'downloads.railResults': 'Results',
+    'downloads.railActive': 'In progress',
+    'downloads.railSource': 'Source',
+    // Detail-page sticky bar with selected size (tablet draft frames A⑩/B⑩)
+    'downloads.selectedCountSize': 'Selected {n} · {size}',
+    'downloads.details': 'Details',
 
     // ─── Chat page (Chat.vue) ───
     'chat.title': 'Local Chat',

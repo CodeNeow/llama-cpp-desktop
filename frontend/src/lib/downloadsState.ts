@@ -30,3 +30,15 @@ export interface HFResult {
   pipelineTag?: string
   tags?: string[]
 }
+
+/**
+ * i18n key of the short display label for a model download source (tablet
+ * draft frame B8 summary card: "下载源 HF 镜像"). Mirrors the Settings page's
+ * source-option vocabulary; unknown values degrade to the hf-mirror label,
+ * matching the store's `downloadSource: 'hf'` default.
+ */
+export function downloadSourceLabelKey(source: string): 'settings.sourceHfShort' | 'settings.sourceOfficialShort' | 'settings.sourceMsShort' {
+  if (source === 'modelscope') return 'settings.sourceMsShort'
+  if (source === 'huggingface') return 'settings.sourceOfficialShort'
+  return 'settings.sourceHfShort'
+}
