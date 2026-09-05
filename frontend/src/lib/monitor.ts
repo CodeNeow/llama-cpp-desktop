@@ -60,6 +60,38 @@ export function formatPromptTps(tps: number): string {
   return tps > 0 ? tps.toFixed(1) : '—'
 }
 
+// ─── Api.vue tablet-tier presentation helpers (tablet draft frames ⑬⑭⑮) ────
+// Derivable render decisions for the Android-tablet API-page tracks, kept out
+// of the component so they are unit-testable without a mount.
+
+/** Where the generation-speed chart renders (tablet draft frame ⑬). */
+export type ApiSpeedPlacement = 'hero' | 'island'
+
+/**
+ * Which surface carries the speed chart:
+ * - 'hero':   phone + desktop — the chart stays embedded in the status hero
+ *             card (existing rendering, untouched);
+ * - 'island': tablet tiers (portrait band and Android tablet-landscape alike —
+ *             platform.isTablet covers both) — the chart becomes its own
+ *             instrument island in the right column, beside/above the log
+ *             console (draft ⑬ B: instruments right, status + actions left).
+ * Pure: the caller derives the tier flag from the platform state.
+ */
+export function apiSpeedPlacement(isTabletTier: boolean): ApiSpeedPlacement {
+  return isTabletTier ? 'island' : 'hero'
+}
+
+/**
+ * Whether the hero shows the "direct mode" annotation (draft ⑬ tag 直连模式):
+ * direct mode (single resident model, no multi-model router) is Android-only,
+ * the annotation is a tablet-tier addition (the phone page predates it and
+ * stays unchanged), and the draft's stopped frame ⑭ drops it — so all three
+ * conditions must hold. Pure.
+ */
+export function showDirectModeTag(isAndroid: boolean, isTabletTier: boolean, serverRunning: boolean): boolean {
+  return isAndroid && isTabletTier && serverRunning
+}
+
 /**
  * Format seconds as an uptime string in the given locale (zh/en); 0 seconds
  * shows 0 in both languages. The locale parameter is passed explicitly, keeping

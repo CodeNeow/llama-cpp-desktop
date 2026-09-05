@@ -293,6 +293,9 @@ export const messages: Record<Locale, Record<string, string>> = {
     'api.emptyTitle': '暂无可用模型',
     'api.emptySub': '服务启动前需要至少一个 GGUF 模型',
     'api.logMore': '… 查看全部日志 →',
+    // Tablet draft ⑬ hero annotation + live metric label (direct mode = Android single resident model)
+    'api.directModeTag': '直连模式 · 单模型驻留',
+    'api.speedLive': 'tokens / 秒 · 实时',
 
     // ─── Downloads page (Downloads.vue, the /models/download tab) ───
     // design draft frame ⑧: compact example-led placeholder (both tiers)
@@ -1015,6 +1018,9 @@ export const messages: Record<Locale, Record<string, string>> = {
     'api.emptyTitle': 'No models available',
     'api.emptySub': 'At least one GGUF model is required before starting',
     'api.logMore': '… View all logs →',
+    // Tablet draft ⑬ hero annotation + live metric label (direct mode = Android single resident model)
+    'api.directModeTag': 'Direct mode · single resident model',
+    'api.speedLive': 'tok/s · live',
 
     // ─── Downloads (Downloads.vue, the /models/download tab) ───
     // design draft frame ⑧: compact example-led placeholder (both tiers)

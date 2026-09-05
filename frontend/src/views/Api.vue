@@ -21,6 +21,11 @@
             <div class="hero-status-row">
               <span class="pulse-dot" :class="{ on: serverRunning }"></span>
               <span class="hero-status-text" :class="{ off: !serverRunning }">{{ serverRunning ? t('api.running') : t('api.stopped') }}</span>
+              <!-- Tablet draft ⑬ tag (直连模式 · 单模型驻留): Android's direct mode
+                   runs one resident model without the multi-model router. Pure
+                   gate (showDirectModeTag) renders it on Android tablet tiers
+                   while running only — phone/desktop DOM unchanged. -->
+              <span v-if="directModeTagVisible" class="hero-mode-tag">{{ t('api.directModeTag') }}</span>
               <span v-if="serverRunning && status.uptimeSeconds > 0" class="hero-uptime">
                 {{ formatUptime(status.uptimeSeconds, locale) }}
                 <span class="hero-uptime-label">{{ t('monitor.uptimeLabel') }}</span>
@@ -45,13 +50,30 @@
               </svg>
             </button>
 
+            <!-- Tablet draft ⑬/⑭ hero metric: with the chart moved to its own
+                 island on tablet tiers, the hero keeps a big live tok/s readout
+                 (draft: "31.8 tokens/秒 · 实时"); stopped shows the draft's
+                 "— · 运行时长" pair. Phone/desktop keep the fused speed block
+                 below instead — this node never renders there. -->
+            <div v-if="speedPlacement === 'island'" class="hero-metric">
+              <template v-if="serverRunning">
+                <span class="hero-metric-num">{{ decodeTpsText }}<small> tok/s</small></span>
+                <span class="hero-metric-lbl">{{ t('api.speedLive') }}</span>
+              </template>
+              <template v-else>
+                <span class="hero-metric-num">—</span>
+                <span class="hero-metric-lbl">{{ t('monitor.uptimeLabel') }}</span>
+              </template>
+            </div>
+
             <!-- Generation speed: gradient area chart (frame ④ chart-wrap) fed by
                  the existing 60s decode sampling chain. Stopped state: the phone
                  tier ghosts the block at 45% ink and swaps the chart for a dashed
                  baseline with a "— tok/s" value (frame ⑭ .ghosted); desktop keeps
                  the visibility-hidden ghost — either way the card height never
-                 shifts. -->
-            <div class="hero-speed">
+                 shifts. Tablet tiers instead render the island placement in the
+                 right column (apiSpeedPlacement), so this block unmounts there. -->
+            <div v-if="speedPlacement === 'hero'" class="hero-speed">
               <div class="speed-head">
                 <span class="speed-label">{{ t('api.speedLabel') }}</span>
                 <span class="speed-value" :class="{ 'tps-ghost': !status.serverRunning }" :aria-hidden="!status.serverRunning">
@@ -148,8 +170,52 @@
           </div>
         </div>
 
-        <!-- Right column: available models (top) + service log (bottom) -->
+        <!-- Right column (tablet draft ⑬): the speed island leads on tablet
+             tiers — portrait stacks it between the action row and the models,
+             landscape pins it to the top of this right column so instruments
+             (chart) and troubleshooting (log) sit side by side with the
+             status/actions column. The island is draft ⑭'s stopped frame
+             absent — it renders only while running. Same node graph as the
+             hero-embedded block above (one data source, two placements; only
+             one is mounted at a time). -->
         <div class="api-right">
+          <section v-if="speedPlacement === 'island' && serverRunning" class="speed-island">
+            <div class="hero-speed">
+              <div class="speed-head">
+                <span class="speed-label">{{ t('api.speedLabel') }}</span>
+                <span class="speed-value">
+                  {{ decodeTpsText }} <small>tok/s</small>
+                </span>
+              </div>
+              <div class="speed-chart">
+                <svg :viewBox="`-6 -6 ${chartWidth + 12} ${chartHeight + 12}`">
+                  <defs>
+                    <!-- Same gradient ids as the hero-embedded block: the two
+                         placements are mutually exclusive (v-if), so only one
+                         instance of each id exists in the document, and the
+                         shared .speed-area / .speed-line url() refs resolve
+                         for whichever is mounted. -->
+                    <linearGradient id="apiSpeedFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="#8b5cf6" stop-opacity="0.34"/>
+                      <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0"/>
+                    </linearGradient>
+                    <linearGradient id="apiSpeedLine" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0%" stop-color="#6366f1"/>
+                      <stop offset="100%" stop-color="#a855f7"/>
+                    </linearGradient>
+                  </defs>
+                  <path class="speed-area" :d="decodeAreaPath" />
+                  <path class="speed-line" :d="decodeLinePath" />
+                  <circle v-if="decodeEndDot" class="speed-dot" :cx="decodeEndDot.x" :cy="decodeEndDot.y" r="4" />
+                </svg>
+              </div>
+              <div class="speed-meta">
+                <span>{{ t('monitor.promptSpeed') }} {{ promptTpsText }} tok/s</span>
+                <span>{{ t('monitor.chartLabel', { n: decodeHistory.length }) }}</span>
+              </div>
+            </div>
+          </section>
+
           <!-- Available models (frame ④ island → ⑬ chips): chips are real buttons —
                tapping a non-active chip loads that model; the loaded model's chip
                wears the active gradient + "●" marker (phone tier per frames) -->
@@ -209,7 +275,7 @@ import { useRouter } from 'vue-router'
 import { getLoadedModels, getMonitorStatus, getModels, getServerConfig, getServerLogsSince, getServerStatus, refreshModels, saveServerConfig, startServer, startServerWithModel, stopServer, unloadModel } from '../wails'
 import { applyFullLogFetch, appendLogEntries, type ServerLogEntry } from '../lib/serverLog'
 import { modelsToUnload } from '../lib/chat'
-import { appendHistory, chartPoints, formatPromptTps, formatUptime, type MonitorStatus } from '../lib/monitor'
+import { appendHistory, apiSpeedPlacement, chartPoints, formatPromptTps, formatUptime, showDirectModeTag, type MonitorStatus } from '../lib/monitor'
 import { usePlatform } from '../lib/platform'
 import { locale, t } from '../lib/i18n'
 
@@ -225,6 +291,17 @@ const busy = ref(false)
 
 // Viewport tier: drives the phone chart geometry and the chip "●" marker
 const platform = usePlatform()
+
+// ─── Tablet tracks (draft frames ⑬⑭⑮, pure gates in lib/monitor.ts) ──────────
+// Chart placement: tablet tiers (both portrait and Android tablet-landscape —
+// platform.isTablet covers exactly those bands) move the speed chart out of
+// the hero into its own right-column island; phone/desktop keep the embedded
+// hero chart (unchanged rendering). The direct-mode tag rides the hero status
+// row on Android tablets while running (direct mode = single resident model).
+const speedPlacement = computed(() => apiSpeedPlacement(platform.value.isTablet))
+const directModeTagVisible = computed(() =>
+  showDirectModeTag(platform.value.isAndroid, platform.value.isTablet, serverRunning.value)
+)
 // Loaded router models (1s poll; empty while stopped / router unreachable):
 // powers the active model chip (frame ⑬ "● model") and the switch unload list
 const loadedModels = ref<{ id: string; status: string }[]>([])
@@ -700,6 +777,53 @@ async function loadModel(m: string) {
   margin-left: 4px;
 }
 
+/* Direct-mode annotation (tablet draft ⑬ tag): small accent pill beside the
+   state text. Only mounts on Android tablet tiers (showDirectModeTag), so
+   phone/desktop rendering is untouched by this rule. */
+.hero-mode-tag {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  color: var(--accent-light);
+  background: var(--active-bg);
+  border-radius: 999px;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+
+/* Tablet hero metric (draft ⑬ "31.8 tokens/秒 · 实时" / ⑭ "— · 运行时长"):
+   big live readout that stays in the hero while the chart itself lives in the
+   right-column island. Only mounts when speedPlacement is 'island'. */
+.hero-metric {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 14px;
+  min-width: 0;
+}
+
+.hero-metric-num {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.hero-metric-num small {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.hero-metric-lbl {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 /* Address chip: monospace URL row with a copy affordance */
 .hero-address {
   display: flex;
@@ -1023,14 +1147,6 @@ html[data-theme='dark'] .speed-baseline {
   padding-bottom: calc(24px + var(--dock-reserve, 0px));
 }
 
-/* Tablet centered column: 768–1099px (design draft F7) */
-@media (min-width: 768px) and (max-width: 1099px) {
-  .page-scroll {
-    max-width: 800px;
-    margin-left: auto;
-    margin-right: auto;
-  }
-}
 
 /* Desktop two-column main area: 1280px+ (design draft F4)
    Left column (1.15fr) = status hero + action row.
@@ -1054,6 +1170,24 @@ html[data-theme='dark'] .speed-baseline {
        .85fr column past the viewport right edge. */
     min-width: 0;
   }
+}
+
+/* ─── Speed island (tablet draft ⑬): the chart's own card at the top of the
+       right column — instrument panel beside/above the log console. Only
+       mounts when apiSpeedPlacement is 'island' (tablet tiers, running). ─── */
+.speed-island {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-island);
+  padding: 16px 18px;
+  margin-bottom: 14px;
+}
+
+/* The embedded hero block carries a 14px top margin for its in-card position;
+   inside the island it is the first and only content */
+.speed-island .hero-speed {
+  margin-top: 0;
 }
 
 /* ─── Available models (frame ④ island): static chips on a neutral surface ─── */
@@ -1243,14 +1377,302 @@ html[data-theme='dark'] .speed-baseline {
   .hero-address { margin-top: 8px; padding: 8px 12px; }
   .hero-speed { margin-top: 10px; }
   /* The chart yields on short windows (same tradeoff as the former monitor
-     card): the big speed value in the head keeps the metric readable */
-  .speed-chart { display: none; }
-  .speed-meta { display: none; }
+     card): the big speed value in the head keeps the metric readable. Scoped
+     to the hero-embedded placement — the tablet speed island is the chart's
+     only home on its tiers and must not collapse to an empty card. (On
+     phone/desktop tiers the chart is always inside .api-hero, so this
+     selector matches exactly the same element the unscoped one did.) */
+  .api-hero .speed-chart { display: none; }
+  .api-hero .speed-meta { display: none; }
   .action-row { margin-bottom: 10px; }
   .primary-btn { padding: 12px 0; }
   .ghost-icon { flex: 0 0 48px; }
   .models-island { padding: 10px 14px; margin-bottom: 10px; }
   .log-panel { padding: 10px 14px; min-height: 300px; }
+}
+
+/* Tablet portrait Track A: 768–1099px (design draft frames ⑬⑭⑮, track A).
+   Scoped to the band with min-width: 768px so phones (<=767) and desktop
+   (>=1100px) stay untouched; the Android tablet-landscape tier (1100..1360,
+   attribute-gated) never matches the max-width cap — its mirror rules live in
+   the [data-viewport] block at the end. */
+@media (min-width: 768px) and (max-width: 1099px) {
+  .page-scroll {
+    /* min(800px, 100%): the centered column normally rides the 800px draft
+       cap, but the log console's `white-space: pre` lines inflate the band's
+       fit-content width past the 48px-padded container and clip the cards'
+       right edge. 100% (the .page-fixed content width) caps exactly that
+       inflation; whenever the cap fits, rendering is unchanged. */
+    max-width: min(800px, 100%);
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  /* Frame ⑬: single column = status hero card + action row + speed island +
+     models + log console stacked vertically (the island and the hero metric
+     arrive via the tier-gated DOM; the hero chart block is unmounted here). */
+
+  /* Draft ⑬ stack order: hero → speed island → action row → models → log.
+     The two wrapper columns dissolve into one flat flex stack (phase-2c
+     display:contents precedent) so the island can interleave between the
+     hero and the action row. The island mounts only while running, so the
+     stopped stack is hero → action row → models/guidance → log — the start
+     CTA stays adjacent to the offline hero (track B ⑭'s left-column pattern). */
+  .api-main-grid {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .api-left,
+  .api-right {
+    display: contents;
+  }
+
+  .api-hero { order: 1; }
+  .speed-island { order: 2; } /* mounts only while running (draft ⑬) */
+  .action-row { order: 3; }
+  .models-island { order: 4; }
+  .log-panel { order: 5; }
+
+  /* Frame ⑭ offline hero: static gray dot + static ring + secondary ink —
+     the same offline vocabulary the phone tier already uses */
+  .pulse-dot {
+    background: #c3c7d8;
+  }
+
+  .pulse-dot:not(.on)::before {
+    content: "";
+    position: absolute;
+    inset: -5px;
+    border-radius: 50%;
+    border: 2px solid var(--text-muted);
+    opacity: 0.3;
+  }
+
+  .hero-status-text.off {
+    color: var(--text-secondary);
+  }
+
+  /* Stopped ghost at 45% ink instead of hidden (frame ⑭ .ghosted) — applies
+     to the hero-embedded chart on the tiers that still mount it */
+  .tps-ghost {
+    visibility: visible;
+    opacity: 0.45;
+  }
+
+  .speed-placeholder {
+    display: none;
+  }
+
+  /* Frame ⑭ empty models: the emptycard replaces the desktop inline hint
+     (phone-tier pattern carried up; the island card is the surface) */
+  .empty-hint {
+    display: none;
+  }
+
+  .api-empty-card {
+    display: block;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 14px 0 6px;
+  }
+
+  /* Log console (frame ⑬ .logbox): ONE dark card in both themes with the
+     header row inside, level colors, and the compact/expanded footer toggle
+     (phone treatment carried up) */
+  .log-panel {
+    flex: none;
+    height: clamp(200px, 36vh, 320px);
+    min-height: 0;
+    padding: 14px;
+    background: #141626;
+    border: none;
+    border-radius: var(--r-md);
+  }
+
+  .log-panel.log-expanded {
+    height: clamp(360px, 72vh, 640px);
+  }
+
+  .panel-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: #6b7392;
+  }
+
+  .log-clear-btn {
+    color: #6b7392;
+    min-height: 44px;
+    padding: 0 8px;
+  }
+
+  .console-log {
+    background: transparent;
+    border-radius: 0;
+    padding: 0;
+    font-size: 11px;
+    line-height: 1.9;
+    color: #9aa3c0;
+  }
+
+  /* Level colors from the draft logbox (.ok / .wn / .er + default ink) */
+  .console-line.lv-ok { color: #6ee7b7; }
+  .console-line.lv-warn { color: #fcd34d; }
+  .console-line.lv-error { color: #fca5a5; }
+  .console-line.lv-info { color: #9aa3c0; }
+
+  .log-more-btn {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0;
+    background: none;
+    border: none;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: #4c5470;
+    cursor: pointer;
+  }
+
+  .console-empty {
+    background: transparent;
+    color: #6b7392;
+  }
+
+  /* Frame ⑮: the server-params panel becomes a CENTERED MODAL CARD (560px)
+     floating on the dim backdrop — not the phone's full-width bottom sheet,
+     not the desktop anchored popover. Same fields, same debounced save, same
+     running-state lock; the running dashboard stays recognizable behind the
+     dim (rgba .42, same as the phone scrim / draft .dim). */
+  .cfg-dim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 39;
+    background: rgba(16, 18, 33, 0.42);
+  }
+
+  .cfg-popover {
+    position: fixed;
+    left: 50%;
+    right: auto;
+    top: 90px;
+    bottom: auto;
+    transform: translateX(-50%);
+    width: min(560px, calc(100vw - 48px));
+    max-height: calc(100vh - 120px);
+    max-height: calc(100dvh - 120px);
+    overflow-y: auto;
+    z-index: 40;
+    border: none;
+    border-radius: 26px;
+    box-shadow: 0 24px 60px rgba(20, 22, 45, 0.35);
+    padding: 18px 22px 16px;
+    animation: cfg-modal-pop 0.2s ease;
+  }
+
+  /* The draft's centered card has no grab handle (that is the sheet affordance) */
+  .cfg-grab {
+    display: none;
+  }
+
+  .cfg-title-desktop {
+    display: none;
+  }
+
+  .cfg-title-phone {
+    display: block;
+    font-size: 17px;
+    font-weight: 800;
+    margin-bottom: 4px;
+  }
+
+  /* Amber lock notice (frame ⑮): replaces the tiny desktop hint */
+  .cfg-locked-sheet {
+    display: block;
+    font-size: 11.5px;
+    color: var(--warning);
+    margin: 2px 0 8px;
+  }
+
+  .cfg-locked-hint {
+    display: none;
+  }
+
+  /* Param rows: label + muted sub on the left, compact surface-2 field on the
+     right; locked rows dim (frame ⑮ .param / .finput) */
+  .cfg-item {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 0;
+    padding: 9px 0;
+  }
+
+  .cfg-item + .cfg-item {
+    border-top: 1px solid var(--border);
+  }
+
+  .cfg-item.locked {
+    opacity: 0.55;
+  }
+
+  .cfg-item label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .cfg-item-sub {
+    display: block;
+    font-size: 11.5px;
+    color: var(--text-muted);
+    font-weight: 500;
+    margin-top: 2px;
+  }
+
+  .cfg-input {
+    width: 96px;
+    padding: 7px 11px;
+    background: var(--surface-2);
+    border: none;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 700;
+    text-align: right;
+  }
+
+  /* Primary "done" closes the modal (frame ⑮ gradient button, radius 16) */
+  .cfg-done {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 44px;
+    margin-top: 10px;
+    padding: 13px 0;
+    border: none;
+    border-radius: 16px;
+    background: var(--grad);
+    color: #fff;
+    font-size: 14px;
+    font-weight: 800;
+    font-family: inherit;
+    cursor: pointer;
+  }
+}
+
+@keyframes cfg-modal-pop {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
+  }
 }
 
 /* ─── Phone (<=767px): design draft frames ⑬⑭⑮ — hero with mono speed digits over a
@@ -1588,5 +2010,253 @@ html[data-theme='dark'] .speed-baseline {
     font-family: inherit;
     cursor: pointer;
   }
+}
+
+/* ─── Android tablet-landscape (tablet design draft track B frames ⑬⑭⑮).
+   Hooked on [data-viewport], never a media query: desktop OS windows in the
+   1100–1360px band must stay byte-identical (the attribute is only ever set
+   for Android). Frame ⑬: status hero + actions LEFT, speed island + models +
+   log console RIGHT — instruments and troubleshooting in parallel so the log
+   never scrolls out of view. Frame ⑭: offline hero LEFT, empty-model guidance
+   RIGHT. Frame ⑮: the same centered 560px settings modal as portrait.
+   These rules are the attribute-prefixed mirror of the Track A block above. ─── */
+
+/* Undo the >=1280px desktop two-column .page-scroll grid (it matches at
+   1280–1360): the band scrolls as a column again, keep the dock reserve. */
+[data-viewport='tablet-landscape'] .page-scroll {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  grid-template-columns: none;
+}
+
+/* Frame ⑬ split lives on the inner grid: LEFT = .api-left (hero + actions),
+   RIGHT = .api-right (speed island + models + log). */
+[data-viewport='tablet-landscape'] .api-main-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+[data-viewport='tablet-landscape'] .api-left,
+[data-viewport='tablet-landscape'] .api-right {
+  min-width: 0;
+}
+
+/* Frame ⑭ offline hero (same offline vocabulary as the phone tier) */
+[data-viewport='tablet-landscape'] .pulse-dot {
+  background: #c3c7d8;
+}
+
+[data-viewport='tablet-landscape'] .pulse-dot:not(.on)::before {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+  border: 2px solid var(--text-muted);
+  opacity: 0.3;
+}
+
+[data-viewport='tablet-landscape'] .hero-status-text.off {
+  color: var(--text-secondary);
+}
+
+/* Stopped ghost at 45% ink for the tiers that still mount a ghosted block */
+[data-viewport='tablet-landscape'] .tps-ghost {
+  visibility: visible;
+  opacity: 0.45;
+}
+
+[data-viewport='tablet-landscape'] .speed-placeholder {
+  display: none;
+}
+
+/* Frame ⑭ empty models: emptycard replaces the inline hint */
+[data-viewport='tablet-landscape'] .empty-hint {
+  display: none;
+}
+
+[data-viewport='tablet-landscape'] .api-empty-card {
+  display: block;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 14px 0 6px;
+}
+
+/* Log console (frame ⑬ .logbox): dark card, header inside, level colors,
+   compact/expanded footer toggle */
+[data-viewport='tablet-landscape'] .log-panel {
+  flex: none;
+  height: clamp(200px, 36vh, 320px);
+  min-height: 0;
+  padding: 14px;
+  background: #141626;
+  border: none;
+  border-radius: var(--r-md);
+}
+
+[data-viewport='tablet-landscape'] .log-panel.log-expanded {
+  height: clamp(360px, 72vh, 640px);
+}
+
+[data-viewport='tablet-landscape'] .panel-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #6b7392;
+}
+
+[data-viewport='tablet-landscape'] .log-clear-btn {
+  color: #6b7392;
+  min-height: 44px;
+  padding: 0 8px;
+}
+
+[data-viewport='tablet-landscape'] .console-log {
+  background: transparent;
+  border-radius: 0;
+  padding: 0;
+  font-size: 11px;
+  line-height: 1.9;
+  color: #9aa3c0;
+}
+
+[data-viewport='tablet-landscape'] .console-line.lv-ok { color: #6ee7b7; }
+[data-viewport='tablet-landscape'] .console-line.lv-warn { color: #fcd34d; }
+[data-viewport='tablet-landscape'] .console-line.lv-error { color: #fca5a5; }
+[data-viewport='tablet-landscape'] .console-line.lv-info { color: #9aa3c0; }
+
+[data-viewport='tablet-landscape'] .log-more-btn {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0;
+  background: none;
+  border: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: #4c5470;
+  cursor: pointer;
+}
+
+[data-viewport='tablet-landscape'] .console-empty {
+  background: transparent;
+  color: #6b7392;
+}
+
+/* Frame ⑮: centered 560px settings modal over the dimmed (still recognizable)
+   running dashboard — same card as the portrait Track A band */
+[data-viewport='tablet-landscape'] .cfg-dim {
+  display: block;
+  position: fixed;
+  inset: 0;
+  z-index: 39;
+  background: rgba(16, 18, 33, 0.42);
+}
+
+[data-viewport='tablet-landscape'] .cfg-popover {
+  position: fixed;
+  left: 50%;
+  right: auto;
+  top: 90px;
+  bottom: auto;
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 48px));
+  max-height: calc(100vh - 120px);
+  max-height: calc(100dvh - 120px);
+  overflow-y: auto;
+  z-index: 40;
+  border: none;
+  border-radius: 26px;
+  box-shadow: 0 24px 60px rgba(20, 22, 45, 0.35);
+  padding: 18px 22px 16px;
+  animation: cfg-modal-pop 0.2s ease;
+}
+
+[data-viewport='tablet-landscape'] .cfg-grab {
+  display: none;
+}
+
+[data-viewport='tablet-landscape'] .cfg-title-desktop {
+  display: none;
+}
+
+[data-viewport='tablet-landscape'] .cfg-title-phone {
+  display: block;
+  font-size: 17px;
+  font-weight: 800;
+  margin-bottom: 4px;
+}
+
+[data-viewport='tablet-landscape'] .cfg-locked-sheet {
+  display: block;
+  font-size: 11.5px;
+  color: var(--warning);
+  margin: 2px 0 8px;
+}
+
+[data-viewport='tablet-landscape'] .cfg-locked-hint {
+  display: none;
+}
+
+[data-viewport='tablet-landscape'] .cfg-item {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 0;
+  padding: 9px 0;
+}
+
+[data-viewport='tablet-landscape'] .cfg-item + .cfg-item {
+  border-top: 1px solid var(--border);
+}
+
+[data-viewport='tablet-landscape'] .cfg-item.locked {
+  opacity: 0.55;
+}
+
+[data-viewport='tablet-landscape'] .cfg-item label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+[data-viewport='tablet-landscape'] .cfg-item-sub {
+  display: block;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  font-weight: 500;
+  margin-top: 2px;
+}
+
+[data-viewport='tablet-landscape'] .cfg-input {
+  width: 96px;
+  padding: 7px 11px;
+  background: var(--surface-2);
+  border: none;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: right;
+}
+
+[data-viewport='tablet-landscape'] .cfg-done {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 10px;
+  padding: 13px 0;
+  border: none;
+  border-radius: 16px;
+  background: var(--grad);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 800;
+  font-family: inherit;
+  cursor: pointer;
 }
 </style>

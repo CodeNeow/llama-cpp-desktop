@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { appendHistory, chartPoints, formatPromptTps, formatUptime } from '../lib/monitor'
+import { apiSpeedPlacement, appendHistory, chartPoints, formatPromptTps, formatUptime, showDirectModeTag } from '../lib/monitor'
 
 describe('appendHistory', () => {
   it('append new value and return new array (does not modify input)', () => {
@@ -78,6 +78,34 @@ describe('formatPromptTps', () => {
 
   it('tiny positive shows 0.0 at 1 decimal (distinct from no-measurement "—")', () => {
     expect(formatPromptTps(0.004)).toBe('0.0')
+  })
+})
+
+describe('apiSpeedPlacement', () => {
+  it('phone and desktop tiers keep the chart embedded in the hero card', () => {
+    expect(apiSpeedPlacement(false)).toBe('hero')
+  })
+
+  it('tablet tiers (portrait band and Android tablet-landscape alike) move the chart to its own island', () => {
+    expect(apiSpeedPlacement(true)).toBe('island')
+  })
+})
+
+describe('showDirectModeTag', () => {
+  it('shows only on Android tablet tiers while the server is running', () => {
+    expect(showDirectModeTag(true, true, true)).toBe(true)
+  })
+
+  it('never shows on desktop OSes (router mode, not direct mode)', () => {
+    expect(showDirectModeTag(false, true, true)).toBe(false)
+  })
+
+  it('never shows on the phone tier (phone page rendering is unchanged)', () => {
+    expect(showDirectModeTag(true, false, true)).toBe(false)
+  })
+
+  it('drops the annotation while the server is stopped (draft frame ⑭)', () => {
+    expect(showDirectModeTag(true, true, false)).toBe(false)
   })
 })
 
