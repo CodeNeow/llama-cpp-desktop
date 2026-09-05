@@ -68,9 +68,10 @@
           </div>
           <div v-if="notes" class="release-notes">
             <h3 class="notes-title">{{ t('updateModal.notesTitle') }}</h3>
-            <!-- Phone tier renders the parsed bullet digest as a list
-                 (frame ⑳ .relnotes); desktop keeps the raw preformatted body -->
-            <ul v-if="isMobileTier && noteBullets.length" class="notes-list">
+            <!-- Compact tiers render the parsed bullet digest as a list
+                 (frame ⑳ .relnotes, phones and both tablet tracks); desktop
+                 keeps the raw preformatted body -->
+            <ul v-if="compactTier && noteBullets.length" class="notes-list">
               <li v-for="(bullet, i) in noteBullets" :key="i">{{ bullet }}</li>
             </ul>
             <pre v-else class="notes-body">{{ notes }}</pre>
@@ -105,9 +106,10 @@
 
 <script lang="ts">
 /**
- * Release-notes display helpers (phone frame ⑳ .relnotes): the bilingual
- * markdown body is reduced to plain bullet strings for a <ul> list. Pure and
- * exported from the plain script block so vitest can exercise them directly.
+ * Release-notes display helpers (compact tiers' frame ⑳ .relnotes digest):
+ * the bilingual markdown body is reduced to plain bullet strings for a <ul>
+ * list. Pure and exported from the plain script block so vitest can exercise
+ * them directly.
  */
 
 /** Strip inline markdown emphasis/code/link syntax, keeping the label text. */
@@ -157,10 +159,17 @@ const downloading = computed(() => download.value?.status === 'downloading')
 const installing = computed(() => updateState.installing)
 const installError = computed(() => updateState.installError)
 
-// Phone-tier gate (viewport width <= 767): bare-value chips, <ul> release
-// notes and the flexed footer; desktop keeps the original rendering.
+// Phone-tier gate (viewport width <= 767): bare-value chips. Desktop keeps the
+// prefixed chips.
 const platform = usePlatform()
 const isMobileTier = computed(() => platform.value.isMobile)
+
+// Compact-tier gate (phone + whole tablet tier, frame ⑳): the draft gives
+// tablets the same modal content model — the release notes render as the
+// parsed bullet digest instead of the raw preformatted body. Chip copy stays
+// prefixed on tablets (draft A20 chips carry labels; the phone draft's are
+// bare), so only the notes gate widens.
+const compactTier = computed(() => platform.value.isMobile || platform.value.isTablet)
 
 /** Parsed bullet list for the phone release-notes card (empty when none). */
 const noteBullets = computed(() => parseReleaseBullets(notes.value))
@@ -661,5 +670,269 @@ function close() {
     flex-basis: 100%;
     margin: 0 0 8px;
   }
+}
+
+/* ─── Tablet tracks (design draft frame ⑳: the centered 560px modal in BOTH
+       orientations). Track A hooks the 768..1099 band; Track B hooks ONLY
+       [data-viewport='tablet-landscape'] (Android-gated by phase 0, so a
+       desktop OS window of the same size is never affected). The overlay keeps
+       its flex centering — the draft's 居中弹窗 — and the content model matches
+       the draft: soft pill chips, bullet release digest and the flexed 44px
+       touch footer. Chip copy stays prefixed on tablets (draft A20 chips carry
+       labels, unlike the phone draft's bare values), so the markup gates don't
+       move — only styling changes here. Phone (<=767) and desktop (>1099)
+       renderings are untouched. ─── */
+
+@media (min-width: 768px) and (max-width: 1099px) {
+  .modal {
+    width: min(560px, calc(100vw - 48px));
+    border: none;
+    border-radius: 24px;
+    box-shadow: 0 24px 60px rgba(20, 22, 45, 0.35);
+  }
+
+  /* The chip row carries the version; the header text node hides like the
+     phone tier, pinning the title left and the close button right */
+  .modal-header {
+    padding: 20px 22px 10px;
+  }
+
+  .modal-header h2 {
+    font-size: 17px;
+    font-weight: 800;
+    flex: 1;
+  }
+
+  .modal-version {
+    display: none;
+  }
+
+  /* Touch-first close target (draft ㉒: 44px minimum touch points) */
+  .modal-close {
+    width: 44px;
+    height: 44px;
+    margin-right: -8px;
+    font-size: 17px;
+  }
+
+  .modal-body {
+    padding: 8px 22px 16px;
+  }
+
+  /* Soft pill chips (frame ⑳ .mchips) with the prefixed copy */
+  .meta-chip {
+    padding: 6px 12px;
+    border: none;
+    background: var(--grad-soft);
+    color: #6d28d9;
+    font-size: 11.5px;
+    font-weight: 700;
+  }
+
+  html[data-theme='dark'] .meta-chip {
+    color: #c4b5fd;
+  }
+
+  .meta-chip.plain {
+    background: var(--bg-card);
+    color: var(--text-secondary);
+  }
+
+  html[data-theme='dark'] .meta-chip.plain {
+    background: var(--overlay-8);
+  }
+
+  .release-notes {
+    border: none;
+    border-radius: 14px;
+    padding: 12px 14px;
+    background: var(--bg-card);
+  }
+
+  html[data-theme='dark'] .release-notes {
+    background: #1e2233;
+  }
+
+  .notes-title {
+    font-size: 11px;
+  }
+
+  /* Bullet digest list (frame ⑳ .relnotes), capped scroll height */
+  .notes-list {
+    margin: 0;
+    padding-left: 18px;
+    font-size: 12.5px;
+    line-height: 1.7;
+    color: var(--text-secondary);
+    max-height: 150px;
+    overflow-y: auto;
+  }
+
+  .notes-list li {
+    margin-bottom: 4px;
+    word-break: break-word;
+  }
+
+  .notes-body {
+    max-height: 150px;
+  }
+
+  .modal-footer {
+    padding: 12px 22px 20px;
+  }
+
+  /* Flexed two-button footer (frame ⑳ .mbtns): neutral filled cancel
+     (flex 1) + gradient primary (flex 1.4), 44px touch bands */
+  .btn-cancel {
+    flex: 1;
+    padding: 13px 0;
+    background: var(--bg-primary);
+    border: none;
+    border-radius: 14px;
+    color: var(--text-secondary);
+    font-size: 13.5px;
+    font-weight: 800;
+  }
+
+  .btn-save {
+    flex: 1.4;
+    padding: 13px 0;
+    background: var(--grad);
+    border: none;
+    border-radius: 14px;
+    color: #fff;
+    font-size: 13.5px;
+    font-weight: 800;
+    box-shadow: none;
+  }
+
+  .footer-msg {
+    flex-basis: 100%;
+    margin: 0 0 8px;
+  }
+}
+
+/* Track B mirror (Android tablet-landscape only — the attribute is set for no
+   other OS/tier combination). Identical rules to the Track A block above; keep
+   the two blocks in sync when editing. */
+
+[data-viewport='tablet-landscape'] .modal {
+  width: min(560px, calc(100vw - 48px));
+  border: none;
+  border-radius: 24px;
+  box-shadow: 0 24px 60px rgba(20, 22, 45, 0.35);
+}
+
+[data-viewport='tablet-landscape'] .modal-header {
+  padding: 20px 22px 10px;
+}
+
+[data-viewport='tablet-landscape'] .modal-header h2 {
+  font-size: 17px;
+  font-weight: 800;
+  flex: 1;
+}
+
+[data-viewport='tablet-landscape'] .modal-version {
+  display: none;
+}
+
+[data-viewport='tablet-landscape'] .modal-close {
+  width: 44px;
+  height: 44px;
+  margin-right: -8px;
+  font-size: 17px;
+}
+
+[data-viewport='tablet-landscape'] .modal-body {
+  padding: 8px 22px 16px;
+}
+
+[data-viewport='tablet-landscape'] .meta-chip {
+  padding: 6px 12px;
+  border: none;
+  background: var(--grad-soft);
+  color: #6d28d9;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+html[data-theme='dark'][data-viewport='tablet-landscape'] .meta-chip {
+  color: #c4b5fd;
+}
+
+[data-viewport='tablet-landscape'] .meta-chip.plain {
+  background: var(--bg-card);
+  color: var(--text-secondary);
+}
+
+html[data-theme='dark'][data-viewport='tablet-landscape'] .meta-chip.plain {
+  background: var(--overlay-8);
+}
+
+[data-viewport='tablet-landscape'] .release-notes {
+  border: none;
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: var(--bg-card);
+}
+
+html[data-theme='dark'][data-viewport='tablet-landscape'] .release-notes {
+  background: #1e2233;
+}
+
+[data-viewport='tablet-landscape'] .notes-title {
+  font-size: 11px;
+}
+
+[data-viewport='tablet-landscape'] .notes-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+[data-viewport='tablet-landscape'] .notes-list li {
+  margin-bottom: 4px;
+  word-break: break-word;
+}
+
+[data-viewport='tablet-landscape'] .notes-body {
+  max-height: 150px;
+}
+
+[data-viewport='tablet-landscape'] .modal-footer {
+  padding: 12px 22px 20px;
+}
+
+[data-viewport='tablet-landscape'] .btn-cancel {
+  flex: 1;
+  padding: 13px 0;
+  background: var(--bg-primary);
+  border: none;
+  border-radius: 14px;
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  font-weight: 800;
+}
+
+[data-viewport='tablet-landscape'] .btn-save {
+  flex: 1.4;
+  padding: 13px 0;
+  background: var(--grad);
+  border: none;
+  border-radius: 14px;
+  color: #fff;
+  font-size: 13.5px;
+  font-weight: 800;
+  box-shadow: none;
+}
+
+[data-viewport='tablet-landscape'] .footer-msg {
+  flex-basis: 100%;
+  margin: 0 0 8px;
 }
 </style>

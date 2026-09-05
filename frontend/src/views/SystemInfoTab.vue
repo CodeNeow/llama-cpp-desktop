@@ -2227,7 +2227,9 @@ html[data-os='ios'] .unload-btn:active:not(:disabled) {
   display: none;
 }
 
-html[data-theme='dark'] [data-viewport='tablet-landscape'] .step-action {
+/* Compound selector: data-theme AND data-viewport both live on <html>, so a
+   descendant combinator between them can never match (dark sweep fix) */
+html[data-theme='dark'][data-viewport='tablet-landscape'] .step-action {
   color: #a78bfa;
 }
 

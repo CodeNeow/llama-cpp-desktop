@@ -96,3 +96,18 @@ export function residentReleaseMode(isAndroid: boolean): ResidentReleaseMode {
 export function homeResidentShowsUnload(isAndroid: boolean): boolean {
   return !isAndroid
 }
+
+/**
+ * dockShowsCompactSkin: whether the TaskDock renders the design-draft capsule
+ * skin (frame ⑲: dark edge-hugging capsule + expanded glass task card) instead
+ * of the desktop segments pill. True on the phone tier AND on the whole tablet
+ * tier — the draft gives tablets the same capsule interaction in BOTH
+ * orientations ("双方向同一交互"), and the phase 0 classifier folds the Android
+ * tablet-landscape band into isTablet, so one flag covers the portrait band
+ * (768..1099) and the landscape band (Android, 1100..1360) alike. Desktop OS
+ * windows above the portrait band are never tablet, so they keep the desktop
+ * pill unchanged. Pure: the caller reads the platform state.
+ */
+export function dockShowsCompactSkin(isMobile: boolean, isTablet: boolean): boolean {
+  return isMobile || isTablet
+}

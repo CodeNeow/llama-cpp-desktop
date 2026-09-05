@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { activeLlamaCppDownload, activeModelTasks, activeUpdateDownload, homeResidentShowsUnload, residentReleaseMode, shouldShowDock } from '../lib/dock'
+import { activeLlamaCppDownload, activeModelTasks, activeUpdateDownload, dockShowsCompactSkin, homeResidentShowsUnload, residentReleaseMode, shouldShowDock } from '../lib/dock'
 import { LLAMA_CPP_DOWNLOAD_STATUSES, MODEL_TASK_STATUSES, UPDATE_DOWNLOAD_STATUSES } from '../lib/downloadStatus'
 import type { LlamaCppDownloadStatus, ModelTaskStatus, UpdateDownloadStatus } from '../lib/downloadStatus'
 
@@ -133,5 +133,23 @@ describe('homeResidentShowsUnload', () => {
 
   it('desktop platforms keep the unload action', () => {
     expect(homeResidentShowsUnload(false)).toBe(true)
+  })
+})
+
+describe('dockShowsCompactSkin', () => {
+  // Cases keyed to the phase 0 tier classifier (lib/platform.ts): the tablet
+  // tier folds BOTH tablet bands (portrait 768..1099 and the Android-gated
+  // tablet-landscape 1100..1360) into isTablet, so one (isMobile, isTablet)
+  // pair covers each draft frame.
+  it('phone tier renders the capsule skin (frame ⑲)', () => {
+    expect(dockShowsCompactSkin(true, false)).toBe(true)
+  })
+
+  it('tablet tier renders the capsule skin in both orientations (frames A19/B19)', () => {
+    expect(dockShowsCompactSkin(false, true)).toBe(true)
+  })
+
+  it('desktop tier keeps the segments pill unchanged', () => {
+    expect(dockShowsCompactSkin(false, false)).toBe(false)
   })
 })

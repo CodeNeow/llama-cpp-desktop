@@ -1,12 +1,14 @@
 <template>
-  <!-- Phone expanded backdrop (frame ⑲): full-screen dim under the open card,
-       tap to close. Deliberately a SIBLING of the dock root, not a child —
-       the root's inline translate() would become the containing block of a
-       fixed-position descendant and shrink the "full-screen" layer to the
+  <!-- Compact-tier expanded backdrop (frame ⑲): full-screen dim under the
+       open card, tap to close. Deliberately a SIBLING of the dock root, not a
+       child — the root's inline translate() would become the containing block
+       of a fixed-position descendant and shrink the "full-screen" layer to the
        pill's box. Desktop keeps the plain outside-click dismissal, so this
-       renders only on the phone tier. z-order: below the dock root (46) but
-       above the bottom nav (40) and the status-bar scrim (45). -->
-  <div v-if="visible && expanded && isMobileTier" class="dock-dim" @click="expanded = false"></div>
+       renders only on the compact tiers (phone + tablet). z-order: below the
+       desktop-z dock root but above the status-bar scrim (45); on the phone
+       tier the root drops under the nav (38) and jumps above the dim when
+       expanded (46, see the phone media query). -->
+  <div v-if="visible && expanded && compactSkin" class="dock-dim" @click="expanded = false"></div>
   <!-- The root keeps its fixed right/bottom CSS anchor at all times; the
        capsule position rides a translate() (see the drag section below), so
        the ResizeObserver-measured box — and therefore --dock-reserve and
@@ -62,10 +64,10 @@
             </div>
           </div>
 
-          <!-- Llama.cpp download. The phone tier (frame ⑲ mockup) keeps a
+          <!-- Llama.cpp download. The compact tiers (frame ⑲ mockup) keep a
                finished runtime row visible ("✓ 已完成") alongside active ones;
                desktop hides done rows (downloads page owns the history there). -->
-          <div v-if="llamaActive || (isMobileTier && llamaStatus.status === 'done')" class="dock-task">
+          <div v-if="llamaActive || (compactSkin && llamaStatus.status === 'done')" class="dock-task">
             <div class="dock-task-header">
               <span class="dock-row-badge badge-runtime">{{ t('dock.badge.runtime') }}</span>
               <span class="dock-task-name">llama.cpp</span>
@@ -84,13 +86,13 @@
           </div>
 
           <!-- Model download tasks. The ops cluster (pause/resume/cancel,
-               frame ⑲ .op) renders on the phone tier only; desktop keeps the
+               frame ⑲ .op) renders on the compact tiers only; desktop keeps the
                downloads page as the single place with task controls. -->
           <div v-for="task in activeTasks" :key="task.id" class="dock-task">
             <div class="dock-task-header">
               <span class="dock-row-badge badge-model">{{ t('dock.badge.model') }}</span>
               <span class="dock-task-name" :title="task.fileName">{{ truncatedName(task.fileName) }}</span>
-              <span class="dock-task-status" :class="'status-' + task.status">{{ phoneTaskStatus(task) }}</span>
+              <span class="dock-task-status" :class="'status-' + task.status">{{ compactTaskStatus(task) }}</span>
               <span class="dock-task-ops">
                 <button
                   v-if="task.status === 'downloading'"
@@ -143,13 +145,15 @@
             <div class="dock-model-row">
               <span class="dock-model-badge" :class="'type-' + model.type">{{ typeLabel(model.type) }}</span>
               <span class="dock-model-id" :title="model.id">{{ truncatedName(model.id) }}</span>
-              <span class="dock-model-status">{{ phoneModelStatus(model) }}</span>
-              <!-- Unload on every platform: desktop asks the router to evict
-                   the model, direct-mode Android stops the service instead
-                   (the single resident leaves memory with the process; see
-                   handleUnload). The pending visuals and poll reconciliation
-                   are shared. -->
+              <span class="dock-model-status">{{ compactModelStatus(model) }}</span>
+              <!-- Unload on desktop platforms: the router evicts the model.
+                   Android renders the row STATUS ONLY (frame ⑲ platform crop,
+                   same homeResidentShowsUnload gate as the Home card) — direct
+                   mode swaps models automatically on the next chat, so the
+                   stop-server "unload" is not offered from the dock. The
+                   pending visuals and poll reconciliation stay shared. -->
               <button
+                v-if="showResidentUnload"
                 class="dock-unload-btn"
                 :disabled="unloadingId === model.id"
                 @click="handleUnload(model.id)"
@@ -181,8 +185,9 @@
       :aria-label="t('dock.title')"
       :title="t('dock.title')"
     >
-      <!-- Desktop segments: icon + bold count per metric -->
-      <template v-if="!isMobileTier">
+      <!-- Desktop segments: icon + bold count per metric (desktop tier only —
+           the compact tiers render the capsule below) -->
+      <template v-if="!compactSkin">
         <span v-if="hasDownloads" class="pill-seg">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           <span>{{ activeDownloadCount }}</span>
@@ -193,16 +198,18 @@
         </span>
         <span v-if="pillAlert" class="pill-alert"></span>
       </template>
-      <!-- Phone capsule (frame ⑲ .capsule): status dot + hairline separator +
+      <!-- Compact capsule (frame ⑲ .capsule): status dot + hairline separator +
            mono counts ("N│M"), switching to "Downloading {pct}%" while any
-           download actively progresses (amber dot); errors flip the dot red. -->
+           download actively progresses (amber dot); errors flip the dot red.
+           Rendered on every compact tier (phone + tablet, draft ⑲ gives both
+           tracks the same capsule). -->
       <template v-else>
         <span
           class="pill-dot"
           :class="{ 'pill-dot--warn': pillWarnPercent !== null, 'pill-dot--error': pillAlert }"
         ></span>
         <span class="pill-sep" aria-hidden="true"></span>
-        <span class="pill-count">{{ pillPhoneText }}</span>
+        <span class="pill-count">{{ pillCapsuleText }}</span>
       </template>
     </button>
   </div>
@@ -225,7 +232,15 @@ import {
 } from '../wails'
 import { formatSpeed } from '../lib/format'
 import { matchLoadedModelSize } from '../lib/modelFiles'
-import { activeLlamaCppDownload, activeModelTasks, activeUpdateDownload, residentReleaseMode, shouldShowDock } from '../lib/dock'
+import {
+  activeLlamaCppDownload,
+  activeModelTasks,
+  activeUpdateDownload,
+  dockShowsCompactSkin,
+  homeResidentShowsUnload,
+  residentReleaseMode,
+  shouldShowDock
+} from '../lib/dock'
 import { dockNudgeCounter, nudgeDock } from '../lib/dockNudge'
 import { dockLane, dockSide, dockWidth, useDockReserve } from '../lib/dockSpace'
 import {
@@ -283,7 +298,7 @@ const serverRunning = ref(false)
 // Loaded models from router
 const loadedModels = ref<LoadedModel[]>([])
 
-// Phone tier (frame ⑳): human size per loaded router id, matched from the
+// Compact tiers (frame ⑳): human size per loaded router id, matched from the
 // local model scan (the router payload carries no size). The scan runs once
 // per mount — sizes never change while running — and the map re-derives from
 // the live loaded list, so rows that appear later still get their size.
@@ -291,7 +306,7 @@ const localModelFacts = ref<{ name: string; sizeHuman: string }[]>([])
 
 const loadedModelSizes = computed<Record<string, string>>(() => {
   const sizes: Record<string, string> = {}
-  if (!isMobileTier.value) return sizes
+  if (!compactSkin.value) return sizes
   for (const m of loadedModels.value) {
     const size = matchLoadedModelSize(m.id, localModelFacts.value)
     if (size) sizes[m.id] = size
@@ -307,9 +322,20 @@ const unloadErrors = reactive<Record<string, string>>({})
 
 const platform = usePlatform()
 
-// Phone-tier gate (viewport width <= 767): swaps the pill content model and
-// adds the expanded-card backdrop; desktop rendering is untouched.
-const isMobileTier = computed(() => platform.value.isMobile)
+// Compact-skin gate (lib/dock dockShowsCompactSkin): the design-draft capsule
+// rendering (dark edge-hugging capsule + expanded glass card, frame ⑲) applies
+// on the phone tier AND on the whole tablet tier — the draft gives tablets the
+// same capsule interaction in both orientations (portrait 768..1099 band plus
+// the Android tablet-landscape band folded into isTablet by phase 0). Desktop
+// keeps the original segments pill.
+const compactSkin = computed(() =>
+  dockShowsCompactSkin(platform.value.isMobile, platform.value.isTablet)
+)
+
+// Android platform crop (frame ⑲, same gate as the Home resident card): the
+// resident-model row is STATUS ONLY — direct mode swaps models automatically
+// on the next chat, so the dock's stop-server "unload" has nothing to do.
+const showResidentUnload = computed(() => homeResidentShowsUnload(platform.value.isAndroid))
 
 // Route context: TaskDock renders inside the app shell where the router is
 // provided. Router-less mounts (unit tests) evaluate useRoute() to undefined
@@ -349,7 +375,7 @@ const pillAlert = computed(
   () => llamaStatus.value.status === 'error' || updateDownload.value?.status === 'error'
 )
 
-// Phone capsule warn state (frame ⑲ .capsule.warn): the progress percent of
+// Capsule warn state (frame ⑲ .capsule.warn): the progress percent of
 // the first actively-downloading item (app update > llama.cpp > model tasks),
 // or null when nothing is actively transferring (paused/queued don't count).
 const pillWarnPercent = computed<number | null>(() => {
@@ -359,10 +385,10 @@ const pillWarnPercent = computed<number | null>(() => {
   return downloading ? downloading.progress : null
 })
 
-// Phone capsule text: "Downloading {pct}%" while a download progresses,
-// otherwise the segment counts joined with the mockup's hairline glyph
-// ("N│M" = downloads│in-memory; absent segments are dropped).
-const pillPhoneText = computed(() => {
+// Capsule text (compact tiers, frame ⑲ .capsule): "Downloading {pct}%" while a
+// download progresses, otherwise the segment counts joined with the mockup's
+// hairline glyph ("N│M" = downloads│in-memory; absent segments are dropped).
+const pillCapsuleText = computed(() => {
   if (pillWarnPercent.value !== null) return t('dock.downloadingPct', { pct: pillWarnPercent.value })
   const parts: string[] = []
   if (hasDownloads.value) parts.push(String(activeDownloadCount.value))
@@ -431,6 +457,11 @@ function measureChromePx(): { top: number; bottom: number } {
 function layoutMetrics(): DockLayoutMetrics {
   const chrome = measureChromePx()
   const isPhone = platform.value.isMobile
+  // The capsule hugs the SCREEN edge flush on every compact tier (phone AND
+  // tablet — the draft's edge-flattened capsule, frame ⑲); the Track A/B CSS
+  // blocks mirror this with a `right: 0` anchor override, so the math and the
+  // CSS anchor can never drift. Desktop keeps the 16px inset.
+  const compact = compactSkin.value
   // Phone + chat: the composer spans the full width (no lane is reserved
   // there anymore), so its measured top edge becomes the capsule's floor —
   // the pill must never rest on the input row / send button. The measured
@@ -444,6 +475,8 @@ function layoutMetrics(): DockLayoutMetrics {
     pillW: dockEl.value?.offsetWidth || 0,
     pillH: dockEl.value?.offsetHeight || 0,
     minTop: chrome.top + DOCK_TOP_GAP,
+    // Tablets have no mobile nav band (display:none -> measured 0), so the
+    // phone-keyed branches below resolve to the desktop values there.
     clampBottomGap: Math.max(
       isPhone ? chrome.bottom + DOCK_BOTTOM_GAP_MOBILE : DOCK_BOTTOM_GAP_DESKTOP,
       composerGap > 0 ? composerGap + DOCK_BOTTOM_GAP_MOBILE : 0
@@ -451,7 +484,7 @@ function layoutMetrics(): DockLayoutMetrics {
     anchorBottomOffset: isPhone
       ? chrome.bottom + DOCK_ANCHOR_BOTTOM_MOBILE
       : DOCK_ANCHOR_BOTTOM_DESKTOP,
-    edgeGap: isPhone ? DOCK_EDGE_GAP_MOBILE : DOCK_EDGE_GAP,
+    edgeGap: compact ? DOCK_EDGE_GAP_MOBILE : DOCK_EDGE_GAP,
   }
 }
 
@@ -746,7 +779,10 @@ watch(dockNudgeCounter, () => {
 // residentReleaseMode): desktop router mode asks the router to evict the
 // model; direct-mode Android has no unload route — stopping the service is
 // the unload (the single resident leaves memory with the process, and the
-// next chat send auto-restarts the service).
+// next chat send auto-restarts it). Android never reaches this from the UI
+// anymore (showResidentUnload gate, frame ⑲ status-only row) — the branch
+// stays as the residentReleaseMode contract and for safety if the gate is
+// ever lifted.
 async function handleUnload(id: string) {
   unloadingId.value = id
   delete unloadErrors[id]
@@ -770,7 +806,7 @@ async function handleUnload(id: string) {
   }
 }
 
-// ─── Phone row ops (frame ⑲ .op): mirror the downloads page's bindings ───
+// ─── Compact-tier row ops (frame ⑲ .op): mirror the downloads page's bindings ───
 
 async function pauseTask(id: string) {
   try {
@@ -821,23 +857,24 @@ function isProgressStatus(status: string): boolean {
 }
 
 // Update row labels: unlike llama.cpp rows, done/error outcomes stay visible here.
-// Phone tier uses the ✓-prefixed done copy (frame ⑳ drow); desktop keeps the
+// Compact tiers use the ✓-prefixed done copy (frame ⑳ drow); desktop keeps the
 // shared downloads-page label.
 function updateStatusLabel(status: string): string {
   const map: Record<string, string> = {
     downloading: t('dl.downloading'),
     installing: t('updateModal.installing'),
-    done: isMobileTier.value ? t('dock.statusDone') : t('downloads.statusDone'),
+    done: compactSkin.value ? t('dock.statusDone') : t('downloads.statusDone'),
     error: t('downloads.statusError')
   }
   return map[status] || status
 }
 
-// Phone model-task status line (frame ⑳ .ds): "Downloading · {pct}% · {speed}"
-// — the transfer speed comes straight from the DlTask payload and the segment
-// is dropped while it is not measurable. Desktop keeps the plain statusLabel.
-function phoneTaskStatus(task: { status: string; progress: number; speed: number }): string {
-  if (!isMobileTier.value) return statusLabel(task.status)
+// Compact-tier model-task status line (frame ⑳ .ds): "Downloading · {pct}% ·
+// {speed}" — the transfer speed comes straight from the DlTask payload and the
+// segment is dropped while it is not measurable. Desktop keeps the plain
+// statusLabel.
+function compactTaskStatus(task: { status: string; progress: number; speed: number }): string {
+  if (!compactSkin.value) return statusLabel(task.status)
   if (task.status === 'downloading') {
     let text = `${t('dl.downloading')} · ${task.progress}%`
     if (task.speed > 0) text += ` · ${formatSpeed(task.speed)}`
@@ -847,22 +884,24 @@ function phoneTaskStatus(task: { status: string; progress: number; speed: number
   return statusLabel(task.status)
 }
 
-// llama.cpp row label: the phone tier names the finished state with the
+// llama.cpp row label: the compact tiers name the finished state with the
 // ✓-prefixed copy (frame ⑳ "✓ 已完成"); every other state and the desktop
 // keep the shared downloads-page vocabulary (done maps to '' there, where the
 // row is hidden anyway).
 const llamaRowLabel = computed(() =>
-  isMobileTier.value && llamaStatus.value.status === 'done' ? t('dock.statusDone') : statusLabel(llamaStatus.value.status)
+  compactSkin.value && llamaStatus.value.status === 'done'
+    ? t('dock.statusDone')
+    : statusLabel(llamaStatus.value.status)
 )
 
-// Phone in-memory status: a live dot prefixes the loaded state (frame ⑳
-// .ds.g) plus the model's size segment matched from the local scan
+// Compact-tier in-memory status: a live dot prefixes the loaded state (frame
+// ⑳ .ds.g) plus the model's size segment matched from the local scan
 // ("● 已加载 · 2.3 GB"); loading/sleeping/unloading keep the shared labels on
-// both tiers. Size segment dropped (no invented values) when no local model
+// every tier. Size segment dropped (no invented values) when no local model
 // matches.
-function phoneModelStatus(model: LoadedModel): string {
+function compactModelStatus(model: LoadedModel): string {
   if (unloadingId.value === model.id) return t('dock.unloading')
-  if (isMobileTier.value && model.status === 'loaded') {
+  if (compactSkin.value && model.status === 'loaded') {
     const size = loadedModelSizes.value[model.id]
     return size ? `${t('dock.modelStatus.loadedDot')} · ${size}` : t('dock.modelStatus.loadedDot')
   }
@@ -901,7 +940,7 @@ function truncatedName(name: string, maxLen = 22): string {
 
 // ─── Lifecycle ────────────────────────────────────────────────────
 
-// One-shot local scan feeding the phone status-line size segment (see
+// One-shot local scan feeding the compact-tier status-line size segment (see
 // loadedModelSizes): always fetched — the tier gate lives in the computed,
 // and gating the fetch itself would race the platform state's first
 // resolution (a desktop-class first frame would skip it forever). Best-effort:
@@ -1134,9 +1173,11 @@ html[data-os='ios'] .dock-pill:active {
   background: rgba(16, 18, 33, 0.25);
 }
 
-/* Row type badges (frame ⑳ .tbadge): phone-tier only — hidden on desktop so
-   the desktop rows keep their exact layout. Colors per badge kind with the
-   dark-theme mapping from the mockup. */
+/* Row type badges (frame ⑳ .tbadge): compact tiers only — display:none at the
+   desktop tier, so the desktop rows keep their exact layout. The color rules
+   below live at base scope ON PURPOSE: they are inert while the badge is
+   hidden, and one definition (with its dark-theme mapping) is shared by the
+   phone and both tablet tracks. */
 .dock-row-badge {
   display: none;
   align-items: center;
@@ -1147,6 +1188,33 @@ html[data-os='ios'] .dock-pill:active {
   line-height: 1.4;
   letter-spacing: 0.3px;
   flex-shrink: 0;
+}
+
+/* Badge colors (frame ⑳ .tbadge): 更新 indigo / 运行时 amber / 模型 neutral,
+   dark mappings per the mockup */
+.badge-update {
+  background: #eef0ff;
+  color: #4338ca;
+}
+
+html[data-theme='dark'] .badge-update {
+  background: #1a1f3d;
+  color: #c4b5fd;
+}
+
+.badge-runtime {
+  background: #fff7ea;
+  color: #b45309;
+}
+
+html[data-theme='dark'] .badge-runtime {
+  background: #2c2416;
+  color: #fcd34d;
+}
+
+.badge-model {
+  background: var(--overlay-8);
+  color: var(--text-secondary);
 }
 
 /* Phone ops cluster (frame ⑳ .op): hidden on desktop, the downloads page
@@ -1455,8 +1523,12 @@ html[data-os='ios'] .dock-unload-btn:active:not(:disabled) {
   /* Dark AssistiveTouch capsule (frame ⑲ .capsule) in BOTH themes: dark
      translucent pill, white bold label, docked-edge corners flattened toward
      the hugging edge. Height stays the 44px touch target the phone anchor
-     arithmetic is built on (padding 0, not the mockup's 11px vertical). */
-  .dock-pill {
+     arithmetic is built on (padding 0, not the mockup's 11px vertical). The
+     :hover rule rides along (same declaration) so a mouse on a compact-tier
+     window cannot wash the dark capsule with the light hover colors — touch
+     first, no hover-dependent affordances (draft ㉒). */
+  .dock-pill,
+  .dock-pill:hover {
     height: 44px;
     padding: 0 14px;
     gap: 7px;
@@ -1470,7 +1542,8 @@ html[data-os='ios'] .dock-unload-btn:active:not(:disabled) {
   }
 
   /* Right-docked (default) flattens the right edge; left-docked mirrors. */
-  .task-dock--left .dock-pill {
+  .task-dock--left .dock-pill,
+  .task-dock--left .dock-pill:hover {
     border-radius: 4px 24px 24px 4px;
   }
 
@@ -1542,33 +1615,6 @@ html[data-os='ios'] .dock-unload-btn:active:not(:disabled) {
     margin-top: 5px;
   }
 
-  /* Row type badge colors (frame ⑳ .tbadge): 更新 indigo / 运行时 amber /
-     模型 neutral, dark mappings per the mockup */
-  .badge-update {
-    background: #eef0ff;
-    color: #4338ca;
-  }
-
-  html[data-theme='dark'] .badge-update {
-    background: #1a1f3d;
-    color: #c4b5fd;
-  }
-
-  .badge-runtime {
-    background: #fff7ea;
-    color: #b45309;
-  }
-
-  html[data-theme='dark'] .badge-runtime {
-    background: #2c2416;
-    color: #fcd34d;
-  }
-
-  .badge-model {
-    background: var(--overlay-8);
-    color: var(--text-secondary);
-  }
-
   /* Ops circles (frame ⑳ .op): 26px visual circle inside a 44px touch box
      (background-clip keeps the painted circle small under the padding) */
   .dock-task-ops {
@@ -1635,5 +1681,326 @@ html[data-os='ios'] .dock-unload-btn:active:not(:disabled) {
     min-height: 44px;
     padding: 8px 14px;
   }
+}
+
+/* ─── Tablet tracks (design draft frame ⑲: the capsule + expanded-card
+       interaction is IDENTICAL in both orientations — "双方向同一交互").
+       Track A hooks the 768..1099 band (width-based, like every Track A
+       phase); Track B hooks ONLY [data-viewport='tablet-landscape']
+       (Android-gated by phase 0, so a desktop OS window of the same size is
+       never affected). The compact skin is gated in the template too (lib/
+       dock dockShowsCompactSkin), so these style blocks and the markup
+       branches always agree. The single difference from the phone skin is the
+       expanded card's width: the draft's 340px dockcard (vs the phone's 300px
+       cap). The capsule, touch bands, badges and row ops are one compact
+       design. ─── */
+
+@media (min-width: 768px) and (max-width: 1099px) {
+  /* Flush screen-edge anchor: pairs with edgeGap 0 (DOCK_EDGE_GAP_MOBILE) in
+     layoutMetrics, so the drag/snap math and the CSS anchor stay identical. */
+  .task-dock {
+    right: 0;
+  }
+
+  /* Dark AssistiveTouch capsule (frame ⑲ .capsule) in BOTH themes; :hover
+     rides along so a mouse on this tier cannot wash the dark capsule with the
+     light hover colors (touch first — draft ㉒ "无悬停依赖"). */
+  .dock-pill,
+  .dock-pill:hover {
+    height: 44px;
+    padding: 0 14px;
+    gap: 7px;
+    background: rgba(25, 28, 43, 0.82);
+    border: none;
+    border-radius: 24px 4px 4px 24px;
+    box-shadow: none;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  /* Right-docked (default) flattens the right edge; left-docked mirrors. */
+  .task-dock--left .dock-pill,
+  .task-dock--left .dock-pill:hover {
+    border-radius: 4px 24px 24px 4px;
+  }
+
+  .dock-toggle {
+    width: 32px;
+    height: 32px;
+  }
+
+  /* Expanded card (frame ⑳ .dockcard): the draft's 340px glass card, still
+     viewport-capped for narrow windows; rounded island, pill progress bars. */
+  .dock-popover {
+    width: min(340px, calc(100vw - 32px));
+    border: none;
+    border-radius: 22px;
+    max-height: 60vh;
+  }
+
+  .dock-title {
+    font-size: 13px;
+    font-weight: 800;
+  }
+
+  .dock-bar,
+  .dock-fill {
+    border-radius: 999px;
+  }
+
+  /* Download rows (frame ⑳ .drow): badge + name/status stacked in a grid,
+     ops column on the right; the separate percent text folds into the status
+     line, so the bar spans freely */
+  .dock-task-header {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    grid-template-areas:
+      'badge name ops'
+      'badge status ops';
+    column-gap: 8px;
+    row-gap: 2px;
+    align-items: center;
+  }
+
+  .dock-row-badge {
+    display: inline-flex;
+    grid-area: badge;
+  }
+
+  .dock-task-name {
+    grid-area: name;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  .dock-task-status {
+    grid-area: status;
+    justify-self: start;
+    font-size: 10.5px;
+    color: var(--text-muted);
+  }
+
+  .dock-percent {
+    display: none;
+  }
+
+  .dock-bar-wrap {
+    margin-top: 5px;
+  }
+
+  /* Ops circles (frame ⑳ .op): 26px visual circle inside a 44px touch box
+     (background-clip keeps the painted circle small under the padding) */
+  .dock-task-ops {
+    display: flex;
+    grid-area: ops;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .dock-op {
+    width: 44px;
+    height: 44px;
+    padding: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-card);
+    background-clip: content-box;
+    border: none;
+    border-radius: 50%;
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .dock-op--danger {
+    color: #ef4444;
+  }
+
+  /* Touch press feedback (OS-scoped): darkens the painted disc (filter keeps
+     the background-clip circle intact, a background swap would not). */
+  html[data-os='android'] .dock-op:active,
+  html[data-os='ios'] .dock-op:active {
+    filter: brightness(0.85);
+  }
+
+  /* In-memory rows: badge goes tbadge-shaped; the chat badge turns green
+     (replaces the desktop purple tint), dark mapping per the mockup */
+  .dock-model-badge {
+    border-radius: 5px;
+    padding: 2px 5px;
+    font-size: 9px;
+    font-weight: 800;
+    border: none;
+  }
+
+  .dock-model-badge.type-chat {
+    background: #e7f8f1;
+    color: #0b7c5b;
+  }
+
+  html[data-theme='dark'] .dock-model-badge.type-chat {
+    background: #12261f;
+    color: #6ee7b7;
+  }
+
+  .dock-model-status {
+    font-size: 10.5px;
+  }
+
+  .dock-unload-btn {
+    min-height: 44px;
+    padding: 8px 14px;
+  }
+}
+
+/* Track B mirror (Android tablet-landscape only — the attribute is set for
+   no other OS/tier combination). Identical rules to the Track A block above;
+   keep the two blocks in sync when editing. */
+
+[data-viewport='tablet-landscape'] .task-dock {
+  right: 0;
+}
+
+[data-viewport='tablet-landscape'] .dock-pill,
+[data-viewport='tablet-landscape'] .dock-pill:hover {
+  height: 44px;
+  padding: 0 14px;
+  gap: 7px;
+  background: rgba(25, 28, 43, 0.82);
+  border: none;
+  border-radius: 24px 4px 4px 24px;
+  box-shadow: none;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+[data-viewport='tablet-landscape'] .task-dock--left .dock-pill,
+[data-viewport='tablet-landscape'] .task-dock--left .dock-pill:hover {
+  border-radius: 4px 24px 24px 4px;
+}
+
+[data-viewport='tablet-landscape'] .dock-toggle {
+  width: 32px;
+  height: 32px;
+}
+
+[data-viewport='tablet-landscape'] .dock-popover {
+  width: min(340px, calc(100vw - 32px));
+  border: none;
+  border-radius: 22px;
+  max-height: 60vh;
+}
+
+[data-viewport='tablet-landscape'] .dock-title {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+[data-viewport='tablet-landscape'] .dock-bar,
+[data-viewport='tablet-landscape'] .dock-fill {
+  border-radius: 999px;
+}
+
+[data-viewport='tablet-landscape'] .dock-task-header {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas:
+    'badge name ops'
+    'badge status ops';
+  column-gap: 8px;
+  row-gap: 2px;
+  align-items: center;
+}
+
+[data-viewport='tablet-landscape'] .dock-row-badge {
+  display: inline-flex;
+  grid-area: badge;
+}
+
+[data-viewport='tablet-landscape'] .dock-task-name {
+  grid-area: name;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+[data-viewport='tablet-landscape'] .dock-task-status {
+  grid-area: status;
+  justify-self: start;
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+[data-viewport='tablet-landscape'] .dock-percent {
+  display: none;
+}
+
+[data-viewport='tablet-landscape'] .dock-bar-wrap {
+  margin-top: 5px;
+}
+
+[data-viewport='tablet-landscape'] .dock-task-ops {
+  display: flex;
+  grid-area: ops;
+  align-items: center;
+  gap: 4px;
+}
+
+[data-viewport='tablet-landscape'] .dock-op {
+  width: 44px;
+  height: 44px;
+  padding: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-card);
+  background-clip: content-box;
+  border: none;
+  border-radius: 50%;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+[data-viewport='tablet-landscape'] .dock-op--danger {
+  color: #ef4444;
+}
+
+html[data-os='android'][data-viewport='tablet-landscape'] .dock-op:active,
+html[data-os='ios'][data-viewport='tablet-landscape'] .dock-op:active {
+  filter: brightness(0.85);
+}
+
+[data-viewport='tablet-landscape'] .dock-model-badge {
+  border-radius: 5px;
+  padding: 2px 5px;
+  font-size: 9px;
+  font-weight: 800;
+  border: none;
+}
+
+[data-viewport='tablet-landscape'] .dock-model-badge.type-chat {
+  background: #e7f8f1;
+  color: #0b7c5b;
+}
+
+html[data-theme='dark'][data-viewport='tablet-landscape'] .dock-model-badge.type-chat {
+  background: #12261f;
+  color: #6ee7b7;
+}
+
+[data-viewport='tablet-landscape'] .dock-model-status {
+  font-size: 10.5px;
+}
+
+[data-viewport='tablet-landscape'] .dock-unload-btn {
+  min-height: 44px;
+  padding: 8px 14px;
 }
 </style>

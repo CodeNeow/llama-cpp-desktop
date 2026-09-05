@@ -954,6 +954,123 @@ html[data-os='ios'] .model-settings-btn:active {
   .model-path {
     display: none;
   }
+
+  /* ─── Frame ㉑ portrait: the state trio at tablet scale ───
+     The loading skeleton previews the TWO-column card grid the page really
+     renders at this width (draft 双列网格), and the boundary-state actions
+     keep the phone recipes' touch-sized pills (draft B21: boundary-state copy
+     and action sizes unchanged, touch first). ─── */
+  .loading-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    align-items: start;
+  }
+
+  /* Frame ㉑ skeleton recipe (same anatomy as the phone tier): 48px tile +
+     70%/45% lines + 56px block, shimmer as a 1.4s background sweep */
+  .skeleton-card {
+    display: grid;
+    grid-template-columns: 48px 1fr;
+    grid-template-areas:
+      'tile l1'
+      'tile l2'
+      'block block';
+    gap: 8px 12px;
+    align-items: center;
+    padding: 16px 18px;
+  }
+
+  .skeleton-tile {
+    display: block;
+    grid-area: tile;
+    width: 48px;
+    height: 48px;
+    border-radius: 15px;
+  }
+
+  .skeleton-title {
+    grid-area: l1;
+    width: 70%;
+    height: 12px;
+    margin-bottom: 0;
+  }
+
+  .skeleton-mid {
+    grid-area: l2;
+    width: 45%;
+    height: 10px;
+    margin-bottom: 0;
+  }
+
+  .skeleton-short {
+    display: none;
+  }
+
+  .skeleton-block {
+    display: block;
+    grid-area: block;
+    height: 56px;
+    border-radius: 14px;
+    margin-top: 4px;
+  }
+
+  .skeleton-line,
+  .skeleton-tile,
+  .skeleton-block {
+    background: linear-gradient(90deg, var(--bg-card) 25%, #eceef6 45%, var(--bg-card) 65%);
+    background-size: 200% 100%;
+    animation: skel-sweep 1.4s linear infinite;
+  }
+
+  html[data-theme='dark'] .skeleton-line,
+  html[data-theme='dark'] .skeleton-tile,
+  html[data-theme='dark'] .skeleton-block {
+    background: linear-gradient(90deg, var(--bg-card) 25%, #262b3d 45%, var(--bg-card) 65%);
+  }
+
+  /* Frame ㉑ errcard: red retry pill (light #fdecec / dark #2c1a1f disc) */
+  .retry-btn {
+    min-height: 44px;
+    padding: 10px 20px;
+    background: #fdecec;
+    color: #ef4444;
+    border: none;
+    border-radius: 999px;
+    font-weight: 800;
+  }
+
+  .retry-btn:hover {
+    background: #fdecec;
+    border: none;
+    color: #ef4444;
+  }
+
+  html[data-theme='dark'] .retry-btn,
+  html[data-theme='dark'] .retry-btn:hover {
+    background: #2c1a1f;
+    color: #f87171;
+  }
+
+  /* Frame ㉑ emptycard: gradient pill CTA */
+  .empty-cta {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 10px 22px;
+    background: var(--grad);
+    color: #fff;
+    border: none;
+    border-radius: 999px;
+    font-size: 12.5px;
+    font-weight: 800;
+    box-shadow: none;
+  }
+
+  .empty-cta:hover {
+    background: var(--grad);
+  }
 }
 
 /* ─── Phone (<=767px, design draft frame ⑨): the directory bar stacks (sources
@@ -1364,5 +1481,118 @@ html[data-theme='dark'][data-viewport='tablet-landscape'] .source-import {
 
 [data-viewport='tablet-landscape'] .dir-actions-android {
   justify-content: space-between;
+}
+
+/* ─── Frame ㉑ at Track B (draft B21): the state trio's recipes ride along —
+       skeleton anatomy + shimmer sweep, red retry pill, gradient empty CTA
+       (boundary-state action sizes stay touch-sized). The loading skeleton
+       stays SINGLE-column here on purpose: the draft's LEFT column is a
+       one-per-row mcard list at this tier (the width budget moves to the
+       360px rail), so a multi-column skeleton would preview a geometry the
+       real cards never take; B21's three-across sheet shows the three states
+       side by side for comparison, and a real page renders one state at a
+       time. ─── */
+
+[data-viewport='tablet-landscape'] .skeleton-card {
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  grid-template-areas:
+    'tile l1'
+    'tile l2'
+    'block block';
+  gap: 8px 12px;
+  align-items: center;
+  padding: 16px 18px;
+}
+
+[data-viewport='tablet-landscape'] .skeleton-tile {
+  display: block;
+  grid-area: tile;
+  width: 48px;
+  height: 48px;
+  border-radius: 15px;
+}
+
+[data-viewport='tablet-landscape'] .skeleton-title {
+  grid-area: l1;
+  width: 70%;
+  height: 12px;
+  margin-bottom: 0;
+}
+
+[data-viewport='tablet-landscape'] .skeleton-mid {
+  grid-area: l2;
+  width: 45%;
+  height: 10px;
+  margin-bottom: 0;
+}
+
+[data-viewport='tablet-landscape'] .skeleton-short {
+  display: none;
+}
+
+[data-viewport='tablet-landscape'] .skeleton-block {
+  display: block;
+  grid-area: block;
+  height: 56px;
+  border-radius: 14px;
+  margin-top: 4px;
+}
+
+[data-viewport='tablet-landscape'] .skeleton-line,
+[data-viewport='tablet-landscape'] .skeleton-tile,
+[data-viewport='tablet-landscape'] .skeleton-block {
+  background: linear-gradient(90deg, var(--bg-card) 25%, #eceef6 45%, var(--bg-card) 65%);
+  background-size: 200% 100%;
+  animation: skel-sweep 1.4s linear infinite;
+}
+
+html[data-theme='dark'][data-viewport='tablet-landscape'] .skeleton-line,
+html[data-theme='dark'][data-viewport='tablet-landscape'] .skeleton-tile,
+html[data-theme='dark'][data-viewport='tablet-landscape'] .skeleton-block {
+  background: linear-gradient(90deg, var(--bg-card) 25%, #262b3d 45%, var(--bg-card) 65%);
+}
+
+/* Frame ㉑ errcard: red retry pill (light #fdecec / dark #2c1a1f disc) */
+[data-viewport='tablet-landscape'] .retry-btn {
+  min-height: 44px;
+  padding: 10px 20px;
+  background: #fdecec;
+  color: #ef4444;
+  border: none;
+  border-radius: 999px;
+  font-weight: 800;
+}
+
+[data-viewport='tablet-landscape'] .retry-btn:hover {
+  background: #fdecec;
+  border: none;
+  color: #ef4444;
+}
+
+html[data-theme='dark'][data-viewport='tablet-landscape'] .retry-btn,
+html[data-theme='dark'][data-viewport='tablet-landscape'] .retry-btn:hover {
+  background: #2c1a1f;
+  color: #f87171;
+}
+
+/* Frame ㉑ emptycard: gradient pill CTA */
+[data-viewport='tablet-landscape'] .empty-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 10px 22px;
+  background: var(--grad);
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 800;
+  box-shadow: none;
+}
+
+[data-viewport='tablet-landscape'] .empty-cta:hover {
+  background: var(--grad);
 }
 </style>

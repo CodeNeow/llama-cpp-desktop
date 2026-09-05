@@ -1360,6 +1360,13 @@ html[data-theme='dark'] .dl-status-line {
     margin-left: auto;
     margin-right: auto;
   }
+
+  /* Frame ㉑ errcard at tablet scale: the boundary-state actions keep the
+     44px touch target (draft ㉒/B21 — touch first, no hover dependence) */
+  .retry-btn,
+  .retry-btn-sm {
+    min-height: 44px;
+  }
 }
 
 /* Desktop layout: constrain to 1280px max-width (design draft D5) */
@@ -1462,5 +1469,12 @@ html[data-theme='dark'] .dl-status-line {
 [data-viewport='tablet-landscape'] .runtime-section > .skeleton-card,
 [data-viewport='tablet-landscape'] .runtime-section > .error-card {
   grid-column: 1 / -1;
+}
+
+/* Frame ㉑ errcard at tablet scale: 44px touch targets on the boundary-state
+   actions (same rule as the portrait band above; keep both in sync) */
+[data-viewport='tablet-landscape'] .runtime-section .retry-btn,
+[data-viewport='tablet-landscape'] .runtime-section .retry-btn-sm {
+  min-height: 44px;
 }
 </style>
