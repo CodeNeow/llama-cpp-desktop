@@ -246,10 +246,10 @@ const {
 
 // Viewport composition (frames ⑰⑱, pure helper docsPageMode in
 // lib/remoteDocs.ts): 'phone' renders the section list and pushes /docs/:id;
-// 'tablet' renders the pill row + master-detail split in both directions; the
+// 'tablet' renders the pill row + master-detail split; the
 // list DOM is phone-only while the pill row mounts on phone AND tablet —
 // desktop keeps the header action buttons instead. The split geometry itself
-// is CSS-only (Track A media band + the tablet-landscape attribute).
+// is CSS-only (the Track A media band).
 const platformState = usePlatform()
 const docsMode = computed(() => docsPageMode(platformState.value))
 const router = useRouter()
@@ -605,16 +605,14 @@ html[data-theme='dark'] .toc-item .no {
 }
 
 /* ─── Tablet portrait Track A (768–1099px, draft frames ⑰⑱): MASTER-DETAIL
-       in both tablet directions — 250px chapter column + content pane (draft
+       split — 250px chapter column + content pane (draft
        .split.md adapted: chapter titles are short, so the narrow column keeps
        the active highlight and pill row while handing the text pane ~430px+
        of readable width instead of the old 380px squeeze). The desktop TOC
        items already carry the draft .docrow look (number tile + title + desc
        cards), so only the geometry changes here. Scoped to the band with
        min-width: 768px so phones (<=767) and desktop (>=1100px) stay
-       untouched; the Android tablet-landscape tier (1100..1360,
-       attribute-gated) never matches the max-width cap — its mirror rules
-       live in the [data-viewport] block at the end. ─── */
+       untouched. ─── */
 @media (min-width: 768px) and (max-width: 1099px) {
   /* Frame ⑰ has no subtitle and no header action buttons: the pills move
      into the .srcbadges row below the header */
@@ -827,37 +825,4 @@ html[data-theme='dark'] .docrow .no {
   background: var(--active-bg);
 }
 
-/* ─── Android tablet-landscape (tablet design draft track B frames ⑰⑱).
-   Hooked on [data-viewport], never a media query: desktop OS windows in the
-   1100–1360px band must stay byte-identical (the attribute is only ever set
-   for Android). Same master-detail skeleton as the portrait Track A band
-   with the draft's wide-track chapter column (320px + 1fr, .split.md.wide);
-   the header drops subtitle + action buttons in favor of the shared pill
-   row, exactly like portrait. These rules are the attribute-prefixed mirror
-   of the Track A block above. ─── */
-[data-viewport='tablet-landscape'] .page-header {
-  padding-bottom: 20px;
-}
-
-[data-viewport='tablet-landscape'] .page-subtitle,
-[data-viewport='tablet-landscape'] .docs-header-actions {
-  display: none;
-}
-
-[data-viewport='tablet-landscape'] .docs-layout {
-  display: grid;
-  grid-template-columns: 320px 1fr;
-  gap: 18px;
-  align-items: start;
-}
-
-[data-viewport='tablet-landscape'] .docs-toc {
-  width: auto;
-  top: 76px;
-}
-
-[data-viewport='tablet-landscape'] .docs-content {
-  min-width: 0;
-  scroll-margin-top: 76px;
-}
 </style>

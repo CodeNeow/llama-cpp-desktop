@@ -137,6 +137,15 @@ public class MainActivity extends AppCompatActivity {
         settings.setAllowContentAccess(false);
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+        // Wide viewport + overview mode make the WebView HONOR the viewport
+        // meta width: with the default setUseWideViewPort(false) the layout
+        // viewport is pinned to device-width and a meta like width=430 is
+        // ignored (verified via CDP on the emulator). The App.vue
+        // portrait-tablet switch to width=430 (phone layout, upscaled)
+        // relies on it; the default device-width + initial-scale=1 meta keeps
+        // rendering 1:1.
+        settings.setUseWideViewPort(true);
+        settings.setLoadWithOverviewMode(true);
         // App-like behavior: pinch zoom disabled (viewport meta user-scalable=no
         // handles scaling); WebView honors the meta but Chrome's accessibility
         // policy can ignore it, so turn the WebView zoom machinery off too

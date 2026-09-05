@@ -88,21 +88,16 @@ export const messages: Record<Locale, Record<string, string>> = {
     'home.greet.offline': '服务未运行',
     'home.greet.loading': '正在获取状态…',
     // Checklist greeting second line while onboarding is visible and the service
-    // is not ready (design draft frame ① "· 完成下面 3 步即可开始"); the Side
-    // variant is the Android tablet-landscape layout (draft frame B①: the
-    // checklist sits in the right column next to the hero)
+    // is not ready (design draft frame ① "· 完成下面 3 步即可开始")
     'home.greet.onboardHint': '完成下面 3 步即可开始',
-    'home.greet.onboardHintSide': '完成右侧 3 步即可开始',
     'home.hero.tagReady': 'AI 就绪',
     'home.hero.tagOffline': '离线',
     'home.hero.subResident': '本机直连 · 已驻留内存 · 无需等待',
     'home.hero.subIdle': '服务运行中 · 首次对话时自动加载模型',
     'home.hero.subOffline': '服务未运行 · 发送消息时自动启动',
     // Checklist-tier offline hero subline while the quick-start checklist is up
-    // (design draft frame ①: the hero points at the checklist steps); the Side
-    // variant is the Android tablet-landscape layout (draft frame B①)
+    // (design draft frame ①: the hero points at the checklist steps)
     'home.hero.subOnboard': '先完成上方步骤 ① ②，AI 就绪后这里会亮起',
-    'home.hero.subOnboardSide': '先完成右侧步骤 ① ②，AI 就绪后这里会亮起',
     'home.hero.standby': '待命',
     // The hero metric is the rolling 60s average of the decode speed (same
     // figure the Api page charts), so the label names the averaging window.
@@ -122,10 +117,8 @@ export const messages: Record<Locale, Record<string, string>> = {
     'home.residentBadge': '已驻留',
     // Android resident-model card: status only — the unload button is cropped on
     // Android (design-draft note) and the "auto switch" pill takes its place
-    // (draft frame A② .act); the hint line renders in the tablet-landscape
-    // right rail (draft frame B②)
+    // (draft frame A② .act)
     'home.residentAutoSwitch': '自动切换',
-    'home.residentAutoHint': '聊天切换模型时自动换装，无需手动卸载。',
 
     // ─── Quick-start onboarding (Home checklist card + empty-state CTAs) ───
     'onboarding.title': '快速上手',
@@ -205,7 +198,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     // Phone-tier "About the runtime" island (design draft frame ③)
     'runtime.aboutTitle': '关于运行时',
     'runtime.aboutBody': 'Android 版使用应用内存储，路径由系统管理。llama.cpp 发布新版本时，可在此页直接下载升级（支持断点续传）。',
-    // Android tablet-landscape right-rail card with the read-only install paths
+    // Read-only install-paths card in the Runtime tab's tablet right rail
     // (design draft frame B③: 安装路径（只读）island)
     'runtime.pathsTitle': '安装路径（只读）',
     'runtime.pathsHint': '路径由系统分配，应用内不可更改。',
@@ -239,11 +232,6 @@ export const messages: Record<Locale, Record<string, string>> = {
     // Source pills (design draft frame ⑨ .mt i.src-g / .src-b)
     'models.sourceDownload': '下载路径',
     'models.sourceImport': '外部路径',
-    // Tablet-landscape summary card (design draft tablet frame B⑨): local
-    // library count + disk footprint; no "last used" row (no data source)
-    'models.librarySummary': '本地库',
-    'models.summaryModels': '模型',
-    'models.summarySize': '占用',
     // design draft frame ㉑ errcard title
     'models.errorTitle': '加载失败',
     'models.emptyTitle': '暂无模型',
@@ -630,9 +618,8 @@ export const messages: Record<Locale, Record<string, string>> = {
     'modelSettings.summaryBody': '上下文 {ctx} · 线程 {threads} · K 缓存 {ctk} · V 缓存 {ctv} · 加载 {mode}',
     'modelSettings.summarySubHardware': '由「一键调优」按 {ram} 内存 + {soc} 自动计算',
     'modelSettings.summarySubGeneric': '由「一键调优」按本机硬件自动计算',
-    // design draft tablet frames ⑪⑫ "参数速览" rows (portrait bottom island +
-    // landscape sticky rail share the row set; lib/modelMemory.ts builds it)
-    'modelSettings.summaryLive': '参数速览（实时）',
+    // design draft tablet frames ⑪⑫ "参数速览" rows (portrait bottom island;
+    // lib/modelMemory.ts builds the row set)
     'modelSettings.summaryCtxThreads': '上下文 / 线程',
     'modelSettings.summaryKv': 'KV 缓存',
     'modelSettings.summaryEstimate': '权重 + KV 预估',
@@ -817,21 +804,16 @@ export const messages: Record<Locale, Record<string, string>> = {
     'home.greet.offline': 'Service stopped',
     'home.greet.loading': 'Fetching status…',
     // Checklist greeting second line while onboarding is visible and the service
-    // is not ready (design draft frame ① "· Complete the 3 steps below"); the
-    // Side variant is the Android tablet-landscape layout (draft frame B①: the
-    // checklist sits in the right column next to the hero)
+    // is not ready (design draft frame ① "· Complete the 3 steps below")
     'home.greet.onboardHint': 'Complete the 3 steps below to get started',
-    'home.greet.onboardHintSide': 'Complete the 3 steps on the right to get started',
     'home.hero.tagReady': 'AI ready',
     'home.hero.tagOffline': 'Offline',
     'home.hero.subResident': 'Local direct · resident in memory · zero wait',
     'home.hero.subIdle': 'Service running · the model loads on your first chat',
     'home.hero.subOffline': 'Service stopped · starts automatically on your first message',
     // Checklist-tier offline hero subline while the quick-start checklist is up
-    // (design draft frame ①: the hero points at the checklist steps); the Side
-    // variant is the Android tablet-landscape layout (draft frame B①)
+    // (design draft frame ①: the hero points at the checklist steps)
     'home.hero.subOnboard': 'Finish steps 1–2 above and the AI lights up here',
-    'home.hero.subOnboardSide': 'Finish steps 1–2 on the right and the AI lights up here',
     'home.hero.standby': 'Standby',
     // The hero metric is the rolling 60s average of the decode speed (same
     // figure the Api page charts), so the label names the averaging window.
@@ -851,10 +833,8 @@ export const messages: Record<Locale, Record<string, string>> = {
     'home.residentBadge': 'Resident',
     // Android resident-model card: status only — the unload button is cropped on
     // Android (design-draft note) and the "auto switch" pill takes its place
-    // (draft frame A② .act); the hint line renders in the tablet-landscape
-    // right rail (draft frame B②)
+    // (draft frame A② .act)
     'home.residentAutoSwitch': 'Auto-switch',
-    'home.residentAutoHint': 'Models swap automatically when you switch in Chat — no manual unload needed.',
 
     // ─── Quick-start onboarding (Home checklist card + empty-state CTAs) ───
     'onboarding.title': 'Quick Start',
@@ -934,7 +914,7 @@ export const messages: Record<Locale, Record<string, string>> = {
     // Phone-tier "About the runtime" island (design draft frame ③)
     'runtime.aboutTitle': 'About the runtime',
     'runtime.aboutBody': 'The Android build uses app-internal storage with system-managed paths. When a new llama.cpp version is released, you can download the upgrade right from this page (resumable download supported).',
-    // Android tablet-landscape right-rail card with the read-only install paths
+    // Read-only install-paths card in the Runtime tab's tablet right rail
     // (design draft frame B③: 安装路径（只读）island)
     'runtime.pathsTitle': 'Install paths (read-only)',
     'runtime.pathsHint': 'Paths are assigned by the system and cannot be changed in the app.',
@@ -968,11 +948,6 @@ export const messages: Record<Locale, Record<string, string>> = {
     // Source pills (design draft frame ⑨ .mt i.src-g / .src-b)
     'models.sourceDownload': 'Downloaded',
     'models.sourceImport': 'External',
-    // Tablet-landscape summary card (design draft tablet frame B⑨): local
-    // library count + disk footprint; no "last used" row (no data source)
-    'models.librarySummary': 'Local library',
-    'models.summaryModels': 'Models',
-    'models.summarySize': 'On disk',
     // design draft frame ㉑ errcard title
     'models.errorTitle': 'Load failed',
     'models.emptyTitle': 'No models yet',
@@ -1357,9 +1332,8 @@ export const messages: Record<Locale, Record<string, string>> = {
     'modelSettings.summaryBody': 'Context {ctx} · Threads {threads} · K cache {ctk} · V cache {ctv} · Load {mode}',
     'modelSettings.summarySubHardware': 'Computed by auto-tune for {ram} RAM + {soc}',
     'modelSettings.summarySubGeneric': 'Computed by auto-tune from this device\'s hardware',
-    // design draft tablet frames ⑪⑫ "参数速览" rows (portrait bottom island +
-    // landscape sticky rail share the row set; lib/modelMemory.ts builds it)
-    'modelSettings.summaryLive': 'Params summary (live)',
+    // design draft tablet frames ⑪⑫ "参数速览" rows (portrait bottom island;
+    // lib/modelMemory.ts builds the row set)
     'modelSettings.summaryCtxThreads': 'Context / Threads',
     'modelSettings.summaryKv': 'KV cache',
     'modelSettings.summaryEstimate': 'Weights + KV est.',

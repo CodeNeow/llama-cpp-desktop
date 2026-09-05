@@ -137,15 +137,14 @@ describe('homeResidentShowsUnload', () => {
 })
 
 describe('dockShowsCompactSkin', () => {
-  // Cases keyed to the phase 0 tier classifier (lib/platform.ts): the tablet
-  // tier folds BOTH tablet bands (portrait 768..1099 and the Android-gated
-  // tablet-landscape 1100..1360) into isTablet, so one (isMobile, isTablet)
-  // pair covers each draft frame.
+  // Cases keyed to the tier classifier (lib/platform.ts): isTablet covers the
+  // portrait tablet band 768..1099, so one (isMobile, isTablet) pair covers
+  // each draft frame.
   it('phone tier renders the capsule skin (frame ⑲)', () => {
     expect(dockShowsCompactSkin(true, false)).toBe(true)
   })
 
-  it('tablet tier renders the capsule skin in both orientations (frames A19/B19)', () => {
+  it('tablet tier (portrait band) renders the capsule skin (frame ⑲)', () => {
     expect(dockShowsCompactSkin(false, true)).toBe(true)
   })
 

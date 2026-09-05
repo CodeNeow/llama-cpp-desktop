@@ -41,8 +41,7 @@
     <!-- ─── Group: appearance & preferences (frame ⑤ group 1) ───
          Theme toggle + language + download source. Same handlers and guard
          semantics as before; only the containers changed (rows in a rounded
-         group instead of tabbed sections). group-appearance pins this group
-         to the left column of the tablet-landscape two-column grid (B16). -->
+         group instead of tabbed sections). -->
     <section class="settings-group group-appearance" :aria-label="t('settings.groupAppearance')">
       <!-- Theme mode -->
       <div class="group-item">
@@ -141,9 +140,7 @@
     <!-- ─── Group: directories & services (frame ⑤ group 2) ───
          Download paths + service access scope + API key + serving GPU +
          Windows-only tray / API-route toggles. Platform gates are unchanged:
-         showTray / showApiRoute / showGpu stay OS-scoped helpers.
-         group-service pins this group to the right column of the
-         tablet-landscape two-column grid (B16). -->
+         showTray / showApiRoute / showGpu stay OS-scoped helpers. -->
     <section class="settings-group group-service" :aria-label="t('settings.groupService')">
       <!-- llama.cpp download path -->
       <div class="group-item" :aria-label="t('settings.directories')">
@@ -375,9 +372,8 @@
          the downloaded NSIS installer; Android downloads an APK and the system
          PackageInstaller confirms it); linux/darwin/other fall back to the
          link mode (hint + GitHub Releases link) because the backend
-         CheckForUpdateAt gate short-circuits to "no update" on those platforms.
-         group-about pins this group to the right column of the
-         tablet-landscape two-column grid (B16, under group-service). -->
+         CheckForUpdateAt gate short-circuits to "no update" on those
+         platforms. -->
     <section class="settings-group group-about" :aria-label="t('settings.about')">
       <div class="group-item">
         <div class="group-row">
@@ -1783,13 +1779,11 @@ async function manualCheck() {
        island full-width on top, and the help-and-tutorial entry card closing
        the page as a full-width row at the bottom. The entry card is restyled
        from the brand-gradient phone hero into the draft's surface row card
-       (.group + grad-soft icon tile + ink text). The existing landscape group
-       classes (group-appearance / group-service / group-about) are reused via
+       (.group + grad-soft icon tile + ink text). The existing group classes
+       (group-appearance / group-service / group-about) are reused via
        band-scoped rules — no DOM duplication. Scoped to the band with
        min-width: 768px so phones (<=767) and desktop (>=1100px) keep the hero
-       at the top; the Android tablet-landscape tier (1100..1360,
-       attribute-gated) never matches the max-width cap — its mirror rules
-       live in the [data-viewport] block at the end. ─── */
+       at the top. ─── */
 @media (min-width: 768px) and (max-width: 1099px) {
   .page {
     display: grid;
@@ -1815,7 +1809,7 @@ async function manualCheck() {
   }
 
   /* Grid gap replaces the flow margins (same policy as the >=1280px desktop
-     grid and the tablet-landscape split) */
+     grid) */
   .device-card,
   .settings-group,
   .docs-entry {
@@ -1894,77 +1888,6 @@ async function manualCheck() {
     color: var(--text-secondary);
     min-height: 36px;
   }
-}
-
-/* ─── Android tablet-landscape (tablet design draft track B frame ⑯/B16).
-   Hooked on [data-viewport], never a media query: desktop OS windows in the
-   1100–1360px band must stay byte-identical (the attribute is only ever set
-   for Android). Draft B16: TWO-column groups — appearance (theme / language /
-   download source) LEFT, directories + about RIGHT — with the help entry
-   card spanning the bottom full width (frame title: 横贯底部). These rules
-   override the >=1280px desktop two-column grid, which also matches at
-   1280–1360: the attribute selector out-ranks those class rules, so a
-   desktop window of the same size keeps the desktop placement. ─── */
-[data-viewport='tablet-landscape'] .page {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-  align-items: start;
-}
-
-[data-viewport='tablet-landscape'] .sticky-top,
-[data-viewport='tablet-landscape'] .device-card,
-[data-viewport='tablet-landscape'] .docs-entry {
-  grid-column: 1 / -1;
-}
-
-[data-viewport='tablet-landscape'] .group-appearance {
-  grid-column: 1;
-}
-
-[data-viewport='tablet-landscape'] .group-service,
-[data-viewport='tablet-landscape'] .group-about {
-  grid-column: 2;
-}
-
-/* The same closing surface entry card as portrait Track A: order 1 places it
-   after every order-0 grid item, so it lands alone on the last full-width row */
-[data-viewport='tablet-landscape'] .docs-entry {
-  order: 1;
-  background: var(--bg-card);
-  box-shadow: var(--shadow-island);
-  color: var(--text-primary);
-}
-
-/* Grid gap replaces the flow margins (same policy as the >=1280px desktop grid) */
-[data-viewport='tablet-landscape'] .device-card,
-[data-viewport='tablet-landscape'] .settings-group,
-[data-viewport='tablet-landscape'] .docs-entry {
-  margin-bottom: 0;
-}
-
-[data-viewport='tablet-landscape'] .docs-entry:hover {
-  color: var(--text-primary);
-  transform: none;
-  box-shadow: var(--shadow-island);
-}
-
-[data-viewport='tablet-landscape'] .docs-entry-icon {
-  background: var(--grad-soft);
-  color: #6d28d9;
-}
-
-/* Both attributes live on <html>; a descendant combinator would never match */
-html[data-theme='dark'][data-viewport='tablet-landscape'] .docs-entry-icon {
-  color: #c4b5fd;
-}
-
-[data-viewport='tablet-landscape'] .docs-entry-sub {
-  color: var(--text-dim);
-}
-
-[data-viewport='tablet-landscape'] .docs-entry-arrow {
-  color: var(--text-dim);
 }
 
 </style>

@@ -71,9 +71,8 @@ export type ApiSpeedPlacement = 'hero' | 'island'
  * Which surface carries the speed chart:
  * - 'hero':   phone + desktop — the chart stays embedded in the status hero
  *             card (existing rendering, untouched);
- * - 'island': tablet tiers (portrait band and Android tablet-landscape alike —
- *             platform.isTablet covers both) — the chart becomes its own
- *             instrument island in the right column, beside/above the log
+ * - 'island': tablet tier (portrait band 768..1099) — the chart becomes its
+ *             own instrument island in the right column, beside/above the log
  *             console (draft ⑬ B: instruments right, status + actions left).
  * Pure: the caller derives the tier flag from the platform state.
  */

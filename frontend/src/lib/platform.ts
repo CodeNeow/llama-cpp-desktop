@@ -14,7 +14,7 @@
 
 import { ref, readonly } from 'vue'
 import type { Ref } from 'vue'
-import { MOBILE_MAX, TABLET_MAX, isTabletLandscapeViewport, viewportOrientation } from './layout'
+import { MOBILE_MAX, TABLET_MAX } from './layout'
 import { t } from './i18n'
 
 /** Operating system identifiers, aligned with the backend getOS() strings. */
@@ -53,22 +53,6 @@ export interface PlatformState {
   isMobile: boolean
   isTablet: boolean
   isDesktop: boolean
-  /**
-   * Viewport orientation ('portrait' | 'landscape'; landscape iff width is
-   * strictly greater than height — a square ties to 'portrait'). Feeds the
-   * Android landscape-tablet classification; on every other platform it is
-   * informational only and never bends the tier.
-   */
-  orientation: 'portrait' | 'landscape'
-  /**
-   * True exactly for Android in the landscape-tablet band (width in
-   * TABLET_MAX+1..TABLET_LANDSCAPE_MAX with width > height): an Android
-   * tablet rotated to landscape keeps the tablet layout instead of jumping
-   * to desktop. Never true on desktop OSes (a same-sized desktop window
-   * stays desktop) and never true for Android portrait >TABLET_MAX or
-   * Android widths beyond TABLET_LANDSCAPE_MAX.
-   */
-  isTabletLandscape: boolean
   isAndroid: boolean
   isIOS: boolean
   /**
@@ -89,48 +73,32 @@ export interface PlatformState {
 /**
  * Pure tier classifier (mobile / tablet / desktop; see layout.ts). Tier
  * classification is VIEWPORT-WIDTH-DRIVEN ONLY — the OS never bends the
- * tier — with ONE Android-gated extension: an Android tablet in landscape
- * orientation (see layout.ts's landscape band) classifies back into the
- * tablet tier instead of desktop, so the design draft's 1280x800 landscape
- * panel gets the tablet layout:
+ * tier:
  *   - isMobile: viewport <= MOBILE_MAX
- *   - isTablet: MOBILE_MAX < viewport <= TABLET_MAX, OR Android inside the
- *     landscape-tablet band (TABLET_MAX < width <= TABLET_LANDSCAPE_MAX and
- *     width > height)
+ *   - isTablet: MOBILE_MAX < viewport <= TABLET_MAX
  *   - isDesktop: everything else
- * Explicit non-goals (byte-identical to the old width-only rule):
- *   - desktop OSes are NEVER re-classified: a 1280x800 desktop window stays
- *     desktop (the landscape band is Android-gated);
- *   - Android portrait above TABLET_MAX stays desktop (orientation tie-break:
- *     square viewports count as portrait);
- *   - Android at widths beyond TABLET_LANDSCAPE_MAX stays desktop.
- * A desktop OS in a small window therefore lands in the mobile tier too;
- * whether the custom frameless title bar renders is a separate, OS-scoped
- * capability below (the tier only shapes layout, never window chrome).
+ * Android tablets are handled UPSTREAM of this classifier: App.vue switches
+ * the viewport meta to a fixed 430px width for Android tablets in portrait
+ * (phone layout, upscaled by the WebView) and leaves the default
+ * device-width meta in landscape (wide viewport → desktop tier natively),
+ * so the width-only rule below suffices there too. A desktop OS in a small
+ * window lands in the mobile tier; whether the custom frameless title bar
+ * renders is a separate, OS-scoped capability below (the tier only shapes
+ * layout, never window chrome).
  *
  * arch is the backend architecture string (Go runtime.GOARCH); it defaults to
  * '' (unknown) and only gates the darwin Metal capability (see
  * showGpuOffloadParam / showGpuCards).
- *
- * viewportHeight defaults to Number.POSITIVE_INFINITY so every legacy 2/3-arg
- * call classifies as 'portrait' orientation — the landscape band can never
- * trigger without a real height, keeping existing behavior unchanged.
  */
 export function buildPlatformState(
   os: OsId,
   viewportWidth: number,
   arch = '',
-  viewportHeight: number = Number.POSITIVE_INFINITY,
 ): PlatformState {
   const isAndroid = os === 'android'
   const isIOS = os === 'ios'
-  const orientation = viewportOrientation(viewportWidth, viewportHeight)
   const isMobile = viewportWidth <= MOBILE_MAX
-  const isTablet =
-    !isMobile &&
-    (viewportWidth <= TABLET_MAX ||
-      (os === 'android' && isTabletLandscapeViewport(viewportWidth, viewportHeight)))
-  const isTabletLandscape = isTablet && os === 'android' && viewportWidth > TABLET_MAX
+  const isTablet = !isMobile && viewportWidth <= TABLET_MAX
   const isDesktop = !isMobile && !isTablet
   return {
     os,
@@ -138,8 +106,6 @@ export function buildPlatformState(
     isMobile,
     isTablet,
     isDesktop,
-    orientation,
-    isTabletLandscape,
     isAndroid,
     isIOS,
     // Tray capability: windows (taskbar) and darwin (NSStatusItem) have

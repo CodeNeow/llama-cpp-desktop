@@ -1,6 +1,6 @@
 <template>
   <div class="page">
-    <div ref="stickyTopEl" class="sticky-top">
+    <div class="sticky-top">
       <div class="page-header">
         <!-- Phone tier (frame ⑪ .mstop .bk) restyles this into a circular
              icon-only island button; the aria-label keeps it announced once
@@ -366,34 +366,9 @@
       </div>
     </div>
 
-    <!-- Android tablet-landscape summary rail (tablet draft frames ⑪⑫, track
-         B): the same live rows as the portrait island below, placed as a
-         320px sticky right column beside the form. Every form edit (ctx
-         length, KV types, threads...) recomputes the estimate immediately.
-         Hidden while loading / errored — the form column then shows the
-         loading / error state alone. -->
-    <aside
-      v-if="isTabletLandscape && !loading && !loadError"
-      class="settings-rail"
-      :aria-label="t('modelSettings.summaryTitle')"
-      :style="{ top: railTopPx + 'px' }"
-    >
-      <section class="rail-summary-card">
-        <h4 class="summary-title">{{ t('modelSettings.summaryLive') }}</h4>
-        <div v-for="row in summaryRows" :key="row.key" class="summary-row">
-          <span class="summary-label">{{ row.label }}</span>
-          <b
-            class="summary-value"
-            :class="[`summary-value--${row.tone}`, { 'summary-value--mono': row.mono }]"
-          >{{ row.value }}</b>
-        </div>
-      </section>
-    </aside>
-
     <!-- Tablet portrait summary island (tablet draft frames ⑪⑫, track A):
          the draft sinks the 参数速览 island to the bottom of the page on
-         every tab. Same rows object as the landscape rail — one data source,
-         two placements. Phone keeps its own in-tab island (untouched);
+         every tab. Phone keeps its own in-tab island (untouched);
          desktop renders no island. -->
     <div v-if="showPortraitSummary && !loading && !loadError" class="summary-island">
       <h4 class="summary-title">{{ t('modelSettings.summaryTitle') }}</h4>
@@ -537,17 +512,12 @@ const showMultiGpu = computed(() => showMultiGpuPanel(platformState.value))
 const showOffload = computed(() => showGpuOffloadParam(platformState.value))
 
 // ─── Tablet tracks (design draft frames ⑪⑫) ──────────────────────────────────
-// Track B (Android tablet landscape): the sticky 320px summary rail tier,
-// DOM-gated by this v-if so the rail markup never mounts on other tiers.
-// Track A (portrait tablet band, 768..1099): the same summary sunk to the
-// page bottom — tablet-but-not-landscape exactly mirrors the CSS band (the
-// landscape band reclassifies back into isTablet on Android).
-const isTabletLandscape = computed(() => platformState.value.isTabletLandscape)
-const showPortraitSummary = computed(
-  () => platformState.value.isTablet && !platformState.value.isTabletLandscape
-)
+// Track A (portrait tablet band, 768..1099): the live memory summary sunk to
+// the page bottom — isTablet mirrors the CSS band exactly (width-only
+// classifier; Android tablets run the phone/desktop layouts, see App.vue).
+const showPortraitSummary = computed(() => platformState.value.isTablet)
 
-// ─── Live memory estimate (portrait island + landscape rail) ──────────────────
+// ─── Live memory estimate (phone + tablet portrait summary islands) ───────────
 // Weights term: the scanned GGUF file size looked up by model name (0 while
 // unknown). Memory terms: the system snapshot captured on mount (0 = probe
 // unavailable). The estimate is a pure computed over the live form values, so
@@ -613,17 +583,6 @@ async function lookupModelSize() {
     // then honestly omits the estimate rows instead of showing a guess.
   }
 }
-
-// ─── Landscape rail stick offset ──────────────────────────────────────────────
-// The header band above is position:sticky (global .sticky-top), so the rail
-// must stick BELOW it: the offset is the measured header height plus a small
-// gap, kept fresh with a ResizeObserver (the band changes height when the
-// feedback line or the restart note appear). Falls back to a conservative
-// constant where ResizeObserver is unavailable.
-const stickyTopEl = ref<HTMLElement | null>(null)
-const RAIL_TOP_FALLBACK_PX = 240
-const railTopPx = ref(RAIL_TOP_FALLBACK_PX)
-let railTopObserver: ResizeObserver | undefined
 
 // Id of the currently active tab (stable string id, not an index: the
 // capability-gated visibleTabs list can be shorter on some platforms)
@@ -960,23 +919,12 @@ onMounted(async () => {
   } catch {}
   // Best-effort weights term for the tablet memory estimate
   lookupModelSize()
-  // Measure the sticky header band for the landscape rail's stick offset
-  if (stickyTopEl.value) {
-    railTopPx.value = stickyTopEl.value.offsetHeight + 12
-    if (typeof ResizeObserver !== 'undefined') {
-      railTopObserver = new ResizeObserver(() => {
-        railTopPx.value = (stickyTopEl.value?.offsetHeight ?? RAIL_TOP_FALLBACK_PX) + 12
-      })
-      railTopObserver.observe(stickyTopEl.value)
-    }
-  }
 })
 
 // Pending tune/bench feedback timers must not fire after the page is left
 onUnmounted(() => {
   clearTuneTimer()
   clearBenchTimer()
-  railTopObserver?.disconnect()
 })
 </script>
 
@@ -1407,16 +1355,6 @@ onUnmounted(() => {
   color: #ef4444;
 }
 
-/* Landscape rail card (draft .sidepanel .summary-card): island surface with
-   the floating shadow; rendered only inside the tablet-landscape aside */
-.rail-summary-card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
-  box-shadow: var(--shadow-island);
-  padding: 16px 18px;
-}
-
 /* ─── Phone + tablet portrait (<=1099px, design draft frames ⑪⑫): the header becomes the mockup
        .mstop — a 44px circular island back button (chevron only) in its own
        row, then the model name on a single ellipsized line, then the muted
@@ -1697,132 +1635,4 @@ onUnmounted(() => {
   }
 }
 
-/* ─── Android tablet-landscape (design draft track B frames ⑪⑫). Hooked on
-       [data-viewport='tablet-landscape'], never a media query: same-width
-       desktop windows keep the desktop layout. The page becomes a form +
-       320px summary-rail grid; the rail sticks below the sticky header band;
-       the form column and the tab row adopt the same pill/frow anatomy as the
-       portrait band above (draft B⑪/B⑫ reuse the phone formcard look at
-       landscape width). ─── */
-[data-viewport='tablet-landscape'] .page {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  gap: 24px;
-  align-items: start;
-}
-
-/* Header + tabs + actions span both columns; the form keeps the left one.
-   Loading / error states occupy the form column alone (the rail is v-if'd
-   off while they show). */
-[data-viewport='tablet-landscape'] .sticky-top {
-  grid-column: 1 / -1;
-}
-
-[data-viewport='tablet-landscape'] .settings-body,
-[data-viewport='tablet-landscape'] .loading-placeholder,
-[data-viewport='tablet-landscape'] .error-card {
-  grid-column: 1;
-  min-width: 0;
-}
-
-/* Sticky right rail (draft .sidepanel.stick): sticks below the sticky header
-   band; the exact offset is measured in script and carried by the inline
-   style (railTopPx) — this top is only a pre-measurement fallback. */
-[data-viewport='tablet-landscape'] .settings-rail {
-  grid-column: 2;
-  position: sticky;
-  top: 240px;
-}
-
-[data-viewport='tablet-landscape'] .rail-summary-card .summary-title {
-  margin: 0 0 8px;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text-secondary);
-}
-
-/* Tab pills (draft .mtabs .mt) — same anatomy as the phone/portrait band */
-[data-viewport='tablet-landscape'] .settings-tabs {
-  gap: 8px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  border-bottom: none;
-  padding-bottom: 14px;
-}
-
-[data-viewport='tablet-landscape'] .settings-tabs::-webkit-scrollbar {
-  display: none;
-}
-
-[data-viewport='tablet-landscape'] .tab-btn {
-  flex-shrink: 0;
-  padding: 8px 16px;
-  background: rgba(120, 124, 160, 0.12);
-  border: none;
-  border-bottom: none;
-  margin-bottom: 0;
-  border-radius: 999px;
-  color: var(--text-muted);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-[data-viewport='tablet-landscape'] .tab-btn .tab-icon {
-  display: none;
-}
-
-[data-viewport='tablet-landscape'] .tab-btn.active {
-  background: var(--grad);
-  color: #fff;
-  border-bottom-color: transparent;
-}
-
-/* Form column: single-column frow rows (label left, mono input right) —
-   mirror of the phone/portrait band rules above; select / toggle rows keep
-   the stacked layout there too */
-[data-viewport='tablet-landscape'] .param-grid,
-[data-viewport='tablet-landscape'] .param-grid.col-1 {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
-
-[data-viewport='tablet-landscape'] .param {
-  padding: 12px 0;
-  border-bottom: 1px solid var(--border);
-}
-
-[data-viewport='tablet-landscape'] .param:last-child {
-  border-bottom: none;
-}
-
-[data-viewport='tablet-landscape'] .param-label {
-  margin-bottom: 0;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-[data-viewport='tablet-landscape'] .param-hint {
-  margin-top: 2px;
-  font-size: 11.5px;
-}
-
-[data-viewport='tablet-landscape'] .param-frow {
-  position: relative;
-  padding-right: 122px;
-}
-
-[data-viewport='tablet-landscape'] .param-frow .param-input {
-  position: absolute;
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 110px;
-  padding: 8px 12px;
-  text-align: right;
-  font-family: var(--font-mono);
-  background: var(--bg-card);
-  border: 1px solid var(--border-light);
-  border-radius: 12px;
-}
 </style>

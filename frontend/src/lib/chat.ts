@@ -66,24 +66,24 @@ export function directModeNeedsSwitch(loadedIds: string[], selected: string): bo
   return !loadedIds.includes(selected)
 }
 
-// ─── Tablet layout pure helpers (design draft tablet frames ⑤⑥⑦) ──────────
-// Derivable presentation decisions for the Android-tablet chat tracks, kept
-// out of the component so they are unit-testable without a mount.
+// ─── Chat params layout (design draft tablet frame ⑤) ───────────────────────
+// Derivable presentation decision for the inference-params editor, kept out
+// of the component so it is unit-testable without a mount.
 
 /**
  * Which surface renders the inference-params editor (draft frame ⑤):
- * - 'panel':  Android tablet-landscape — persistent 320px right rail, no
- *             overlay (params stay visible and editable while chatting);
  * - 'sheet':  phone tier — docked bottom sheet (existing Teleport);
  * - 'modal':  tablet portrait — centered 560px modal card on a dim backdrop
  *             (NOT the phone's full-width bottom sheet);
  * - 'popover': desktop — anchored popover (unchanged).
- * Pure: the caller derives the three tier flags from the platform state.
+ * Pure: the caller derives the two tier flags from the platform state.
+ * (The former 'panel' landscape rail variant was removed with the
+ * Android-tablet dedicated layouts: tablet landscape now uses the desktop
+ * layout directly — see lib/layout.ts viewportMetaContent.)
  */
-export type ChatParamsLayout = 'popover' | 'sheet' | 'modal' | 'panel'
+export type ChatParamsLayout = 'popover' | 'sheet' | 'modal'
 
-export function chatParamsLayout(isMobileTier: boolean, isTabletTier: boolean, isTabletLandscape: boolean): ChatParamsLayout {
-  if (isTabletLandscape) return 'panel'
+export function chatParamsLayout(isMobileTier: boolean, isTabletTier: boolean): ChatParamsLayout {
   if (isMobileTier) return 'sheet'
   if (isTabletTier) return 'modal'
   return 'popover'
@@ -144,7 +144,7 @@ export function formatTokenCount(tokens: number): string {
   return `${(tokens / 1000).toFixed(1)}k`
 }
 
-/** Inputs for the tablet-landscape context rail (draft frames B⑤/B⑥/B⑦). */
+/** Inputs for the context summary card (draft frames B⑤/B⑥/B⑦). */
 export interface ChatContextInput {
   /** llama-server is up and serving. */
   serverRunning: boolean
@@ -162,7 +162,7 @@ export interface ChatContextInput {
   messages: readonly (ReplyMessageLike & TokenEstimateMessage)[]
 }
 
-/** Structured facts the landscape context rail renders (lib stays i18n-free). */
+/** Structured facts the context summary card renders (lib stays i18n-free). */
 export interface ChatContextSummary {
   service: 'running' | 'starting' | 'down'
   modelLabel: string

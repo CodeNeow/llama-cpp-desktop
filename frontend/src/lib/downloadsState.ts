@@ -41,13 +41,11 @@ export const SEARCH_SUGGESTIONS: readonly string[] = ['Qwen3', 'LLaMA', 'DeepSee
 
 /**
  * Whether the empty-search guidance card renders. The portrait tablet band
- * only (768..1099px): `isTablet` is true for that width band AND for the
- * Android landscape-tablet band, so `isTabletLandscape` is subtracted — the
- * landscape track keeps its own split composition untouched, and phone /
- * desktop tiers never render the card.
+ * only (768..1099px, `isTablet`): phone and desktop tiers never render the
+ * card.
  */
-export function showsEmptySearchGuidance(isTablet: boolean, isTabletLandscape: boolean): boolean {
-  return isTablet && !isTabletLandscape
+export function showsEmptySearchGuidance(isTablet: boolean): boolean {
+  return isTablet
 }
 
 /**

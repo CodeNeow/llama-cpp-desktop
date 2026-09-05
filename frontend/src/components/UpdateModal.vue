@@ -672,16 +672,14 @@ function close() {
   }
 }
 
-/* ─── Tablet tracks (design draft frame ⑳: the centered 560px modal in BOTH
-       orientations). Track A hooks the 768..1099 band; Track B hooks ONLY
-       [data-viewport='tablet-landscape'] (Android-gated by phase 0, so a
-       desktop OS window of the same size is never affected). The overlay keeps
-       its flex centering — the draft's 居中弹窗 — and the content model matches
-       the draft: soft pill chips, bullet release digest and the flexed 44px
-       touch footer. Chip copy stays prefixed on tablets (draft A20 chips carry
-       labels, unlike the phone draft's bare values), so the markup gates don't
-       move — only styling changes here. Phone (<=767) and desktop (>1099)
-       renderings are untouched. ─── */
+/* ─── Tablet track (design draft frame ⑳: the centered 560px modal). Track A
+       hooks the 768..1099 band. The overlay keeps its flex centering — the
+       draft's 居中弹窗 — and the content model matches the draft: soft pill
+       chips, bullet release digest and the flexed 44px touch footer. Chip copy
+       stays prefixed on tablets (draft A20 chips carry labels, unlike the
+       phone draft's bare values), so the markup gates don't move — only
+       styling changes here. Phone (<=767) and desktop (>1099) renderings are
+       untouched. ─── */
 
 @media (min-width: 768px) and (max-width: 1099px) {
   .modal {
@@ -812,127 +810,4 @@ function close() {
   }
 }
 
-/* Track B mirror (Android tablet-landscape only — the attribute is set for no
-   other OS/tier combination). Identical rules to the Track A block above; keep
-   the two blocks in sync when editing. */
-
-[data-viewport='tablet-landscape'] .modal {
-  width: min(560px, calc(100vw - 48px));
-  border: none;
-  border-radius: 24px;
-  box-shadow: 0 24px 60px rgba(20, 22, 45, 0.35);
-}
-
-[data-viewport='tablet-landscape'] .modal-header {
-  padding: 20px 22px 10px;
-}
-
-[data-viewport='tablet-landscape'] .modal-header h2 {
-  font-size: 17px;
-  font-weight: 800;
-  flex: 1;
-}
-
-[data-viewport='tablet-landscape'] .modal-version {
-  display: none;
-}
-
-[data-viewport='tablet-landscape'] .modal-close {
-  width: 44px;
-  height: 44px;
-  margin-right: -8px;
-  font-size: 17px;
-}
-
-[data-viewport='tablet-landscape'] .modal-body {
-  padding: 8px 22px 16px;
-}
-
-[data-viewport='tablet-landscape'] .meta-chip {
-  padding: 6px 12px;
-  border: none;
-  background: var(--grad-soft);
-  color: #6d28d9;
-  font-size: 11.5px;
-  font-weight: 700;
-}
-
-html[data-theme='dark'][data-viewport='tablet-landscape'] .meta-chip {
-  color: #c4b5fd;
-}
-
-[data-viewport='tablet-landscape'] .meta-chip.plain {
-  background: var(--bg-card);
-  color: var(--text-secondary);
-}
-
-html[data-theme='dark'][data-viewport='tablet-landscape'] .meta-chip.plain {
-  background: var(--overlay-8);
-}
-
-[data-viewport='tablet-landscape'] .release-notes {
-  border: none;
-  border-radius: 14px;
-  padding: 12px 14px;
-  background: var(--bg-card);
-}
-
-html[data-theme='dark'][data-viewport='tablet-landscape'] .release-notes {
-  background: #1e2233;
-}
-
-[data-viewport='tablet-landscape'] .notes-title {
-  font-size: 11px;
-}
-
-[data-viewport='tablet-landscape'] .notes-list {
-  margin: 0;
-  padding-left: 18px;
-  font-size: 12.5px;
-  line-height: 1.7;
-  color: var(--text-secondary);
-  max-height: 150px;
-  overflow-y: auto;
-}
-
-[data-viewport='tablet-landscape'] .notes-list li {
-  margin-bottom: 4px;
-  word-break: break-word;
-}
-
-[data-viewport='tablet-landscape'] .notes-body {
-  max-height: 150px;
-}
-
-[data-viewport='tablet-landscape'] .modal-footer {
-  padding: 12px 22px 20px;
-}
-
-[data-viewport='tablet-landscape'] .btn-cancel {
-  flex: 1;
-  padding: 13px 0;
-  background: var(--bg-primary);
-  border: none;
-  border-radius: 14px;
-  color: var(--text-secondary);
-  font-size: 13.5px;
-  font-weight: 800;
-}
-
-[data-viewport='tablet-landscape'] .btn-save {
-  flex: 1.4;
-  padding: 13px 0;
-  background: var(--grad);
-  border: none;
-  border-radius: 14px;
-  color: #fff;
-  font-size: 13.5px;
-  font-weight: 800;
-  box-shadow: none;
-}
-
-[data-viewport='tablet-landscape'] .footer-msg {
-  flex-basis: 100%;
-  margin: 0 0 8px;
-}
 </style>

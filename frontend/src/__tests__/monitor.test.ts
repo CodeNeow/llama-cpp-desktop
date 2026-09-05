@@ -86,7 +86,7 @@ describe('apiSpeedPlacement', () => {
     expect(apiSpeedPlacement(false)).toBe('hero')
   })
 
-  it('tablet tiers (portrait band and Android tablet-landscape alike) move the chart to its own island', () => {
+  it('tablet tier (portrait band) moves the chart to its own island', () => {
     expect(apiSpeedPlacement(true)).toBe('island')
   })
 })

@@ -82,7 +82,7 @@
              centered modal card — both rendered by the Teleport below. The
              paramsLayout gate (not a bare !isMobileTier) also keeps the popover
              from reappearing if showParams is left open across a tier switch
-             (e.g. rotating a tablet from portrait to landscape). -->
+             (e.g. resizing a desktop window into the tablet band). -->
         <div v-if="showParams && paramsLayout === 'popover'" class="params-popover" @click.stop>
           <div class="params-header">{{ t('chat.settings') }}</div>
           <div class="params-row">
@@ -131,9 +131,8 @@
              state.isLeaving sticks permanently, and the content area stays
              blank after navigating away from Chat. This is a known
              Vue×Teleport edge case (see vuejs/core#5836 and related issues).
-             Desktop and tablet-landscape tiers never mount this Teleport node
-             at all (landscape shows the persistent params rail instead); only
-             the sheet/modal tiers teleport their params overlay to <body>. -->
+             Desktop never mounts this Teleport node at all; only the
+             sheet/modal tiers teleport their params overlay to <body>. -->
         <Teleport v-if="overlayParams" to="body">
           <div v-if="showParams && overlayParams" class="params-sheet-root">
             <div class="params-dim" @click="showParams = false"></div>
@@ -244,9 +243,8 @@
       </div>
     </div>
 
-    <!-- Conversation body: messages column + (Android tablet-landscape only)
-         the persistent right rail. On every other tier the wrapper is a pure
-         flex pass-through (column, flex:1), so the desktop/phone layout chain
+    <!-- Conversation body: messages column. The wrapper is a pure flex
+         pass-through (column, flex:1), so the desktop/phone layout chain
          (.chat-page → messages → input) is unchanged. -->
     <div class="chat-body">
       <!-- Messages area -->
@@ -359,140 +357,6 @@
         </div>
       </template>
       </div>
-
-      <!-- Android tablet-landscape persistent right rail (tablet draft frames
-           B⑤/B⑥/B⑦): a 320px scrollable column beside the chat — context
-           summary (service / model / live speed), the ALWAYS-VISIBLE params
-           editor (edits apply live, no overlay), and the session card once
-           history exists. The composer below keeps spanning the full width
-           across both columns. Rendered only behind the isTabletLandscape
-           v-if, so the rail base styles never apply on other tiers. -->
-      <aside v-if="isTabletLandscape" class="chat-rail" :aria-label="t('chat.railAria')">
-        <!-- Context card (draft B⑥/B⑦): service state, resident model, speed -->
-        <section v-if="railSummary.showContextCard" class="rail-card">
-          <h5 class="rail-title">{{ t('chat.railContext') }}</h5>
-          <div v-for="row in railRows" :key="row.key" class="rail-row">
-            <span class="rail-label">{{ contextRowLabel(row.key) }}</span>
-            <b
-              class="rail-value"
-              :class="[`rail-value--${row.tone}`, { 'rail-value--mono': row.key === 'speed' }]"
-            >{{ row.value }}</b>
-          </div>
-        </section>
-
-        <!-- Persistent params card (draft B⑤): same controls and state as the
-             phone sheet — this copy exists because the sheet lives in a
-             Teleport the landscape tier never mounts. KEEP THE TWO CONTROL
-             BLOCKS IN SYNC (sliders / steppers / system prompt). -->
-        <section class="rail-card rail-card--params">
-          <div class="rail-head">
-            <h5 class="rail-title">{{ t('chat.paramsTitle') }}</h5>
-            <button class="rail-reset" type="button" @click="resetParams">{{ t('chat.resetDefaults') }}</button>
-          </div>
-          <div class="psheet-row">
-            <div class="psheet-label">
-              <span class="psheet-name">{{ t('chat.temperature') }}</span>
-              <span class="psheet-sub">{{ t('chat.temperatureHint') }}</span>
-            </div>
-            <div class="psheet-ctl">
-              <input
-                class="pslider"
-                type="range"
-                min="0"
-                max="2"
-                step="0.05"
-                :value="chatParams.temperature"
-                :style="{ '--pfill': sliderFillPercent(chatParams.temperature, 0, 2) + '%' }"
-                :aria-label="t('chat.temperature')"
-                @input="onSliderInput('temperature', $event)"
-              />
-              <span class="psheet-val">{{ formatParamValue(chatParams.temperature) }}</span>
-            </div>
-          </div>
-          <div class="psheet-row">
-            <div class="psheet-label">
-              <span class="psheet-name">{{ t('chat.topP') }}</span>
-              <span class="psheet-sub">{{ t('chat.topPHint') }}</span>
-            </div>
-            <div class="psheet-ctl">
-              <input
-                class="pslider"
-                type="range"
-                min="0"
-                max="1"
-                step="0.05"
-                :value="chatParams.topP"
-                :style="{ '--pfill': sliderFillPercent(chatParams.topP, 0, 1) + '%' }"
-                :aria-label="t('chat.topP')"
-                @input="onSliderInput('topP', $event)"
-              />
-              <span class="psheet-val">{{ formatParamValue(chatParams.topP) }}</span>
-            </div>
-          </div>
-          <div class="psheet-row">
-            <div class="psheet-label">
-              <span class="psheet-name">{{ t('chat.topK') }}</span>
-              <span class="psheet-sub">{{ t('chat.topKHint') }}</span>
-            </div>
-            <div class="pstepper">
-              <button class="pstep-btn" type="button" :aria-label="t('chat.stepDown')" @click="chatParams.topK = stepNumber(chatParams.topK, -1, TOP_K_MIN, TOP_K_MAX, 1)">−</button>
-              <span class="pstep-val">{{ chatParams.topK }}</span>
-              <button class="pstep-btn" type="button" :aria-label="t('chat.stepUp')" @click="chatParams.topK = stepNumber(chatParams.topK, 1, TOP_K_MIN, TOP_K_MAX, 1)">+</button>
-            </div>
-          </div>
-          <div class="psheet-row">
-            <div class="psheet-label">
-              <span class="psheet-name">{{ t('chat.repeatPenalty') }}</span>
-              <span class="psheet-sub">{{ t('chat.repeatPenaltyHint') }}</span>
-            </div>
-            <div class="pstepper">
-              <button class="pstep-btn" type="button" :aria-label="t('chat.stepDown')" @click="chatParams.repeatPenalty = stepNumber(chatParams.repeatPenalty, -1, PENALTY_MIN, PENALTY_MAX, 0.05)">−</button>
-              <span class="pstep-val">{{ formatParamValue(chatParams.repeatPenalty) }}</span>
-              <button class="pstep-btn" type="button" :aria-label="t('chat.stepUp')" @click="chatParams.repeatPenalty = stepNumber(chatParams.repeatPenalty, 1, PENALTY_MIN, PENALTY_MAX, 0.05)">+</button>
-            </div>
-          </div>
-          <div class="psheet-row">
-            <div class="psheet-label">
-              <span class="psheet-name">{{ t('chat.maxTokens') }}</span>
-              <span class="psheet-sub">{{ t('chat.maxTokensHint') }}</span>
-            </div>
-            <div class="pstepper">
-              <button class="pstep-btn" type="button" :aria-label="t('chat.stepDown')" @click="chatParams.maxTokens = applyMaxTokensStep(-1)">−</button>
-              <span class="pstep-val">{{ isUnlimitedMaxTokens(chatParams.maxTokens) ? t('chat.unlimited') : chatParams.maxTokens }}</span>
-              <button class="pstep-btn" type="button" :aria-label="t('chat.stepUp')" @click="chatParams.maxTokens = applyMaxTokensStep(1)">+</button>
-            </div>
-          </div>
-          <div class="psheet-row psheet-row--text">
-            <div class="psheet-label">
-              <span class="psheet-name">{{ t('chat.systemPrompt') }}</span>
-              <span class="psheet-sub">{{ t('chat.systemPromptHint') }}</span>
-            </div>
-            <textarea
-              class="ptext"
-              rows="2"
-              v-model="chatParams.systemPrompt"
-              :placeholder="t('chat.systemPromptPh')"
-              :aria-label="t('chat.systemPrompt')"
-            ></textarea>
-          </div>
-        </section>
-
-        <!-- Session card (draft B⑥ card 2): message count, rough token use,
-             clear action — history only, so an empty chat shows the B⑤
-             params-only rail -->
-        <section v-if="messages.length > 0" class="rail-card">
-          <h5 class="rail-title">{{ t('chat.railSession') }}</h5>
-          <div class="rail-row">
-            <span class="rail-label">{{ t('chat.railMessages') }}</span>
-            <b class="rail-value rail-value--mono">{{ railSummary.messageCount }}</b>
-          </div>
-          <div class="rail-row">
-            <span class="rail-label">{{ t('chat.railTokensUsed') }}</span>
-            <b class="rail-value rail-value--mono">≈ {{ formatTokenCount(railSummary.estimatedTokens) }}</b>
-          </div>
-          <button class="rail-clear" type="button" @click="clearChat">{{ t('chat.clear') }}</button>
-        </section>
-      </aside>
     </div>
 
     <!-- Input area -->
@@ -599,17 +463,13 @@ import { ref, computed, onMounted, nextTick, watch, onUnmounted, type ComponentP
 import { useRouter } from 'vue-router'
 import { getServerStatus, getServerConfig, getModels, getLlamaCpp, startServerWithModel, unloadModel } from '../wails'
 import {
-  chatContextRows,
-  chatContextSummary,
   chatParamsLayout,
   chatReadiness,
   directModeNeedsSwitch,
   fetchRouterModels,
-  formatTokenCount,
   modelsToUnload,
   streamChatCompletion,
   tokenRates,
-  type ChatContextRowKey,
   type ChatReadiness,
 } from '../lib/chat'
 import { messages, selectedModel, streaming, chatAbortController, persistChat, reconcileSelectedModel, chatParams, persistChatParams, clampStep, sliderFillPercent, formatParamValue, stepNumber, stepMaxTokens, isUnlimitedMaxTokens, type ChatMessage, type ChatParams } from '../lib/chatState'
@@ -630,21 +490,18 @@ const platform = usePlatform()
 const isMobileTier = computed(() => platform.value.isMobile)
 
 /**
- * Tablet-tier gate (portrait band 768..1099 on any OS, or Android tablet-
- * landscape): drives the inline precheck banner, the dimmed-history state,
- * the red model-chip dot and the draft's short composer copy.
+ * Tablet-tier gate (portrait band 768..1099 on any OS): drives the inline
+ * precheck banner, the dimmed-history state, the red model-chip dot and the
+ * draft's short composer copy.
  */
 const isTabletTier = computed(() => platform.value.isTablet)
 
-/** Android tablet-landscape only: the persistent right rail tier (Track B). */
-const isTabletLandscape = computed(() => platform.value.isTabletLandscape)
-
 /**
  * Which surface renders the inference-params editor (tablet draft frame ⑤):
- * desktop popover / phone sheet / tablet-portrait modal / landscape rail.
- * Pure classifier in lib/chat.ts; drives the popover + Teleport gates below.
+ * desktop popover / phone sheet / tablet-portrait modal. Pure classifier in
+ * lib/chat.ts; drives the popover + Teleport gates below.
  */
-const paramsLayout = computed(() => chatParamsLayout(isMobileTier.value, isTabletTier.value, isTabletLandscape.value))
+const paramsLayout = computed(() => chatParamsLayout(isMobileTier.value, isTabletTier.value))
 
 /** The params editor renders as a Teleported overlay (phone sheet or tablet-portrait modal). */
 const overlayParams = computed(() => paramsLayout.value === 'sheet' || paramsLayout.value === 'modal')
@@ -803,56 +660,13 @@ const streamMetaLine = computed<string>(() => {
   return tps !== null ? `${t('chat.generating')} · ${tps.toFixed(1)} tok/s` : t('chat.generating')
 })
 
-// ─── Tablet context rail + chip state (tablet draft frames B⑤/B⑥/B⑦) ───────
+// ─── Model-chip state (tablet draft frame A⑦/B⑦) ─────────────────────────────
 
 /**
  * Model-chip dot turns red while a precheck blocker is on screen (tablet
  * draft frames A⑦/B⑦ .mchip red dot); desktop/phone keep the brand gradient.
  */
 const chipDotDown = computed(() => isTabletTier.value && composerBlocked.value)
-
-/**
- * Structured facts for the landscape context rail: service state, live/last
- * speed, message/token counts. Pure helper in lib/chat.ts; i18n-free.
- */
-const railSummary = computed(() =>
-  chatContextSummary({
-    serverRunning: serverRunning.value,
-    starting: serviceStarting.value,
-    blocked: composerBlocked.value,
-    streaming: streaming.value,
-    modelLabel: assistantLabel.value,
-    liveTps: liveAnswerTps.value ?? liveReasoningTps.value,
-    messages: messages.value,
-  })
-)
-
-/** Context-rail rows with localized values (labels resolved via contextRowLabel). */
-const railRows = computed(() =>
-  chatContextRows(railSummary.value, {
-    serviceRunning: t('chat.serviceRunning'),
-    serviceStarting: t('chat.serviceStarting'),
-    serviceDown: t('chat.serviceDown'),
-    noModel: t('chat.noModels'),
-    noSpeed: '—',
-    formatTps: (tps) => `${tps.toFixed(1)} tok/s`,
-    suggestion: t('chat.railSuggestionRetry'),
-  })
-)
-
-/** Localized label for one context-rail row key. */
-function contextRowLabel(key: ChatContextRowKey): string {
-  switch (key) {
-    case 'service':
-      return t('chat.railService')
-    case 'model':
-      return t('chat.railModel')
-    case 'speed':
-      return t('chat.railSpeed')
-    case 'suggestion':
-      return t('chat.railSuggestion')
-  }
-}
 
 const messagesContainer = ref<HTMLDivElement | null>(null)
 const inputBox = ref<HTMLTextAreaElement | null>(null)
@@ -1760,10 +1574,9 @@ html[data-os='ios'] .chat-model-select :deep(button.themed-select__trigger:activ
 }
 
 /* ─── Conversation body wrapper ───
-   Pure flex pass-through (column) on every tier except Android tablet-
-   landscape, where the Track B block at the end turns it into the
-   messages + rail row. Keeping the wrapper styleless elsewhere preserves the
-   desktop/phone layout chain (.chat-page → messages → input) exactly. */
+   Pure flex pass-through (column) on every tier. Keeping the wrapper
+   styleless elsewhere preserves the desktop/phone layout chain
+   (.chat-page → messages → input) exactly. */
 .chat-body {
   flex: 1;
   min-height: 0;
@@ -1774,131 +1587,12 @@ html[data-os='ios'] .chat-model-select :deep(button.themed-select__trigger:activ
 /* ─── Tablet precheck banner (tablet draft frames A⑦/B⑦) ───
    Rendered inline at the top of the conversation, filling the content
    column; only mounts behind the isTabletTier gate, so these base styles
-   never apply on desktop/phone. Tier card skins live in the Track A band and
-   the Track B block below. */
+   never apply on desktop/phone. Tier card skins live in the Track A band. */
 .chat-precheck-stack {
   display: flex;
   flex-direction: column;
   gap: 8px;
   margin-bottom: 12px;
-}
-
-/* ─── Android tablet-landscape context rail (tablet draft frames B⑤/B⑥/B⑦) ───
-   The aside renders only behind the isTabletLandscape v-if, so these base
-   styles never apply on other tiers; the 320px column geometry is applied in
-   the [data-viewport='tablet-landscape'] block at the end (RuntimeSection's
-   rail-card precedent). */
-.chat-rail {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  min-height: 0;
-  overflow-y: auto;
-  padding-bottom: 4px;
-}
-
-.rail-card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 14px 16px;
-  flex-shrink: 0;
-}
-
-.rail-card--params {
-  /* The params card packs the same rows as the phone sheet; drop the hint
-     sub-lines so the 320px rail stays compact (draft B⑤ summary rows) */
-  --rail-pad-y: 7px;
-}
-
-.rail-card--params .psheet-row {
-  padding: var(--rail-pad-y) 0;
-}
-
-.rail-card--params .psheet-sub {
-  display: none;
-}
-
-.rail-title {
-  margin: 0 0 6px;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.6px;
-  color: var(--text-muted);
-}
-
-.rail-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 2px;
-}
-
-.rail-reset {
-  background: transparent;
-  border: none;
-  padding: 4px 0 4px 10px;
-  font-size: 11.5px;
-  font-weight: 700;
-  color: var(--accent-light);
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.rail-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 7px 0;
-  border-bottom: 1px dashed var(--border);
-  font-size: 12.5px;
-  min-width: 0;
-}
-
-.rail-row:last-child {
-  border-bottom: none;
-}
-
-.rail-label {
-  color: var(--text-secondary);
-  flex-shrink: 0;
-}
-
-.rail-value {
-  color: var(--text-primary);
-  font-weight: 600;
-  text-align: right;
-  word-break: break-word;
-}
-
-.rail-value--mono {
-  font-family: var(--font-mono);
-}
-
-.rail-value--ok {
-  color: #10b981;
-}
-
-.rail-value--busy {
-  color: var(--accent-light);
-}
-
-.rail-value--error {
-  color: var(--danger);
-}
-
-.rail-clear {
-  margin-top: 10px;
-  width: 100%;
-  padding: 7px 13px;
-  border: none;
-  border-radius: 999px;
-  background: var(--danger-bg);
-  color: var(--danger);
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
 }
 
 /* ─── Messages ─── */
@@ -3012,9 +2706,7 @@ html[data-os='ios'] .send-btn:active:not(:disabled) {
 
 /* ─── Tablet portrait Track A (768..1099px; tablet draft frames A⑤/A⑥/A⑦).
    Scoped to the band with min-width: 768px so phones (<=767) and desktop
-   (>=1100px) stay untouched; the Android landscape tier (1100..1360) never
-   matches the max-width cap, so its styles live exclusively in the Track B
-   block below. ─── */
+   (>=1100px) stay untouched. ─── */
 @media (min-width: 768px) and (max-width: 1099px) {
   /* Frame A⑤: the params overlay is a CENTERED MODAL CARD (560px) floating on
      the dim backdrop — not the phone's full-width bottom sheet. The class is
@@ -3184,107 +2876,4 @@ html[data-os='ios'] .send-btn:active:not(:disabled) {
   }
 }
 
-/* ─── Android tablet-landscape (tablet design draft track B frames ⑤/⑥/⑦).
-   Hooked on [data-viewport], never a media query: desktop OS windows in the
-   1100–1360px band must stay byte-identical (the attribute is only ever set
-   for Android). Chat column LEFT, 320px rail RIGHT (context + persistent
-   params editor + session), composer spanning full width below both columns;
-   the precheck banner stays inside the chat column so the rail stays usable
-   alongside it (frame B⑦: repair entry and status on one screen). ─── */
-
-/* Full-width split instead of the >=1100px desktop centering */
-[data-viewport='tablet-landscape'] .chat-page {
-  max-width: none;
-  margin-left: 0;
-  margin-right: 0;
-}
-
-/* Frame B⑤: params live in the rail — the toggle gear is pointless here */
-[data-viewport='tablet-landscape'] .chat-settings-btn {
-  display: none;
-}
-
-[data-viewport='tablet-landscape'] .chat-body {
-  flex-direction: row;
-  align-items: stretch;
-  gap: 18px;
-}
-
-[data-viewport='tablet-landscape'] .messages-area {
-  flex: 1;
-  min-width: 0;
-}
-
-[data-viewport='tablet-landscape'] .chat-rail {
-  width: 320px;
-  flex-shrink: 0;
-}
-
-/* Frame B⑦: dimmed history + degraded composer + red chip dot, same as the
-   portrait Track A band */
-[data-viewport='tablet-landscape'] .messages-area--blocked .message-row {
-  opacity: 0.45;
-}
-
-[data-viewport='tablet-landscape'] .input-row--blocked {
-  opacity: 0.6;
-}
-
-[data-viewport='tablet-landscape'] .chat-model-select--down :deep(.themed-select__trigger)::before {
-  background: var(--danger);
-  box-shadow: none;
-}
-
-/* Frame B⑦ banner card skin (left column top; rail stays usable beside it) */
-[data-viewport='tablet-landscape'] .chat-precheck-stack .start-notice {
-  background: var(--bg-card);
-  border: none;
-  border-radius: 14px;
-  padding: 10px 14px;
-  box-shadow: var(--shadow-island);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-
-html[data-theme='dark'][data-viewport='tablet-landscape'] .chat-precheck-stack .start-notice {
-  background: #1e2233;
-}
-
-[data-viewport='tablet-landscape'] .chat-precheck-stack .start-notice--error {
-  background: #fdecec;
-  color: #b91c1c;
-}
-
-html[data-theme='dark'][data-viewport='tablet-landscape'] .chat-precheck-stack .start-notice--error {
-  background: #2c1a1f;
-  color: #fca5a5;
-}
-
-[data-viewport='tablet-landscape'] .chat-precheck-stack .start-notice-btn {
-  background: transparent;
-  border: none;
-  padding: 8px 0 8px 10px;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--accent-light);
-}
-
-[data-viewport='tablet-landscape'] .chat-precheck-stack .start-notice-btn:hover {
-  background: transparent;
-  text-decoration: underline;
-}
-
-[data-viewport='tablet-landscape'] .chat-precheck-stack .start-notice-spinner {
-  width: 13px;
-  height: 13px;
-  border: 2px solid #c7caea;
-  border-top-color: #7c3aed;
-  animation-duration: 1s;
-}
-
-html[data-theme='dark'][data-viewport='tablet-landscape'] .chat-precheck-stack .start-notice-spinner {
-  border-color: rgba(255, 255, 255, 0.18);
-  border-top-color: #a78bfa;
-}
 </style>

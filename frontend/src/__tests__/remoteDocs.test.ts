@@ -78,17 +78,16 @@ describe('docsPageMode', () => {
   })
 
   it('aligns with the platform tier classifier at the track boundaries', () => {
-    // Phone: Android handset portrait
-    expect(docsPageMode(buildPlatformState('android', 390, 'arm64', 844))).toBe('phone')
-    // Tablet portrait: width band 768..1099 (any OS)
-    expect(docsPageMode(buildPlatformState('android', 800, 'arm64', 1280))).toBe('tablet')
-    expect(docsPageMode(buildPlatformState('windows', 800, 'amd64', 900))).toBe('tablet')
-    // Android tablet-landscape band (1100..1360, width > height) stays tablet
-    expect(docsPageMode(buildPlatformState('android', 1280, 'arm64', 800))).toBe('tablet')
-    // Desktop: same-size window on a desktop OS is never re-classified
-    expect(docsPageMode(buildPlatformState('windows', 1280, 'amd64', 800))).toBe('desktop')
-    // Android portrait above the landscape band is desktop, not tablet
-    expect(docsPageMode(buildPlatformState('android', 1400, 'arm64', 1600))).toBe('desktop')
+    // Phone: Android handset (portrait meta case keeps width 390)
+    expect(docsPageMode(buildPlatformState('android', 390, 'arm64'))).toBe('phone')
+    // Tablet portrait: width band 768..1099 (desktop-OS windows resized into it)
+    expect(docsPageMode(buildPlatformState('windows', 800, 'amd64'))).toBe('tablet')
+    // Android tablet landscape keeps the wide viewport → desktop tier natively
+    expect(docsPageMode(buildPlatformState('android', 1280, 'arm64'))).toBe('desktop')
+    // Desktop: wide window stays desktop on every OS
+    expect(docsPageMode(buildPlatformState('windows', 1280, 'amd64'))).toBe('desktop')
+    // Android width beyond the tablet band is desktop
+    expect(docsPageMode(buildPlatformState('android', 1400, 'arm64'))).toBe('desktop')
   })
 })
 

@@ -444,27 +444,23 @@ describe('fetchRouterModels', () => {
   })
 })
 
-// ─── Tablet chat layout helpers (tablet design draft frames ⑤⑥⑦) ───────────
+// ─── Chat layout helpers (tablet design draft frames ⑤⑥⑦) ──────────────────
 
 describe('chatParamsLayout', () => {
-  it('Android tablet-landscape gets the persistent rail panel', () => {
-    expect(chatParamsLayout(false, true, true)).toBe('panel')
-  })
-
   it('phone tier keeps the docked bottom sheet', () => {
-    expect(chatParamsLayout(true, false, false)).toBe('sheet')
+    expect(chatParamsLayout(true, false)).toBe('sheet')
   })
 
   it('tablet portrait gets the centered modal card, not the phone sheet', () => {
-    expect(chatParamsLayout(false, true, false)).toBe('modal')
+    expect(chatParamsLayout(false, true)).toBe('modal')
   })
 
   it('desktop keeps the anchored popover', () => {
-    expect(chatParamsLayout(false, false, false)).toBe('popover')
+    expect(chatParamsLayout(false, false)).toBe('popover')
   })
 
-  it('landscape wins over the phone check (defensive ordering)', () => {
-    expect(chatParamsLayout(true, true, true)).toBe('panel')
+  it('phone check wins over the tablet check (defensive ordering)', () => {
+    expect(chatParamsLayout(true, true)).toBe('sheet')
   })
 })
 

@@ -90,6 +90,51 @@ describe('safeArea pure math', () => {
   })
 })
 
+describe('initSafeArea scaled-viewport conversion (Android tablet portrait meta)', () => {
+  const originalScreenW = Object.getOwnPropertyDescriptor(window.screen, 'width')
+  let addedMeta: HTMLMetaElement | null = null
+
+  beforeEach(() => {
+    stubViewport(768, 2)
+    // Emulate the Android-tablet portrait state: App.vue applied the fixed
+    // 430px meta and the panel is 860 device px wide → meta scale 2 on top of
+    // dpr 2 → one CSS px spans 4 physical px.
+    addedMeta = document.createElement('meta')
+    addedMeta.setAttribute('name', 'viewport')
+    addedMeta.setAttribute('content', 'width=430, viewport-fit=cover, interactive-widget=resizes-content')
+    document.head.appendChild(addedMeta)
+    Object.defineProperty(window.screen, 'width', { value: 860, configurable: true })
+  })
+
+  afterEach(() => {
+    addedMeta?.remove()
+    addedMeta = null
+    if (originalScreenW) {
+      Object.defineProperty(window.screen, 'width', originalScreenW)
+    }
+    vi.clearAllMocks()
+  })
+
+  it('divides physical insets by dpr × (screen.width / meta width) on the scaled viewport', async () => {
+    // 120 physical px / (2 dpr × 2 meta scale) = 30 CSS px (a dpr-only divisor
+    // would wrongly report 60px)
+    getSafeAreaMock.mockResolvedValue({ top: 120, bottom: 0, left: 0, right: 0 })
+    const { initSafeArea } = await loadModule()
+    initSafeArea()
+    await flush()
+    expect(cssVar('--safe-area-js-top')).toBe('30px')
+  })
+
+  it('keeps the dpr-only conversion when the meta is device-width', async () => {
+    addedMeta?.setAttribute('content', 'width=device-width, initial-scale=1.0')
+    getSafeAreaMock.mockResolvedValue({ top: 84, bottom: 0, left: 0, right: 0 })
+    const { initSafeArea } = await loadModule()
+    initSafeArea()
+    await flush()
+    expect(cssVar('--safe-area-js-top')).toBe('42px')
+  })
+})
+
 describe('initSafeArea DOM publishing', () => {
   beforeEach(() => {
     stubViewport(768, 2)

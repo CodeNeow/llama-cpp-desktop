@@ -72,9 +72,8 @@ export type DocsPageMode = 'phone' | 'tablet' | 'desktop'
 /**
  * Classify the Docs-page composition from the platform tier flags. Mirrors
  * lib/platform.ts's tier classifier exactly: isMobile = width <= 767;
- * isTablet = 768..1099 OR the Android tablet-landscape band — so the
- * attribute/media CSS hooks (max-width: 1099px band and
- * [data-viewport='tablet-landscape']) and this DOM gate can never disagree.
+ * isTablet = 768..1099 — so the attribute/media CSS hooks (the max-width:
+ * 1099px band) and this DOM gate can never disagree.
  */
 export function docsPageMode(state: { isMobile: boolean; isTablet: boolean }): DocsPageMode {
   if (state.isMobile) return 'phone'

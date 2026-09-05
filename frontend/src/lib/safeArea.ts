@@ -48,12 +48,13 @@ export interface CssInsets {
 
 const ZERO_INSETS: CssInsets = { top: 0, bottom: 0, left: 0, right: 0 }
 
-// pxToCssPx converts a physical-pixel inset to CSS pixels. A dpr <= 0 (some
-// WebViews report 0 before first paint) falls back to a 1:1 scale; negative
-// insets (never expected from the platform) clamp to 0.
-export function pxToCssPx(px: number, dpr: number): number {
-  const scale = dpr > 0 ? dpr : 1
-  return Math.max(0, px) / scale
+// pxToCssPx converts a physical-pixel inset to CSS pixels given the current
+// physical→CSS scale factor. A scale <= 0 (some WebViews report 0 before
+// first paint) falls back to a 1:1 scale; negative insets (never expected
+// from the platform) clamp to 0.
+export function pxToCssPx(px: number, scale: number): number {
+  const s = scale > 0 ? scale : 1
+  return Math.max(0, px) / s
 }
 
 // mergeInsets takes the per-side maximum of two inset sets. Both native
@@ -95,6 +96,34 @@ function devicePixelRatio(): number {
   return hasWindow() ? window.devicePixelRatio : 1
 }
 
+// cssPxScale returns the current physical→CSS px divisor. Normally one CSS px
+// spans exactly devicePixelRatio physical px. The Android-tablet portrait
+// viewport switch (App.vue applies a FIXED-width viewport meta, see
+// lib/layout viewportMetaContent) adds a meta scale on top: the WebView lays
+// the page out at metaWidth CSS px and upscales it to fill the panel, so one
+// CSS px spans dpr × (screenWidth / metaWidth) physical px — dividing by dpr
+// alone would report insets dpr× too LARGE on that scaled viewport. The
+// device-width default meta (and a missing/unreadable meta, or a screen no
+// wider than the meta width) keeps the meta factor at 1.
+function cssPxScale(): number {
+  const dpr = devicePixelRatio()
+  let scale = dpr > 0 ? dpr : 1
+  if (!hasWindow()) return scale
+  try {
+    const content =
+      document.querySelector('meta[name="viewport"]')?.getAttribute('content') ?? ''
+    const match = /(?:^|,)\s*width\s*=\s*([\d.]+)/.exec(content)
+    const metaWidth = match ? Number(match[1]) : 0
+    const screenWidth = window.screen.width
+    if (metaWidth > 0 && screenWidth > metaWidth) {
+      scale *= screenWidth / metaWidth
+    }
+  } catch {
+    // Unreadable meta: keep the dpr-only scale.
+  }
+  return scale
+}
+
 function viewportHeight(): number {
   return hasWindow() ? window.innerHeight : 0
 }
@@ -103,12 +132,12 @@ function viewportHeight(): number {
 // physical px) into CSS-pixel insets; unexpected shapes read as zeros.
 function asInsets(raw: unknown): CssInsets {
   const src = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
-  const dpr = devicePixelRatio()
+  const scale = cssPxScale()
   return {
-    top: pxToCssPx(Number(src.top) || 0, dpr),
-    bottom: pxToCssPx(Number(src.bottom) || 0, dpr),
-    left: pxToCssPx(Number(src.left) || 0, dpr),
-    right: pxToCssPx(Number(src.right) || 0, dpr),
+    top: pxToCssPx(Number(src.top) || 0, scale),
+    bottom: pxToCssPx(Number(src.bottom) || 0, scale),
+    left: pxToCssPx(Number(src.left) || 0, scale),
+    right: pxToCssPx(Number(src.right) || 0, scale),
   }
 }
 
@@ -171,7 +200,7 @@ function onPush(raw: unknown): void {
   }
   const src = (payload && typeof payload === 'object' ? payload : {}) as Record<string, unknown>
   const currentHeight = viewportHeight()
-  const ime = pxToCssPx(Number(src.ime) || 0, devicePixelRatio())
+  const ime = pxToCssPx(Number(src.ime) || 0, cssPxScale())
   if (ime <= 0) {
     // Keyboard down: rebase so the next IME show measures the shrink against
     // the current (keyboard-free) viewport height.

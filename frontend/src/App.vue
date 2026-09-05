@@ -85,6 +85,7 @@ import { t } from './lib/i18n'
 import { appConfig } from './store'
 import { getOS } from './wails'
 import { buildPlatformState, parseOs, setPlatform, usePlatform, type OsId } from './lib/platform'
+import { viewportMetaContent } from './lib/layout'
 
 const w = window as any
 // Wails v3 no longer injects window.go; the bundled @wailsio/runtime marks the
@@ -135,22 +136,123 @@ const osId = ref<OsId>('windows')
 // Feeds the third buildPlatformState argument so arch-scoped gates (macOS
 // arm64 GPU card / Metal offload selector) react to the real backend arch.
 const arch = ref('')
+
+// Default viewport meta content — must stay in sync with index.html's meta
+// tag (index.html owns it; this copy only exists to RESTORE the default after
+// an Android-tablet portrait viewport switch, e.g. on rotation to landscape).
+const DEFAULT_VIEWPORT_META =
+  'width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content'
+
+// Android-tablet viewport switching (lib/layout.viewportMetaContent): Android
+// tablet PORTRAIT forces a fixed 430px layout viewport (phone layout,
+// upscaled by the WebView); every other platform/rotation keeps the default
+// meta. Two device inputs feed the decision:
+//   - min(window.screen.width/height): stable across meta switches (screen is
+//     meta-independent) and rotation-invariant — the phone/tablet split;
+//   - the orientation media query below: matchMedia orientation reads the
+//     LIVE viewport aspect, which flips on rotation even under the fixed
+//     430px meta — window.screen cannot provide this because the Android
+//     WebView does NOT rotate its screen dimensions (a natural-landscape
+//     tablet keeps reporting 1280x800 in portrait).
+const portraitMql = window.matchMedia('(orientation: portrait)')
+let metaRerafPending = false
+let metaRerafOuter = 0
+let metaRerafInner = 0
+// Schedule ONE re-run of syncPlatformState after a double-rAF. Needed after a
+// CHANGED meta: the WebView relayouts asynchronously (the resize event may
+// fire late or not at all for a pure meta switch), and classification reads
+// window.innerWidth — the explicit re-run converges the tier without leaving
+// a one-frame stale classification. Guarded so stacked calls collapse.
+function scheduleMetaReclassify() {
+  if (metaRerafPending) return
+  metaRerafPending = true
+  metaRerafOuter = requestAnimationFrame(() => {
+    metaRerafInner = requestAnimationFrame(() => {
+      metaRerafPending = false
+      syncPlatformState()
+    })
+  })
+}
+
+// Deterministic reload fallback for a meta TRANSITION: some WebView versions
+// ignore DYNAMIC viewport meta changes even with wide viewport enabled (the
+// meta width is only honored at load time there). A real transition — the
+// 430px override applied, or the default restored from a previous override —
+// therefore persists the desired content and reloads ONCE, so the new meta is
+// in the DOM at load time, where every wide-viewport WebView honors it. The
+// pending flag collapses stacked triggers (resize + mql change fire
+// together); the persisted value makes the post-reload pass converge without
+// another reload (the early restore below applies it at load time, so
+// desired === applied there). Desktop OSes and Android phones never
+// transition (the meta is constant for them) so they never reload. Without
+// sessionStorage the fallback degrades to the dynamic set + double-rAF
+// converge only — a reload loop would be worse than a stale meta.
+let viewportReloadPending = false
+const VIEWPORT_OVERRIDE_KEY = 'llama-viewport-meta-override'
+
+function requestViewportReload(wanted: string): void {
+  if (viewportReloadPending) return
+  try {
+    sessionStorage.setItem(VIEWPORT_OVERRIDE_KEY, wanted)
+  } catch {
+    return // no storage: deterministic reload impossible, dynamic set stands
+  }
+  viewportReloadPending = true
+  // Reload after the current task so the new attribute is committed first.
+  setTimeout(() => location.reload(), 0)
+}
+
+// Early restore: a persisted override is applied synchronously at load time
+// (before first layout), so after a fallback reload the page already starts
+// with the correct meta and the first classified pass sees
+// desired === applied — the reload never re-triggers.
+try {
+  const persisted = sessionStorage.getItem(VIEWPORT_OVERRIDE_KEY)
+  if (persisted) {
+    document.querySelector('meta[name="viewport"]')?.setAttribute('content', persisted)
+  }
+} catch {
+  // No storage available: nothing was persisted, the dynamic path handles it.
+}
+
 function syncPlatformState() {
+  // 1. Apply the Android-tablet viewport meta BEFORE classifying: the tier
+  //    read below uses window.innerWidth, which only reflects the new meta
+  //    after the WebView relayouts. The helper returns null where the default
+  //    meta already produces the right tier (non-Android, Android phones,
+  //    Android tablet landscape).
+  const metaEl = document.querySelector('meta[name="viewport"]')
+  if (metaEl) {
+    const wanted =
+      viewportMetaContent(
+        osId.value === 'android',
+        Math.min(window.screen.width, window.screen.height),
+        portraitMql.matches,
+      ) ?? DEFAULT_VIEWPORT_META
+    if (metaEl.getAttribute('content') !== wanted) {
+      const applied = metaEl.getAttribute('content') ?? ''
+      metaEl.setAttribute('content', wanted)
+      // Real meta TRANSITION (override applied, or default restored from a
+      // previous override): arm the deterministic reload fallback above.
+      if (
+        osId.value === 'android' &&
+        (wanted !== DEFAULT_VIEWPORT_META || applied !== DEFAULT_VIEWPORT_META)
+      ) {
+        requestViewportReload(wanted)
+      }
+      scheduleMetaReclassify()
+    }
+  }
+  // 2. Classify from the (possibly just-updated) viewport.
   // Build once and reuse: the same freshly classified PlatformState feeds both
   // setPlatform and the data-viewport mirror below.
-  const next = buildPlatformState(osId.value, window.innerWidth, arch.value, window.innerHeight)
+  const next = buildPlatformState(osId.value, window.innerWidth, arch.value)
   setPlatform(next)
   // Mirror the classified viewport tier onto <html> as data-viewport (same
   // pattern as the data-os attribute below): global.css / components may key
-  // tablet-landscape styling off `[data-viewport='tablet-landscape']` because
-  // media queries cannot see the OS or the viewport height.
-  const viewportMode = next.isMobile
-    ? 'mobile'
-    : next.isTabletLandscape
-      ? 'tablet-landscape'
-      : next.isTablet
-        ? 'tablet'
-        : 'desktop'
+  // tier styling off `[data-viewport='...']` because media queries cannot see
+  // the OS.
+  const viewportMode = next.isMobile ? 'mobile' : next.isTablet ? 'tablet' : 'desktop'
   document.documentElement.setAttribute('data-viewport', viewportMode)
   // Mirror the OS id onto <html> as data-os (same pattern as main.ts's
   // data-theme): global.css keys OS-scoped behavior off it — touch platforms
@@ -158,7 +260,21 @@ function syncPlatformState() {
   document.documentElement.setAttribute('data-os', osId.value)
 }
 window.addEventListener('resize', syncPlatformState, { passive: true })
-onUnmounted(() => window.removeEventListener('resize', syncPlatformState))
+// Rotation has its own channel: the orientation media query flips on the
+// LIVE viewport aspect (the resize event alone also fires on rotation, but
+// the mql keeps the meta decision tied to the same signal the helper
+// consumes, so meta switching and classification can never disagree).
+portraitMql.addEventListener('change', syncPlatformState)
+onUnmounted(() => {
+  window.removeEventListener('resize', syncPlatformState)
+  portraitMql.removeEventListener('change', syncPlatformState)
+  // Never leave a pending meta reclassification firing after teardown.
+  if (metaRerafPending) {
+    cancelAnimationFrame(metaRerafOuter)
+    cancelAnimationFrame(metaRerafInner)
+    metaRerafPending = false
+  }
+})
 syncPlatformState()
 
 // Soft keyboard (lib/keyboard.ts): mirror the reactive visibility onto <html>

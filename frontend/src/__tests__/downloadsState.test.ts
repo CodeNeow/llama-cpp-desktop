@@ -1,28 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import {
-  downloadSourceLabelKey,
   searchQuery,
   searchResults,
   modelSizes,
   SEARCH_SUGGESTIONS,
   showsEmptySearchGuidance,
 } from '../lib/downloadsState'
-
-describe('downloadSourceLabelKey', () => {
-  // Tablet download-tab summary card (draft B8 "下载源 HF 镜像"): maps the
-  // persisted source value onto the shared short-label keys; unknown values
-  // degrade to the hf-mirror label (the store default)
-  it('maps each source value to its short-label key', () => {
-    expect(downloadSourceLabelKey('hf')).toBe('settings.sourceHfShort')
-    expect(downloadSourceLabelKey('huggingface')).toBe('settings.sourceOfficialShort')
-    expect(downloadSourceLabelKey('modelscope')).toBe('settings.sourceMsShort')
-  })
-
-  it('unknown values degrade to the hf-mirror label key', () => {
-    expect(downloadSourceLabelKey('')).toBe('settings.sourceHfShort')
-    expect(downloadSourceLabelKey('other')).toBe('settings.sourceHfShort')
-  })
-})
 
 describe('module-level search state', () => {
   // Regression guard for the hoisted state contract: the module starts empty
@@ -48,13 +31,10 @@ describe('SEARCH_SUGGESTIONS', () => {
 })
 
 describe('showsEmptySearchGuidance', () => {
-  // Portrait-band gate (768..1099px): isTablet alone also covers the Android
-  // landscape-tablet band, so isTabletLandscape must subtract it — the
-  // landscape track and every other tier keep their rendering unchanged.
+  // Portrait-band gate (768..1099px): isTablet alone mirrors the CSS media
+  // band; phone and desktop tiers never render the card.
   it('renders only in the portrait tablet band', () => {
-    expect(showsEmptySearchGuidance(true, false)).toBe(true)
-    expect(showsEmptySearchGuidance(false, false)).toBe(false)
-    expect(showsEmptySearchGuidance(true, true)).toBe(false)
-    expect(showsEmptySearchGuidance(false, true)).toBe(false)
+    expect(showsEmptySearchGuidance(true)).toBe(true)
+    expect(showsEmptySearchGuidance(false)).toBe(false)
   })
 })

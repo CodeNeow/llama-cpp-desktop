@@ -1,9 +1,8 @@
 <template>
   <div class="models-local">
-    <!-- Body band (tablet-landscape split, draft frame B⑨): model cards LEFT,
-         the directory strip + local-library summary in a 360px RIGHT rail.
-         Elsewhere the rail dissolves via display:contents and the main column
-         gets order:1, so the flat stack keeps the dir-bar above the list. -->
+    <!-- Body band: model cards below the directory strip. The rail wrapper
+         dissolves via display:contents and the main column gets order:1, so
+         the flat stack keeps the dir-bar above the list. -->
     <div class="ml-body">
       <aside class="ml-rail" :aria-label="t('models.dir')">
         <!-- Local-model directory bar (non-sticky): the directory sources plus
@@ -39,15 +38,6 @@
             </button>
           </div>
         </div>
-
-        <!-- Tablet-landscape summary card (draft B⑨ .summary-card): local library
-             count + disk footprint. No "last used" row — the scan carries no
-             usage timestamps, so nothing is invented there. -->
-        <section v-if="platformState.isTabletLandscape" class="ml-summary">
-          <h5>{{ t('models.librarySummary') }}</h5>
-          <div class="ml-summary-row"><span>{{ t('models.summaryModels') }}</span><b>{{ libraryStats.count }}</b></div>
-          <div class="ml-summary-row"><span>{{ t('models.summarySize') }}</span><b>{{ librarySizeLabel }}</b></div>
-        </section>
       </aside>
 
       <div class="ml-main-col">
@@ -138,7 +128,6 @@ import { useRouter } from 'vue-router'
 import { getModels, refreshModels, getConfig, browseModelsDir } from '../wails'
 import { t } from '../lib/i18n'
 import { formatBytes } from '../lib/format'
-import { localLibraryStats } from '../lib/modelFiles'
 import { usePlatform } from '../lib/platform'
 
 const router = useRouter()
@@ -184,11 +173,6 @@ const androidHint = computed(() => {
   return t('models.dirAndroidHintCounted', { n: models.value.length, size: formatBytes(totalBytes) })
 })
 
-// Tablet-landscape summary card (draft B⑨): local library model count and
-// disk footprint, derived purely from the scan result
-const libraryStats = computed(() => localLibraryStats(models.value))
-const librarySizeLabel = computed(() => formatBytes(libraryStats.value.totalBytes) || '0 B')
-
 async function chooseModelsDir() {
   try {
     const dir = await browseModelsDir()
@@ -233,18 +217,16 @@ onMounted(() => {
   min-width: 0;
 }
 
-/* ─── Body band: flat column stack everywhere; Android tablet-landscape
-       re-composes it into the draft B⑨ split via the [data-viewport] block at
-       the end of this file ─── */
+/* ─── Body band: flat column stack on every tier ─── */
 .ml-body {
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
 
-/* Rail wrapper (directory strip + landscape summary): dissolves into the flat
-   stack everywhere except Android tablet-landscape. The main column takes
-   order:1 so the dissolved dir-bar stays the first block of the stack. */
+/* Rail wrapper (directory strip): dissolves into the flat stack. The main
+   column takes order:1 so the dissolved dir-bar stays the first block of the
+   stack. */
 .ml-rail {
   display: contents;
 }
@@ -252,46 +234,6 @@ onMounted(() => {
 .ml-main-col {
   order: 1;
   min-width: 0;
-}
-
-/* ─── Tablet-landscape summary card (draft B⑨ .summary-card). Rendered only
-       behind the isTabletLandscape v-if, so these base styles never apply on
-       other tiers. ─── */
-.ml-summary {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
-  box-shadow: var(--shadow-island);
-  padding: 16px 18px;
-  min-width: 0;
-}
-
-.ml-summary h5 {
-  margin: 0 0 8px;
-  font-size: 10.5px;
-  font-weight: 800;
-  letter-spacing: 0.8px;
-  color: var(--text-dim);
-}
-
-.ml-summary-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 7px 0;
-  font-size: 12.5px;
-  color: var(--text-muted);
-}
-
-.ml-summary-row + .ml-summary-row {
-  border-top: 1px dashed var(--border);
-}
-
-.ml-summary-row b {
-  color: var(--text-primary);
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
 }
 
 /* ─── Models directory bar (frame ③ language: floating-island skin) ─── */
@@ -1359,240 +1301,4 @@ html[data-os='ios'] .model-settings-btn:active {
   to { background-position: -200% 0; }
 }
 
-/* ─── Android tablet-landscape (design draft track B frame ⑨). Hooked on
-       [data-viewport], never a media query: same-width desktop windows keep
-       the desktop list layout byte-identically. Model cards LEFT, the
-       read-only directory strip + local-library summary in a 360px RIGHT
-       rail; the rescan action travels with the strip so it stays reachable. ─── */
-[data-viewport='tablet-landscape'] .ml-body {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
-  gap: 18px;
-  align-items: start;
-}
-
-[data-viewport='tablet-landscape'] .ml-rail {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  grid-column: 2;
-  grid-row: 1;
-  min-width: 0;
-}
-
-[data-viewport='tablet-landscape'] .ml-main-col {
-  order: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  grid-column: 1;
-  grid-row: 1;
-  min-width: 0;
-}
-
-/* The ≥1280px desktop rule turns .model-list into a two-column grid; on this
-   tier the draft's LEFT column is a single-column mcard list (the width budget
-   moves to the rail). Specificity (0,2,0) beats the desktop media rule. */
-[data-viewport='tablet-landscape'] .model-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-/* Draft B⑨ card anatomy = the compact mcard (name + chips + gear): 14px name,
-   semantic source pills, muted meta chips, no author/path lines */
-[data-viewport='tablet-landscape'] .model-name {
-  font-size: 14px;
-}
-
-[data-viewport='tablet-landscape'] .model-author,
-[data-viewport='tablet-landscape'] .model-path {
-  display: none;
-}
-
-[data-viewport='tablet-landscape'] .source-badge {
-  padding: 2px 7px;
-  border-radius: 6px;
-  font-size: 10px;
-  font-weight: 700;
-}
-
-[data-viewport='tablet-landscape'] .source-download {
-  background: #e7f8f1;
-  color: #0b7c5b;
-  border: none;
-}
-
-html[data-theme='dark'][data-viewport='tablet-landscape'] .source-download {
-  background: #12261f;
-  color: #6ee7b7;
-}
-
-[data-viewport='tablet-landscape'] .source-import {
-  background: #e8f1fd;
-  color: #2563eb;
-  border: none;
-}
-
-html[data-theme='dark'][data-viewport='tablet-landscape'] .source-import {
-  background: #1a2740;
-  color: #93c5fd;
-}
-
-[data-viewport='tablet-landscape'] .meta-tag {
-  padding: 2px 7px;
-  border-radius: 6px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0;
-  background: var(--hover-bg);
-  color: var(--text-muted);
-  border: none;
-}
-
-[data-viewport='tablet-landscape'] .arch-tag,
-[data-viewport='tablet-landscape'] .quant-tag {
-  background: var(--hover-bg);
-  color: var(--text-muted);
-  border: none;
-}
-
-[data-viewport='tablet-landscape'] .size-tag {
-  background: none;
-  border: none;
-  padding: 0;
-  color: var(--text-dim);
-}
-
-/* The strip becomes the draft's rail card: stacked rows, no outer margin (the
-   column gap takes over) */
-[data-viewport='tablet-landscape'] .dir-bar {
-  flex-direction: column;
-  align-items: stretch;
-  gap: 8px;
-  margin-bottom: 0;
-}
-
-/* Actions row inside the narrow rail: desktop-OS keeps pick + refresh grouped
-   at the end; Android keeps its read-only hint left with the rescan right */
-[data-viewport='tablet-landscape'] .dir-actions {
-  justify-content: flex-end;
-}
-
-[data-viewport='tablet-landscape'] .dir-actions-android {
-  justify-content: space-between;
-}
-
-/* ─── Frame ㉑ at Track B (draft B21): the state trio's recipes ride along —
-       skeleton anatomy + shimmer sweep, red retry pill, gradient empty CTA
-       (boundary-state action sizes stay touch-sized). The loading skeleton
-       stays SINGLE-column here on purpose: the draft's LEFT column is a
-       one-per-row mcard list at this tier (the width budget moves to the
-       360px rail), so a multi-column skeleton would preview a geometry the
-       real cards never take; B21's three-across sheet shows the three states
-       side by side for comparison, and a real page renders one state at a
-       time. ─── */
-
-[data-viewport='tablet-landscape'] .skeleton-card {
-  display: grid;
-  grid-template-columns: 48px 1fr;
-  grid-template-areas:
-    'tile l1'
-    'tile l2'
-    'block block';
-  gap: 8px 12px;
-  align-items: center;
-  padding: 16px 18px;
-}
-
-[data-viewport='tablet-landscape'] .skeleton-tile {
-  display: block;
-  grid-area: tile;
-  width: 48px;
-  height: 48px;
-  border-radius: 15px;
-}
-
-[data-viewport='tablet-landscape'] .skeleton-title {
-  grid-area: l1;
-  width: 70%;
-  height: 12px;
-  margin-bottom: 0;
-}
-
-[data-viewport='tablet-landscape'] .skeleton-mid {
-  grid-area: l2;
-  width: 45%;
-  height: 10px;
-  margin-bottom: 0;
-}
-
-[data-viewport='tablet-landscape'] .skeleton-short {
-  display: none;
-}
-
-[data-viewport='tablet-landscape'] .skeleton-block {
-  display: block;
-  grid-area: block;
-  height: 56px;
-  border-radius: 14px;
-  margin-top: 4px;
-}
-
-[data-viewport='tablet-landscape'] .skeleton-line,
-[data-viewport='tablet-landscape'] .skeleton-tile,
-[data-viewport='tablet-landscape'] .skeleton-block {
-  background: linear-gradient(90deg, var(--bg-card) 25%, #eceef6 45%, var(--bg-card) 65%);
-  background-size: 200% 100%;
-  animation: skel-sweep 1.4s linear infinite;
-}
-
-html[data-theme='dark'][data-viewport='tablet-landscape'] .skeleton-line,
-html[data-theme='dark'][data-viewport='tablet-landscape'] .skeleton-tile,
-html[data-theme='dark'][data-viewport='tablet-landscape'] .skeleton-block {
-  background: linear-gradient(90deg, var(--bg-card) 25%, #262b3d 45%, var(--bg-card) 65%);
-}
-
-/* Frame ㉑ errcard: red retry pill (light #fdecec / dark #2c1a1f disc) */
-[data-viewport='tablet-landscape'] .retry-btn {
-  min-height: 44px;
-  padding: 10px 20px;
-  background: #fdecec;
-  color: #ef4444;
-  border: none;
-  border-radius: 999px;
-  font-weight: 800;
-}
-
-[data-viewport='tablet-landscape'] .retry-btn:hover {
-  background: #fdecec;
-  border: none;
-  color: #ef4444;
-}
-
-html[data-theme='dark'][data-viewport='tablet-landscape'] .retry-btn,
-html[data-theme='dark'][data-viewport='tablet-landscape'] .retry-btn:hover {
-  background: #2c1a1f;
-  color: #f87171;
-}
-
-/* Frame ㉑ emptycard: gradient pill CTA */
-[data-viewport='tablet-landscape'] .empty-cta {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 44px;
-  padding: 10px 22px;
-  background: var(--grad);
-  color: #fff;
-  border: none;
-  border-radius: 999px;
-  font-size: 12.5px;
-  font-weight: 800;
-  box-shadow: none;
-}
-
-[data-viewport='tablet-landscape'] .empty-cta:hover {
-  background: var(--grad);
-}
 </style>

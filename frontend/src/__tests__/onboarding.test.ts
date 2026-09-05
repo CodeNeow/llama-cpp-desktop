@@ -48,54 +48,41 @@ describe('buildOnboardingView', () => {
   })
 })
 
-// ─── Checklist copy placement per tier/orientation (Android tablet draft) ───
+// ─── Checklist copy placement per tier (Android tablet draft) ────────────────
 // buildPlatformState is the canonical way to produce the classifier input, so
 // the placement helpers are exercised through real tier combinations.
 
 describe('onboardHintKey', () => {
-  it('Android tablet landscape: the checklist sits right of the hero (draft B①)', () => {
-    const s = buildPlatformState('android', 1280, 'arm64', 800)
-    expect(s.isTabletLandscape).toBe(true)
-    expect(onboardHintKey(s)).toBe('home.greet.onboardHintSide')
-  })
-
-  it('Android tablet portrait keeps the original "below" copy (draft A①)', () => {
-    const s = buildPlatformState('android', 800, 'arm64', 1280)
+  it('tablet tier (portrait band) keeps the original "below" copy (draft A①)', () => {
+    const s = buildPlatformState('windows', 900)
     expect(s.isTablet).toBe(true)
     expect(onboardHintKey(s)).toBe('home.greet.onboardHint')
   })
 
   it('phone tier keeps the original "below" copy (unchanged)', () => {
-    expect(onboardHintKey(buildPlatformState('android', 390, 'arm64', 844))).toBe(
+    expect(onboardHintKey(buildPlatformState('android', 390))).toBe(
       'home.greet.onboardHint'
     )
   })
 
-  it('desktop tiers never render the hint (null, unchanged behavior)', () => {
-    // Same-sized desktop window stays desktop: the landscape band is Android-gated
-    expect(onboardHintKey(buildPlatformState('windows', 1280, 'amd64', 800))).toBeNull()
-    expect(onboardHintKey(buildPlatformState('windows', 1920, 'amd64', 1080))).toBeNull()
+  it('desktop tier never renders the hint (null, unchanged behavior)', () => {
+    expect(onboardHintKey(buildPlatformState('windows', 1280))).toBeNull()
+    expect(onboardHintKey(buildPlatformState('windows', 1920))).toBeNull()
   })
 })
 
 describe('heroOnboardSubKey', () => {
-  it('Android tablet landscape points at the right column (draft B①)', () => {
-    expect(heroOnboardSubKey(buildPlatformState('android', 1280, 'arm64', 800))).toBe(
-      'home.hero.subOnboardSide'
-    )
-  })
-
-  it('tablet portrait / phone point at the steps above the hero (draft A①)', () => {
-    expect(heroOnboardSubKey(buildPlatformState('android', 800, 'arm64', 1280))).toBe(
+  it('tablet tier / phone point at the steps above the hero (draft A①)', () => {
+    expect(heroOnboardSubKey(buildPlatformState('windows', 900))).toBe(
       'home.hero.subOnboard'
     )
-    expect(heroOnboardSubKey(buildPlatformState('android', 390, 'arm64', 844))).toBe(
+    expect(heroOnboardSubKey(buildPlatformState('android', 390))).toBe(
       'home.hero.subOnboard'
     )
   })
 
   it('desktop keeps the generic offline subline (null, unchanged behavior)', () => {
-    expect(heroOnboardSubKey(buildPlatformState('windows', 1280, 'amd64', 800))).toBeNull()
+    expect(heroOnboardSubKey(buildPlatformState('windows', 1280))).toBeNull()
     expect(heroOnboardSubKey(buildPlatformState('linux', 1100))).toBeNull()
   })
 })

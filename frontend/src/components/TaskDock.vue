@@ -324,10 +324,9 @@ const platform = usePlatform()
 
 // Compact-skin gate (lib/dock dockShowsCompactSkin): the design-draft capsule
 // rendering (dark edge-hugging capsule + expanded glass card, frame ⑲) applies
-// on the phone tier AND on the whole tablet tier — the draft gives tablets the
-// same capsule interaction in both orientations (portrait 768..1099 band plus
-// the Android tablet-landscape band folded into isTablet by phase 0). Desktop
-// keeps the original segments pill.
+// on the phone tier AND on the tablet tier (portrait 768..1099 band — the
+// draft gives tablets the same capsule interaction). Desktop keeps the
+// original segments pill.
 const compactSkin = computed(() =>
   dockShowsCompactSkin(platform.value.isMobile, platform.value.isTablet)
 )
@@ -1683,12 +1682,9 @@ html[data-os='ios'] .dock-unload-btn:active:not(:disabled) {
   }
 }
 
-/* ─── Tablet tracks (design draft frame ⑲: the capsule + expanded-card
-       interaction is IDENTICAL in both orientations — "双方向同一交互").
-       Track A hooks the 768..1099 band (width-based, like every Track A
-       phase); Track B hooks ONLY [data-viewport='tablet-landscape']
-       (Android-gated by phase 0, so a desktop OS window of the same size is
-       never affected). The compact skin is gated in the template too (lib/
+/* ─── Tablet track (design draft frame ⑲: the capsule + expanded-card
+       interaction). Hooks the 768..1099 band (width-based, like every Track A
+       phase). The compact skin is gated in the template too (lib/
        dock dockShowsCompactSkin), so these style blocks and the markup
        branches always agree. The single difference from the phone skin is the
        expanded card's width: the draft's 340px dockcard (vs the phone's 300px
@@ -1857,150 +1853,4 @@ html[data-os='ios'] .dock-unload-btn:active:not(:disabled) {
   }
 }
 
-/* Track B mirror (Android tablet-landscape only — the attribute is set for
-   no other OS/tier combination). Identical rules to the Track A block above;
-   keep the two blocks in sync when editing. */
-
-[data-viewport='tablet-landscape'] .task-dock {
-  right: 0;
-}
-
-[data-viewport='tablet-landscape'] .dock-pill,
-[data-viewport='tablet-landscape'] .dock-pill:hover {
-  height: 44px;
-  padding: 0 14px;
-  gap: 7px;
-  background: rgba(25, 28, 43, 0.82);
-  border: none;
-  border-radius: 24px 4px 4px 24px;
-  box-shadow: none;
-  color: #fff;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-[data-viewport='tablet-landscape'] .task-dock--left .dock-pill,
-[data-viewport='tablet-landscape'] .task-dock--left .dock-pill:hover {
-  border-radius: 4px 24px 24px 4px;
-}
-
-[data-viewport='tablet-landscape'] .dock-toggle {
-  width: 32px;
-  height: 32px;
-}
-
-[data-viewport='tablet-landscape'] .dock-popover {
-  width: min(340px, calc(100vw - 32px));
-  border: none;
-  border-radius: 22px;
-  max-height: 60vh;
-}
-
-[data-viewport='tablet-landscape'] .dock-title {
-  font-size: 13px;
-  font-weight: 800;
-}
-
-[data-viewport='tablet-landscape'] .dock-bar,
-[data-viewport='tablet-landscape'] .dock-fill {
-  border-radius: 999px;
-}
-
-[data-viewport='tablet-landscape'] .dock-task-header {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  grid-template-areas:
-    'badge name ops'
-    'badge status ops';
-  column-gap: 8px;
-  row-gap: 2px;
-  align-items: center;
-}
-
-[data-viewport='tablet-landscape'] .dock-row-badge {
-  display: inline-flex;
-  grid-area: badge;
-}
-
-[data-viewport='tablet-landscape'] .dock-task-name {
-  grid-area: name;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-[data-viewport='tablet-landscape'] .dock-task-status {
-  grid-area: status;
-  justify-self: start;
-  font-size: 10.5px;
-  color: var(--text-muted);
-}
-
-[data-viewport='tablet-landscape'] .dock-percent {
-  display: none;
-}
-
-[data-viewport='tablet-landscape'] .dock-bar-wrap {
-  margin-top: 5px;
-}
-
-[data-viewport='tablet-landscape'] .dock-task-ops {
-  display: flex;
-  grid-area: ops;
-  align-items: center;
-  gap: 4px;
-}
-
-[data-viewport='tablet-landscape'] .dock-op {
-  width: 44px;
-  height: 44px;
-  padding: 9px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg-card);
-  background-clip: content-box;
-  border: none;
-  border-radius: 50%;
-  color: var(--text-secondary);
-  font-size: 11px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-[data-viewport='tablet-landscape'] .dock-op--danger {
-  color: #ef4444;
-}
-
-html[data-os='android'][data-viewport='tablet-landscape'] .dock-op:active,
-html[data-os='ios'][data-viewport='tablet-landscape'] .dock-op:active {
-  filter: brightness(0.85);
-}
-
-[data-viewport='tablet-landscape'] .dock-model-badge {
-  border-radius: 5px;
-  padding: 2px 5px;
-  font-size: 9px;
-  font-weight: 800;
-  border: none;
-}
-
-[data-viewport='tablet-landscape'] .dock-model-badge.type-chat {
-  background: #e7f8f1;
-  color: #0b7c5b;
-}
-
-html[data-theme='dark'][data-viewport='tablet-landscape'] .dock-model-badge.type-chat {
-  background: #12261f;
-  color: #6ee7b7;
-}
-
-[data-viewport='tablet-landscape'] .dock-model-status {
-  font-size: 10.5px;
-}
-
-[data-viewport='tablet-landscape'] .dock-unload-btn {
-  min-height: 44px;
-  padding: 8px 14px;
-}
 </style>

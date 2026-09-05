@@ -61,7 +61,7 @@
       <!-- Quick-start checklist: hides once every step completes or the user
            dismisses it. It guides across tabs (its actions router.push other
            routes), which works from any tab. Lives in the side column so the
-           tablet-landscape right rail can pack it above the storage island. -->
+           portrait band's right column can pack it above the storage island. -->
       <div class="home-side-col">
       <section v-if="onboardingView.visible" class="island onboarding-card">
         <div class="onboarding-head">
@@ -166,9 +166,6 @@
           <div v-if="unloadErrors[m.id]" class="mcard-error">
             {{ t('dock.unloadFailed', { msg: unloadErrors[m.id] }) }}
           </div>
-          <!-- Android tablet-landscape right rail (draft frame B②): explains why
-               there is no unload action on this card -->
-          <p v-if="showAutoSwitchHint" class="mcard-auto-hint">{{ t('home.residentAutoHint') }}</p>
         </div>
         <!-- Desktop platforms keep the in-place unload (same chain as TaskDock);
              Android renders the status-only "auto switch" pill instead (draft A②) -->
@@ -184,9 +181,9 @@
       </section>
       </div>
 
-      <!-- Column wrappers (Android tablet-landscape draft frames B①/B②): the
-           checklist + storage + resident cards form the RIGHT rail, hero + mini
-           pair the LEFT column, capability/system cards a full-width band below.
+      <!-- Column wrappers (the portrait band's two-column pass): the checklist +
+           storage + resident cards form the right column, hero + mini pair the
+           left column, capability/system cards a full-width band below.
            Everywhere else they dissolve via display:contents into the flat
            single/two-column grid; the base order values in the style block keep
            the flat item order identical to the pre-wrapper layout (checklist
@@ -730,13 +727,9 @@ function typeLabel(type: string): string {
 }
 
 // Android renders the resident-model card as STATUS ONLY (design-draft platform
-// crop, frames A②/B②): the unload action is cropped and an "auto switch" pill
-// takes its place; the tablet-landscape right rail additionally carries the
-// swap hint line (lib/dock.homeResidentShowsUnload)
+// crop, frame A②): the unload action is cropped and an "auto switch" pill
+// takes its place (lib/dock.homeResidentShowsUnload)
 const showResidentUnload = computed(() => homeResidentShowsUnload(platformState.value.isAndroid))
-const showAutoSwitchHint = computed(
-  () => platformState.value.isAndroid && platformState.value.isTabletLandscape
-)
 
 // Unload chain identical to TaskDock: drop the row instantly, then nudge a
 // poll that reconciles. Platform split via lib/dock residentReleaseMode:
@@ -916,9 +909,9 @@ onUnmounted(() => {
   align-content: start;
 }
 
-/* Column wrappers (Android tablet-landscape split, draft B①/B②): they only
-   become real boxes there; every other tier dissolves them into the flat grid
-   so the item order and spacing stay exactly as before the wrappers existed */
+/* Column wrappers (the portrait band's two-column pass): they only become
+   real boxes there; every other tier dissolves them into the flat grid so the
+   item order and spacing stay exactly as before the wrappers existed */
 .home-main-col,
 .home-side-col,
 .home-info-col {
@@ -1368,14 +1361,6 @@ html[data-os='ios'] .unload-btn:active:not(:disabled) {
   white-space: nowrap;
 }
 
-/* Swap hint line inside the tablet-landscape right rail (draft B②) */
-.mcard-auto-hint {
-  margin: 8px 0 0;
-  font-size: 11px;
-  line-height: 1.6;
-  color: var(--text-dim);
-}
-
 /* ─── Retained capability cards (GPU / CUDA / system): same island surface,
        existing inner content untouched ─── */
 .info-section {
@@ -1412,15 +1397,15 @@ html[data-os='ios'] .unload-btn:active:not(:disabled) {
 .onboarding-card {
   grid-column: 1 / -1;
   /* Leads the flat grid whenever the wrappers are display:contents (phone /
-     tablet-portrait / desktop), and packs first into the right rail on
-     tablet-landscape */
+     tablet-portrait / desktop), and packs first into the right column of the
+     portrait band's two-column pass */
   order: -3;
 }
 
 /* Flat-grid ordering of the wrapper-dissolved cards: the checklist leads
    (order: -3 above), then hero + minis, then the storage / resident /
    capability cards in their DOM order. Only matters while the wrappers are
-   display:contents; inside the tablet-landscape flex columns each column
+   display:contents; inside the portrait band's flex columns each column
    packs its own children (with the overrides set there). .grid2 carries the
    order while it is a real box (phone / tablet tiers); the .mini order kicks
    in on desktop where grid2 dissolves via display:contents and the minis
@@ -2129,166 +2114,4 @@ html[data-os='ios'] .unload-btn:active:not(:disabled) {
   }
 }
 
-/* ─── Android tablet-landscape (design draft track B frames ①/②). Hooked on
-       [data-viewport], never a media query: the 1100–1360px band on desktop
-       OSes must stay byte-identical. Hero + mini pair take the LEFT column;
-       the checklist (first use), resident-model card and storage island pack
-       a 340px RIGHT rail; capability/system cards span the full width below. ─── */
-[data-viewport='tablet-landscape'] .sys-grid {
-  grid-template-columns: minmax(0, 1fr) 340px;
-  align-items: start;
-}
-
-[data-viewport='tablet-landscape'] .home-main-col {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  grid-column: 1;
-  grid-row: 1;
-  min-width: 0;
-}
-
-[data-viewport='tablet-landscape'] .home-side-col {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  grid-column: 2;
-  grid-row: 1;
-  min-width: 0;
-}
-
-[data-viewport='tablet-landscape'] .home-info-col {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  grid-column: 1 / -1;
-  grid-row: 2;
-  min-width: 0;
-}
-
-/* Draft B② right-rail order: resident-model card above the storage island */
-[data-viewport='tablet-landscape'] .home-side-col > .mcard {
-  order: -1;
-}
-
-/* The ≥1280px desktop rule dissolves .grid2 (display:contents) into the outer
-   grid — restore it as a real two-column pair inside the LEFT flex column */
-[data-viewport='tablet-landscape'] .home-main-col > .grid2 {
-  display: grid;
-}
-
-/* Draft B① offline hero: mockup .hero.off gray gradient (same as the
-   tablet-portrait band above) */
-[data-viewport='tablet-landscape'] .hero-card.off {
-  background: linear-gradient(135deg, #4b5069 0%, #6b7186 60%, #8b90a5 100%);
-  box-shadow: none;
-}
-
-[data-viewport='tablet-landscape'] .hero-card.off .tag-dot {
-  background: #cbd0e0;
-  box-shadow: none;
-}
-
-/* Draft numerals render in the mono face (same as the tablet-portrait band) */
-[data-viewport='tablet-landscape'] .hero-num,
-[data-viewport='tablet-landscape'] .mini-val {
-  font-family: var(--font-mono);
-}
-
-/* Draft B① checklist: the .check card treatment shared with the phone tier
-   and the tablet-portrait band (13px title, dashed rows, 26px markers, muted
-   sub-lines, bare accent go-links); touch targets stay ≥44px */
-[data-viewport='tablet-landscape'] .onboarding-step {
-  min-height: 44px;
-  padding: 10px 0;
-  border-bottom: 1px dashed var(--border);
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-[data-viewport='tablet-landscape'] .onboarding-step:last-child {
-  border-bottom: none;
-  padding-bottom: 2px;
-}
-
-[data-viewport='tablet-landscape'] .onboarding-head .section-title {
-  font-size: 13px;
-  font-weight: 700;
-}
-
-/* Mockup .check h4 has no leading icon — plain "快速上手" text only */
-[data-viewport='tablet-landscape'] .onboarding-head .section-title svg {
-  display: none;
-}
-
-[data-viewport='tablet-landscape'] .onboarding-steps {
-  gap: 0;
-}
-
-[data-viewport='tablet-landscape'] .step-marker {
-  width: 26px;
-  height: 26px;
-  border: none;
-  background: var(--overlay-8);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-[data-viewport='tablet-landscape'] .step-text {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-[data-viewport='tablet-landscape'] .step-sub {
-  font-size: 11.5px;
-  font-weight: 500;
-  color: var(--text-dim);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-[data-viewport='tablet-landscape'] .step-action {
-  min-height: 44px;
-  padding: 10px 0 10px 12px;
-  background: transparent;
-  border-radius: 8px;
-  color: #7c3aed;
-  font-size: 12px;
-  font-weight: 800;
-}
-
-[data-viewport='tablet-landscape'] .step-action:hover {
-  background: transparent;
-}
-
-[data-viewport='tablet-landscape'] .step-action svg {
-  display: none;
-}
-
-/* Compound selector: data-theme AND data-viewport both live on <html>, so a
-   descendant combinator between them can never match (dark sweep fix) */
-html[data-theme='dark'][data-viewport='tablet-landscape'] .step-action {
-  color: #a78bfa;
-}
-
-/* Loading skeleton children: keep them in the main column while the tier
-   grid is two columns wide */
-[data-viewport='tablet-landscape'] .sys-grid > .hero-skel {
-  grid-column: 1;
-  grid-row: 1;
-}
-
-[data-viewport='tablet-landscape'] .sys-grid > .grid2 {
-  grid-column: 1;
-  grid-row: 2;
-  display: grid;
-}
-
-[data-viewport='tablet-landscape'] .sys-grid > .island.skeleton-card {
-  grid-column: 1 / -1;
-}
 </style>

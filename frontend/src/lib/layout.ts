@@ -6,13 +6,13 @@
  *   - tablet:  MOBILE_MAX < width <= TABLET_MAX (768..1099px)
  *   - desktop: width > TABLET_MAX (1100px and up)
  *
- * Android landscape-tablet extension (see TABLET_LANDSCAPE_MAX and the
- * orientation helpers below): Android tablets in landscape orientation
- * (width > TABLET_MAX and <= TABLET_LANDSCAPE_MAX with width > height)
- * classify back into the tablet tier instead of desktop. The helpers here
- * are pure viewport math only — the OS gate that restricts the extension to
- * Android lives in lib/platform.ts, so desktop OSes are never re-classified
- * by it.
+ * Android tablets get NO dedicated tier: in PORTRAIT the page is laid out at
+ * a fixed 430px-wide viewport (see viewportMetaContent below), which lands
+ * inside the phone tier natively and is upscaled by the WebView; in
+ * LANDSCAPE the default device-width meta applies and the wide viewport
+ * classifies straight into the desktop tier. Only the phone and desktop
+ * layouts are therefore maintained. The 768..1099 tablet band remains —
+ * it still serves desktop-OS windows resized into that width range.
  *
  * CSS custom properties do not work inside `@media` conditions, so every
  * media query in `src/styles/global.css` and in component <style> blocks
@@ -29,16 +29,6 @@ export const MOBILE_MAX = 767
 export const TABLET_MAX = 1099
 
 /**
- * Upper bound of the Android landscape-tablet band (TABLET_MAX+1..1360px).
- * Caps the landscape re-classification for Android tablets: the design
- * draft targets a 1280x800 landscape panel and 1360 leaves headroom above
- * it. Widths beyond this value stay in the desktop tier even in landscape.
- * Desktop OSes are never re-classified by it — the OS gate lives in
- * lib/platform.ts, so a desktop window of the same size stays desktop.
- */
-export const TABLET_LANDSCAPE_MAX = 1360
-
-/**
  * Viewport width (px) at or below which the sidebar auto-collapses to the
  * icon rail. Matches the existing `@media (max-width: 1099px)` breakpoints
  * used by the fixed-viewport pages (e.g. Api.vue's monitor grid). Kept as a
@@ -53,26 +43,56 @@ export function shouldCollapseSidebar(width: number): boolean {
 }
 
 /**
- * Viewport orientation from width/height: 'landscape' iff width is strictly
- * greater than height. A perfect square (width === height) ties to
- * 'portrait' so the conservative default applies — the landscape-tablet
- * classification never claims an ambiguous viewport.
+ * Logical viewport width (px) forced onto Android tablets in portrait. The
+ * phone layouts are designed for 390..430px phone screens; 430 is the
+ * largest logical width in that range, so it minimizes the upscale factor
+ * the WebView applies to fill the physical panel (the standard "phone
+ * compatibility mode" behavior) while still classifying into the phone
+ * tier (430 <= MOBILE_MAX). Callers apply the returned meta content only
+ * when it differs from the live viewport meta attribute.
  */
-export function viewportOrientation(width: number, height: number): 'portrait' | 'landscape' {
-  return width > height ? 'landscape' : 'portrait'
-}
+export const TABLET_PORTRAIT_VIEWPORT_WIDTH = 430
 
 /**
- * Pure viewport math for the Android landscape-tablet band: width inside
- * (TABLET_MAX, TABLET_LANDSCAPE_MAX] AND landscape orientation (width >
- * height). Deliberately WITHOUT any OS gate — callers (lib/platform.ts)
- * combine this with the Android-only check, so desktop OSes are never
- * re-classified by this band.
+ * Viewport meta content for Android tablets, or null to keep the
+ * index.html default (`width=device-width, ...`).
+ *
+ * Pure classifier over two DEVICE inputs the caller reads live:
+ *   - deviceMinSide: `Math.min(window.screen.width, window.screen.height)` —
+ *     window.screen is NOT affected by the viewport meta (the decision stays
+ *     stable across meta switches), and the MIN side is rotation-invariant,
+ *     which matters because the Android WebView does NOT rotate its screen
+ *     dimensions on rotation (a 1280x800 tablet keeps reporting 1280x800 in
+ *     portrait). min side <= MOBILE_MAX → phone → null.
+ *   - isPortrait: the caller's `matchMedia('(orientation: portrait)').matches`
+ *     — matchMedia orientation is computed from the LIVE viewport aspect and
+ *     flips correctly on rotation even while a fixed-width meta is applied
+ *     (rotating a 430-wide meta to landscape yields a 430x~269 viewport =
+ *     landscape aspect → the restore path fires). window.screen could NOT be
+ *     used for this: it never rotates in the WebView, so a width>height test
+ *     on it would permanently misread a natural-landscape tablet as
+ *     landscape. false → landscape tablet → null (device-width meta, desktop
+ *     tier natively).
+ *   - non-Android platforms → null (the default meta already matches).
+ * Android tablet portrait (min side > 767 AND portrait) → a fixed `width=430`
+ * meta: the page lays out at 430 CSS px, so every phone-tier media query
+ * (`max-width: 767px`) and innerWidth-driven gate fires natively while the
+ * WebView scales it up to fill the panel. Callers apply the returned content
+ * only when it differs from the live viewport meta attribute.
+ *
+ * layout.ts deliberately does not import platform.ts (which imports this
+ * file) — the OS arrives as a plain boolean.
  */
-export function isTabletLandscapeViewport(width: number, height: number): boolean {
+export function viewportMetaContent(
+  isAndroid: boolean,
+  deviceMinSide: number,
+  isPortrait: boolean,
+): string | null {
+  if (!isAndroid) return null
+  if (deviceMinSide <= MOBILE_MAX) return null
+  if (!isPortrait) return null
   return (
-    width > TABLET_MAX &&
-    width <= TABLET_LANDSCAPE_MAX &&
-    viewportOrientation(width, height) === 'landscape'
+    `width=${TABLET_PORTRAIT_VIEWPORT_WIDTH}, ` +
+    'viewport-fit=cover, interactive-widget=resizes-content'
   )
 }

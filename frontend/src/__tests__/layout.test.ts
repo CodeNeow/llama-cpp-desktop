@@ -2,11 +2,10 @@ import { describe, it, expect } from 'vitest'
 import {
   MOBILE_MAX,
   TABLET_MAX,
-  TABLET_LANDSCAPE_MAX,
+  TABLET_PORTRAIT_VIEWPORT_WIDTH,
   SIDEBAR_AUTO_COLLAPSE_WIDTH,
   shouldCollapseSidebar,
-  viewportOrientation,
-  isTabletLandscapeViewport,
+  viewportMetaContent,
 } from '../lib/layout'
 
 describe('breakpoint constants', () => {
@@ -19,8 +18,9 @@ describe('breakpoint constants', () => {
     expect(SIDEBAR_AUTO_COLLAPSE_WIDTH).toBe(TABLET_MAX)
   })
 
-  it('caps the Android landscape-tablet band at 1360px (1280x800 draft + headroom)', () => {
-    expect(TABLET_LANDSCAPE_MAX).toBe(1360)
+  it('tablet portrait viewport width sits inside the phone tier', () => {
+    expect(TABLET_PORTRAIT_VIEWPORT_WIDTH).toBe(430)
+    expect(TABLET_PORTRAIT_VIEWPORT_WIDTH).toBeLessThanOrEqual(MOBILE_MAX)
   })
 })
 
@@ -46,26 +46,31 @@ describe('shouldCollapseSidebar', () => {
   })
 })
 
-describe('viewportOrientation', () => {
-  it.each<[number, number, 'portrait' | 'landscape']>([
-    [800, 1280, 'portrait'], // Android tablet held upright
-    [1280, 800, 'landscape'], // Android tablet rotated to landscape
-    [1280, 1280, 'portrait'], // perfect square ties to portrait (conservative default)
-    [375, 812, 'portrait'], // phone portrait
-    [1920, 1080, 'landscape'], // desktop window
-  ])('%ix%i -> %s', (width, height, expected) => {
-    expect(viewportOrientation(width, height)).toBe(expected)
-  })
-})
+describe('viewportMetaContent (Android tablet viewport switching)', () => {
+  const SCALED = 'width=430, viewport-fit=cover, interactive-widget=resizes-content'
 
-describe('isTabletLandscapeViewport (pure viewport math, no OS gate)', () => {
-  it.each<[number, number, boolean]>([
-    [1280, 800, true], // design-draft target: inside the band and landscape
-    [1100, 900, true], // band lower edge is inclusive (TABLET_MAX + 1)
-    [1099, 800, false], // below the band: plain tablet-tier width
-    [1361, 900, false], // beyond TABLET_LANDSCAPE_MAX: desktop stays desktop
-    [1280, 1280, false], // square viewport ties to portrait -> outside the band
-  ])('%ix%i -> %s', (width, height, expected) => {
-    expect(isTabletLandscapeViewport(width, height)).toBe(expected)
+  it('keeps the default meta on non-Android platforms at any device size', () => {
+    expect(viewportMetaContent(false, 1920, false)).toBeNull()
+    expect(viewportMetaContent(false, 800, true)).toBeNull()
+    expect(viewportMetaContent(false, 390, true)).toBeNull()
+  })
+
+  it('keeps the default meta for an Android phone (device min side <= 767)', () => {
+    expect(viewportMetaContent(true, 390, true)).toBeNull()
+    expect(viewportMetaContent(true, 390, false)).toBeNull()
+    expect(viewportMetaContent(true, 767, true)).toBeNull()
+  })
+
+  it('forces the fixed 430px meta for an Android tablet in portrait', () => {
+    expect(viewportMetaContent(true, 800, true)).toBe(SCALED)
+    expect(viewportMetaContent(true, 768, true)).toBe(SCALED)
+    expect(viewportMetaContent(true, 1600, true)).toBe(SCALED)
+  })
+
+  it('keeps the default meta for an Android tablet in landscape (desktop tier natively)', () => {
+    // isPortrait comes from matchMedia, not from screen width vs height —
+    // the Android WebView does NOT rotate its screen dimensions on rotation.
+    expect(viewportMetaContent(true, 800, false)).toBeNull()
+    expect(viewportMetaContent(true, 1280, false)).toBeNull()
   })
 })
