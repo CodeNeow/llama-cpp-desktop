@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { resolveDocContent, formatDocFetchedAt, DOCS_GITHUB_URLS } from '../lib/remoteDocs'
+import { resolveDocContent, formatDocFetchedAt, DOCS_GITHUB_URLS, docsPageMode, showsSourcePillRow } from '../lib/remoteDocs'
+import { buildPlatformState } from '../lib/platform'
 import type { RemoteDocResult } from '../wails'
 
 // Build a RemoteDocResult with sensible defaults for one-field variation.
@@ -66,5 +67,35 @@ describe('DOCS_GITHUB_URLS', () => {
     const base = 'https://github.com/CodeNeow/llama-cpp-desktop/blob/main/frontend/src/docs/'
     expect(DOCS_GITHUB_URLS.zh).toBe(base + 'zh')
     expect(DOCS_GITHUB_URLS.en).toBe(base + 'en')
+  })
+})
+
+describe('docsPageMode', () => {
+  it('classifies the three Docs-page compositions from the tier flags', () => {
+    expect(docsPageMode({ isMobile: true, isTablet: false })).toBe('phone')
+    expect(docsPageMode({ isMobile: false, isTablet: true })).toBe('tablet')
+    expect(docsPageMode({ isMobile: false, isTablet: false })).toBe('desktop')
+  })
+
+  it('aligns with the platform tier classifier at the track boundaries', () => {
+    // Phone: Android handset portrait
+    expect(docsPageMode(buildPlatformState('android', 390, 'arm64', 844))).toBe('phone')
+    // Tablet portrait: width band 768..1099 (any OS)
+    expect(docsPageMode(buildPlatformState('android', 800, 'arm64', 1280))).toBe('tablet')
+    expect(docsPageMode(buildPlatformState('windows', 800, 'amd64', 900))).toBe('tablet')
+    // Android tablet-landscape band (1100..1360, width > height) stays tablet
+    expect(docsPageMode(buildPlatformState('android', 1280, 'arm64', 800))).toBe('tablet')
+    // Desktop: same-size window on a desktop OS is never re-classified
+    expect(docsPageMode(buildPlatformState('windows', 1280, 'amd64', 800))).toBe('desktop')
+    // Android portrait above the landscape band is desktop, not tablet
+    expect(docsPageMode(buildPlatformState('android', 1400, 'arm64', 1600))).toBe('desktop')
+  })
+})
+
+describe('showsSourcePillRow', () => {
+  it('shows the pill row on phone and tablet, never on desktop', () => {
+    expect(showsSourcePillRow({ isMobile: true, isTablet: false })).toBe(true)
+    expect(showsSourcePillRow({ isMobile: false, isTablet: true })).toBe(true)
+    expect(showsSourcePillRow({ isMobile: false, isTablet: false })).toBe(false)
   })
 })

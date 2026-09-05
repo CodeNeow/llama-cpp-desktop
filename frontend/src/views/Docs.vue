@@ -20,38 +20,42 @@
       </div>
     </div>
 
-    <!-- ─── Phone tier (frame ⑰): source badges + section list ───
-         Each row navigates to /docs/:id where DocsReader.vue renders the
-         section. The desktop two-pane layout below stays in the DOM (hidden
-         via CSS on this tier) so the shared content pipeline keeps feeding
-         the badge pills. -->
-    <template v-if="isPhone">
-      <div class="srcbadges">
-        <span class="sb" :class="'sb-' + docSource">{{ sourceLabel }}</span>
-        <button class="sb sb-action" type="button" :disabled="refreshing" @click="refreshRemote">
-          {{ refreshing ? t('docs.refreshing') : t('docs.refresh') }}
-        </button>
-        <button class="sb sb-action sb-github" type="button" @click="openOnGithub">{{ t('docs.openOnGithub') }}</button>
-      </div>
-      <!-- Section rows: numbered grad-soft tile + title + desc + chevron
-           (design draft .docrow). Desc comes from i18n docs.section.<id>.desc. -->
-      <nav class="doclist" :aria-label="t('docs.toc')">
-        <button
-          v-for="(section, index) in docSections"
-          :key="section.id"
-          type="button"
-          class="docrow"
-          @click="openSection(section.id)"
-        >
-          <span class="no">{{ String(index + 1).padStart(2, '0') }}</span>
-          <span class="docrow-text">
-            <span class="docrow-t">{{ t(section.titleKey) }}</span>
-            <span class="docrow-desc">{{ t(section.titleKey + '.desc') }}</span>
-          </span>
-          <span class="ar" aria-hidden="true">›</span>
-        </button>
-      </nav>
-    </template>
+    <!-- ─── Phone + tablet tiers (frames ⑰⑱): source badges row ───
+         The pill row (source badge / refresh / GitHub) replaces the desktop
+         header action buttons on every non-desktop tier (showsSourcePillRow).
+         On the phone tier the two panes below are additionally replaced by
+         the section list (rows navigate to /docs/:id where DocsReader.vue
+         renders the section); the desktop panes stay in the DOM (hidden via
+         CSS on that tier) so the shared content pipeline keeps feeding the
+         badge pills. On tablet tiers the same panes ARE the master-detail
+         layout (frames ⑰⑱ — the tablet has no standalone reader route). -->
+    <div v-if="docsMode !== 'desktop'" class="srcbadges">
+      <span class="sb" :class="'sb-' + docSource">{{ sourceLabel }}</span>
+      <button class="sb sb-action" type="button" :disabled="refreshing" @click="refreshRemote">
+        {{ refreshing ? t('docs.refreshing') : t('docs.refresh') }}
+      </button>
+      <button class="sb sb-action sb-github" type="button" @click="openOnGithub">{{ t('docs.openOnGithub') }}</button>
+    </div>
+    <!-- Phone-only chapter list (frame ⑰): numbered grad-soft tile + title +
+         desc + chevron (design draft .docrow). Desc comes from i18n
+         docs.section.<id>.desc. Tablet tiers keep the master-detail split
+         instead (the .docs-toc column IS the chapter navigation). -->
+    <nav v-if="docsMode === 'phone'" class="doclist" :aria-label="t('docs.toc')">
+      <button
+        v-for="(section, index) in docSections"
+        :key="section.id"
+        type="button"
+        class="docrow"
+        @click="openSection(section.id)"
+      >
+        <span class="no">{{ String(index + 1).padStart(2, '0') }}</span>
+        <span class="docrow-text">
+          <span class="docrow-t">{{ t(section.titleKey) }}</span>
+          <span class="docrow-desc">{{ t(section.titleKey + '.desc') }}</span>
+        </span>
+        <span class="ar" aria-hidden="true">›</span>
+      </button>
+    </nav>
 
     <div class="docs-layout">
       <!-- In-page section navigator: a sticky vertical list on wide screens,
@@ -220,7 +224,7 @@ import { useRouter } from 'vue-router'
 import { docSections } from '../docs/manifest'
 import { renderMarkdown } from '../lib/markdown'
 import { handleLinkClick } from '../lib/linkHandler'
-import { DOCS_GITHUB_URLS } from '../lib/remoteDocs'
+import { DOCS_GITHUB_URLS, docsPageMode } from '../lib/remoteDocs'
 import { Browser } from '@wailsio/runtime'
 import { usePlatform } from '../lib/platform'
 
@@ -240,10 +244,14 @@ const {
   refreshRemote,
 } = useDocContent(activeSection)
 
-// Phone tier (frame ⑰): the section list replaces the two panes; rows push
-// /docs/:id where DocsReader renders the section.
+// Viewport composition (frames ⑰⑱, pure helper docsPageMode in
+// lib/remoteDocs.ts): 'phone' renders the section list and pushes /docs/:id;
+// 'tablet' renders the pill row + master-detail split in both directions; the
+// list DOM is phone-only while the pill row mounts on phone AND tablet —
+// desktop keeps the header action buttons instead. The split geometry itself
+// is CSS-only (Track A media band + the tablet-landscape attribute).
 const platformState = usePlatform()
-const isPhone = computed(() => platformState.value.isMobile)
+const docsMode = computed(() => docsPageMode(platformState.value))
 const router = useRouter()
 
 function openSection(id: DocSectionId): void {
@@ -596,24 +604,44 @@ html[data-theme='dark'] .toc-item .no {
   color: var(--text-muted);
 }
 
-/* ─── Tablet tier (<=1099px): the 190px sticky TOC collapses into a wrapping
-       chip row above the content — same two-pane collapse breakpoint as
-       ModelDetail.vue and Api.vue. ─── */
-@media (max-width: 1099px) {
-  .docs-layout {
-    flex-direction: column;
+/* ─── Tablet portrait Track A (768–1099px, draft frames ⑰⑱): MASTER-DETAIL
+       in both tablet directions — 380px chapter column + content pane (draft
+       .split.md). The desktop TOC items already carry the draft .docrow look
+       (number tile + title + desc cards), so only the geometry changes here.
+       Scoped to the band with min-width: 768px so phones (<=767) and desktop
+       (>=1100px) stay untouched; the Android tablet-landscape tier
+       (1100..1360, attribute-gated) never matches the max-width cap — its
+       mirror rules live in the [data-viewport] block at the end. ─── */
+@media (min-width: 768px) and (max-width: 1099px) {
+  /* Frame ⑰ has no subtitle and no header action buttons: the pills move
+     into the .srcbadges row below the header */
+  .page-header {
+    padding-bottom: 20px;
   }
 
+  .page-subtitle,
+  .docs-header-actions {
+    display: none;
+  }
+
+  /* Master-detail split (draft .split.md): chapter column + 1fr pane */
+  .docs-layout {
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    gap: 18px;
+    align-items: start;
+  }
+
+  /* The chapter column rides the grid width (the desktop 190px cap is a
+     flex leftover) and stays sticky under the shorter tablet header */
   .docs-toc {
-    position: static;
     width: auto;
-    flex-direction: row;
-    flex-wrap: wrap;
+    top: 76px;
   }
 
   .docs-content {
-    scroll-margin-top: 0;
-    width: 100%;
+    min-width: 0;
+    scroll-margin-top: 76px;
   }
 }
 
@@ -792,5 +820,39 @@ html[data-theme='dark'] .docrow .no {
 
 .docrow:hover .no {
   background: var(--active-bg);
+}
+
+/* ─── Android tablet-landscape (tablet design draft track B frames ⑰⑱).
+   Hooked on [data-viewport], never a media query: desktop OS windows in the
+   1100–1360px band must stay byte-identical (the attribute is only ever set
+   for Android). Same master-detail skeleton as the portrait Track A band
+   with the draft's wide-track chapter column (320px + 1fr, .split.md.wide);
+   the header drops subtitle + action buttons in favor of the shared pill
+   row, exactly like portrait. These rules are the attribute-prefixed mirror
+   of the Track A block above. ─── */
+[data-viewport='tablet-landscape'] .page-header {
+  padding-bottom: 20px;
+}
+
+[data-viewport='tablet-landscape'] .page-subtitle,
+[data-viewport='tablet-landscape'] .docs-header-actions {
+  display: none;
+}
+
+[data-viewport='tablet-landscape'] .docs-layout {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 18px;
+  align-items: start;
+}
+
+[data-viewport='tablet-landscape'] .docs-toc {
+  width: auto;
+  top: 76px;
+}
+
+[data-viewport='tablet-landscape'] .docs-content {
+  min-width: 0;
+  scroll-margin-top: 76px;
 }
 </style>

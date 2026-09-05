@@ -10,7 +10,10 @@
     <!-- Help & tutorial entry: the former sixth navigation destination moved
          here from the nav bars (mobile redesign IA, v1 mobile design draft
          frame ⑤). The /docs route itself is unchanged; the card sits above the
-         setting groups so it is reachable from every scroll position. -->
+         setting groups so it is reachable from every scroll position. On the
+         tablet tracks (draft frames A16/B16) CSS moves this same node to the
+         END of the page and restyles it into the draft's surface row card —
+         phone and desktop keep the gradient hero at the top. -->
     <router-link to="/docs" class="docs-entry">
       <span class="docs-entry-icon" v-html="DOCS_ICON"></span>
       <span class="docs-entry-text">
@@ -38,8 +41,9 @@
     <!-- ─── Group: appearance & preferences (frame ⑤ group 1) ───
          Theme toggle + language + download source. Same handlers and guard
          semantics as before; only the containers changed (rows in a rounded
-         group instead of tabbed sections). -->
-    <section class="settings-group" :aria-label="t('settings.groupAppearance')">
+         group instead of tabbed sections). group-appearance pins this group
+         to the left column of the tablet-landscape two-column grid (B16). -->
+    <section class="settings-group group-appearance" :aria-label="t('settings.groupAppearance')">
       <!-- Theme mode -->
       <div class="group-item">
         <div class="group-row">
@@ -137,8 +141,10 @@
     <!-- ─── Group: directories & services (frame ⑤ group 2) ───
          Download paths + service access scope + API key + serving GPU +
          Windows-only tray / API-route toggles. Platform gates are unchanged:
-         showTray / showApiRoute / showGpu stay OS-scoped helpers. -->
-    <section class="settings-group" :aria-label="t('settings.groupService')">
+         showTray / showApiRoute / showGpu stay OS-scoped helpers.
+         group-service pins this group to the right column of the
+         tablet-landscape two-column grid (B16). -->
+    <section class="settings-group group-service" :aria-label="t('settings.groupService')">
       <!-- llama.cpp download path -->
       <div class="group-item" :aria-label="t('settings.directories')">
         <div class="group-row">
@@ -369,8 +375,10 @@
          the downloaded NSIS installer; Android downloads an APK and the system
          PackageInstaller confirms it); linux/darwin/other fall back to the
          link mode (hint + GitHub Releases link) because the backend
-         CheckForUpdateAt gate short-circuits to "no update" on those platforms. -->
-    <section class="settings-group" :aria-label="t('settings.about')">
+         CheckForUpdateAt gate short-circuits to "no update" on those platforms.
+         group-about pins this group to the right column of the
+         tablet-landscape two-column grid (B16, under group-service). -->
+    <section class="settings-group group-about" :aria-label="t('settings.about')">
       <div class="group-item">
         <div class="group-row">
           <span class="row-ic ic-blue" v-html="ICON_REFRESH"></span>
@@ -1767,4 +1775,126 @@ async function manualCheck() {
 .api-key-dialog-cancel:hover {
   background: var(--accent-glow);
 }
+
+/* ─── Tablet portrait Track A (768–1099px, draft frame ⑯/A16): the page is
+       already a single-column group stack here (the global 800px centered cap
+       applies); the two draft deltas are (1) the help-and-tutorial entry card
+       moves to the END of the page — draft A16 closes the page with it — and
+       (2) the card is restyled from the brand-gradient phone hero into the
+       draft's surface row card (.group + grad-soft icon tile + ink text).
+       Scoped to the band with min-width: 768px so phones (<=767) and desktop
+       (>=1100px) keep the hero at the top; the Android tablet-landscape tier
+       (1100..1360, attribute-gated) never matches the max-width cap — its
+       mirror rules live in the [data-viewport] block at the end. ─── */
+@media (min-width: 768px) and (max-width: 1099px) {
+  .page {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* order moves the entry after every order-0 child (header / device card /
+     setting groups) — the draft's closing entry card */
+  .docs-entry {
+    order: 1;
+    background: var(--bg-card);
+    box-shadow: var(--shadow-island);
+    color: var(--text-primary);
+  }
+
+  .docs-entry:hover {
+    color: var(--text-primary);
+    transform: none;
+    box-shadow: var(--shadow-island);
+  }
+
+  /* Draft A16 icon brick: grad-soft tile + violet glyph on the surface card */
+  .docs-entry-icon {
+    background: var(--grad-soft);
+    color: #6d28d9;
+  }
+
+  html[data-theme='dark'] .docs-entry-icon {
+    color: #c4b5fd;
+  }
+
+  .docs-entry-sub {
+    color: var(--text-dim);
+  }
+
+  .docs-entry-arrow {
+    color: var(--text-dim);
+  }
+}
+
+/* ─── Android tablet-landscape (tablet design draft track B frame ⑯/B16).
+   Hooked on [data-viewport], never a media query: desktop OS windows in the
+   1100–1360px band must stay byte-identical (the attribute is only ever set
+   for Android). Draft B16: TWO-column groups — appearance (theme / language /
+   download source) LEFT, directories + about RIGHT — with the help entry
+   card spanning the bottom full width (frame title: 横贯底部). These rules
+   override the >=1280px desktop two-column grid, which also matches at
+   1280–1360: the attribute selector out-ranks those class rules, so a
+   desktop window of the same size keeps the desktop placement. ─── */
+[data-viewport='tablet-landscape'] .page {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+[data-viewport='tablet-landscape'] .sticky-top,
+[data-viewport='tablet-landscape'] .device-card,
+[data-viewport='tablet-landscape'] .docs-entry {
+  grid-column: 1 / -1;
+}
+
+[data-viewport='tablet-landscape'] .group-appearance {
+  grid-column: 1;
+}
+
+[data-viewport='tablet-landscape'] .group-service,
+[data-viewport='tablet-landscape'] .group-about {
+  grid-column: 2;
+}
+
+/* The same closing surface entry card as portrait Track A: order 1 places it
+   after every order-0 grid item, so it lands alone on the last full-width row */
+[data-viewport='tablet-landscape'] .docs-entry {
+  order: 1;
+  background: var(--bg-card);
+  box-shadow: var(--shadow-island);
+  color: var(--text-primary);
+}
+
+/* Grid gap replaces the flow margins (same policy as the >=1280px desktop grid) */
+[data-viewport='tablet-landscape'] .device-card,
+[data-viewport='tablet-landscape'] .settings-group,
+[data-viewport='tablet-landscape'] .docs-entry {
+  margin-bottom: 0;
+}
+
+[data-viewport='tablet-landscape'] .docs-entry:hover {
+  color: var(--text-primary);
+  transform: none;
+  box-shadow: var(--shadow-island);
+}
+
+[data-viewport='tablet-landscape'] .docs-entry-icon {
+  background: var(--grad-soft);
+  color: #6d28d9;
+}
+
+/* Both attributes live on <html>; a descendant combinator would never match */
+html[data-theme='dark'][data-viewport='tablet-landscape'] .docs-entry-icon {
+  color: #c4b5fd;
+}
+
+[data-viewport='tablet-landscape'] .docs-entry-sub {
+  color: var(--text-dim);
+}
+
+[data-viewport='tablet-landscape'] .docs-entry-arrow {
+  color: var(--text-dim);
+}
+
 </style>

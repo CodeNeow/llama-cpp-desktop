@@ -52,3 +52,41 @@ export const DOCS_GITHUB_URLS: Record<'zh' | 'en', string> = {
   zh: 'https://github.com/CodeNeow/llama-cpp-desktop/blob/main/frontend/src/docs/zh',
   en: 'https://github.com/CodeNeow/llama-cpp-desktop/blob/main/frontend/src/docs/en',
 }
+
+// ─── Docs-page composition per viewport tier (tablet frames ⑰⑱) ─────────────
+// The Docs page renders three mutually exclusive compositions (tablet design
+// draft: the phone has a standalone reader route, the tablet does not):
+//   - 'phone':   source pill row + chapter list; rows push /docs/:id where
+//                DocsReader renders the section
+//   - 'tablet':  source pill row + MASTER-DETAIL split in both directions
+//                (portrait 380px / landscape 320px chapter column + content
+//                pane); /docs/:id keeps redirecting back here
+//   - 'desktop': header action buttons + sticky 190px TOC (unchanged)
+// Lives in this module (the Docs page's helper lib) so the DOM gates in
+// Docs.vue and the CSS track hooks stay anchored to one vocabulary; the input
+// is a structural subset of PlatformState, keeping the module mock-free.
+
+/** Which composition the Docs page renders for the current platform state. */
+export type DocsPageMode = 'phone' | 'tablet' | 'desktop'
+
+/**
+ * Classify the Docs-page composition from the platform tier flags. Mirrors
+ * lib/platform.ts's tier classifier exactly: isMobile = width <= 767;
+ * isTablet = 768..1099 OR the Android tablet-landscape band — so the
+ * attribute/media CSS hooks (max-width: 1099px band and
+ * [data-viewport='tablet-landscape']) and this DOM gate can never disagree.
+ */
+export function docsPageMode(state: { isMobile: boolean; isTablet: boolean }): DocsPageMode {
+  if (state.isMobile) return 'phone'
+  if (state.isTablet) return 'tablet'
+  return 'desktop'
+}
+
+/**
+ * Whether the Docs page shows the pill row (source badge + refresh) under the
+ * page header: phone AND tablet tiers do (desktop keeps the header action
+ * buttons instead — the two replacements never render together).
+ */
+export function showsSourcePillRow(state: { isMobile: boolean; isTablet: boolean }): boolean {
+  return docsPageMode(state) !== 'desktop'
+}
