@@ -53,8 +53,11 @@
       <button class="retry-btn" @click="fetchSystemInfo(true)">{{ t('home.retry') }}</button>
     </div>
 
-    <!-- Data -->
-    <div v-else class="sys-grid">
+    <!-- Data. The sys-paired hook (exactly one resident model — see
+         lib/homeLayout) lets the portrait band pair the resident-model card
+         with the system summary card in one two-column row; first-use and
+         multi-resident states keep the single-column stack. -->
+    <div v-else class="sys-grid" :class="{ 'sys-paired': residentPairing }">
       <!-- Quick-start checklist: hides once every step completes or the user
            dismisses it. It guides across tabs (its actions router.push other
            routes), which works from any tab. Lives in the side column so the
@@ -367,8 +370,9 @@
         </div>
       </section>
 
-      <!-- System Card -->
-      <section class="island info-section">
+      <!-- System Card (sys-card hooks the portrait band's pairing row with
+           the resident-model card — both are compact summary strips) -->
+      <section class="island info-section sys-card">
         <h2 class="section-title">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="4" width="18" height="12" rx="2"/><line x1="2" y1="20" x2="22" y2="20"/>
@@ -404,6 +408,7 @@ import { usagePercent, formatMB, formatBytes } from '../lib/format'
 import { aggregateVram, buildGpuDisplays, cudaCompatLevel, gpuHasVram, type GpuStaticInfo } from '../lib/sysinfo'
 import { guessQuant } from '../lib/modelFiles'
 import { buildOnboardingView, heroOnboardSubKey, type OnboardingStepId } from '../lib/onboarding'
+import { pairsResidentWithSystemCard } from '../lib/homeLayout'
 import { nudgeDock } from '../lib/dockNudge'
 import { homeResidentShowsUnload, residentReleaseMode } from '../lib/dock'
 import type { MonitorStatus } from '../lib/monitor'
@@ -687,6 +692,12 @@ const llamacppBrick = computed(() => {
 })
 
 // ─── Resident model cards (frame ①) ──────────────────────────────
+
+// Portrait-band card pairing: the resident-model card and the system summary
+// card share one two-column row below the storage island when exactly one
+// model is resident (predicate in lib/homeLayout); zero residents keeps the
+// first-use single-column stack unchanged.
+const residentPairing = computed(() => pairsResidentWithSystemCard(loadedModels.value.length))
 
 /** Match a loaded router id back to the local model list (chat loads by model name). */
 function matchedLocal(id: string): ModelInfo | undefined {
@@ -1977,6 +1988,37 @@ html[data-os='ios'] .unload-btn:active:not(:disabled) {
 
   .home-info-col > .island {
     order: 3;
+  }
+
+  /* ─── Ready-state pairing (.sys-paired = exactly one resident model, see
+         lib/homeLayout): the compact resident-model card and the system
+         summary card share one two-column row BELOW the storage island,
+         filling the band's dead bottom third. Every other card spans the
+         full width, so the grid only ever splits this one row. First-use
+         (zero residents) and multi-resident states never get the hook and
+         keep the single-column stack above. ─── */
+  .sys-grid.sys-paired {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .sys-grid.sys-paired .home-side-col > .island,
+  .sys-grid.sys-paired .home-main-col > .hero-card,
+  .sys-grid.sys-paired .home-main-col > .grid2,
+  .sys-grid.sys-paired .home-info-col > .island {
+    grid-column: 1 / -1;
+  }
+
+  /* The pairing row: both cards take a single cell each. order moves the
+     resident card below the storage island (order 2); the un-paired band
+     order (resident above storage, draft A②) is unchanged. Source order
+     after the span rule matters: these must win the grid-column override. */
+  .sys-grid.sys-paired .home-side-col > .mcard {
+    order: 3;
+  }
+
+  .sys-grid.sys-paired .home-side-col > .mcard,
+  .sys-grid.sys-paired .home-info-col > .sys-card {
+    grid-column: auto;
   }
 
   /* Offline hero: mockup .hero.off gray gradient (draft A① 离线灰调) */

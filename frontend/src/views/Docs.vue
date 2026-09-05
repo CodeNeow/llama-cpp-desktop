@@ -605,13 +605,16 @@ html[data-theme='dark'] .toc-item .no {
 }
 
 /* ─── Tablet portrait Track A (768–1099px, draft frames ⑰⑱): MASTER-DETAIL
-       in both tablet directions — 380px chapter column + content pane (draft
-       .split.md). The desktop TOC items already carry the draft .docrow look
-       (number tile + title + desc cards), so only the geometry changes here.
-       Scoped to the band with min-width: 768px so phones (<=767) and desktop
-       (>=1100px) stay untouched; the Android tablet-landscape tier
-       (1100..1360, attribute-gated) never matches the max-width cap — its
-       mirror rules live in the [data-viewport] block at the end. ─── */
+       in both tablet directions — 250px chapter column + content pane (draft
+       .split.md adapted: chapter titles are short, so the narrow column keeps
+       the active highlight and pill row while handing the text pane ~430px+
+       of readable width instead of the old 380px squeeze). The desktop TOC
+       items already carry the draft .docrow look (number tile + title + desc
+       cards), so only the geometry changes here. Scoped to the band with
+       min-width: 768px so phones (<=767) and desktop (>=1100px) stay
+       untouched; the Android tablet-landscape tier (1100..1360,
+       attribute-gated) never matches the max-width cap — its mirror rules
+       live in the [data-viewport] block at the end. ─── */
 @media (min-width: 768px) and (max-width: 1099px) {
   /* Frame ⑰ has no subtitle and no header action buttons: the pills move
      into the .srcbadges row below the header */
@@ -624,10 +627,12 @@ html[data-theme='dark'] .toc-item .no {
     display: none;
   }
 
-  /* Master-detail split (draft .split.md): chapter column + 1fr pane */
+  /* Master-detail split (draft .split.md adapted): narrow chapter column +
+     1fr pane. Chapter titles ellipsize only in pathological cases — the
+     250px column keeps every zh/en title fully visible at 14px/700. */
   .docs-layout {
     display: grid;
-    grid-template-columns: 380px 1fr;
+    grid-template-columns: 250px 1fr;
     gap: 18px;
     align-items: start;
   }

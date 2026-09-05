@@ -32,6 +32,25 @@ export interface HFResult {
 }
 
 /**
+ * Tappable search-suggestion chips for the empty-search guidance card
+ * (Downloads.vue, portrait tablet band): popular model families a first-time
+ * search is likely to want. Tapping a chip only fills the search input —
+ * running the search stays an explicit action on the search button.
+ */
+export const SEARCH_SUGGESTIONS: readonly string[] = ['Qwen3', 'LLaMA', 'DeepSeek']
+
+/**
+ * Whether the empty-search guidance card renders. The portrait tablet band
+ * only (768..1099px): `isTablet` is true for that width band AND for the
+ * Android landscape-tablet band, so `isTabletLandscape` is subtracted — the
+ * landscape track keeps its own split composition untouched, and phone /
+ * desktop tiers never render the card.
+ */
+export function showsEmptySearchGuidance(isTablet: boolean, isTabletLandscape: boolean): boolean {
+  return isTablet && !isTabletLandscape
+}
+
+/**
  * i18n key of the short display label for a model download source (tablet
  * draft frame B8 summary card: "下载源 HF 镜像"). Mirrors the Settings page's
  * source-option vocabulary; unknown values degrade to the hf-mirror label,

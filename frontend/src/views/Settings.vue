@@ -1776,26 +1776,57 @@ async function manualCheck() {
   background: var(--accent-glow);
 }
 
-/* ─── Tablet portrait Track A (768–1099px, draft frame ⑯/A16): the page is
-       already a single-column group stack here (the global 800px centered cap
-       applies); the two draft deltas are (1) the help-and-tutorial entry card
-       moves to the END of the page — draft A16 closes the page with it — and
-       (2) the card is restyled from the brand-gradient phone hero into the
-       draft's surface row card (.group + grad-soft icon tile + ink text).
-       Scoped to the band with min-width: 768px so phones (<=767) and desktop
-       (>=1100px) keep the hero at the top; the Android tablet-landscape tier
-       (1100..1360, attribute-gated) never matches the max-width cap — its
-       mirror rules live in the [data-viewport] block at the end. ─── */
+/* ─── Tablet portrait Track A (768–1099px, draft frame ⑯/A16 adapted): a
+       two-column group grid — the landscape B16 concept brought down to
+       portrait proportions: appearance group (theme / language / download
+       source) LEFT, directories/service + about groups RIGHT, the device
+       island full-width on top, and the help-and-tutorial entry card closing
+       the page as a full-width row at the bottom. The entry card is restyled
+       from the brand-gradient phone hero into the draft's surface row card
+       (.group + grad-soft icon tile + ink text). The existing landscape group
+       classes (group-appearance / group-service / group-about) are reused via
+       band-scoped rules — no DOM duplication. Scoped to the band with
+       min-width: 768px so phones (<=767) and desktop (>=1100px) keep the hero
+       at the top; the Android tablet-landscape tier (1100..1360,
+       attribute-gated) never matches the max-width cap — its mirror rules
+       live in the [data-viewport] block at the end. ─── */
 @media (min-width: 768px) and (max-width: 1099px) {
   .page {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    align-items: start;
+  }
+
+  /* Header and the device island ride the full width above the group columns */
+  .sticky-top,
+  .device-card {
+    grid-column: 1 / -1;
+  }
+
+  /* Landscape B16 column placement: appearance LEFT, service + about RIGHT */
+  .group-appearance {
+    grid-column: 1;
+  }
+
+  .group-service,
+  .group-about {
+    grid-column: 2;
+  }
+
+  /* Grid gap replaces the flow margins (same policy as the >=1280px desktop
+     grid and the tablet-landscape split) */
+  .device-card,
+  .settings-group,
+  .docs-entry {
+    margin-bottom: 0;
   }
 
   /* order moves the entry after every order-0 child (header / device card /
-     setting groups) — the draft's closing entry card */
+     setting groups) — the draft's closing entry card, spanning the full width */
   .docs-entry {
     order: 1;
+    grid-column: 1 / -1;
     background: var(--bg-card);
     box-shadow: var(--shadow-island);
     color: var(--text-primary);
@@ -1823,6 +1854,45 @@ async function manualCheck() {
 
   .docs-entry-arrow {
     color: var(--text-dim);
+  }
+
+  /* The serving-GPU selector's desktop 340px fixed width would overflow the
+     ~half-page column: let it shrink inside the row instead */
+  .gpu-select {
+    flex-shrink: 1;
+    min-width: 0;
+  }
+
+  /* Long tails (the update row's "up to date" + check-button pair) would
+     crush the label to one character per line inside the ~half-page columns:
+     let the row wrap and drop the tail below the label — the same recipe as
+     the phone tier, applied only where an inline tail does not fit */
+  .group-row {
+    flex-wrap: wrap;
+  }
+
+  .row-text {
+    flex: 1 1 120px;
+  }
+
+  /* The toolbar select's 240px min-width crushes the row label to one
+     character per line inside the ~half-page columns: switch the row-tail
+     selects to the compact inline trigger (same treatment as the phone
+     tier), so the label column keeps a readable width */
+  .row-tail-select {
+    min-height: 44px;
+  }
+
+  .row-tail-select :deep(.themed-select__trigger) {
+    min-width: 0;
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text-secondary);
+    min-height: 36px;
   }
 }
 

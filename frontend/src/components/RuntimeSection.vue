@@ -4,7 +4,7 @@
        + retry) and all llama.cpp download / custom-directory actions; the
        shell owns the page chrome, so there is no page chrome here — only the
        dependency cards. -->
-  <section class="runtime-section">
+  <section class="runtime-section" :class="{ 'rt-installed': info.installed }">
     <!-- Phone tier page heading (design draft frames ③/④): the shell's tab row has
          no page title on phone, so the panel carries the mockup .h-greet
          heading itself; hidden on desktop/tablet (v-if, not CSS) -->
@@ -34,10 +34,13 @@
 
     <!-- Data: one stacked full-width card per managed dependency (llama.cpp today,
          future runtime dependencies append their own cards below). The two column
-         wrappers only become real boxes on Android tablet-landscape (draft
-         frames B③/B④: status+components/download LEFT, paths+explanation RIGHT);
+         wrappers only become real boxes on the Android tablet-landscape split
+         (draft frames B③/B④: status+components/download LEFT, paths+explanation
+         RIGHT) and, when the runtime is installed, on the portrait tablet band
+         (rt-installed below: status+components LEFT, paths+about RIGHT);
          everywhere else they dissolve via display:contents into the flat stack /
-         desktop two-column grid, leaving the item order untouched. -->
+         desktop two-column grid, leaving the item order untouched. The
+         rt-installed hook keeps the first-download state stacked full-width. -->
     <template v-else>
       <div class="rt-main-col">
       <!-- llama.cpp Card -->
@@ -227,11 +230,13 @@
       </div>
 
       <div class="rt-side-col">
-      <!-- Android tablet-landscape right rail (design draft frame B③): the
-           read-only install paths split out of the status card into their own
-           island; every other tier keeps the paths inside the info card above
-           (they are hidden there on tablet-landscape via CSS) -->
-      <section v-if="platformState.isTabletLandscape && info.installed" class="runtime-paths">
+      <!-- Read-only install-paths card (Android tablet-landscape right rail,
+           draft frame B③; reused as the portrait band's right column, see the
+           rt-installed split in the styles). The DOM gate is the tablet tier
+           (isTablet covers the portrait band AND tablet-landscape), so phone
+           and desktop keep the paths inside the info card above (they are
+           hidden there on the split layouts via CSS) -->
+      <section v-if="platformState.isTablet && info.installed" class="runtime-paths">
         <h4 class="paths-title">{{ t('runtime.pathsTitle') }}</h4>
         <div class="path-row">
           <span class="path-label">{{ t('runtime.llamacpp.path') }}</span>
@@ -249,7 +254,8 @@
 
       <!-- "About the runtime" island (design draft frame ③): desktop ≥1100 shows
            in the left column alongside the info card; tablet-landscape packs it
-           into the right rail below the paths card (draft frame B③/B④) -->
+           into the right rail below the paths card (draft frame B③/B④), and the
+           portrait band packs it into its right column (rt-installed split) -->
       <section class="runtime-about">
         <h4>{{ t('runtime.aboutTitle') }}</h4>
         <p>{{ t('runtime.aboutBody') }}</p>
@@ -687,9 +693,10 @@ html[data-theme='dark'] .dl-status-line {
   color: var(--text-muted);
 }
 
-/* ─── Read-only install-paths rail card (Android tablet-landscape, draft
-       frame B③). Renders only behind the isTabletLandscape v-if, so these
-       base styles never apply on other tiers. ─── */
+/* ─── Read-only install-paths rail card (Android tablet-landscape right rail,
+       draft frame B③; reused as the portrait band's right column — see the
+       rt-installed split). Renders only behind the isTablet v-if, so these
+       base styles never apply on phone / desktop tiers. ─── */
 .runtime-paths {
   padding: 24px 28px;
   background: var(--surface);
@@ -1366,6 +1373,80 @@ html[data-theme='dark'] .dl-status-line {
   .retry-btn,
   .retry-btn-sm {
     min-height: 44px;
+  }
+
+  /* ─── Installed state: two-column split (portrait adaptation of the
+       tablet-landscape B③ composition). Status card + components island take
+       the LEFT 1fr column; the read-only paths card + about island pack a
+       ~300px RIGHT column, filling the dead bottom area of the old single
+       column. Hooked on .rt-installed so the first-download state (progress +
+       explanation) keeps its stacked full-width flow. Scoped to the band with
+       min-width: 768px; the tablet-landscape attribute rules below keep
+       winning on that track (no width overlap). ─── */
+  .runtime-section.rt-installed {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: 16px;
+    align-items: start;
+  }
+
+  .runtime-section.rt-installed .rt-main-col,
+  .runtime-section.rt-installed .rt-side-col {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: 0;
+  }
+
+  .runtime-section.rt-installed .rt-main-col {
+    grid-column: 1;
+  }
+
+  .runtime-section.rt-installed .rt-side-col {
+    grid-column: 2;
+  }
+
+  /* Grid-cell treatment: the stacked-flow outer margins vanish (the column
+     gap takes over) — same policy as the tablet-landscape split */
+  .runtime-section.rt-installed .info-section,
+  .runtime-section.rt-installed .runtime-paths,
+  .runtime-section.rt-installed .runtime-about {
+    margin-bottom: 0;
+  }
+
+  /* The components list becomes its own island in the LEFT column (mirror of
+     the tablet-landscape rule) */
+  .runtime-section.rt-installed .components-area {
+    margin-top: 0;
+    padding: 20px 24px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+  }
+
+  /* The in-card install paths move into the right-rail card on this layout */
+  .runtime-section.rt-installed .info-section .info-item-full {
+    display: none;
+  }
+
+  /* The narrower right column tightens the paths card padding (the 380px
+     landscape rail keeps its 24/28 base) */
+  .runtime-section.rt-installed .runtime-paths {
+    padding: 20px 22px;
+  }
+
+  /* The narrower left column squeezes the component-row status badge into
+     wrapping mid-word ("已安/装"): keep badges on one line and let the name
+     flex instead */
+  .status-badge {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+  /* Skeleton / error states span the full split width */
+  .runtime-section.rt-installed > .skeleton-card,
+  .runtime-section.rt-installed > .error-card {
+    grid-column: 1 / -1;
   }
 }
 

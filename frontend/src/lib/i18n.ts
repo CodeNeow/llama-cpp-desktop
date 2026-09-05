@@ -354,6 +354,10 @@ export const messages: Record<Locale, Record<string, string>> = {
     // Detail-page sticky bar with selected size (tablet draft frames A⑩/B⑩)
     'downloads.selectedCountSize': '已选 {n} 个 · {size}',
     'downloads.details': '详情',
+    // Portrait-band empty-search guidance card (Downloads.vue): hint plus the
+    // suggestion-chip lead-in shown before any search has been performed
+    'downloads.searchEmptyHint': '搜索以发现 Hugging Face / ModelScope 上的模型',
+    'downloads.searchEmptyChips': '试试这些热门关键词：',
 
     // ─── Chat page (Chat.vue) ───
     'chat.title': '本地聊天',
@@ -1079,6 +1083,10 @@ export const messages: Record<Locale, Record<string, string>> = {
     // Detail-page sticky bar with selected size (tablet draft frames A⑩/B⑩)
     'downloads.selectedCountSize': 'Selected {n} · {size}',
     'downloads.details': 'Details',
+    // Portrait-band empty-search guidance card (Downloads.vue): hint plus the
+    // suggestion-chip lead-in shown before any search has been performed
+    'downloads.searchEmptyHint': 'Search to discover models on Hugging Face / ModelScope',
+    'downloads.searchEmptyChips': 'Try a popular keyword:',
 
     // ─── Chat page (Chat.vue) ───
     'chat.title': 'Local Chat',

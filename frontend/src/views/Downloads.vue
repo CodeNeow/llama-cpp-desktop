@@ -137,6 +137,33 @@
         <h2>{{ t('downloads.noResults') }}</h2>
         <p>{{ t('downloads.tryOther') }}</p>
       </div>
+
+      <!-- Empty-search guidance (portrait tablet band, draft frame A⑧
+           adaptation): before any search the area below the pinned progress
+           card is a bare void — this card offers a hint plus tappable keyword
+           chips that fill the search box. Gated to the portrait band via the
+           shared platform state (showsSearchGuidance), so phone, desktop and
+           the Android tablet-landscape track render exactly as before. Hidden
+           while a search is in flight and never mixed with the no-results
+           state above (that branch matches first). -->
+      <div v-else-if="showsSearchGuidance" class="empty-state search-empty">
+        <div class="search-empty-glyph" aria-hidden="true">
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+        </div>
+        <h2>{{ t('downloads.searchEmptyHint') }}</h2>
+        <p class="search-empty-lead">{{ t('downloads.searchEmptyChips') }}</p>
+        <div class="search-chips">
+          <button
+            v-for="s in SEARCH_SUGGESTIONS"
+            :key="s"
+            type="button"
+            class="search-chip"
+            @click="applySuggestion(s)"
+          >{{ s }}</button>
+        </div>
+      </div>
     </div>
 
     <!-- Download tasks modal -->
@@ -226,7 +253,16 @@ import { formatSpeed, formatBytes } from '../lib/format'
 import { LatestOnly } from '../lib/latestOnly'
 import { hasActiveTask, countActiveTasks, visibleTasks, activeTaskItems, finishedTaskItems } from '../lib/taskStatus'
 import { LimitedQueue } from '../lib/limitedQueue'
-import { searchQuery, searched, searchResults, modelSizes, downloadSourceLabelKey, HFResult } from '../lib/downloadsState'
+import {
+  searchQuery,
+  searched,
+  searchResults,
+  modelSizes,
+  downloadSourceLabelKey,
+  HFResult,
+  SEARCH_SUGGESTIONS,
+  showsEmptySearchGuidance,
+} from '../lib/downloadsState'
 import { appConfig } from '../store'
 import { t } from '../lib/i18n'
 import { usePlatform } from '../lib/platform'
@@ -258,6 +294,21 @@ const isTabletLandscape = computed(() => platformState.value.isTabletLandscape)
 // Draft B⑧ summary "下载源" row: the persisted source preference rendered with
 // the shared short labels (HF 镜像 / HF 官方 / 魔搭)
 const sourceLabel = computed(() => t(downloadSourceLabelKey(appConfig.downloadSource)))
+
+// Empty-search guidance gate (portrait tablet band only, 768..1099px): the
+// band predicate rides the shared platform state so it tracks window resizes
+// exactly like the CSS media queries; a search in flight hides the card.
+const showsSearchGuidance = computed(
+  () =>
+    !searching.value &&
+    showsEmptySearchGuidance(platformState.value.isTablet, platformState.value.isTabletLandscape),
+)
+
+// Suggestion chip click: fills the search box only — running the search stays
+// an explicit action on the search button
+function applySuggestion(keyword: string): void {
+  searchQuery.value = keyword
+}
 
 const searching = ref(false)
 // Concurrency-limited queue for search cards' batched size requests
@@ -1158,6 +1209,60 @@ html[data-os='ios'] .cancel-btn:active {
   font-size: 18px;
   color: var(--text-muted);
   margin: 0 0 8px;
+}
+
+/* ─── Empty-search guidance card (portrait tablet band). The card renders
+       only behind the portrait-band platform gate (showsSearchGuidance), so
+       these styles can never affect the other tiers' rendering. Reuses the
+       .empty-state surface (frame ㉑ emptycard vocabulary) with a guidance
+       glyph and the keyword chips added. ─── */
+.search-empty-glyph {
+  color: var(--accent-light);
+  margin-bottom: 10px;
+}
+
+.search-empty-lead {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  margin: 0 0 16px;
+}
+
+.search-chips {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Keyword chip: fills the search box on tap — neutral surface with the
+   44px-min touch height, gradient wash only on hover/press feedback */
+.search-chip {
+  min-height: 44px;
+  padding: 9px 20px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.search-chip:hover {
+  border-color: rgba(99, 102, 241, 0.4);
+  color: var(--accent-light);
+  background: var(--active-bg);
+}
+
+.search-chip:active {
+  transform: scale(0.98);
+}
+
+.search-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* ─── Tablet portrait (768..1099px, design draft frame A⑧): the pinned
